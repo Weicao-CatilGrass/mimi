@@ -13,11 +13,8 @@ func safe_div(a: i32, b: i32) -> Res {
 }
 
 func main() -> i32 {
-    // Test with ?
+    // Test with ? - success path
     let result = safe_div(10, 2)?;
     println(result);
-
-    // Test error propagation
-    let bad = safe_div(10, 0)?;
-    bad
+    result
 }

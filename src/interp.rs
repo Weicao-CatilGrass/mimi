@@ -72,26 +72,35 @@ pub struct Interpreter<'a> {
     file: &'a File,
     env: Vec<HashMap<String, Value>>,
     constructors: HashMap<String, usize>,
+    /// Maps type name to its variants (for Result/Option-like types)
+    type_variants: HashMap<String, Vec<String>>,
+    /// Variants that represent "failure" (Err, None, *Error, *Fail)
+    failure_variants: HashMap<String, bool>,
 }
 
 impl<'a> Interpreter<'a> {
     pub fn new(file: &'a File) -> Self {
         let mut constructors = HashMap::new();
+        let mut type_variants: HashMap<String, Vec<String>> = HashMap::new();
+        let mut failure_variants: HashMap<String, bool> = HashMap::new();
         for item in &file.items {
-            Self::collect_constructors(item, &mut constructors);
+            Self::collect_constructors(item, &mut constructors, &mut type_variants, &mut failure_variants);
         }
         Self {
             file,
             env: vec![HashMap::new()],
             constructors,
+            type_variants,
+            failure_variants,
         }
     }
 
-    fn collect_constructors(item: &Item, out: &mut HashMap<String, usize>) {
+    fn collect_constructors(item: &Item, out: &mut HashMap<String, usize>, type_variants: &mut HashMap<String, Vec<String>>, failure_variants: &mut HashMap<String, bool>) {
         match item {
             Item::Type(t) => {
                 match &t.kind {
                     TypeDefKind::Enum(variants) => {
+                        let mut variant_names = Vec::new();
                         for v in variants {
                             let arity = match &v.payload {
                                 None => 0,
@@ -99,7 +108,14 @@ impl<'a> Interpreter<'a> {
                                 Some(VariantPayload::Record(fields)) => fields.len(),
                             };
                             out.insert(v.name.clone(), arity);
+                            variant_names.push(v.name.clone());
+                            // Mark failure-like variants
+                            let name_lower = v.name.to_lowercase();
+                            if name_lower == "err" || name_lower == "none" || name_lower.ends_with("error") || name_lower.ends_with("fail") {
+                                failure_variants.insert(v.name.clone(), true);
+                            }
                         }
+                        type_variants.insert(t.name.clone(), variant_names);
                     }
                     TypeDefKind::Newtype(_) => {
                         out.insert(t.name.clone(), 1);
@@ -109,7 +125,7 @@ impl<'a> Interpreter<'a> {
             }
             Item::Module(m) => {
                 for inner in &m.items {
-                    Self::collect_constructors(inner, out);
+                    Self::collect_constructors(inner, out, type_variants, failure_variants);
                 }
             }
             _ => {}
@@ -296,6 +312,13 @@ impl<'a> Interpreter<'a> {
                 // Full implementation would register compensation actions
                 self.eval_block(block)?;
             }
+            Stmt::Parasteps(block) => {
+                // Parasteps block: evaluate all statements and return the last value
+                // In a real implementation, this would execute statements in parallel
+                if let Some(v) = self.eval_block(block)? {
+                    return Ok(Some(v));
+                }
+            }
         }
         Ok(None)
     }
@@ -410,13 +433,14 @@ impl<'a> Interpreter<'a> {
             Expr::Try(expr) => {
                 let v = self.eval_expr(expr)?;
                 match v {
-                    Value::Variant(name, vals) if name == "Ok" || name == "Some" => {
-                        // Return the inner value of Ok/T
-                        Ok(vals.into_iter().next().unwrap_or(Value::Unit))
-                    }
-                    Value::Variant(name, _) if name == "Err" || name == "None" => {
-                        // Propagate error as runtime error
-                        Err(format!("{} propagated via ?", name))
+                    Value::Variant(name, vals) => {
+                        // Check if this is a known failure variant
+                        if self.failure_variants.get(&name).copied().unwrap_or(false) {
+                            Err(format!("{} propagated via ?", name))
+                        } else {
+                            // Treat as success variant - return inner value
+                            Ok(vals.into_iter().next().unwrap_or(Value::Unit))
+                        }
                     }
                     _ => {
                         Err(format!("? operator requires Result or Option, found {}", v))
@@ -652,7 +676,14 @@ fn values_equal(a: &Value, b: &Value) -> bool {
         (Value::Bool(a), Value::Bool(b)) => a == b,
         (Value::String(a), Value::String(b)) => a == b,
         (Value::Unit, Value::Unit) => true,
-        (Value::List(a), Value::List(b)) => a == b,
+        (Value::List(a), Value::List(b)) => a.len() == b.len() && a.iter().zip(b.iter()).all(|(x, y)| values_equal(x, y)),
+        (Value::Tuple(a), Value::Tuple(b)) => a.len() == b.len() && a.iter().zip(b.iter()).all(|(x, y)| values_equal(x, y)),
+        (Value::Variant(an, av), Value::Variant(bn, bv)) => {
+            an == bn && av.len() == bv.len() && av.iter().zip(bv.iter()).all(|(x, y)| values_equal(x, y))
+        }
+        (Value::Record(a), Value::Record(b)) => {
+            a.len() == b.len() && a.iter().all(|(k, v)| b.get(k).map(|bv| values_equal(v, bv)).unwrap_or(false))
+        }
         _ => false,
     }
 }

@@ -180,6 +180,8 @@ pub enum Stmt {
     Drop(Expr),
     /// On failure compensation block
     OnFailure(Block),
+    /// Parallel steps block (parasteps)
+    Parasteps(Block),
     Ellipsis,
 }
 

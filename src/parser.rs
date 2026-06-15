@@ -590,6 +590,13 @@ impl Parser {
                 self.match_semi();
                 Ok(Stmt::Drop(expr))
             }
+            TokenKind::Parasteps => {
+                self.advance();
+                self.skip_newlines();
+                self.expect(TokenKind::LBrace, "`{`")?;
+                let body = self.parse_block()?;
+                Ok(Stmt::Parasteps(body))
+            }
             _ => {
                 let expr = self.parse_expr(0)?;
                 if self.at(&TokenKind::Eq) {

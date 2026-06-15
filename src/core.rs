@@ -23,6 +23,8 @@ struct Checker<'a> {
     funcs: HashMap<String, (Vec<Type>, Type)>,
     aliases: HashMap<String, Type>,
     types: HashMap<String, TypeDef>,
+    /// Track linear capabilities in scope: name -> consumed
+    cap_vars: Vec<HashMap<String, bool>>,
 }
 
 impl<'a> Checker<'a> {
@@ -33,6 +35,7 @@ impl<'a> Checker<'a> {
             funcs: HashMap::new(),
             aliases: HashMap::new(),
             types: HashMap::new(),
+            cap_vars: vec![HashMap::new()],
         }
     }
 
@@ -109,7 +112,23 @@ impl<'a> Checker<'a> {
                     self.collect_item_decls(inner);
                 }
             }
-            Item::Rule(_) | Item::Desc(_) | Item::Cap(_) | Item::Actor(_) => {}
+            Item::Actor(actor) => {
+                // Collect actor methods as functions
+                for method in &actor.methods {
+                    if self.funcs.contains_key(&method.name) {
+                        self.emit(format!("duplicate function definition '{}'", method.name));
+                        return;
+                    }
+                    let params: Vec<Type> = method.params.iter().map(|p| self.resolve_type(&p.ty)).collect();
+                    let ret = method
+                        .ret
+                        .as_ref()
+                        .map(|t| self.resolve_type(t))
+                        .unwrap_or_else(|| Type::Name("unit".into(), vec![]));
+                    self.funcs.insert(method.name.clone(), (params, ret));
+                }
+            }
+            Item::Rule(_) | Item::Desc(_) | Item::Cap(_) => {}
         }
     }
 
@@ -147,9 +166,50 @@ impl<'a> Checker<'a> {
                     self.check_item(inner);
                 }
             }
-            Item::Type(_) | Item::Cap(_) | Item::Actor(_) => {}
+            Item::Actor(actor) => {
+                // Check actor fields
+                for field in &actor.fields {
+                    let field_ty = self.resolve_type(&field.ty);
+                    // Validate field type is well-formed
+                    if let Type::Name(name, args) = &field_ty {
+                        // Check that the type exists (unless it's a built-in)
+                        if !Self::is_builtin_type(name) && !self.types.contains_key(name) {
+                            self.emit(format!("unknown type '{}' in actor field '{}'", name, field.name));
+                        }
+                        // Also check type arguments
+                        for arg in args {
+                            if let Type::Name(arg_name, _) = arg {
+                                if !Self::is_builtin_type(arg_name) && !self.types.contains_key(arg_name) {
+                                    self.emit(format!("unknown type '{}' in actor field type", arg_name));
+                                }
+                            }
+                        }
+                    }
+                    // Check field initialization if present
+                    if let Some(init) = &field.init {
+                        let init_ty = self.infer_expr(init, &mut vec![HashMap::new()]);
+                        if !same_type(&field_ty, &init_ty) {
+                            self.emit(format!(
+                                "actor field '{}' initializer type {} does not match field type {}",
+                                field.name,
+                                fmt_type(&init_ty),
+                                fmt_type(&field_ty)
+                            ));
+                        }
+                    }
+                }
+                // Check actor methods
+                for method in &actor.methods {
+                    self.check_func(method);
+                }
+            }
+            Item::Type(_) | Item::Cap(_) => {}
             Item::Rule(_) | Item::Desc(_) => {}
         }
+    }
+
+    fn is_builtin_type(name: &str) -> bool {
+        matches!(name, "i32" | "i64" | "f64" | "bool" | "string" | "unit" | "List" | "Future" | "Result" | "Option")
     }
 
     fn check_func(&mut self, func: &FuncDef) {
@@ -159,17 +219,46 @@ impl<'a> Checker<'a> {
             .map(|t| self.resolve_type(t))
             .unwrap_or_else(|| Type::Name("unit".into(), vec![]));
         let mut scopes: Vec<HashMap<String, Type>> = vec![HashMap::new()];
+        // Push cap scope for function body
+        self.cap_vars.push(HashMap::new());
         for p in &func.params {
             let ty = self.resolve_type(&p.ty);
+            // If param is a cap type, track it
+            if matches!(&ty, Type::Cap(_)) {
+                self.cap_vars.last_mut().unwrap().insert(p.name.clone(), false);
+            }
             scopes[0].insert(p.name.clone(), ty);
         }
         self.check_block(&func.body, &ret, &mut scopes);
+        // Check for unconsumed caps before popping
+        self.check_unconsumed_caps();
+        self.cap_vars.pop();
+    }
+
+    fn check_unconsumed_caps(&mut self) {
+        if let Some(scope) = self.cap_vars.last() {
+            let unconsumed: Vec<String> = scope.iter()
+                .filter(|(_, consumed)| !*consumed)
+                .map(|(name, _)| name.clone())
+                .collect();
+            for name in unconsumed {
+                self.emit(format!(
+                    "linear capability '{}' must be consumed (via drop) before end of scope",
+                    name
+                ));
+            }
+        }
     }
 
     fn check_block(&mut self, block: &Block, ret: &Type, scopes: &mut Vec<HashMap<String, Type>>) {
+        // Push cap scope for block
+        self.cap_vars.push(HashMap::new());
         for stmt in block {
             self.check_stmt(stmt, ret, scopes);
         }
+        // Check for unconsumed caps before popping
+        self.check_unconsumed_caps();
+        self.cap_vars.pop();
     }
 
     fn check_stmt(
@@ -210,6 +299,12 @@ impl<'a> Checker<'a> {
                     // For v0.2, mutability is tracked per-variable; tuple patterns ignore mut_ for simplicity.
                 }
                 self.check_pattern(pat, &final_ty, scopes);
+                // Track cap variables for linear type checking
+                if let Type::Cap(_) = &final_ty {
+                    if let Pattern::Variable(name) = pat {
+                        self.cap_vars.last_mut().unwrap().insert(name.clone(), false);
+                    }
+                }
             }
             Stmt::Return(None) => {
                 if !same_type(ret, &Type::Name("unit".into(), vec![])) {
@@ -284,6 +379,14 @@ impl<'a> Checker<'a> {
                 self.check_block(block, ret, scopes);
                 scopes.pop();
             }
+            Stmt::Parasteps(block) => {
+                // Parasteps block executes statements in parallel
+                // Each statement in the block should be independent
+                // For now, just type-check all statements
+                scopes.push(HashMap::new());
+                self.check_block(block, ret, scopes);
+                scopes.pop();
+            }
             Stmt::Assign { target, value } => {
                 let value_ty = self.infer_expr(value, scopes);
                 match target {
@@ -301,7 +404,24 @@ impl<'a> Checker<'a> {
                     _ => self.emit("assignment target must be a variable"),
                 }
             }
-            Stmt::Desc(_) | Stmt::Requires(_) | Stmt::Ensures(_) | Stmt::Math(_) | Stmt::Ellipsis | Stmt::Drop(_) | Stmt::OnFailure(_) => {}
+            Stmt::Drop(expr) => {
+                // Evaluate the expression to ensure it's valid
+                self.infer_expr(expr, scopes);
+                // Mark the capability as consumed
+                if let Expr::Ident(name) = expr {
+                    if let Some(consumed) = self.cap_vars.last_mut().unwrap().get_mut(name) {
+                        if *consumed {
+                            self.emit(format!(
+                                "capability '{}' has already been consumed",
+                                name
+                            ));
+                        } else {
+                            *consumed = true;
+                        }
+                    }
+                }
+            }
+            Stmt::Desc(_) | Stmt::Requires(_) | Stmt::Ensures(_) | Stmt::Math(_) | Stmt::Ellipsis | Stmt::OnFailure(_) => {}
         }
     }
 
@@ -508,27 +628,16 @@ impl<'a> Checker<'a> {
             Expr::Try(expr) => {
                 let inner_ty = self.infer_expr(expr, scopes);
                 match inner_ty {
+                    // Built-in Result<T, E> -> ? extracts T
                     Type::Name(n, args) if n == "Result" && args.len() == 2 => {
-                        // Result<T, E> -> ? extracts T
                         args[0].clone()
                     }
+                    // Built-in Option<T> -> ? extracts T
                     Type::Name(n, args) if n == "Option" && args.len() == 1 => {
-                        // Option<T> -> ? extracts T
                         args[0].clone()
                     }
-                    Type::Option(inner) => {
-                        // T? is syntactic sugar for Option<T>
-                        (*inner).clone()
-                    }
-                    // Support user-defined Result/Option-like enums
-                    // If it's a known type with 2 args (success, error), extract first
-                    // If it's a known type with 1 arg (some value), extract it
-                    Type::Name(_, args) if args.len() == 2 => {
-                        args[0].clone()
-                    }
-                    Type::Name(_, args) if args.len() == 1 => {
-                        args[0].clone()
-                    }
+                    // T? syntactic sugar for Option<T>
+                    Type::Option(inner) => (*inner).clone(),
                     // For unparameterized enum types like `Res`, look up the type definition
                     Type::Name(name, ref args) if args.is_empty() => {
                         if let Some(tdef) = self.types.get(&name) {
@@ -542,7 +651,7 @@ impl<'a> Checker<'a> {
                                         }
                                         _ => {
                                             self.emit(format!(
-                                                "? operator: cannot determine success type from {}",
+                                                "? operator: cannot determine success type from enum '{}'",
                                                 name
                                             ));
                                             Type::Name("unknown".into(), vec![])
@@ -551,7 +660,7 @@ impl<'a> Checker<'a> {
                                 }
                                 _ => {
                                     self.emit(format!(
-                                        "? operator requires Result or Option type, found {}",
+                                        "? operator requires Result or Option type, found '{}'",
                                         name
                                     ));
                                     Type::Name("unknown".into(), vec![])
@@ -559,7 +668,7 @@ impl<'a> Checker<'a> {
                             }
                         } else {
                             self.emit(format!(
-                                "? operator requires Result or Option type, found {}",
+                                "? operator requires Result or Option type, found '{}'",
                                 name
                             ));
                             Type::Name("unknown".into(), vec![])
