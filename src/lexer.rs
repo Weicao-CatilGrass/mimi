@@ -42,6 +42,7 @@ pub enum TokenKind {
     Spawn,
     Steps,
     Parasteps,
+    Quote,
     Flow,
     Ui,
     Binds,
@@ -86,6 +87,7 @@ pub enum TokenKind {
     Shl,
     Shr,
     Tilde,
+    DollarParen,
 
     // Punctuation
     LParen,
@@ -148,6 +150,7 @@ impl fmt::Display for TokenKind {
             TokenKind::Spawn => "spawn",
             TokenKind::Steps => "steps",
             TokenKind::Parasteps => "parasteps",
+            TokenKind::Quote => "quote",
             TokenKind::Flow => "flow",
             TokenKind::Ui => "ui",
             TokenKind::Binds => "binds",
@@ -188,6 +191,7 @@ impl fmt::Display for TokenKind {
             TokenKind::Shl => "<<",
             TokenKind::Shr => ">>",
             TokenKind::Tilde => "~",
+            TokenKind::DollarParen => "$(",
             TokenKind::LParen => "(",
             TokenKind::RParen => ")",
             TokenKind::LBrace => "{",
@@ -477,6 +481,7 @@ impl<'a> Lexer<'a> {
             "spawn" => TokenKind::Spawn,
             "steps" => TokenKind::Steps,
             "parasteps" => TokenKind::Parasteps,
+            "quote" => TokenKind::Quote,
             "flow" => TokenKind::Flow,
             "ui" => TokenKind::Ui,
             "binds" => TokenKind::Binds,
@@ -746,6 +751,15 @@ impl<'a> Lexer<'a> {
                 '~' => {
                     self.advance();
                     (TokenKind::Tilde, Commitment::None)
+                }
+                '$' => {
+                    self.advance();
+                    if self.peek() == Some('(') {
+                        self.advance();
+                        (TokenKind::DollarParen, Commitment::None)
+                    } else {
+                        return Err(format!("unexpected '$' at {}:{}", line, col));
+                    }
                 }
                 '(' => {
                     self.advance();

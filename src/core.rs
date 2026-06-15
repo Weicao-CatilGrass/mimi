@@ -23,6 +23,8 @@ struct Checker<'a> {
     funcs: HashMap<String, (Vec<Type>, Type)>,
     aliases: HashMap<String, Type>,
     types: HashMap<String, TypeDef>,
+    /// Track newtype definitions: name -> inner type (unresolved)
+    newtypes: HashMap<String, Type>,
     /// Track linear capabilities in scope: name -> consumed
     cap_vars: Vec<HashMap<String, bool>>,
 }
@@ -35,6 +37,7 @@ impl<'a> Checker<'a> {
             funcs: HashMap::new(),
             aliases: HashMap::new(),
             types: HashMap::new(),
+            newtypes: HashMap::new(),
             cap_vars: vec![HashMap::new()],
         }
     }
@@ -87,8 +90,12 @@ impl<'a> Checker<'a> {
                         self.aliases.insert(t.name.clone(), resolved);
                     }
                     TypeDefKind::Newtype(ty) => {
+                        // Store the newtype with its inner type (unresolved for now)
+                        self.newtypes.insert(t.name.clone(), ty.clone());
+                        // The inner type is what the constructor takes as input
                         let inner = self.resolve_type(ty);
-                        let self_ty = Type::Name(t.name.clone(), vec![]);
+                        // The return type is the newtype itself, wrapped in Type::Newtype with name
+                        let self_ty = Type::Newtype(t.name.clone(), Box::new(inner.clone()));
                         self.funcs.insert(t.name.clone(), (vec![inner], self_ty));
                     }
                     TypeDefKind::Enum(variants) => {
@@ -113,13 +120,27 @@ impl<'a> Checker<'a> {
                 }
             }
             Item::Actor(actor) => {
+                // Register actor type so it can be used as a type
+                let actor_type_def = TypeDef {
+                    name: actor.name.clone(),
+                    commitment: actor.commitment,
+                    kind: TypeDefKind::Record(actor.fields.iter().map(|f| Field {
+                        name: f.name.clone(),
+                        ty: f.ty.clone(),
+                    }).collect()),
+                };
+                self.types.insert(actor.name.clone(), actor_type_def);
+
                 // Collect actor methods as functions
                 for method in &actor.methods {
                     if self.funcs.contains_key(&method.name) {
                         self.emit(format!("duplicate function definition '{}'", method.name));
                         return;
                     }
-                    let params: Vec<Type> = method.params.iter().map(|p| self.resolve_type(&p.ty)).collect();
+                    // Add implicit self parameter as first param
+                    let self_type = Type::Name(actor.name.clone(), vec![]);
+                    let mut params = vec![self_type];
+                    params.extend(method.params.iter().map(|p| self.resolve_type(&p.ty)));
                     let ret = method
                         .ret
                         .as_ref()
@@ -138,6 +159,9 @@ impl<'a> Checker<'a> {
                 if let Some(aliased) = self.aliases.get(name) {
                     // Simple aliases do not carry generic args in v0.2
                     aliased.clone()
+                } else if let Some(inner_ty) = self.newtypes.get(name) {
+                    // This is a newtype - wrap the resolved inner type in Type::Newtype with name
+                    Type::Newtype(name.clone(), Box::new(self.resolve_type(inner_ty)))
                 } else {
                     Type::Name(name.clone(), args.clone())
                 }
@@ -155,6 +179,7 @@ impl<'a> Checker<'a> {
                 Box::new(self.resolve_type(ret)),
             ),
             Type::Cap(_) | Type::Shared(_) | Type::LocalShared(_) | Type::Weak(_) => ty.clone(),
+            Type::Newtype(name, inner) => Type::Newtype(name.clone(), Box::new(self.resolve_type(inner))),
         }
     }
 
@@ -200,7 +225,25 @@ impl<'a> Checker<'a> {
                 }
                 // Check actor methods
                 for method in &actor.methods {
-                    self.check_func(method);
+                    // Add implicit self parameter to scope for actor methods
+                    let self_ty = Type::Name(actor.name.clone(), vec![]);
+                    let mut scopes: Vec<HashMap<String, Type>> = vec![HashMap::new()];
+                    scopes[0].insert("self".to_string(), self_ty);
+                    // Add other params
+                    for p in &method.params {
+                        let ty = self.resolve_type(&p.ty);
+                        scopes[0].insert(p.name.clone(), ty);
+                    }
+                    // Check block with self in scope
+                    let ret = method
+                        .ret
+                        .as_ref()
+                        .map(|t| self.resolve_type(t))
+                        .unwrap_or_else(|| Type::Name("unit".into(), vec![]));
+                    self.cap_vars.push(HashMap::new());
+                    self.check_block(&method.body, &ret, &mut scopes);
+                    self.check_unconsumed_caps();
+                    self.cap_vars.pop();
                 }
             }
             Item::Type(_) | Item::Cap(_) => {}
@@ -401,6 +444,12 @@ impl<'a> Checker<'a> {
                             ));
                         }
                     }
+                    Expr::Field(obj, field) => {
+                        // Field assignment: check that the object type has that field
+                        let obj_ty = self.infer_expr(obj, scopes);
+                        // For now just allow it - the type checker will verify field exists
+                        let _ = (obj_ty, field);
+                    }
                     _ => self.emit("assignment target must be a variable"),
                 }
             }
@@ -460,11 +509,25 @@ impl<'a> Checker<'a> {
             }
             Expr::Binary(op, l, r) => self.infer_binary(*op, l, r, scopes),
             Expr::Call(callee, args) => {
-                if let Expr::Ident(name) = callee.as_ref() {
-                    self.check_call(name, args, scopes)
-                } else {
-                    self.emit("callee must be a function name");
-                    Type::Name("unknown".into(), vec![])
+                match callee.as_ref() {
+                    Expr::Ident(name) => self.check_call(name, args, scopes),
+                    Expr::Field(obj, method_name) => {
+                        // Method call: obj.method(args) or Type.spawn(args)
+                        let obj_ty = self.infer_expr(obj, scopes);
+                        // Check if it's an actor spawn call (Type.spawn)
+                        if let Type::Name(type_name, _) = &obj_ty {
+                            if method_name == "spawn" {
+                                // This is an actor spawn call - return the actor type
+                                return Type::Name(type_name.clone(), vec![]);
+                            }
+                        }
+                        // Regular method call - for now return unknown
+                        Type::Name("unknown".into(), vec![])
+                    }
+                    _ => {
+                        self.emit("callee must be a function name");
+                        Type::Name("unknown".into(), vec![])
+                    }
                 }
             }
             Expr::Tuple(elems) => {
@@ -493,11 +556,33 @@ impl<'a> Checker<'a> {
                     self.emit("match expression must have at least one arm");
                     return Type::Name("unknown".into(), vec![]);
                 }
+
+                // Get all variants of the subject type for exhaustiveness checking
+                let all_variants = self.get_enum_variants(&subject_ty);
+
+                // Track which variants are covered by match arms
+                let mut covered_variants: Vec<String> = Vec::new();
+                let mut has_catchall = false;
+                // Track if any arm has a guard - guards make exhaustiveness checking unreliable
+                let mut has_guard = false;
+
                 let mut result_ty: Option<Type> = None;
                 for arm in arms {
+                    // Check pattern coverage
+                    let (pattern_covered, is_catchall) = self.pattern_covers_variants(&arm.pat, &subject_ty);
+                    if is_catchall {
+                        has_catchall = true;
+                    }
+                    for variant in pattern_covered {
+                        if !covered_variants.contains(&variant) {
+                            covered_variants.push(variant);
+                        }
+                    }
+
                     scopes.push(HashMap::new());
                     self.check_pattern(&arm.pat, &subject_ty, scopes);
                     if let Some(guard) = &arm.guard {
+                        has_guard = true;
                         let gt = self.infer_expr(guard, scopes);
                         if !is_bool(&gt) {
                             self.emit(format!(
@@ -521,13 +606,44 @@ impl<'a> Checker<'a> {
                         }
                     }
                 }
+
+                // Check exhaustiveness: all variants must be covered
+                // Skip if: no enum variants, has catchall, or any arm has a guard (undecidable)
+                if !all_variants.is_empty() && !has_catchall && !has_guard {
+                    for variant in &all_variants {
+                        if !covered_variants.contains(variant) {
+                            self.emit(format!(
+                                "match expression is not exhaustive: missing variant '{}' of '{}'",
+                                variant,
+                                fmt_type(&subject_ty)
+                            ));
+                        }
+                    }
+                }
+
                 result_ty.unwrap_or_else(|| Type::Name("unknown".into(), vec![]))
             }
             Expr::Field(obj, field) => {
                 let obj_ty = self.infer_expr(obj, scopes);
                 match &obj_ty {
                     Type::Name(name, _) => {
-                        if let Some(tdef) = self.types.get(name) {
+                        // Check if it's an actor type
+                        if let Some(actor_def) = self.file.items.iter().find_map(|item| {
+                            if let Item::Actor(a) = item {
+                                if a.name == *name { Some(a) } else { None }
+                            } else { None }
+                        }) {
+                            // Actor field access
+                            if let Some(f) = actor_def.fields.iter().find(|f| f.name == *field) {
+                                self.resolve_type(&f.ty)
+                            } else {
+                                self.emit(format!(
+                                    "actor '{}' has no field '{}'",
+                                    name, field
+                                ));
+                                Type::Name("unknown".into(), vec![])
+                            }
+                        } else if let Some(tdef) = self.types.get(name) {
                             match &tdef.kind {
                                 TypeDefKind::Record(fields) => {
                                     if let Some(f) = fields.iter().find(|f| f.name == *field) {
@@ -695,6 +811,10 @@ impl<'a> Checker<'a> {
                     Type::Name(n, args) if n == "Future" && !args.is_empty() => args[0].clone(),
                     other => other,
                 }
+            }
+            Expr::Quote(_) | Expr::QuoteInterpolate(_) => {
+                // quote! returns an AST value
+                Type::Name("AST".into(), vec![])
             }
         }
     }
@@ -986,8 +1106,78 @@ impl<'a> Checker<'a> {
                 return t.clone();
             }
         }
+        // Check if it's an actor type name
+        if let Some(tdef) = self.types.get(name) {
+            if matches!(tdef.kind, TypeDefKind::Record(_)) {
+                // This is an actor type - return it as a type
+                return Type::Name(name.into(), vec![]);
+            }
+        }
         self.emit(format!("undefined variable '{}'", name));
         Type::Name("unknown".into(), vec![])
+    }
+
+    /// Get all variant names for an enum type
+    fn get_enum_variants(&self, ty: &Type) -> Vec<String> {
+        match ty {
+            Type::Name(name, _) => {
+                if let Some(tdef) = self.types.get(name) {
+                    match &tdef.kind {
+                        TypeDefKind::Enum(variants) => {
+                            variants.iter().map(|v| v.name.clone()).collect()
+                        }
+                        _ => Vec::new(),
+                    }
+                } else {
+                    Vec::new()
+                }
+            }
+            _ => Vec::new(),
+        }
+    }
+
+    /// Determine which variants a pattern covers.
+    /// Returns (list of covered variant names, whether this is a catch-all pattern)
+    fn pattern_covers_variants(&self, pat: &Pattern, subject_ty: &Type) -> (Vec<String>, bool) {
+        match pat {
+            Pattern::Wildcard => {
+                // Wildcard covers all variants
+                let all = self.get_enum_variants(subject_ty);
+                (all, true)
+            }
+            Pattern::Variable(_) => {
+                // Variable pattern covers all variants
+                let all = self.get_enum_variants(subject_ty);
+                (all, true)
+            }
+            Pattern::Literal(_) => {
+                // Literal patterns don't cover enum variants
+                (Vec::new(), false)
+            }
+            Pattern::Constructor(name, _) => {
+                // Constructor pattern covers only that specific variant
+                (vec![name.clone()], false)
+            }
+            Pattern::Tuple(pats) => {
+                // Tuple pattern - for enum matching, this doesn't directly cover variants
+                // but we need to handle nested tuple patterns that might contain constructors
+                let mut covered = Vec::new();
+                // For tuple patterns matching against enum types, we need the tuple element types
+                if let Type::Tuple(elem_types) = subject_ty {
+                    for (i, p) in pats.iter().enumerate() {
+                        if i < elem_types.len() {
+                            let (vars, _) = self.pattern_covers_variants(p, &elem_types[i]);
+                            for v in vars {
+                                if !covered.contains(&v) {
+                                    covered.push(v);
+                                }
+                            }
+                        }
+                    }
+                }
+                (covered, false)
+            }
+        }
     }
 }
 
@@ -1008,6 +1198,12 @@ fn same_type(a: &Type, b: &Type) -> bool {
         (Type::Shared(a), Type::Shared(b)) => same_type(a, b),
         (Type::LocalShared(a), Type::LocalShared(b)) => same_type(a, b),
         (Type::Weak(a), Type::Weak(b)) => same_type(a, b),
+        // Newtypes with same name and same inner type are equal
+        (Type::Newtype(n1, a), Type::Newtype(n2, b)) => n1 == n2 && same_type(a, b),
+        // A named type matches a newtype with the same inner type name
+        (Type::Name(n, _), Type::Newtype(n2, _)) | (Type::Newtype(n2, _), Type::Name(n, _)) => {
+            n == n2
+        }
         _ => false,
     }
 }
@@ -1046,5 +1242,6 @@ fn fmt_type(t: &Type) -> String {
         Type::Shared(inner) => format!("shared {}", fmt_type(inner)),
         Type::LocalShared(inner) => format!("local_shared {}", fmt_type(inner)),
         Type::Weak(inner) => format!("weak {}", fmt_type(inner)),
+        Type::Newtype(name, inner) => format!("newtype {} {}", name, fmt_type(inner)),
     }
 }

@@ -207,6 +207,10 @@ pub enum Expr {
     Spawn(Box<Expr>),
     /// Await a future
     Await(Box<Expr>),
+    /// Quote - compile-time AST generation (comptime metaprogramming)
+    Quote(Block),
+    /// Interpolation inside quote - evaluated at compile time and spliced into AST
+    QuoteInterpolate(Box<Expr>),
 }
 
 #[derive(Debug, Clone)]
@@ -280,4 +284,6 @@ pub enum Type {
     LocalShared(Box<Type>),
     /// Weak reference from shared
     Weak(Box<Type>),
+    /// Newtype wrapper for strong type isolation (name, inner type)
+    Newtype(String, Box<Type>),
 }

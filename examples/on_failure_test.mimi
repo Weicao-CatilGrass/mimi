@@ -1,0 +1,35 @@
+// Test on failure compensation mechanism
+
+type Res {
+    Ok(i32)
+    Err(string)
+}
+
+func reserve_seat() -> Res {
+    println("Reserving seat...");
+    Ok(1)
+}
+
+func cancel_seat(seat: i32) {
+    println("Cancelling seat...");
+}
+
+func book_hotel() -> Res {
+    println("Booking hotel...");
+    Err("hotel booking failed")
+}
+
+func cancel_hotel() {
+    println("Cancelling hotel...");
+}
+
+func main() -> i32 {
+    let seat = reserve_seat()?;
+    on failure { cancel_seat(seat); }
+
+    let hotel = book_hotel()?;
+    on failure { cancel_hotel(); }
+
+    println("Booking completed successfully!");
+    0
+}

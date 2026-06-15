@@ -1,0 +1,42 @@
+// Test nested on failure compensation mechanism
+
+type Res {
+    Ok(i32)
+    Err(string)
+}
+
+func step1() -> Res {
+    println("Step 1...");
+    Ok(1)
+}
+
+func step2() -> Res {
+    println("Step 2...");
+    Err("step 2 failed")
+}
+
+func step3() -> Res {
+    println("Step 3...");
+    Ok(3)
+}
+
+func cleanup1() {
+    println("CLEANUP 1 executed");
+}
+
+func cleanup2() {
+    println("CLEANUP 2 executed");
+}
+
+func main() -> Res {
+    on failure { cleanup1(); }
+
+    let a = step1()?;
+
+    on failure { cleanup2(); }
+
+    let b = step2()?;
+
+    let c = step3()?;
+    Ok(c)
+}

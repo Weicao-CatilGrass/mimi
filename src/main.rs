@@ -11,7 +11,7 @@ use std::fs;
 use std::path::PathBuf;
 
 #[derive(Parser, Debug)]
-#[command(name = "mimi", version = "0.1.0", about = "Mimi language driver")]
+#[command(name = "mimi", version = "0.1.1", about = "Mimi language driver")]
 struct Args {
     #[command(subcommand)]
     cmd: Command,
