@@ -573,6 +573,27 @@ impl Parser {
         Ok(stmts)
     }
 
+    fn parse_quote_block(&mut self) -> Result<Block, ParseError> {
+        let mut stmts = Vec::new();
+        self.skip_newlines();
+        while !self.at(&TokenKind::RBrace) && !self.at(&TokenKind::Eof) {
+            self.skip_newlines();
+            if self.at(&TokenKind::RBrace) || self.at(&TokenKind::Eof) {
+                break;
+            }
+            if self.at(&TokenKind::DollarParen) {
+                self.advance();
+                let inner = self.parse_expr(0)?;
+                self.expect(TokenKind::RParen, "`)`")?;
+                stmts.push(Stmt::Expr(Expr::QuoteInterpolate(Box::new(inner))));
+            } else {
+                stmts.push(self.parse_stmt()?);
+            }
+        }
+        self.expect(TokenKind::RBrace, "`}`")?;
+        Ok(stmts)
+    }
+
     fn parse_stmt(&mut self) -> Result<Stmt, ParseError> {
         self.skip_newlines();
         match self.peek_kind() {
@@ -850,7 +871,21 @@ impl Parser {
                         e = Expr::Call(Box::new(e), args);
                     } else if self.at(&TokenKind::Dot) {
                         self.advance();
-                        let field = self.expect_ident()?;
+                        // Accept identifier or keyword (like spawn, await) as field name
+                        let field = if self.at(&TokenKind::Ident("".into())) {
+                            self.expect_ident()
+                        } else if self.at(&TokenKind::Spawn) {
+                            self.advance();
+                            Ok("spawn".to_string())
+                        } else if self.at(&TokenKind::Await) {
+                            self.advance();
+                            Ok("await".to_string())
+                        } else if self.at(&TokenKind::Quote) {
+                            self.advance();
+                            Ok("quote".to_string())
+                        } else {
+                            self.expect_ident()
+                        }?;
                         e = Expr::Field(Box::new(e), field);
                     } else if self.at(&TokenKind::LBracket) {
                         self.advance();
@@ -930,6 +965,23 @@ impl Parser {
                 self.advance();
                 let e = self.parse_expr(0)?;
                 Expr::Await(Box::new(e))
+            }
+            TokenKind::Quote => {
+                self.advance();
+                // Allow optional ! after quote (quote! syntax)
+                if self.at(&TokenKind::Bang) {
+                    self.advance();
+                }
+                self.skip_newlines();
+                self.expect(TokenKind::LBrace, "`{` for quote! body")?;
+                let body = self.parse_quote_block()?;
+                Expr::Quote(body)
+            }
+            TokenKind::DollarParen => {
+                self.advance();
+                let inner = self.parse_expr(0)?;
+                self.expect(TokenKind::RParen, "`)` for quote interpolation")?;
+                Expr::QuoteInterpolate(Box::new(inner))
             }
             _ => {
                 let (line, col) = (self.peek().line, self.peek().col);

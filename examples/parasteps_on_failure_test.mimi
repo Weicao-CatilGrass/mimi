@@ -1,0 +1,46 @@
+// Test parasteps error propagation with compensation
+// Note: parasteps v1.0 runs spawns sequentially for simplicity
+
+type Res {
+    Ok(i32)
+    Err(string)
+}
+
+func task1() -> Res {
+    println("Task 1...");
+    Ok(1)
+}
+
+func task2() -> Res {
+    println("Task 2...");
+    Err("task 2 failed")
+}
+
+func task3() -> Res {
+    println("Task 3...");
+    Ok(3)
+}
+
+func cleanup_before() {
+    println("CLEANUP BEFORE executed");
+}
+
+func cleanup_after() {
+    println("CLEANUP AFTER executed");
+}
+
+func main() -> i32 {
+    on failure { cleanup_before(); }
+
+    parasteps {
+        let a = spawn task1();
+        let b = spawn task2();
+        let c = spawn task3();
+        await a
+    }
+
+    on failure { cleanup_after(); }
+
+    println("Done");
+    0
+}
