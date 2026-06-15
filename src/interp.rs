@@ -228,10 +228,17 @@ impl<'a> Interpreter<'a> {
             let is_last = i == block.len() - 1;
             match stmt {
                 Stmt::Expr(e) if is_last => {
-                    return Ok(Some(self.eval_expr(e)?));
+                    let result = self.eval_expr(e);
+                    if result.is_err() {
+                        self.run_compensations();
+                    }
+                    return result.map(Some);
                 }
                 Stmt::Expr(e) => {
-                    self.eval_expr(e)?;
+                    if let Err(e) = self.eval_expr(e) {
+                        self.run_compensations();
+                        return Err(e);
+                    }
                 }
                 _ => {
                     if let Some(v) = self.eval_stmt(stmt)? {
