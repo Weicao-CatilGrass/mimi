@@ -154,7 +154,7 @@ impl<'a> Checker<'a> {
                 args.iter().map(|a| self.resolve_type(a)).collect(),
                 Box::new(self.resolve_type(ret)),
             ),
-            Type::Cap(_) => ty.clone(),
+            Type::Cap(_) | Type::Shared(_) | Type::LocalShared(_) | Type::Weak(_) => ty.clone(),
         }
     }
 
@@ -1005,6 +1005,9 @@ fn same_type(a: &Type, b: &Type) -> bool {
                 && same_type(a_ret, b_ret)
         }
         (Type::Cap(a), Type::Cap(b)) => a == b,
+        (Type::Shared(a), Type::Shared(b)) => same_type(a, b),
+        (Type::LocalShared(a), Type::LocalShared(b)) => same_type(a, b),
+        (Type::Weak(a), Type::Weak(b)) => same_type(a, b),
         _ => false,
     }
 }
@@ -1040,5 +1043,8 @@ fn fmt_type(t: &Type) -> String {
             fmt_type(ret)
         ),
         Type::Cap(name) => format!("cap {}", name),
+        Type::Shared(inner) => format!("shared {}", fmt_type(inner)),
+        Type::LocalShared(inner) => format!("local_shared {}", fmt_type(inner)),
+        Type::Weak(inner) => format!("weak {}", fmt_type(inner)),
     }
 }

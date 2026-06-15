@@ -425,6 +425,21 @@ impl Parser {
                 self.expect(TokenKind::RParen, "`)`")?;
                 Ok(Type::Tuple(elems))
             }
+            TokenKind::Shared => {
+                self.advance();
+                let inner = self.parse_type()?;
+                Ok(Type::Shared(Box::new(inner)))
+            }
+            TokenKind::LocalShared => {
+                self.advance();
+                let inner = self.parse_type()?;
+                Ok(Type::LocalShared(Box::new(inner)))
+            }
+            TokenKind::Weak => {
+                self.advance();
+                let inner = self.parse_type()?;
+                Ok(Type::Weak(Box::new(inner)))
+            }
             _ => Err(ParseError::new(
                 format!("expected type, found {}", tok.kind),
                 tok.line,

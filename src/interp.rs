@@ -12,6 +12,8 @@ pub enum Value {
     Tuple(Vec<Value>),
     Variant(String, Vec<Value>),
     Record(HashMap<String, Value>),
+    /// A future representing a spawned concurrent task
+    Future(std::sync::Arc<std::sync::Mutex<std::sync::mpsc::Receiver<Result<Value, String>>>>),
 }
 
 impl std::fmt::Display for Value {
@@ -64,6 +66,7 @@ impl std::fmt::Display for Value {
                 }
                 write!(f, "}}")
             }
+            Value::Future(_) => write!(f, "Future(...)"),
         }
     }
 }
@@ -76,6 +79,8 @@ pub struct Interpreter<'a> {
     type_variants: HashMap<String, Vec<String>>,
     /// Variants that represent "failure" (Err, None, *Error, *Fail)
     failure_variants: HashMap<String, bool>,
+    /// Compensation stack for on failure blocks (LIFO)
+    compensation_stack: Vec<Vec<Stmt>>,
 }
 
 impl<'a> Interpreter<'a> {
@@ -92,6 +97,7 @@ impl<'a> Interpreter<'a> {
             constructors,
             type_variants,
             failure_variants,
+            compensation_stack: Vec::new(),
         }
     }
 
@@ -185,6 +191,18 @@ impl<'a> Interpreter<'a> {
             }
         }
         Err(format!("undefined variable '{}' in assignment", name))
+    }
+
+    fn run_compensations(&mut self) {
+        // Run compensation blocks in LIFO order
+        while let Some(block) = self.compensation_stack.pop() {
+            // Execute each compensation statement
+            for stmt in &block {
+                if let Err(e) = self.eval_stmt(stmt) {
+                    eprintln!("compensation error: {} (ignored)", e);
+                }
+            }
+        }
     }
 
     fn call_func(&mut self, func: &FuncDef, args: Vec<Value>) -> Result<Value, String> {
@@ -308,16 +326,50 @@ impl<'a> Interpreter<'a> {
                 // In a real implementation, this would track capability usage
             }
             Stmt::OnFailure(block) => {
-                // On failure block - for now just evaluate the block
-                // Full implementation would register compensation actions
-                self.eval_block(block)?;
+                // Register compensation action (will be executed in LIFO order on error)
+                self.compensation_stack.push(block.clone());
             }
             Stmt::Parasteps(block) => {
-                // Parasteps block: evaluate all statements and return the last value
-                // In a real implementation, this would execute statements in parallel
-                if let Some(v) = self.eval_block(block)? {
-                    return Ok(Some(v));
+                // Parasteps block: execute spawn statements in parallel
+                // Collect spawn expressions and their results
+                let mut last_value = None;
+                let mut futures = Vec::new();
+
+                for stmt in block {
+                    match stmt {
+                        Stmt::Expr(Expr::Spawn(expr)) => {
+                            // Create a future for concurrent execution
+                            let (tx, rx) = std::sync::mpsc::channel();
+                            let expr = expr.clone();
+                            let file = self.file.clone();
+                            std::thread::spawn(move || {
+                                let mut interp = Interpreter::new(&file);
+                                let result = interp.eval_expr(&expr);
+                                let _ = tx.send(result);
+                            });
+                            futures.push(std::sync::Arc::new(std::sync::Mutex::new(rx)));
+                        }
+                        Stmt::Expr(expr) => {
+                            // Evaluate non-spawn expressions sequentially
+                            last_value = Some(self.eval_expr(expr)?);
+                        }
+                        _ => {
+                            if let Some(v) = self.eval_stmt(stmt)? {
+                                last_value = Some(v);
+                            }
+                        }
+                    }
                 }
+
+                // Wait for all futures and check for errors
+                for rx in futures {
+                    let rx = rx.lock().map_err(|e| format!("await failed: {}", e))?;
+                    if let Ok(Err(e)) = rx.recv() {
+                        return Err(e);
+                    }
+                }
+
+                return Ok(last_value);
             }
         }
         Ok(None)
@@ -447,15 +499,21 @@ impl<'a> Interpreter<'a> {
                     }
                 }
             }
-            Expr::Spawn(expr) => {
-                // Spawn a future - for now, just evaluate and return the value
-                // Real implementation would create a task
-                self.eval_expr(expr)
+            Expr::Spawn(_expr) => {
+                // Spawn a concurrent task - for now just return a placeholder future
+                // A full implementation would capture the expression and evaluate in a thread
+                Err("spawn requires parasteps block".into())
             }
             Expr::Await(expr) => {
-                // Await a future - for now, just return the value
-                // Real implementation would wait for the task
-                self.eval_expr(expr)
+                // Await a future - receive the result from the channel
+                let v = self.eval_expr(expr)?;
+                match v {
+                    Value::Future(rx) => {
+                        let rx = rx.lock().map_err(|e| format!("await failed: {}", e))?;
+                        rx.recv().map_err(|e| format!("await failed: {}", e))?
+                    }
+                    other => Ok(other),
+                }
             }
         }
     }

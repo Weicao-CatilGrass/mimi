@@ -274,4 +274,10 @@ pub enum Type {
     Func(Vec<Type>, Box<Type>),
     /// Capability type for linear capabilities
     Cap(String),
+    /// Shared ownership (atomic refcount, thread-safe)
+    Shared(Box<Type>),
+    /// Local shared ownership (non-atomic, single-thread)
+    LocalShared(Box<Type>),
+    /// Weak reference from shared
+    Weak(Box<Type>),
 }
