@@ -2818,3 +2818,135 @@ func main() -> i32 {
     let v = run_source(src);
     assert_eq!(v, interp::Value::Int(30));
 }
+
+// ==================== comptime quote! tests ====================
+
+#[test]
+fn quote_basic_literal() {
+    let src = r#"
+func main() {
+    let ast = quote! { 42 };
+    println(ast);
+}
+"#;
+    let v = run_source(src);
+    assert_eq!(v, interp::Value::Unit);
+}
+
+#[test]
+fn quote_interpolation() {
+    let src = r#"
+func main() {
+    let x = 10;
+    let ast = quote! { $(x + 1) };
+    println(ast);
+}
+"#;
+    let v = run_source(src);
+    assert_eq!(v, interp::Value::Unit);
+}
+
+#[test]
+fn quote_let_statement() {
+    let src = r#"
+func main() {
+    let ast = quote! { let y = 5; };
+    println(ast);
+}
+"#;
+    let v = run_source(src);
+    assert_eq!(v, interp::Value::Unit);
+}
+
+#[test]
+fn quote_dump() {
+    let src = r#"
+func main() {
+    let ast = quote! { 42 };
+    let dumped = ast_dump(ast);
+    println(dumped);
+}
+"#;
+    let v = run_source(src);
+    assert_eq!(v, interp::Value::Unit);
+}
+
+#[test]
+fn quote_eval_literal() {
+    let src = r#"
+func main() -> i32 {
+    let ast = quote! { 42 };
+    ast_eval(ast)
+}
+"#;
+    let v = run_source(src);
+    assert_eq!(v, interp::Value::Int(42));
+}
+
+#[test]
+fn quote_eval_binary() {
+    let src = r#"
+func main() -> i32 {
+    let ast = quote! { 10 + 20 };
+    ast_eval(ast)
+}
+"#;
+    let v = run_source(src);
+    assert_eq!(v, interp::Value::Int(30));
+}
+
+#[test]
+fn quote_eval_interpolation() {
+    let src = r#"
+func main() -> i32 {
+    let x = 5;
+    let ast = quote! { $(x * 3) };
+    ast_eval(ast)
+}
+"#;
+    let v = run_source(src);
+    assert_eq!(v, interp::Value::Int(15));
+}
+
+#[test]
+fn quote_eval_block() {
+    let src = r#"
+func main() -> i32 {
+    let ast = quote! {
+        let a = 10;
+        let b = 20;
+        a + b
+    };
+    ast_eval(ast)
+}
+"#;
+    let v = run_source(src);
+    assert_eq!(v, interp::Value::Int(30));
+}
+
+#[test]
+fn quote_eval_string_concat() {
+    let src = r#"
+func main() {
+    let ast = quote! { "hello" + " " + "world" };
+    let result = ast_eval(ast);
+    println(result);
+}
+"#;
+    let v = run_source(src);
+    assert_eq!(v, interp::Value::Unit);
+}
+
+#[test]
+fn quote_nested_interpolation() {
+    let src = r#"
+func main() -> i32 {
+    let a = 3;
+    let b = 4;
+    let ast = quote! { $(a + b) };
+    ast_eval(ast)
+}
+"#;
+    let v = run_source(src);
+    assert_eq!(v, interp::Value::Int(7));
+}
