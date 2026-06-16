@@ -3200,3 +3200,51 @@ func main() -> i32 {
     let v = run_source(src);
     assert_eq!(v, interp::Value::Int(7));
 }
+
+// ==================== math: block tests ====================
+
+#[test]
+fn math_constant_evaluation() {
+    let src = r#"
+func main() -> i32 {
+    math: {
+        1 + 2;
+        3 * 4;
+    }
+    42
+}
+"#;
+    let v = run_source(src);
+    assert_eq!(v, interp::Value::Int(42));
+}
+
+#[test]
+fn math_with_variables() {
+    let src = r#"
+func main() -> i32 {
+    let x = 5;
+    math: {
+        x + 1;
+    }
+    x * 2
+}
+"#;
+    let v = run_source(src);
+    assert_eq!(v, interp::Value::Int(10));
+}
+
+#[test]
+fn math_boolean_expressions() {
+    let src = r#"
+func main() -> bool {
+    math: {
+        1 < 2;
+        3 > 2;
+        1 == 1;
+    }
+    true
+}
+"#;
+    let v = run_source(src);
+    assert_eq!(v, interp::Value::Bool(true));
+}
