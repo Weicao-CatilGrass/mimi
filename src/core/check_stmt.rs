@@ -188,6 +188,16 @@ impl<'a> Checker<'a> {
                     ));
                 }
             }
+            Stmt::Break(_) => {
+                if self.loop_depth == 0 {
+                    self.emit("break outside of loop".to_string());
+                }
+            }
+            Stmt::Continue => {
+                if self.loop_depth == 0 {
+                    self.emit("continue outside of loop".to_string());
+                }
+            }
             Stmt::Expr(e) => {
                 self.infer_expr(e, scopes);
             }
@@ -212,7 +222,9 @@ impl<'a> Checker<'a> {
                         fmt_type(&ct)
                     ));
                 }
+                self.loop_depth += 1;
                 self.check_block(body, ret, scopes);
+                self.loop_depth -= 1;
             }
             Stmt::For { var, iterable, body } => {
                 let it = self.infer_expr(iterable, scopes);
@@ -228,7 +240,9 @@ impl<'a> Checker<'a> {
                 };
                 scopes.push(HashMap::new());
                 scopes.last_mut().unwrap().insert(var.clone(), elem_ty);
+                self.loop_depth += 1;
                 self.check_block(body, ret, scopes);
+                self.loop_depth -= 1;
                 scopes.pop();
             }
             Stmt::Block(block) => {

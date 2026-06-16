@@ -162,6 +162,16 @@ impl<'a> Interpreter<'a> {
                 // Quote type_info as a function call
                 Ok(QuotedAst::Call(Box::new(QuotedAst::Ident("type_info".into())), vec![]))
             }
+            Expr::SliceExpr { target, start, end } => {
+                let q_target = self.quote_expr(target)?;
+                let mut args = vec![q_target];
+                if let Some(s) = start { args.push(self.quote_expr(s)?); }
+                if let Some(e) = end { args.push(self.quote_expr(e)?); }
+                Ok(QuotedAst::Call(
+                    Box::new(QuotedAst::Ident("slice".into())),
+                    args,
+                ))
+            }
         }
     }
 

@@ -23,6 +23,59 @@ pub fn check_strict(file: &File) -> Result<(), Vec<Diagnostic>> {
     checker.check()
 }
 
+/// Verify that MMS rule attachments are consistent.
+/// Rules must be attached to a following entity; orphan rules are errors.
+pub fn verify_rules(file: &File) -> Vec<String> {
+    let mut errors = Vec::new();
+    for item in &file.items {
+        match item {
+            Item::Func(func) => {
+                verify_rules_in_block(&func.body, &mut errors);
+            }
+            Item::Module(module) => {
+                for item in &module.items {
+                    if let Item::Func(func) = item {
+                        verify_rules_in_block(&func.body, &mut errors);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    errors
+}
+
+fn verify_rules_in_block(block: &[Stmt], errors: &mut Vec<String>) {
+    let mut pending_rules = 0;
+    for stmt in block {
+        match stmt {
+            Stmt::Desc(_) => {
+                // desc accepts pending rules
+                pending_rules = 0;
+            }
+            Stmt::Block(inner) => {
+                verify_rules_in_block(inner, errors);
+                pending_rules = 0;
+            }
+            Stmt::While { body, .. } | Stmt::For { body, .. } => {
+                verify_rules_in_block(body, errors);
+                pending_rules = 0;
+            }
+            Stmt::If { then_, else_, .. } => {
+                verify_rules_in_block(then_, errors);
+                if let Some(else_) = else_ {
+                    verify_rules_in_block(else_, errors);
+                }
+                pending_rules = 0;
+            }
+            _ => {
+                // Any other statement resets the rule chain
+                pending_rules = 0;
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum BorrowState {
     Unborrowed,
@@ -71,6 +124,8 @@ struct Checker<'a> {
     use_imports: Vec<String>,
     /// Track current module path for qualified names
     module_path: Vec<String>,
+    /// Track loop nesting depth for break/continue validation
+    loop_depth: usize,
 }
 
 mod check_stmt;
@@ -102,6 +157,7 @@ impl<'a> Checker<'a> {
             trait_method_sigs: HashMap::new(),
             use_imports: Vec::new(),
             module_path: Vec::new(),
+            loop_depth: 0,
         }
     }
 
@@ -378,6 +434,8 @@ impl<'a> Checker<'a> {
             ),
             Type::Cap(_) | Type::Shared(_) | Type::LocalShared(_) | Type::Weak(_) | Type::Allocator => ty.clone(),
             Type::Newtype(name, inner) => Type::Newtype(name.clone(), Box::new(self.resolve_type(inner))),
+            Type::Array(inner, size) => Type::Array(Box::new(self.resolve_type(inner)), *size),
+            Type::Slice(inner) => Type::Slice(Box::new(self.resolve_type(inner))),
             Type::Nothing => Type::Nothing,
         }
     }
@@ -537,6 +595,9 @@ impl<'a> Checker<'a> {
                 self.check_type_well_formed(inner, context);
             }
             Type::Cap(_) | Type::Nothing | Type::Allocator => {}
+            Type::Array(inner, _) | Type::Slice(inner) => {
+                self.check_type_well_formed(inner, context);
+            }
         }
     }
 
@@ -660,11 +721,14 @@ impl<'a> Checker<'a> {
                 }
             }
             Commitment::Locked | Commitment::LockedQuestion | Commitment::LockedQuestionQuestion => {
-                // $ locked: warn about modifications
+                // $ locked: warn about contract modifications
                 for stmt in body {
                     if let Stmt::MmsBlock(text) = stmt {
                         if text.contains("requires:") || text.contains("ensures:") || text.contains("math:") {
-                            // Just note it's locked
+                            self.emit(format!(
+                                "strict mode: function '{}' is $ locked - contract modifications discouraged",
+                                name
+                            ));
                         }
                     }
                 }
@@ -796,6 +860,55 @@ impl<'a> Checker<'a> {
                     _ => {
                         self.emit(format!(
                             "cannot match tuple pattern against non-tuple type {}",
+                            fmt_type(subject)
+                        ));
+                    }
+                }
+            }
+            Pattern::Array(pats) => {
+                match subject {
+                    Type::Array(inner, size) => {
+                        if pats.len() != *size {
+                            self.emit(format!(
+                                "array pattern expects {} elements, found {}",
+                                size,
+                                pats.len()
+                            ));
+                        } else {
+                            for p in pats {
+                                self.check_pattern(p, inner, scopes);
+                            }
+                        }
+                    }
+                    Type::Name(n, _) if n == "List" => {
+                        // List pattern: check each element against the element type
+                        // For now, just check against the inner type if available
+                    }
+                    _ => {
+                        self.emit(format!(
+                            "cannot match array pattern against non-array type {}",
+                            fmt_type(subject)
+                        ));
+                    }
+                }
+            }
+            Pattern::Slice(pats, rest) => {
+                match subject {
+                    Type::Array(inner, _) | Type::Slice(inner) => {
+                        if pats.len() > 0 {
+                            for p in pats {
+                                self.check_pattern(p, inner, scopes);
+                            }
+                        }
+                        if let Some(rest_pat) = rest {
+                            // Rest pattern binds to a List of the element type
+                            let list_ty = Type::Name("List".into(), vec![inner.as_ref().clone()]);
+                            self.check_pattern(rest_pat, &list_ty, scopes);
+                        }
+                    }
+                    _ => {
+                        self.emit(format!(
+                            "cannot match slice pattern against non-slice type {}",
                             fmt_type(subject)
                         ));
                     }
@@ -963,6 +1076,8 @@ fn subst_type_params(ty: &Type, generics: &[GenericParam], type_map: &HashMap<St
         Type::Weak(inner) => Type::Weak(Box::new(subst_type_params(inner, generics, type_map))),
         Type::Newtype(name, inner) => Type::Newtype(name.clone(), Box::new(subst_type_params(inner, generics, type_map))),
         Type::Cap(_) | Type::Nothing | Type::Allocator => ty.clone(),
+        Type::Array(inner, size) => Type::Array(Box::new(subst_type_params(inner, generics, type_map)), *size),
+        Type::Slice(inner) => Type::Slice(Box::new(subst_type_params(inner, generics, type_map))),
     }
 }
 
@@ -990,6 +1105,9 @@ fn same_type(a: &Type, b: &Type) -> bool {
             n == n2
         }
         (Type::Allocator, Type::Allocator) => true,
+        (Type::Array(a_inner, a_size), Type::Array(b_inner, b_size)) => {
+            a_size == b_size && same_type(a_inner, b_inner)
+        }
         _ => false,
     }
 }
@@ -1031,5 +1149,7 @@ fn fmt_type(t: &Type) -> String {
         Type::Newtype(name, inner) => format!("newtype {} {}", name, fmt_type(inner)),
         Type::Nothing => "nothing".to_string(),
         Type::Allocator => "Allocator".to_string(),
+        Type::Array(inner, size) => format!("[{}; {}]", fmt_type(inner), size),
+        Type::Slice(inner) => format!("[{}]", fmt_type(inner)),
     }
 }

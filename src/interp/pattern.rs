@@ -61,6 +61,46 @@ impl<'a> Interpreter<'a> {
                     _ => false,
                 }
             }
+            Pattern::Array(pats) => {
+                let vals = match value {
+                    Value::Array(a) => a.as_slice(),
+                    Value::List(l) => l.as_slice(),
+                    Value::Slice { source, start, end } => &source[*start..*end],
+                    _ => return false,
+                };
+                if pats.len() != vals.len() {
+                    return false;
+                }
+                for (p, v) in pats.iter().zip(vals.iter()) {
+                    if !self.match_pattern_inner(p, v, bindings) {
+                        return false;
+                    }
+                }
+                true
+            }
+            Pattern::Slice(pats, rest) => {
+                let vals = match value {
+                    Value::Array(a) => a.as_slice(),
+                    Value::List(l) => l.as_slice(),
+                    Value::Slice { source, start, end } => &source[*start..*end],
+                    _ => return false,
+                };
+                if pats.len() > vals.len() {
+                    return false;
+                }
+                // Match prefix patterns
+                for (p, v) in pats.iter().zip(vals.iter()) {
+                    if !self.match_pattern_inner(p, v, bindings) {
+                        return false;
+                    }
+                }
+                // Bind rest pattern to remaining elements
+                if let Some(rest_pat) = rest {
+                    let remaining: Vec<Value> = vals[pats.len()..].to_vec();
+                    self.match_pattern_inner(rest_pat, &Value::List(remaining), bindings);
+                }
+                true
+            }
         }
     }
 }

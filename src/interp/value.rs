@@ -102,6 +102,14 @@ pub enum Value {
     Type(String),
     /// Allocator type value
     Allocator(AllocatorKind),
+    /// Fixed-size array value
+    Array(Vec<Value>),
+    /// Slice value: a view into a list/array
+    Slice {
+        source: Vec<Value>,
+        start: usize,
+        end: usize,
+    },
 }
 
 /// Kind of allocator
@@ -236,6 +244,22 @@ impl std::fmt::Display for Value {
             }
             Value::Type(name) => write!(f, "{}", name),
             Value::Allocator(kind) => write!(f, "Allocator({:?})", kind),
+            Value::Array(vs) => {
+                write!(f, "[")?;
+                for (i, v) in vs.iter().enumerate() {
+                    if i > 0 { write!(f, ", ")?; }
+                    write!(f, "{}", v)?;
+                }
+                write!(f, "]")
+            }
+            Value::Slice { source, start, end } => {
+                write!(f, "[")?;
+                for (i, v) in source[*start..*end].iter().enumerate() {
+                    if i > 0 { write!(f, ", ")?; }
+                    write!(f, "{}", v)?;
+                }
+                write!(f, "]")
+            }
         }
     }
 }
@@ -288,6 +312,12 @@ pub(crate) fn values_equal(a: &Value, b: &Value) -> bool {
         (Value::String(a), Value::String(b)) => a == b,
         (Value::Unit, Value::Unit) => true,
         (Value::List(a), Value::List(b)) => a.len() == b.len() && a.iter().zip(b.iter()).all(|(x, y)| values_equal(x, y)),
+        (Value::Array(a), Value::Array(b)) => a.len() == b.len() && a.iter().zip(b.iter()).all(|(x, y)| values_equal(x, y)),
+        (Value::Slice { source: a_src, start: a_s, end: a_e }, Value::Slice { source: b_src, start: b_s, end: b_e }) => {
+            let a_slice = &a_src[*a_s..*a_e];
+            let b_slice = &b_src[*b_s..*b_e];
+            a_slice.len() == b_slice.len() && a_slice.iter().zip(b_slice.iter()).all(|(x, y)| values_equal(x, y))
+        }
         (Value::Tuple(a), Value::Tuple(b)) => a.len() == b.len() && a.iter().zip(b.iter()).all(|(x, y)| values_equal(x, y)),
         (Value::Variant(an, av), Value::Variant(bn, bv)) => {
             an == bn && av.len() == bv.len() && av.iter().zip(bv.iter()).all(|(x, y)| values_equal(x, y))

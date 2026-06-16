@@ -43,13 +43,17 @@ impl<'a> Interpreter<'a> {
                     }
                 }
             }
+            // Propagate break/continue signals out of the block
+            if self.loop_action.is_some() {
+                return Ok(None);
+            }
         }
         Ok(None)
     }
 
     pub(crate) fn eval_stmt(&mut self, stmt: &Stmt) -> Result<Option<Value>, String> {
         match stmt {
-            Stmt::Let { pat, init, mut_, ref_, ty: _ } => {
+            Stmt::Let { pat, init, mut_, ref_, ty } => {
                 let v = match init {
                     Some(e) => {
                         let result = self.eval_expr(e);
@@ -64,6 +68,20 @@ impl<'a> Interpreter<'a> {
                         }
                     }
                     None => Value::Unit,
+                };
+
+                // Convert List to Array when type annotation is [T; n]
+                let v = match (ty, &v) {
+                    (Some(Type::Array(_, size)), Value::List(list)) => {
+                        if list.len() != *size {
+                            return Err(format!(
+                                "array size mismatch: expected [{}; {}], found list of length {}",
+                                size, size, list.len()
+                            ));
+                        }
+                        Value::Array(list.clone())
+                    }
+                    _ => v,
                 };
 
                 // Move semantics: if init is a simple identifier and value is non-Copy, mark source as moved
@@ -114,6 +132,18 @@ impl<'a> Interpreter<'a> {
                 }
                 return Ok(Some(v));
             }
+            Stmt::Break(e) => {
+                let v = match e {
+                    Some(e) => Some(self.eval_expr(e)?),
+                    None => None,
+                };
+                self.loop_action = Some(LoopAction::Break(v));
+                return Ok(None);
+            }
+            Stmt::Continue => {
+                self.loop_action = Some(LoopAction::Continue);
+                return Ok(None);
+            }
             Stmt::Expr(e) => {
                 if let Value::Error(msg) = self.eval_expr(e)? {
                     return Err(msg);
@@ -136,6 +166,18 @@ impl<'a> Interpreter<'a> {
                     if let Some(v) = self.eval_block(body)? {
                         return Ok(Some(v));
                     }
+                    match self.loop_action.take() {
+                        Some(LoopAction::Break(val)) => {
+                            if let Some(v) = val {
+                                return Ok(Some(v));
+                            }
+                            break;
+                        }
+                        Some(LoopAction::Continue) => {
+                            continue;
+                        }
+                        None => {}
+                    }
                 }
             }
             Stmt::For { var, iterable, body } => {
@@ -148,6 +190,18 @@ impl<'a> Interpreter<'a> {
                     self.bind(var, item);
                     if let Some(v) = self.eval_block(body)? {
                         return Ok(Some(v));
+                    }
+                    match self.loop_action.take() {
+                        Some(LoopAction::Break(val)) => {
+                            if let Some(v) = val {
+                                return Ok(Some(v));
+                            }
+                            break;
+                        }
+                        Some(LoopAction::Continue) => {
+                            continue;
+                        }
+                        None => {}
                     }
                 }
             }
@@ -720,6 +774,28 @@ impl<'a> Interpreter<'a> {
                             .cloned()
                             .ok_or_else(|| "index out of bounds".into())
                     }
+                    (Value::Array(arr), Value::Int(i)) => {
+                        let i = if i < 0 {
+                            arr.len() as i64 + i
+                        } else {
+                            i
+                        } as usize;
+                        arr.get(i)
+                            .cloned()
+                            .ok_or_else(|| "array index out of bounds".into())
+                    }
+                    (Value::Slice { source, start, end }, Value::Int(i)) => {
+                        let slice_len = end - start;
+                        let i = if i < 0 {
+                            slice_len as i64 + i
+                        } else {
+                            i
+                        } as usize;
+                        if i >= slice_len {
+                            return Err("slice index out of bounds".into());
+                        }
+                        Ok(source[start + i].clone())
+                    }
                     (Value::String(s), Value::Int(i)) => {
                         let i = if i < 0 {
                             s.len() as i64 + i
@@ -732,6 +808,61 @@ impl<'a> Interpreter<'a> {
                             .ok_or_else(|| "index out of bounds".into())
                     }
                     _ => Err("invalid index operation".into()),
+                }
+            }
+            Expr::SliceExpr { target, start, end } => {
+                let obj = self.eval_expr(target)?;
+                let len = match &obj {
+                    Value::List(l) => l.len(),
+                    Value::Array(a) => a.len(),
+                    Value::Slice { source, start: s, end: e } => e - s,
+                    Value::String(s) => s.len(),
+                    _ => return Err("cannot slice non-sequence value".into()),
+                };
+                let start_idx = match start {
+                    Some(e) => {
+                        let v = self.eval_expr(e)?;
+                        match v {
+                            Value::Int(i) => {
+                                let i = if i < 0 { len as i64 + i } else { i } as usize;
+                                if i > len { return Err("slice start out of bounds".into()); }
+                                i
+                            }
+                            _ => return Err("slice index must be integer".into()),
+                        }
+                    }
+                    None => 0,
+                };
+                let end_idx = match end {
+                    Some(e) => {
+                        let v = self.eval_expr(e)?;
+                        match v {
+                            Value::Int(i) => {
+                                let i = if i < 0 { len as i64 + i } else { i } as usize;
+                                if i > len { return Err("slice end out of bounds".into()); }
+                                i
+                            }
+                            _ => return Err("slice index must be integer".into()),
+                        }
+                    }
+                    None => len,
+                };
+                if start_idx > end_idx {
+                    return Err("slice start > end".into());
+                }
+                match obj {
+                    Value::List(l) => Ok(Value::Slice { source: l, start: start_idx, end: end_idx }),
+                    Value::Array(a) => Ok(Value::Slice { source: a, start: start_idx, end: end_idx }),
+                    Value::Slice { source, start: _, end: _ } => {
+                        // Re-slice: adjust indices relative to the original source
+                        Ok(Value::Slice { source, start: start_idx, end: end_idx })
+                    }
+                    Value::String(s) => {
+                        let chars: Vec<char> = s.chars().collect();
+                        let sliced: String = chars[start_idx..end_idx].iter().collect();
+                        Ok(Value::String(sliced))
+                    }
+                    _ => unreachable!(),
                 }
             }
             Expr::Try(expr) => {

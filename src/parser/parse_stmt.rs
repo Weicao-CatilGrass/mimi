@@ -6,6 +6,21 @@ impl Parser {
         match self.peek_kind() {
             TokenKind::Let => self.parse_let(),
             TokenKind::Return => self.parse_return(),
+            TokenKind::Break => {
+                self.advance();
+                let val = if self.peek_kind() == &TokenKind::Semi || self.peek_kind() == &TokenKind::Newline || self.peek_kind() == &TokenKind::RBrace || self.peek_kind() == &TokenKind::Eof {
+                    None
+                } else {
+                    Some(self.parse_expr(0)?)
+                };
+                self.match_semi();
+                Ok(Stmt::Break(val))
+            }
+            TokenKind::Continue => {
+                self.advance();
+                self.match_semi();
+                Ok(Stmt::Continue)
+            }
             TokenKind::If => self.parse_if(),
             TokenKind::While => self.parse_while(),
             TokenKind::For => self.parse_for(),

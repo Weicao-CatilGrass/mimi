@@ -40,6 +40,9 @@ enum Command {
         /// Strict mode: enforce $$ lock semantics
         #[arg(long)]
         strict: bool,
+        /// Verify MMS rule attachment consistency
+        #[arg(long)]
+        verify_rules: bool,
     },
     /// Parse and run a .mimi file
     Run {
@@ -102,7 +105,7 @@ enum Command {
 fn main() {
     let args = Args::parse();
     let result = match args.cmd {
-        Command::Check { path, extract_contracts, strict } => check(path.as_deref(), extract_contracts, strict),
+        Command::Check { path, extract_contracts, strict, verify_rules } => check(path.as_deref(), extract_contracts, strict, verify_rules),
         Command::Run { path, verify_contracts, allocator } => run(path.as_deref(), verify_contracts, &allocator),
         Command::Test { path, allocator } => test(path.as_deref(), &allocator),
         Command::Init { name } => init(name.as_deref()),
@@ -172,7 +175,7 @@ fn extract_item_contracts(items: &[Item], out: &mut HashMap<String, Contract>) {
     }
 }
 
-fn check(path: Option<&Path>, extract_contracts: bool, strict: bool) -> Result<(), String> {
+fn check(path: Option<&Path>, extract_contracts: bool, strict: bool, verify_rules: bool) -> Result<(), String> {
     let path = resolve_path(path)?;
     let source = fs::read_to_string(&path)
         .map_err(|e| format!("failed to read {}: {}", path.display(), e))?;
@@ -234,6 +237,20 @@ fn check(path: Option<&Path>, extract_contracts: bool, strict: bool) -> Result<(
         }
         return Err("type checking failed".into());
     }
+
+    // Verify MMS rule attachment consistency
+    if verify_rules {
+        let rule_errors = core::verify_rules(&file);
+        if !rule_errors.is_empty() {
+            eprintln!("✗ {} has {} rule error(s):", path.display(), rule_errors.len());
+            for e in &rule_errors {
+                eprintln!("  - {}", e);
+            }
+            return Err("rule verification failed".into());
+        }
+        println!("✓ {} rules verified", path.display());
+    }
+
     println!("✓ {} checked successfully", path.display());
     Ok(())
 }

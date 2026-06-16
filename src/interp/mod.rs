@@ -16,6 +16,13 @@ use std::sync::{Arc, RwLock};
 
 use closure_utils::collect_free_vars;
 
+/// Internal loop control flow signal
+#[derive(Debug, Clone)]
+pub(crate) enum LoopAction {
+    Continue,
+    Break(Option<Value>),
+}
+
 pub struct Interpreter<'a> {
     file: &'a File,
     env: Vec<HashMap<String, Value>>,
@@ -56,6 +63,8 @@ pub struct Interpreter<'a> {
     loaded_libs: Vec<libloading::Library>,
     /// Default allocator kind (set by --allocator CLI flag)
     pub default_allocator: AllocatorKind,
+    /// Current loop control flow action (break/continue signal)
+    loop_action: Option<LoopAction>,
 }
 
 impl<'a> Interpreter<'a> {
@@ -101,6 +110,7 @@ impl<'a> Interpreter<'a> {
             comptime_results: HashMap::new(),
             loaded_libs: Vec::new(),
             default_allocator: AllocatorKind::System,
+            loop_action: None,
         }
     }
 
@@ -323,6 +333,7 @@ impl<'a> Interpreter<'a> {
             Value::String(_) => "string".into(),
             Value::Unit => "unit".into(),
             Value::List(_) => "list".into(),
+            Value::Array(_) => "array".into(),
             Value::Tuple(_) => "tuple".into(),
             Value::Variant(name, _) => name.clone(),
             Value::Record(Some(name), _) => name.clone(),
@@ -343,6 +354,7 @@ impl<'a> Interpreter<'a> {
             Value::ArenaBlock(_) => "arena_block".into(),
             Value::WeakShared(_) | Value::WeakLocal(_) => "weak".into(),
             Value::Allocator(_) => "Allocator".into(),
+            Value::Slice { .. } => "slice".into(),
         }
     }
 
@@ -369,6 +381,8 @@ impl<'a> Interpreter<'a> {
             Type::Newtype(name, _) => name.clone(),
             Type::Nothing => "nothing".into(),
             Type::Allocator => "Allocator".into(),
+            Type::Array(inner, size) => format!("[{}; {}]", self.resolve_type_name(inner), size),
+            Type::Slice(inner) => format!("[{}]", self.resolve_type_name(inner)),
         }
     }
 
