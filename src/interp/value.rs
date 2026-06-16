@@ -100,6 +100,16 @@ pub enum Value {
     RefMut(SendRc<RefCell<Value>>),
     /// Type descriptor for comptime reflection
     Type(String),
+    /// Allocator type value
+    Allocator(AllocatorKind),
+}
+
+/// Kind of allocator
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AllocatorKind {
+    System,
+    Arena,
+    Bump,
 }
 
 #[derive(Debug, Clone)]
@@ -225,6 +235,7 @@ impl std::fmt::Display for Value {
                 write!(f, "&mut {}", v)
             }
             Value::Type(name) => write!(f, "{}", name),
+            Value::Allocator(kind) => write!(f, "Allocator({:?})", kind),
         }
     }
 }

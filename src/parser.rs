@@ -121,6 +121,31 @@ impl Parser {
         }
     }
 
+    /// Check if current position is `alloc(Arena) {` or `alloc(System) {` or `alloc(Bump) {`
+    fn is_alloc_block(&self) -> bool {
+        if !self.at(&TokenKind::Alloc) {
+            return false;
+        }
+        // Peek ahead: alloc must be followed by LParen
+        if self.pos + 1 >= self.tokens.len() {
+            return false;
+        }
+        if self.tokens[self.pos + 1].kind != TokenKind::LParen {
+            return false;
+        }
+        // Check the token after LParen: must be Arena/System/Bump identifier
+        if self.pos + 2 >= self.tokens.len() {
+            return false;
+        }
+        matches!(
+            &self.tokens[self.pos + 2].kind,
+            TokenKind::Arena
+        ) || matches!(
+            &self.tokens[self.pos + 2].kind,
+            TokenKind::Ident(name) if name == "System" || name == "Bump" || name == "Arena"
+        )
+    }
+
     fn match_semi(&mut self) {
         if matches!(self.peek_kind(), TokenKind::Semi) {
             self.advance();
@@ -672,6 +697,10 @@ impl Parser {
                 self.advance();
                 Ok(Type::Name(name, Vec::new()))
             }
+            TokenKind::Alloc => {
+                self.advance();
+                Ok(Type::Allocator)
+            }
             TokenKind::Nothing => {
                 self.advance();
                 Ok(Type::Nothing)
@@ -857,6 +886,7 @@ impl Parser {
             TokenKind::While => self.parse_while(),
             TokenKind::For => self.parse_for(),
             TokenKind::Arena => self.parse_arena(),
+            TokenKind::Alloc if self.is_alloc_block() => self.parse_alloc(),
             TokenKind::Shared => self.parse_shared_let(SharedKind::Shared),
             TokenKind::LocalShared => self.parse_shared_let(SharedKind::LocalShared),
             TokenKind::Weak => self.parse_shared_let(SharedKind::Weak),
@@ -945,6 +975,41 @@ impl Parser {
         self.expect(TokenKind::LBrace, "`{`")?;
         let body = self.parse_block()?;
         Ok(Stmt::Arena(body))
+    }
+
+    fn parse_alloc(&mut self) -> Result<Stmt, ParseError> {
+        self.expect(TokenKind::Alloc, "`alloc`")?;
+        self.expect(TokenKind::LParen, "`(`")?;
+        let kind_tok = self.peek().clone();
+        let kind = match &kind_tok.kind {
+            TokenKind::Ident(name) => {
+                self.advance();
+                match name.as_str() {
+                    "System" => AllocKind::System,
+                    "Arena" => AllocKind::Arena,
+                    "Bump" => AllocKind::Bump,
+                    _ => return Err(ParseError::new(
+                        format!("expected allocator type (System, Arena, Bump), found `{}`", name),
+                        kind_tok.line,
+                        kind_tok.col,
+                    )),
+                }
+            }
+            TokenKind::Arena => {
+                self.advance();
+                AllocKind::Arena
+            }
+            _ => return Err(ParseError::new(
+                format!("expected allocator type (System, Arena, Bump), found {}", kind_tok.kind),
+                kind_tok.line,
+                kind_tok.col,
+            )),
+        };
+        self.expect(TokenKind::RParen, "`)`")?;
+        self.skip_newlines();
+        self.expect(TokenKind::LBrace, "`{`")?;
+        let body = self.parse_block()?;
+        Ok(Stmt::Alloc { kind, body })
     }
 
     fn parse_mms_block(&mut self) -> Result<Stmt, ParseError> {
@@ -1303,6 +1368,38 @@ impl Parser {
             TokenKind::Unit => {
                 self.advance();
                 Expr::Literal(Lit::Unit)
+            }
+            TokenKind::Alloc => {
+                // alloc as function name: alloc(allocator, value)
+                self.advance();
+                let mut e = Expr::Ident("alloc".to_string());
+                if self.at(&TokenKind::LParen) {
+                    self.advance();
+                    let args = self.parse_args()?;
+                    self.expect(TokenKind::RParen, "`)`")?;
+                    e = Expr::Call(Box::new(e), args);
+                }
+                // Allow chaining: .field, [index], (call)
+                loop {
+                    if self.at(&TokenKind::LParen) {
+                        self.advance();
+                        let args = self.parse_args()?;
+                        self.expect(TokenKind::RParen, "`)`")?;
+                        e = Expr::Call(Box::new(e), args);
+                    } else if self.at(&TokenKind::Dot) {
+                        self.advance();
+                        let field = self.expect_ident()?;
+                        e = Expr::Field(Box::new(e), field);
+                    } else if self.at(&TokenKind::LBracket) {
+                        self.advance();
+                        let idx = self.parse_expr(0)?;
+                        self.expect(TokenKind::RBracket, "`]`")?;
+                        e = Expr::Index(Box::new(e), Box::new(idx));
+                    } else {
+                        break;
+                    }
+                }
+                e
             }
             TokenKind::Ident(name) => {
                 self.advance();

@@ -3259,3 +3259,850 @@ fn lsp_completion_builtins() {
     assert!(labels.contains(&"map"));
     assert!(labels.contains(&"filter"));
 }
+
+// ============================================================
+// T604: Custom Allocators
+// ============================================================
+
+#[test]
+fn alloc_system_basic() {
+    let src = r#"
+func main() -> i32 {
+    let x = 42;
+    x
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::Int(42));
+}
+
+#[test]
+fn alloc_arena_block() {
+    let src = r#"
+func main() -> i32 {
+    let mut result = 0;
+    alloc(Arena) {
+        result = 10;
+    }
+    result
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::Int(10));
+}
+
+#[test]
+fn alloc_bump_block() {
+    let src = r#"
+func main() -> string {
+    let mut msg = "start";
+    alloc(Bump) {
+        msg = "inside bump";
+    }
+    msg
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::String("inside bump".to_string()));
+}
+
+#[test]
+fn alloc_system_block() {
+    let src = r#"
+func main() -> i32 {
+    let mut x = 0;
+    alloc(System) {
+        x = 99;
+    }
+    x
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::Int(99));
+}
+
+#[test]
+fn alloc_arena_nested_scopes() {
+    let src = r#"
+func main() -> i32 {
+    let mut a = 0;
+    alloc(Arena) {
+        a = 1;
+        alloc(Arena) {
+            a = 2;
+        }
+        a
+    }
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::Int(2));
+}
+
+#[test]
+fn alloc_bump_with_list() {
+    let src = r#"
+func main() -> i32 {
+    let mut result = 0;
+    alloc(Bump) {
+        let items = [10, 20, 30];
+        result = items[1];
+    }
+    result
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::Int(20));
+}
+
+#[test]
+fn alloc_arena_with_record() {
+    let src = r#"
+type Point {
+    x: i32
+    y: i32
+}
+
+func main() -> i32 {
+    let mut result = 0;
+    alloc(Arena) {
+        let p = Point { x: 5, y: 10 };
+        result = p.x + p.y;
+    }
+    result
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::Int(15));
+}
+
+#[test]
+fn alloc_arena_with_enum() {
+    let src = r#"
+type Color { Red | Green | Blue }
+
+func main() -> string {
+    let mut result = "none";
+    alloc(Arena) {
+        let c = Green();
+        result = match c {
+            Red() => "red",
+            Green() => "green",
+            Blue() => "blue",
+        }
+    }
+    result
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::String("green".to_string()));
+}
+
+#[test]
+fn builtin_allocator_system() {
+    let src = r#"
+func main() -> string {
+    let a = allocator_system();
+    match a {
+        _ => "system"
+    }
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::String("system".to_string()));
+}
+
+#[test]
+fn builtin_allocator_arena() {
+    let src = r#"
+func main() -> string {
+    let a = allocator_arena();
+    match a {
+        _ => "arena"
+    }
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::String("arena".to_string()));
+}
+
+#[test]
+fn builtin_allocator_bump() {
+    let src = r#"
+func main() -> string {
+    let a = allocator_bump();
+    match a {
+        _ => "bump"
+    }
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::String("bump".to_string()));
+}
+
+#[test]
+fn builtin_alloc_with_system() {
+    let src = r#"
+func main() -> i32 {
+    let a = allocator_system();
+    let r = alloc(a, 42);
+    r
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::Int(42));
+}
+
+#[test]
+fn builtin_bump_used() {
+    let src = r#"
+func main() -> i32 {
+    bump_used()
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::Int(0));
+}
+
+#[test]
+fn alloc_bump_with_function_call() {
+    let src = r#"
+func add_one(x: i32) -> i32 {
+    x + 1
+}
+
+func main() -> i32 {
+    let mut result = 0;
+    alloc(Bump) {
+        result = add_one(41);
+    }
+    result
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::Int(42));
+}
+
+#[test]
+fn alloc_bump_with_loop() {
+    let src = r#"
+func main() -> i32 {
+    let mut sum = 0;
+    alloc(Bump) {
+        for i in [1, 2, 3, 4, 5] {
+            sum += i;
+        }
+    }
+    sum
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::Int(15));
+}
+
+// ============================================================
+// T601: Z3 形式化验证
+// ============================================================
+
+fn verify_source(source: &str) -> Vec<crate::verifier::VerificationResult> {
+    crate::verifier::verify_source(source).unwrap()
+}
+
+fn assert_verified(source: &str) {
+    let results = verify_source(source);
+    for r in &results {
+        assert_eq!(r.status, crate::verifier::VerifStatus::Verified, "{}: {}", r.func_name, r.message);
+    }
+}
+
+fn assert_failed(source: &str) {
+    let results = verify_source(source);
+    assert!(results.iter().any(|r| r.status == crate::verifier::VerifStatus::Failed),
+        "expected at least one Failed result, got: {:?}", results.iter().map(|r| (&r.func_name, &r.status)).collect::<Vec<_>>());
+}
+
+fn assert_unknown(source: &str) {
+    let results = verify_source(source);
+    assert!(results.iter().all(|r| r.status == crate::verifier::VerifStatus::Unknown),
+        "expected all Unknown results, got: {:?}", results.iter().map(|r| (&r.func_name, &r.status)).collect::<Vec<_>>());
+}
+
+#[test]
+fn verify_no_contracts() {
+    let src = r#"
+func add(x: i32, y: i32) -> i32 {
+    x + y
+}
+"#;
+    assert_unknown(src);
+}
+
+#[test]
+fn verify_simple_requires() {
+    let src = r#"
+func abs(x: i32) -> i32 {
+    mms { "requires: x > 0" }
+    if x > 0 {
+        x
+    } else {
+        0 - x
+    }
+}
+"#;
+    let results = verify_source(src);
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].status, crate::verifier::VerifStatus::Verified);
+}
+
+#[test]
+fn verify_requires_with_literal() {
+    let src = r#"
+func double(x: i32) -> i32 {
+    mms { "requires: x == 5" }
+    x + x
+}
+"#;
+    let results = verify_source(src);
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].status, crate::verifier::VerifStatus::Verified);
+}
+
+#[test]
+fn verify_ensures_simple() {
+    let src = r#"
+func positive(x: i32) -> i32 {
+    mms { "requires: x > 0\nensures: x > 0" }
+    x
+}
+"#;
+    let results = verify_source(src);
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].status, crate::verifier::VerifStatus::Verified);
+}
+
+#[test]
+fn verify_ensures_fails() {
+    let src = r#"
+func bad(x: i32) -> i32 {
+    mms { "requires: x == 1\nensures: x == 2" }
+    x
+}
+"#;
+    assert_failed(src);
+}
+
+#[test]
+fn verify_requires_and_ensures() {
+    let src = r#"
+func identity(x: i32) -> i32 {
+    mms { "requires: x >= 0\nensures: x >= 0" }
+    x
+}
+"#;
+    let results = verify_source(src);
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].status, crate::verifier::VerifStatus::Verified);
+}
+
+#[test]
+fn verify_math_constraint() {
+    let src = r#"
+func mul(x: i32, y: i32) -> i32 {
+    mms { "requires: x == 3\nrequires: y == 4\nmath: { x * y == 12 }" }
+    x * y
+}
+"#;
+    let results = verify_source(src);
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].status, crate::verifier::VerifStatus::Verified);
+}
+
+#[test]
+fn verify_comparison_ops() {
+    let src = r#"
+func min(x: i32, y: i32) -> i32 {
+    mms { "requires: x == 5\nrequires: y == 10\nensures: x <= 10" }
+    if x < y { x } else { y }
+}
+"#;
+    let results = verify_source(src);
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].status, crate::verifier::VerifStatus::Verified);
+}
+
+#[test]
+fn verify_not_operator() {
+    let src = r#"
+func is_positive(x: i32) -> i32 {
+    mms { "requires: not(x == 0)\nensures: not(x == 0)" }
+    x
+}
+"#;
+    let results = verify_source(src);
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].status, crate::verifier::VerifStatus::Verified);
+}
+
+#[test]
+fn verify_and_operator() {
+    let src = r#"
+func bounded(x: i32) -> i32 {
+    mms { "requires: x > 0 and x < 100\nensures: x > 0" }
+    x
+}
+"#;
+    let results = verify_source(src);
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].status, crate::verifier::VerifStatus::Verified);
+}
+
+#[test]
+fn verify_or_operator() {
+    let src = r#"
+func either(x: i32) -> i32 {
+    mms { "requires: x == 1 or x == 2\nensures: x >= 1" }
+    x
+}
+"#;
+    let results = verify_source(src);
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].status, crate::verifier::VerifStatus::Verified);
+}
+
+#[test]
+fn verify_ne_operator() {
+    let src = r#"
+func nonzero(x: i32) -> i32 {
+    mms { "requires: x != 0\nensures: x != 0" }
+    x
+}
+"#;
+    let results = verify_source(src);
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].status, crate::verifier::VerifStatus::Verified);
+}
+
+#[test]
+fn verify_ge_operator() {
+    let src = r#"
+func non_negative(x: i32) -> i32 {
+    mms { "requires: x >= 0\nensures: x >= 0" }
+    x
+}
+"#;
+    let results = verify_source(src);
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].status, crate::verifier::VerifStatus::Verified);
+}
+
+#[test]
+fn verify_multiple_functions() {
+    let src = r#"
+func f1(x: i32) -> i32 {
+    mms { "requires: x == 1\nensures: x == 1" }
+    x
+}
+
+func f2(x: i32) -> i32 {
+    mms { "requires: x == 2\nensures: x == 2" }
+    x
+}
+"#;
+    let results = verify_source(src);
+    assert_eq!(results.len(), 2);
+    assert!(results.iter().all(|r| r.status == crate::verifier::VerifStatus::Verified));
+}
+
+#[test]
+fn verify_subtraction() {
+    let src = r#"
+func sub(x: i32, y: i32) -> i32 {
+    mms { "requires: x == 10\nrequires: y == 3\nensures: x - y == 7" }
+    x - y
+}
+"#;
+    let results = verify_source(src);
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].status, crate::verifier::VerifStatus::Verified);
+}
+
+#[test]
+fn verify_division() {
+    let src = r#"
+func div(x: i32, y: i32) -> i32 {
+    mms { "requires: x == 12\nrequires: y == 4\nensures: x / y == 3" }
+    x / y
+}
+"#;
+    let results = verify_source(src);
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].status, crate::verifier::VerifStatus::Verified);
+}
+
+#[test]
+fn verify_modulo() {
+    let src = r#"
+func rem(x: i32, y: i32) -> i32 {
+    mms { "requires: x == 10\nrequires: y == 3\nensures: x % y == 1" }
+    x % y
+}
+"#;
+    let results = verify_source(src);
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].status, crate::verifier::VerifStatus::Verified);
+}
+
+#[test]
+fn verify_negation() {
+    let src = r#"
+func negate(x: i32) -> i32 {
+    mms { "requires: x == 5\nensures: x == 5" }
+    0 - x
+}
+"#;
+    let results = verify_source(src);
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].status, crate::verifier::VerifStatus::Verified);
+}
+
+#[test]
+fn verify_unsatisfiable_requires() {
+    let src = r#"
+func impossible(x: i32) -> i32 {
+    mms { "requires: x > 0\nrequires: x < 0" }
+    x
+}
+"#;
+    assert_failed(src);
+}
+
+#[test]
+fn verify_result_count() {
+    let src = r#"
+func f1(x: i32) -> i32 {
+    mms { "requires: x == 1" }
+    x
+}
+
+func f2(x: i32) -> i32 {
+    mms { "requires: x == 2" }
+    x
+}
+
+func f3(x: i32) -> i32 {
+    mms { "requires: x == 3" }
+    x
+}
+"#;
+    let results = verify_source(src);
+    assert_eq!(results.len(), 3);
+}
+
+#[test]
+fn verify_module_nested() {
+    let src = r#"
+module Math {
+    func identity(x: i32) -> i32 {
+        mms { "requires: x >= 0\nensures: x >= 0" }
+        x
+    }
+}
+"#;
+    let results = verify_source(src);
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].status, crate::verifier::VerifStatus::Verified);
+}
+
+#[test]
+fn verify_le_operator() {
+    let src = r#"
+func capped(x: i32) -> i32 {
+    mms { "requires: x <= 100\nensures: x <= 100" }
+    x
+}
+"#;
+    let results = verify_source(src);
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].status, crate::verifier::VerifStatus::Verified);
+}
+
+#[test]
+fn verify_gt_operator() {
+    let src = r#"
+func positive(x: i32) -> i32 {
+    mms { "requires: x > 0\nensures: x > 0" }
+    x
+}
+"#;
+    let results = verify_source(src);
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].status, crate::verifier::VerifStatus::Verified);
+}
+
+#[test]
+fn verify_ensures_fails_counterexample() {
+    let src = r#"
+func wrong(x: i32) -> i32 {
+    mms { "requires: x == 10\nensures: x == 20" }
+    x
+}
+"#;
+    assert_failed(src);
+}
+
+// ============================================================
+// T600: LLVM Codegen
+// ============================================================
+
+fn compile_to_ir(src: &str) -> String {
+    let file = parse(src);
+    let context = inkwell::context::Context::create();
+    let mut codegen = crate::codegen::CodeGenerator::new(&context, "test");
+    codegen.compile_file(&file).unwrap();
+    codegen.emit_ir()
+}
+
+fn assert_compiles(src: &str) {
+    let ir = compile_to_ir(src);
+    assert!(ir.contains("define"), "IR should contain function definitions");
+}
+
+fn assert_ir_contains(src: &str, pattern: &str) {
+    let ir = compile_to_ir(src);
+    assert!(ir.contains(pattern), "IR should contain '{}': {}", pattern, &ir[..300.min(ir.len())]);
+}
+
+#[test]
+fn codegen_simple_return() {
+    assert_compiles("func main() -> i32 { 42 }");
+}
+
+#[test]
+fn codegen_return_zero() {
+    assert_compiles("func main() -> i32 { 0 }");
+}
+
+#[test]
+fn codegen_add() {
+    assert_compiles("func main() -> i32 { 1 + 2 }");
+}
+
+#[test]
+fn codegen_sub() {
+    assert_compiles("func main() -> i32 { 10 - 3 }");
+}
+
+#[test]
+fn codegen_mul() {
+    assert_compiles("func main() -> i32 { 6 * 7 }");
+}
+
+#[test]
+fn codegen_div() {
+    assert_compiles("func main() -> i32 { 12 / 4 }");
+}
+
+#[test]
+fn codegen_mod() {
+    assert_compiles("func main() -> i32 { 10 % 3 }");
+}
+
+#[test]
+fn codegen_negation() {
+    assert_compiles("func main() -> i32 { -5 }");
+}
+
+#[test]
+fn codegen_not() {
+    assert_compiles("func main() -> i32 { not(0) }");
+}
+
+#[test]
+fn codegen_eq_cmp() {
+    assert_compiles("func main() -> i32 { 1 == 1 }");
+}
+
+#[test]
+fn codegen_ne_cmp() {
+    assert_compiles("func main() -> i32 { 1 != 2 }");
+}
+
+#[test]
+fn codegen_lt() {
+    assert_compiles("func main() -> i32 { 1 < 2 }");
+}
+
+#[test]
+fn codegen_gt() {
+    assert_compiles("func main() -> i32 { 2 > 1 }");
+}
+
+#[test]
+fn codegen_le() {
+    assert_compiles("func main() -> i32 { 1 <= 1 }");
+}
+
+#[test]
+fn codegen_ge() {
+    assert_compiles("func main() -> i32 { 2 >= 1 }");
+}
+
+#[test]
+fn codegen_and() {
+    assert_compiles("func main() -> i32 { let a = 1; let b = 1; a && b }");
+}
+
+fn codegen_or() {
+    assert_compiles("func main() -> i32 { let a = 1; let b = 0; a || b }");
+}
+
+#[test]
+fn codegen_function_param() {
+    assert_compiles("func double(x: i32) -> i32 { x + x }");
+}
+
+#[test]
+fn codegen_two_params() {
+    assert_compiles("func add(x: i32, y: i32) -> i32 { x + y }");
+}
+
+#[test]
+fn codegen_let_binding() {
+    assert_compiles("func main() -> i32 { let x = 10; x }");
+}
+
+#[test]
+fn codegen_assign() {
+    assert_compiles("func main() -> i32 { let mut x = 0; x = 5; x }");
+}
+
+#[test]
+fn codegen_multiple_stmts() {
+    assert_compiles("func main() -> i32 { let x = 1; let y = 2; x + y }");
+}
+
+#[test]
+fn codegen_bool_return() {
+    assert_compiles("func main() -> i32 { true }");
+}
+
+#[test]
+fn codegen_string_literal() {
+    assert_compiles("func main() -> string { \"hello\" }");
+}
+
+#[test]
+fn codegen_float_literal() {
+    assert_compiles("func main() -> f64 { 3.14 }");
+}
+
+#[test]
+fn codegen_nested_expr() {
+    assert_compiles("func main() -> i32 { (1 + 2) * 3 }");
+}
+
+#[test]
+fn codegen_function_call() {
+    assert_compiles(r#"
+func inc(x: i32) -> i32 { x + 1 }
+func main() -> i32 { inc(41) }
+"#);
+}
+
+#[test]
+fn codegen_chained_calls() {
+    assert_compiles(r#"
+func inc(x: i32) -> i32 { x + 1 }
+func main() -> i32 { inc(inc(40)) }
+"#);
+}
+
+#[test]
+fn codegen_with_return() {
+    assert_compiles("func main() -> i32 { return 42; }");
+}
+
+#[test]
+fn codegen_multiple_functions() {
+    assert_compiles(r#"
+func a() -> i32 { 1 }
+func b() -> i32 { 2 }
+func main() -> i32 { a() + b() }
+"#);
+}
+
+#[test]
+fn codegen_ir_has_main() {
+    let ir = compile_to_ir("func main() -> i32 { 42 }");
+    assert!(ir.contains("define i64 @main()"));
+}
+
+#[test]
+fn codegen_ir_has_add() {
+    let ir = compile_to_ir("func add(x: i32, y: i32) -> i32 { x + y }");
+    assert!(ir.contains("define i64 @add(i64"));
+}
+
+#[test]
+fn codegen_emit_ir() {
+    let ir = compile_to_ir("func main() -> i32 { 42 }");
+    assert!(ir.starts_with("; ModuleID"));
+}
+
+#[test]
+fn codegen_entry_block() {
+    let ir = compile_to_ir("func main() -> i32 { 42 }");
+    assert!(ir.contains("entry:"));
+}
+
+#[test]
+fn codegen_alloca() {
+    let ir = compile_to_ir("func main() -> i32 { let x = 10; x }");
+    assert!(ir.contains("alloca"));
+}
+
+#[test]
+fn codegen_store_load() {
+    let ir = compile_to_ir("func main() -> i32 { let x = 10; x }");
+    assert!(ir.contains("store"));
+    assert!(ir.contains("load"));
+}
+
+#[test]
+fn codegen_add_instruction() {
+    assert_ir_contains("func main(a: i32, b: i32) -> i32 { a + b }", "add");
+}
+
+fn codegen_mul_instruction() {
+    assert_ir_contains("func main(a: i32, b: i32) -> i32 { a * b }", "mul");
+}
+
+fn codegen_div_instruction() {
+    assert_ir_contains("func main(a: i32, b: i32) -> i32 { a / b }", "sdiv");
+}
+
+fn codegen_rem_instruction() {
+    assert_ir_contains("func main(a: i32, b: i32) -> i32 { a % b }", "srem");
+}
+
+fn codegen_neg_instruction() {
+    assert_ir_contains("func main(x: i32) -> i32 { -x }", "sub");
+}
+
+fn codegen_icmp() {
+    assert_ir_contains("func main(a: i32, b: i32) -> i32 { a < b }", "icmp");
+}
+
+fn codegen_and_instruction() {
+    assert_ir_contains("func main(a: i32, b: i32) -> i32 { a && b }", "and");
+}
+
+fn codegen_or_instruction() {
+    assert_ir_contains("func main(a: i32, b: i32) -> i32 { a || b }", "or");
+}
+
+#[test]
+fn codegen_ret_instruction() {
+    let ir = compile_to_ir("func main() -> i32 { 42 }");
+    assert!(ir.contains("ret"));
+}
+
+#[test]
+fn codegen_void_return() {
+    assert_compiles("func noop() { }");
+}
+
+#[test]
+fn codegen_large_literal() {
+    assert_compiles("func main() -> i32 { 999999 }");
+}
+
+#[test]
+fn codegen_complex_expr() {
+    assert_compiles("func main() -> i32 { 1 + 2 * 3 - 4 / 2 }");
+}

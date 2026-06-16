@@ -373,7 +373,7 @@ impl<'a> Checker<'a> {
                 args.iter().map(|a| self.resolve_type(a)).collect(),
                 Box::new(self.resolve_type(ret)),
             ),
-            Type::Cap(_) | Type::Shared(_) | Type::LocalShared(_) | Type::Weak(_) => ty.clone(),
+            Type::Cap(_) | Type::Shared(_) | Type::LocalShared(_) | Type::Weak(_) | Type::Allocator => ty.clone(),
             Type::Newtype(name, inner) => Type::Newtype(name.clone(), Box::new(self.resolve_type(inner))),
             Type::Nothing => Type::Nothing,
         }
@@ -533,7 +533,7 @@ impl<'a> Checker<'a> {
                 }
                 self.check_type_well_formed(inner, context);
             }
-            Type::Cap(_) | Type::Nothing => {}
+            Type::Cap(_) | Type::Nothing | Type::Allocator => {}
         }
     }
 
@@ -608,6 +608,11 @@ impl<'a> Checker<'a> {
                 }
                 Stmt::Arena(inner) => {
                     if self.block_returns_on_all_paths(inner) {
+                        return true;
+                    }
+                }
+                Stmt::Alloc { kind: _, body } => {
+                    if self.block_returns_on_all_paths(body) {
                         return true;
                     }
                 }
@@ -905,6 +910,12 @@ impl<'a> Checker<'a> {
                 // For now, just check the block contents
                 scopes.push(HashMap::new());
                 self.check_block(block, ret, scopes);
+                scopes.pop();
+            }
+            Stmt::Alloc { kind: _, body } => {
+                // alloc(Kind) block: check the body with the specified allocator
+                scopes.push(HashMap::new());
+                self.check_block(body, ret, scopes);
                 scopes.pop();
             }
             Stmt::SharedLet { kind, name, ty, init } => {
@@ -2240,7 +2251,7 @@ fn subst_type_params(ty: &Type, generics: &[GenericParam], type_map: &HashMap<St
         Type::LocalShared(inner) => Type::LocalShared(Box::new(subst_type_params(inner, generics, type_map))),
         Type::Weak(inner) => Type::Weak(Box::new(subst_type_params(inner, generics, type_map))),
         Type::Newtype(name, inner) => Type::Newtype(name.clone(), Box::new(subst_type_params(inner, generics, type_map))),
-        Type::Cap(_) | Type::Nothing => ty.clone(),
+        Type::Cap(_) | Type::Nothing | Type::Allocator => ty.clone(),
     }
 }
 
@@ -2267,6 +2278,7 @@ fn same_type(a: &Type, b: &Type) -> bool {
         (Type::Name(n, _), Type::Newtype(n2, _)) | (Type::Newtype(n2, _), Type::Name(n, _)) => {
             n == n2
         }
+        (Type::Allocator, Type::Allocator) => true,
         _ => false,
     }
 }
@@ -2307,5 +2319,6 @@ fn fmt_type(t: &Type) -> String {
         Type::Weak(inner) => format!("weak {}", fmt_type(inner)),
         Type::Newtype(name, inner) => format!("newtype {} {}", name, fmt_type(inner)),
         Type::Nothing => "nothing".to_string(),
+        Type::Allocator => "Allocator".to_string(),
     }
 }

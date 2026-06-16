@@ -276,6 +276,11 @@ pub enum Stmt {
     Parasteps(Block),
     /// mms {} super-comment block containing MimiSpec intent
     MmsBlock(String),
+    /// alloc(Kind) { ... } block using a specific allocator
+    Alloc {
+        kind: AllocKind,
+        body: Block,
+    },
     Ellipsis,
 }
 
@@ -414,4 +419,17 @@ pub enum Type {
     Newtype(String, Box<Type>),
     /// Nothing type (unreachable / error type)
     Nothing,
+    /// Allocator type for custom memory allocation
+    Allocator,
+}
+
+/// Kind of allocator for alloc blocks
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AllocKind {
+    /// System default allocator (malloc/free)
+    System,
+    /// Arena region allocator (bulk free)
+    Arena,
+    /// Bump allocator (monotonic, fast)
+    Bump,
 }

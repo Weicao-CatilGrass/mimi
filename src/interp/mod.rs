@@ -49,6 +49,8 @@ pub struct Interpreter<'a> {
     comptime_results: HashMap<String, Value>,
     /// Loaded shared libraries: lib_path -> Library handle
     loaded_libs: Vec<libloading::Library>,
+    /// Default allocator kind (set by --allocator CLI flag)
+    pub default_allocator: AllocatorKind,
 }
 
 impl<'a> Interpreter<'a> {
@@ -93,6 +95,7 @@ impl<'a> Interpreter<'a> {
             type_defs,
             comptime_results: HashMap::new(),
             loaded_libs: Vec::new(),
+            default_allocator: AllocatorKind::System,
         }
     }
 
@@ -334,6 +337,7 @@ impl<'a> Interpreter<'a> {
             Value::ArenaRef(_, _) => "arena_ref".into(),
             Value::ArenaBlock(_) => "arena_block".into(),
             Value::WeakShared(_) | Value::WeakLocal(_) => "weak".into(),
+            Value::Allocator(_) => "Allocator".into(),
         }
     }
 
@@ -359,6 +363,7 @@ impl<'a> Interpreter<'a> {
             Type::Weak(inner) => format!("weak {}", self.resolve_type_name(inner)),
             Type::Newtype(name, _) => name.clone(),
             Type::Nothing => "nothing".into(),
+            Type::Allocator => "Allocator".into(),
         }
     }
 
@@ -895,6 +900,74 @@ impl<'a> Interpreter<'a> {
                 self.arenas.pop();
 
                 return result;
+            }
+            Stmt::Alloc { kind, body } => {
+                // alloc(Kind) block: uses the specified allocator
+                return match kind {
+                    AllocKind::Arena => {
+                        // Same as arena block
+                        let arena_id = self.arenas.len();
+                        let arena = Arena { id: arena_id, slots: Vec::new() };
+                        self.arenas.push(arena);
+                        self.arena_depth += 1;
+                        self.push_scope();
+                        let result = self.eval_block(body);
+                        // Check for escape
+                        let mut escape_var = None;
+                        let outer_count = self.env.len() - 1;
+                        for scope in self.env.iter().take(outer_count) {
+                            for (name, val) in scope {
+                                if contains_arena_ref(val, arena_id) {
+                                    escape_var = Some(name.clone());
+                                    break;
+                                }
+                            }
+                            if escape_var.is_some() { break; }
+                        }
+                        if let Some(name) = escape_var {
+                            self.arena_depth -= 1;
+                            self.pop_scope();
+                            self.arenas.pop();
+                            return Err(format!(
+                                "arena escape: variable '{}' holds a reference to arena {} that is about to be freed",
+                                name, arena_id
+                            ));
+                        }
+                        if let Ok(Some(ref v)) = result {
+                            if contains_arena_ref(v, arena_id) {
+                                self.arena_depth -= 1;
+                                self.pop_scope();
+                                self.arenas.pop();
+                                return Err(format!(
+                                    "arena escape: returning a reference to arena {} that is about to be freed",
+                                    arena_id
+                                ));
+                            }
+                        }
+                        self.arena_depth -= 1;
+                        self.pop_scope();
+                        self.arenas.pop();
+                        result
+                    }
+                    AllocKind::Bump => {
+                        let arena_id = self.arenas.len();
+                        let arena = Arena { id: arena_id, slots: Vec::new() };
+                        self.arenas.push(arena);
+                        self.arena_depth += 1;
+                        self.push_scope();
+                        let result = self.eval_block(body);
+                        self.arena_depth -= 1;
+                        self.pop_scope();
+                        self.arenas.pop();
+                        result
+                    }
+                    AllocKind::System => {
+                        self.push_scope();
+                        let result = self.eval_block(body);
+                        self.pop_scope();
+                        result
+                    }
+                };
             }
             Stmt::Assign { target, value } => {
                 let v = self.eval_expr(value)?;
@@ -2174,6 +2247,69 @@ impl<'a> Interpreter<'a> {
                     }
                     _ => Err("type_variants expects a type name string or Type value".into()),
                 }
+            }
+            // Allocator builtins
+            "allocator_system" => {
+                Ok(Value::Allocator(AllocatorKind::System))
+            }
+            "allocator_arena" => {
+                Ok(Value::Allocator(AllocatorKind::Arena))
+            }
+            "allocator_bump" => {
+                Ok(Value::Allocator(AllocatorKind::Bump))
+            }
+            "alloc" => {
+                // alloc(allocator, value) - allocate a value with the given allocator
+                if args.len() != 2 {
+                    return Err("alloc expects 2 arguments (allocator, value)".into());
+                }
+                let alloc_val = &args[0];
+                let value = &args[1];
+                match alloc_val {
+                    Value::Allocator(kind) => match kind {
+                        AllocatorKind::System => {
+                            // System allocator: just return the value as-is (heap allocated)
+                            Ok(value.clone())
+                        }
+                        AllocatorKind::Arena => {
+                            // Arena allocator: allocate in current arena if available
+                            if self.arenas.is_empty() {
+                                return Err("alloc: no arena available (use arena block)".into());
+                            }
+                            let arena_id = self.arenas.len() - 1;
+                            let idx = self.arenas[arena_id].slots.len();
+                            self.arenas[arena_id].slots.push(value.clone());
+                            Ok(Value::ArenaRef(arena_id, idx))
+                        }
+                        AllocatorKind::Bump => {
+                            // Bump allocator: same as arena (monotonic allocation)
+                            if self.arenas.is_empty() {
+                                return Err("alloc: no arena available (use alloc(Bump) block)".into());
+                            }
+                            let arena_id = self.arenas.len() - 1;
+                            let idx = self.arenas[arena_id].slots.len();
+                            self.arenas[arena_id].slots.push(value.clone());
+                            Ok(Value::ArenaRef(arena_id, idx))
+                        }
+                    },
+                    _ => Err("alloc first argument must be an Allocator value".into()),
+                }
+            }
+            "arena_reset" => {
+                // arena_reset() - reset all arena allocations
+                if !self.arenas.is_empty() {
+                    let arena_id = self.arenas.len() - 1;
+                    self.arenas[arena_id].slots.clear();
+                }
+                Ok(Value::Unit)
+            }
+            "bump_used" => {
+                // bump_used() - return the number of bump allocations
+                if self.arenas.is_empty() {
+                    return Ok(Value::Int(0));
+                }
+                let arena_id = self.arenas.len() - 1;
+                Ok(Value::Int(self.arenas[arena_id].slots.len() as i64))
             }
             _ => {
                 // Check for pre-computed comptime function results
