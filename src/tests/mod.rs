@@ -53,6 +53,7 @@ pub(crate) mod derive_methods;
 pub(crate) mod builtin_extended;
 pub(crate) mod cap_runtime;
 pub(crate) mod codegen_control;
+pub(crate) mod lsp_extended;
 
 use crate::{core, interp, lexer, parser};
 

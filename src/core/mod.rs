@@ -2,13 +2,21 @@ use crate::ast::*;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct Diagnostic {
     pub message: String,
+    pub line: usize,
+    pub col: usize,
 }
 
 impl Diagnostic {
     fn new(msg: impl Into<String>) -> Self {
-        Self { message: msg.into() }
+        Self { message: msg.into(), line: 0, col: 0 }
+    }
+
+    #[allow(dead_code)]
+    fn with_pos(msg: impl Into<String>, line: usize, col: usize) -> Self {
+        Self { message: msg.into(), line, col }
     }
 }
 
@@ -165,6 +173,11 @@ impl<'a> Checker<'a> {
 
     fn emit(&mut self, msg: impl Into<String>) {
         self.errors.push(Diagnostic::new(msg));
+    }
+
+    #[allow(dead_code)]
+    fn emit_at(&mut self, msg: impl Into<String>, line: usize, col: usize) {
+        self.errors.push(Diagnostic::with_pos(msg, line, col));
     }
 
     fn push_borrow_scope(&mut self) {
