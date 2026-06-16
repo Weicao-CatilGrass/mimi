@@ -1177,7 +1177,36 @@ impl<'a> Interpreter<'a> {
                 Err("spawn requires parasteps block".into())
             }
             Expr::Await(expr) => {
-                // Await a future - receive the result from the channel
+                // Check if this is a method call on an actor
+                if let Expr::Call(callee, args) = expr.as_ref() {
+                    if let Expr::Field(obj, method) = callee.as_ref() {
+                        // Evaluate the object to get the actor handle
+                        let obj_val = self.eval_expr(obj)?;
+                        if let Value::Actor(_) = &obj_val {
+                            // Spawn method call in a thread and wait for result
+                            let (tx, rx) = std::sync::mpsc::channel();
+                            let method = method.clone();
+                            let args_clone: Vec<Value> = args.iter()
+                                .map(|a| self.eval_expr(a))
+                                .collect::<Result<Vec<_>, _>>()?;
+                            let actor_arc = match &obj_val {
+                                Value::Actor(h) => h.clone(),
+                                _ => unreachable!(),
+                            };
+                            std::thread::spawn(move || {
+                                let empty_file = File { imports: vec![], items: vec![] };
+                                let mut interp = Interpreter::new(&empty_file);
+                                let actor_val = Value::Actor(actor_arc);
+                                let result = interp.call_method(&actor_val, &method, args_clone);
+                                let _ = tx.send(result);
+                            });
+                            // Wait for the result
+                            let result = rx.recv().map_err(|e| format!("await failed: {}", e))?;
+                            return result;
+                        }
+                    }
+                }
+                // Default: evaluate and if it's a Future, wait for it
                 let v = self.eval_expr(expr)?;
                 match v {
                     Value::Future(rx) => {
