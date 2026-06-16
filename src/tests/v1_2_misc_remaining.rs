@@ -202,7 +202,7 @@ func main() -> i32 {
         } else { None }
     }).unwrap();
     let mms_text = func.body.iter().find_map(|s| {
-        if let crate::ast::Stmt::MmsBlock(t) = s { Some(t.clone()) } else { None }
+        if let crate::ast::Stmt::MmsBlock { content: t, .. } = s { Some(t.clone()) } else { None }
     }).unwrap();
     let contracts = crate::contracts::extract_contracts(&mms_text);
     assert_eq!(contracts.requires.len(), 1);
