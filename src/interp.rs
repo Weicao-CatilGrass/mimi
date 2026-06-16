@@ -355,6 +355,9 @@ impl<'a> Interpreter<'a> {
                     Self::collect_constructors(inner, out, newtype_constructors, type_variants, failure_variants);
                 }
             }
+            Item::Trait(_) | Item::Impl(_) => {
+                // Traits and impls don't define constructors
+            }
             _ => {}
         }
     }

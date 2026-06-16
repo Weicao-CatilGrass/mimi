@@ -184,6 +184,9 @@ impl<'a> Checker<'a> {
                 }
             }
             Item::Rule(_) | Item::Desc(_) | Item::Cap(_) => {}
+            Item::Trait(_) | Item::Impl(_) => {
+                // Trait and impl definitions are collected but not type-checked in v1.1
+            }
         }
     }
 
@@ -283,6 +286,9 @@ impl<'a> Checker<'a> {
             }
             Item::Type(_) | Item::Cap(_) => {}
             Item::Rule(_) | Item::Desc(_) => {}
+            Item::Trait(_) | Item::Impl(_) => {
+                // Trait and impl definitions are collected but not type-checked in v1.1
+            }
         }
     }
 
