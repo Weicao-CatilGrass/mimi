@@ -1,5 +1,7 @@
 use crate::ast::*;
+use crate::diagnostic::Diagnostic;
 use crate::lexer::{Token, TokenKind};
+use crate::span::Span;
 
 mod parse_type;
 mod parse_expr;
@@ -10,6 +12,7 @@ pub struct ParseError {
     pub message: String,
     pub line: usize,
     pub col: usize,
+    pub span: Option<Span>,
 }
 
 impl ParseError {
@@ -18,7 +21,23 @@ impl ParseError {
             message: message.into(),
             line,
             col,
+            span: None,
         }
+    }
+
+    fn with_span(message: impl Into<String>, span: Span) -> Self {
+        Self {
+            message: message.into(),
+            line: span.start_line,
+            col: span.start_col,
+            span: Some(span),
+        }
+    }
+
+    /// Convert to the new Diagnostic type.
+    pub fn to_diagnostic(&self) -> Diagnostic {
+        let span = self.span.unwrap_or_else(|| Span::single(self.line, self.col));
+        Diagnostic::error(&self.message, span)
     }
 }
 
@@ -59,6 +78,36 @@ impl Parser {
 
     fn with_mode(tokens: Vec<Token>, mode: ParseMode) -> Self {
         Self { tokens, pos: 0, mode }
+    }
+
+    /// Skip tokens until we reach a synchronization point.
+    /// Returns true if we found a sync point, false if we reached EOF.
+    fn recover_to_sync(&mut self, sync_tokens: &[TokenKind]) -> bool {
+        let max_skip = 100; // prevent infinite loops
+        let mut skipped = 0;
+        while !self.at(&TokenKind::Eof) && skipped < max_skip {
+            // Check if current token is a sync point
+            for sync in sync_tokens {
+                if self.at(sync) {
+                    return true;
+                }
+            }
+            self.advance();
+            skipped += 1;
+        }
+        !self.at(&TokenKind::Eof)
+    }
+
+    /// Get the current token's span.
+    fn current_span(&self) -> Span {
+        let tok = self.peek();
+        Span::single(tok.line, tok.col)
+    }
+
+    /// Get a span from start token to current position.
+    fn span_from(&self, start_line: usize, start_col: usize) -> Span {
+        let tok = self.peek();
+        Span::new(start_line, start_col, tok.line, tok.col)
     }
 
     fn is_sketch(&self) -> bool {
@@ -172,6 +221,54 @@ impl Parser {
             items.push(self.parse_item()?);
         }
         Ok(File { imports, items })
+    }
+
+    /// Parse a file with error recovery, collecting multiple errors.
+    /// Returns the parsed file (possibly partial) and all errors encountered.
+    pub fn parse_file_with_recovery(mut self) -> (File, Vec<ParseError>) {
+        let mut errors = Vec::new();
+
+        self.skip_newlines();
+        let mut imports = Vec::new();
+        while self.at(&TokenKind::Use) {
+            match self.parse_import() {
+                Ok(imp) => imports.push(imp),
+                Err(e) => {
+                    errors.push(e);
+                    // Skip to next top-level sync point
+                    self.recover_to_sync(&[
+                        TokenKind::Func, TokenKind::Type, TokenKind::Module,
+                        TokenKind::Actor, TokenKind::Cap, TokenKind::Trait,
+                        TokenKind::Impl, TokenKind::Extern, TokenKind::Use,
+                        TokenKind::RBrace, TokenKind::Eof,
+                    ]);
+                }
+            }
+            self.skip_newlines();
+        }
+
+        let mut items = Vec::new();
+        while !self.at(&TokenKind::Eof) {
+            self.skip_newlines();
+            if self.at(&TokenKind::Eof) {
+                break;
+            }
+            match self.parse_item() {
+                Ok(item) => items.push(item),
+                Err(e) => {
+                    errors.push(e);
+                    // Skip to next top-level sync point
+                    self.recover_to_sync(&[
+                        TokenKind::Func, TokenKind::Type, TokenKind::Module,
+                        TokenKind::Actor, TokenKind::Cap, TokenKind::Trait,
+                        TokenKind::Impl, TokenKind::Extern, TokenKind::Use,
+                        TokenKind::RBrace, TokenKind::Eof,
+                    ]);
+                }
+            }
+        }
+
+        (File { imports, items }, errors)
     }
 
     fn parse_import(&mut self) -> Result<Import, ParseError> {

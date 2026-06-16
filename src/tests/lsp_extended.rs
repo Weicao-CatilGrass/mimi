@@ -188,11 +188,11 @@ fn diagnostic_has_position() {
     assert!(result.is_err(), "should have error for undefined variable");
     let errors = result.unwrap_err();
     assert!(!errors.is_empty(), "should have at least one error");
-    // All diagnostics should have line/col fields (even if 0)
+    // All diagnostics should have span fields
     for err in &errors {
-        // line and col are usize, always >= 0
-        let _ = err.line;
-        let _ = err.col;
+        // span.start_line and span.start_col are usize, always >= 0
+        let _ = err.span.start_line;
+        let _ = err.span.start_col;
     }
 }
 

@@ -19,7 +19,7 @@ impl<'a> Checker<'a> {
                         if is_numeric(&t) {
                             t
                         } else {
-                            self.emit(format!("cannot negate {}", fmt_type(&t)));
+                            self.emit_code(crate::diagnostic::codes::E0201, format!("cannot negate {}", fmt_type(&t)));
                             Type::Name("unknown".into(), vec![])
                         }
                     }
@@ -27,17 +27,24 @@ impl<'a> Checker<'a> {
                         if is_bool(&t) {
                             t
                         } else {
-                            self.emit(format!("cannot apply ! to {}", fmt_type(&t)));
+                            self.emit_code(crate::diagnostic::codes::E0203, format!("cannot apply ! to {}", fmt_type(&t)));
                             Type::Name("unknown".into(), vec![])
                         }
                     }
                     UnOp::Ref => {
                         // Check borrow rules: cannot borrow if already mutably borrowed
                         if let Expr::Ident(name) = e.as_ref() {
-                            if let Some(BorrowState::BorrowedMut) = self.lookup_borrow(name) {
-                                self.emit(format!("cannot borrow '{}' as immutable because it is already mutably borrowed", name));
+                            if let Some(BorrowState::BorrowedMut { span }) = self.lookup_borrow(name) {
+                                let borrow_span = *span;
+                                self.errors.push(
+                                    Diagnostic::error_code(
+                                        crate::diagnostic::codes::E0302,
+                                        format!("cannot borrow '{}' as immutable because it is already mutably borrowed", name),
+                                        Span::single(0, 0),
+                                    ).with_note("mutable borrow occurs here", borrow_span)
+                                );
                             }
-                            self.set_borrow(name, BorrowState::BorrowedImm);
+                            self.set_borrow(name, BorrowState::BorrowedImm { span: Span::single(0, 0) });
                         }
                         Type::Ref(Box::new(t))
                     }
@@ -47,15 +54,29 @@ impl<'a> Checker<'a> {
                             if let Some(state) = self.lookup_borrow(name) {
                                 match state {
                                     BorrowState::Unborrowed => {}
-                                    BorrowState::BorrowedImm => {
-                                        self.emit(format!("cannot borrow '{}' as mutable because it is already immutably borrowed", name));
+                                    BorrowState::BorrowedImm { span } => {
+                                        let borrow_span = *span;
+                                        self.errors.push(
+                                            Diagnostic::error_code(
+                                                crate::diagnostic::codes::E0300,
+                                                format!("cannot borrow '{}' as mutable because it is already immutably borrowed", name),
+                                                Span::single(0, 0),
+                                            ).with_note("immutable borrow occurs here", borrow_span)
+                                        );
                                     }
-                                    BorrowState::BorrowedMut => {
-                                        self.emit(format!("cannot borrow '{}' as mutable because it is already mutably borrowed", name));
+                                    BorrowState::BorrowedMut { span } => {
+                                        let borrow_span = *span;
+                                        self.errors.push(
+                                            Diagnostic::error_code(
+                                                crate::diagnostic::codes::E0301,
+                                                format!("cannot borrow '{}' as mutable because it is already mutably borrowed", name),
+                                                Span::single(0, 0),
+                                            ).with_note("mutable borrow occurs here", borrow_span)
+                                        );
                                     }
                                 }
                             }
-                            self.set_borrow(name, BorrowState::BorrowedMut);
+                            self.set_borrow(name, BorrowState::BorrowedMut { span: Span::single(0, 0) });
                         }
                         Type::RefMut(Box::new(t))
                     }
@@ -63,7 +84,7 @@ impl<'a> Checker<'a> {
                         match &t {
                             Type::Ref(inner) | Type::RefMut(inner) => (**inner).clone(),
                             _ => {
-                                self.emit(format!("cannot dereference {}", fmt_type(&t)));
+                                self.emit_code(crate::diagnostic::codes::E0204, format!("cannot dereference {}", fmt_type(&t)));
                                 Type::Name("unknown".into(), vec![])
                             }
                         }
@@ -135,15 +156,15 @@ impl<'a> Checker<'a> {
                                     return ret;
                                 }
                             }
-                            self.emit(format!("type '{}' has no method '{}'", type_name, method_name));
+                            self.emit_code(crate::diagnostic::codes::E0221, format!("type '{}' has no method '{}'", type_name, method_name));
                             Type::Name("unknown".into(), vec![])
                         } else {
-                            self.emit(format!("method call requires a named type, found {}", fmt_type(&obj_ty)));
+                            self.emit_code(crate::diagnostic::codes::E0222, format!("method call requires a named type, found {}", fmt_type(&obj_ty)));
                             Type::Name("unknown".into(), vec![])
                         }
                     }
                     _ => {
-                        self.emit("callee must be a function name");
+                        self.emit_code(crate::diagnostic::codes::E0223, "callee must be a function name");
                         Type::Name("unknown".into(), vec![])
                     }
                 }
@@ -190,7 +211,7 @@ impl<'a> Checker<'a> {
                 if let Some(g) = guard {
                     let guard_ty = self.infer_expr(g, scopes);
                     if !matches!(&guard_ty, Type::Name(n, _) if n == "bool") {
-                        self.emit(format!("comprehension guard must be bool, found {}", fmt_type(&guard_ty)));
+                        self.emit_code(crate::diagnostic::codes::E0230, format!("comprehension guard must be bool, found {}", fmt_type(&guard_ty)));
                     }
                 }
                 Type::Name("List".into(), vec![expr_ty])
@@ -198,7 +219,7 @@ impl<'a> Checker<'a> {
             Expr::Match(subject, arms) => {
                 let subject_ty = self.infer_expr(subject, scopes);
                 if arms.is_empty() {
-                    self.emit("match expression must have at least one arm");
+                    self.emit_code(crate::diagnostic::codes::E0213, "match expression must have at least one arm");
                     return Type::Name("unknown".into(), vec![]);
                 }
 
@@ -230,7 +251,7 @@ impl<'a> Checker<'a> {
                         has_guard = true;
                         let gt = self.infer_expr(guard, scopes);
                         if !is_bool(&gt) {
-                            self.emit(format!(
+                            self.emit_code(crate::diagnostic::codes::E0216, format!(
                                 "match guard must be bool, found {}",
                                 fmt_type(&gt)
                             ));
@@ -242,7 +263,7 @@ impl<'a> Checker<'a> {
                         None => result_ty = Some(body_ty),
                         Some(rt) => {
                             if !same_type(rt, &body_ty) {
-                                self.emit(format!(
+                                self.emit_code(crate::diagnostic::codes::E0214, format!(
                                     "match arm body type {} does not match previous {}",
                                     fmt_type(&body_ty),
                                     fmt_type(rt)
@@ -257,7 +278,7 @@ impl<'a> Checker<'a> {
                 if !all_variants.is_empty() && !has_catchall && !has_guard {
                     for variant in &all_variants {
                         if !covered_variants.contains(variant) {
-                            self.emit(format!(
+                            self.emit_code(crate::diagnostic::codes::E0215, format!(
                                 "match expression is not exhaustive: missing variant '{}' of '{}'",
                                 variant,
                                 fmt_type(&subject_ty)
@@ -282,7 +303,7 @@ impl<'a> Checker<'a> {
                             if let Some(f) = actor_def.fields.iter().find(|f| f.name == *field) {
                                 self.resolve_type(&f.ty)
                             } else {
-                                self.emit(format!(
+                                self.emit_code(crate::diagnostic::codes::E0220, format!(
                                     "actor '{}' has no field '{}'",
                                     name, field
                                 ));
@@ -302,7 +323,7 @@ impl<'a> Checker<'a> {
                                                 Type::Name("unknown".into(), vec![])
                                             }
                                         } else {
-                                            self.emit(format!(
+                                            self.emit_code(crate::diagnostic::codes::E0220, format!(
                                                 "type '{}' has no field '{}'",
                                                 name, field
                                             ));
@@ -342,10 +363,7 @@ impl<'a> Checker<'a> {
                         }
                     }
                     _ => {
-                        self.emit(format!(
-                            "field access requires a record type, found {}",
-                            fmt_type(&obj_ty)
-                        ));
+                                self.emit_code(crate::diagnostic::codes::E0219, format!("field access requires record type, found {}", fmt_type(&obj_ty)));
                         Type::Name("unknown".into(), vec![])
                     }
                 }
@@ -405,13 +423,13 @@ impl<'a> Checker<'a> {
                 let obj_ty = self.infer_expr(obj, scopes);
                 let idx_ty = self.infer_expr(idx, scopes);
                 if !is_int(&idx_ty) {
-                    self.emit(format!("index must be integer, found {}", fmt_type(&idx_ty)));
+                        self.emit_code(crate::diagnostic::codes::E0217, format!("index must be integer, found {}", fmt_type(&idx_ty)));
                 }
                 match obj_ty {
                     Type::Name(n, args) if n == "List" && args.len() == 1 => args[0].clone(),
                     Type::Name(n, _) if n == "string" => Type::Name("string".into(), vec![]),
                     _ => {
-                        self.emit(format!("cannot index {}", fmt_type(&obj_ty)));
+                        self.emit_code(crate::diagnostic::codes::E0218, format!("cannot index {}", fmt_type(&obj_ty)));
                         Type::Name("unknown".into(), vec![])
                     }
                 }
@@ -466,7 +484,7 @@ impl<'a> Checker<'a> {
                         }
                     }
                     _ => {
-                        self.emit(format!(
+                        self.emit_code(crate::diagnostic::codes::E0224, format!(
                             "? operator requires Result or Option type, found {}",
                             fmt_type(&inner_ty)
                         ));
@@ -531,7 +549,7 @@ impl<'a> Checker<'a> {
                 let (params, ret) = match self.funcs.get(name) {
                     Some(sig) => sig.clone(),
                     None => {
-                        self.emit(format!("undefined function '{}'", name));
+                        self.emit_code(crate::diagnostic::codes::E0401, format!("undefined function '{}'", name));
                         return Type::Name("unknown".into(), vec![]);
                     }
                 };
@@ -662,7 +680,7 @@ impl<'a> Checker<'a> {
                     // Static divide-by-zero detection
                     if op == BinOp::Div || op == BinOp::Mod {
                         if let Expr::Literal(Lit::Int(0)) = r {
-                            self.emit(format!("{} by zero literal", if op == BinOp::Div { "division" } else { "modulo" }));
+                            self.emit_code(crate::diagnostic::codes::E0237, format!("{} by zero literal", if op == BinOp::Div { "division" } else { "modulo" }));
                         }
                     }
                     lt
@@ -680,7 +698,7 @@ impl<'a> Checker<'a> {
                     // Static modulo-by-zero detection
                     if op == BinOp::Mod {
                         if let Expr::Literal(Lit::Int(0)) = r {
-                            self.emit("modulo by zero literal".to_string());
+                            self.emit_code(crate::diagnostic::codes::E0238, "modulo by zero literal".to_string());
                         }
                     }
                     lt
@@ -708,7 +726,7 @@ impl<'a> Checker<'a> {
             }
             BinOp::And | BinOp::Or => unreachable!("logical operators handled above"),
             BinOp::Assign => {
-                self.emit("assignment is not a valid expression in v0.2");
+                self.emit_code(crate::diagnostic::codes::E0224, "assignment is not a valid expression in v0.2");
                 Type::Name("unknown".into(), vec![])
             }
         }
@@ -776,7 +794,20 @@ impl<'a> Checker<'a> {
                         return self.check_call(&qualified, args, scopes);
                     }
                 }
-                self.emit(format!("undefined function '{}'", name));
+                // Collect all known function names for "did you mean?" suggestions
+                let candidates: Vec<String> = self.funcs.keys().cloned().collect();
+                let suggestion = super::suggest_name(name, &candidates, 3);
+                if let Some(suggested) = suggestion {
+                    self.errors.push(
+                        Diagnostic::error_code(
+                            crate::diagnostic::codes::E0401,
+                            format!("undefined function '{}'", name),
+                            Span::single(0, 0),
+                        ).with_help(format!("did you mean '{}'?", suggested))
+                    );
+                } else {
+                    self.emit_code(crate::diagnostic::codes::E0401, format!("undefined function '{}'", name));
+                }
                 return Type::Name("unknown".into(), vec![]);
             }
         };

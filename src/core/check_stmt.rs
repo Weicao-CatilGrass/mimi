@@ -9,7 +9,7 @@ impl<'a> Checker<'a> {
         for stmt in block {
             // Unreachable code detection
             if seen_return {
-                self.emit("unreachable statement after return".to_string());
+                self.emit_code(crate::diagnostic::codes::E0236, "unreachable statement after return".to_string());
                 break;
             }
             if let Stmt::Return(_) = stmt { seen_return = true; }
@@ -69,10 +69,7 @@ impl<'a> Checker<'a> {
                 for scope in scopes.iter().rev() {
                     if let Some(ty) = scope.get(name) {
                         if matches!(ty, Type::LocalShared(_)) {
-                            self.emit(format!(
-                                "cannot capture 'local_shared' variable '{}' in parallel block (use 'shared' instead)",
-                                name
-                            ));
+                            self.emit_code(crate::diagnostic::codes::E0305, format!("cannot capture 'local_shared' variable '{}' in parallel block (use 'shared' instead)", name));
                         }
                         break;
                     }
@@ -124,7 +121,7 @@ impl<'a> Checker<'a> {
                 if let Pattern::Variable(name) = pat {
                     for scope in self.var_scopes.iter().rev() {
                         if scope.contains_key(name) {
-                            self.emit(format!("variable '{}' shadows an outer variable", name));
+                            self.emit_code(crate::diagnostic::codes::E0403, format!("variable '{}' shadows an outer variable", name));
                             break;
                         }
                     }
@@ -139,7 +136,7 @@ impl<'a> Checker<'a> {
                 let final_ty = match declared {
                     Some(d) => {
                         if !same_type(&d, &init_ty) {
-                            self.emit(format!(
+                            self.emit_code(crate::diagnostic::codes::E0209, format!(
                                 "pattern declared as {} but initialized with {}",
                                 fmt_type(&d),
                                 fmt_type(&init_ty)
@@ -172,7 +169,7 @@ impl<'a> Checker<'a> {
             }
             Stmt::Return(None) => {
                 if !same_type(ret, &Type::Name("unit".into(), vec![])) {
-                    self.emit(format!(
+                    self.emit_code(crate::diagnostic::codes::E0207, format!(
                         "expected return value of type {}, found unit",
                         fmt_type(ret)
                     ));
@@ -181,7 +178,7 @@ impl<'a> Checker<'a> {
             Stmt::Return(Some(e)) => {
                 let t = self.infer_expr(e, scopes);
                 if !same_type(ret, &t) {
-                    self.emit(format!(
+                    self.emit_code(crate::diagnostic::codes::E0207, format!(
                         "return type mismatch: expected {}, found {}",
                         fmt_type(ret),
                         fmt_type(&t)
@@ -190,12 +187,12 @@ impl<'a> Checker<'a> {
             }
             Stmt::Break(_) => {
                 if self.loop_depth == 0 {
-                    self.emit("break outside of loop".to_string());
+                    self.emit_code(crate::diagnostic::codes::E0404, "break outside of loop".to_string());
                 }
             }
             Stmt::Continue => {
                 if self.loop_depth == 0 {
-                    self.emit("continue outside of loop".to_string());
+                    self.emit_code(crate::diagnostic::codes::E0405, "continue outside of loop".to_string());
                 }
             }
             Stmt::Expr(e) => {
@@ -204,7 +201,7 @@ impl<'a> Checker<'a> {
             Stmt::If { cond, then_, else_ } => {
                 let ct = self.infer_expr(cond, scopes);
                 if !is_bool(&ct) {
-                    self.emit(format!(
+                    self.emit_code(crate::diagnostic::codes::E0205, format!(
                         "if condition must be bool, found {}",
                         fmt_type(&ct)
                     ));
@@ -217,7 +214,7 @@ impl<'a> Checker<'a> {
             Stmt::While { cond, body } => {
                 let ct = self.infer_expr(cond, scopes);
                 if !is_bool(&ct) {
-                    self.emit(format!(
+                    self.emit_code(crate::diagnostic::codes::E0206, format!(
                         "while condition must be bool, found {}",
                         fmt_type(&ct)
                     ));
@@ -231,7 +228,7 @@ impl<'a> Checker<'a> {
                 let elem_ty = match it {
                     Type::Name(n, args) if n == "List" && args.len() == 1 => args[0].clone(),
                     _ => {
-                        self.emit(format!(
+                        self.emit_code(crate::diagnostic::codes::E0212, format!(
                             "for loop requires a List, found {}",
                             fmt_type(&it)
                         ));
@@ -273,10 +270,10 @@ impl<'a> Checker<'a> {
                         match &init_ty {
                             Type::Shared(inner) => Type::Weak(inner.clone()),
                             _ => {
-                                self.emit(format!(
-                                    "weak requires a shared value, found {}",
-                                    fmt_type(&init_ty)
-                                ));
+                            self.emit_code(crate::diagnostic::codes::E0411, format!(
+                                "weak requires a shared value, found {}",
+                                fmt_type(&init_ty)
+                            ));
                                 Type::Weak(Box::new(Type::Name("unknown".into(), vec![])))
                             }
                         }
@@ -285,10 +282,10 @@ impl<'a> Checker<'a> {
                         match &init_ty {
                             Type::LocalShared(inner) => Type::Weak(inner.clone()),
                             _ => {
-                                self.emit(format!(
-                                    "weak_local requires a local_shared value, found {}",
-                                    fmt_type(&init_ty)
-                                ));
+                            self.emit_code(crate::diagnostic::codes::E0411, format!(
+                                "weak_local requires a local_shared value, found {}",
+                                fmt_type(&init_ty)
+                            ));
                                 Type::Weak(Box::new(Type::Name("unknown".into(), vec![])))
                             }
                         }
@@ -326,7 +323,7 @@ impl<'a> Checker<'a> {
                             scope.get(name).copied().unwrap_or(false)
                         });
                         if !is_mut {
-                            self.emit(format!("cannot assign to immutable variable '{}' (use 'let mut')", name));
+                            self.emit_code(crate::diagnostic::codes::E0208, format!("cannot assign to immutable variable '{}' (use 'let mut')", name));
                         }
                         let target_ty = self.lookup_var(name, scopes);
                         if !same_type(&target_ty, &value_ty) {
@@ -365,7 +362,7 @@ impl<'a> Checker<'a> {
                         // For now just allow it - the type checker will verify field exists
                         let _ = (obj_ty, field);
                     }
-                    _ => self.emit("assignment target must be a variable"),
+                    _ => self.emit_code(crate::diagnostic::codes::E0219, "assignment target must be a variable"),
                 }
             }
             Stmt::Drop(expr) => {
@@ -375,7 +372,7 @@ impl<'a> Checker<'a> {
                 if let Expr::Ident(name) = expr {
                     if let Some(consumed) = self.cap_vars.last_mut().expect("scope stack non-empty").get_mut(name) {
                         if *consumed {
-                            self.emit(format!(
+                            self.emit_code(crate::diagnostic::codes::E0304, format!(
                                 "capability '{}' has already been consumed",
                                 name
                             ));

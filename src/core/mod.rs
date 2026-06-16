@@ -1,23 +1,56 @@
 use crate::ast::*;
+use crate::diagnostic::Diagnostic;
+use crate::span::Span;
 use std::collections::HashMap;
 
-#[derive(Debug, Clone)]
-#[allow(dead_code)]
-pub struct Diagnostic {
-    pub message: String,
-    pub line: usize,
-    pub col: usize,
+/// Compute the Levenshtein edit distance between two strings.
+fn edit_distance(a: &str, b: &str) -> usize {
+    let a_len = a.len();
+    let b_len = b.len();
+    let mut matrix = vec![vec![0usize; b_len + 1]; a_len + 1];
+
+    for i in 0..=a_len {
+        matrix[i][0] = i;
+    }
+    for j in 0..=b_len {
+        matrix[0][j] = j;
+    }
+
+    for i in 1..=a_len {
+        for j in 1..=b_len {
+            let cost = if a.as_bytes()[i - 1] == b.as_bytes()[j - 1] { 0 } else { 1 };
+            matrix[i][j] = std::cmp::min(
+                std::cmp::min(
+                    matrix[i - 1][j] + 1,      // deletion
+                    matrix[i][j - 1] + 1,      // insertion
+                ),
+                matrix[i - 1][j - 1] + cost,  // substitution
+            );
+        }
+    }
+
+    matrix[a_len][b_len]
 }
 
-impl Diagnostic {
-    fn new(msg: impl Into<String>) -> Self {
-        Self { message: msg.into(), line: 0, col: 0 }
+/// Find the closest matching name from a list of candidates.
+/// Returns the best match if its edit distance is <= max_distance.
+fn suggest_name(name: &str, candidates: &[String], max_distance: usize) -> Option<String> {
+    let mut best: Option<(String, usize)> = None;
+    for candidate in candidates {
+        let dist = edit_distance(name, candidate);
+        if dist <= max_distance && dist > 0 {
+            match &best {
+                Some((_, best_dist)) if dist < *best_dist => {
+                    best = Some((candidate.clone(), dist));
+                }
+                None => {
+                    best = Some((candidate.clone(), dist));
+                }
+                _ => {}
+            }
+        }
     }
-
-    #[allow(dead_code)]
-    fn with_pos(msg: impl Into<String>, line: usize, col: usize) -> Self {
-        Self { message: msg.into(), line, col }
-    }
+    best.map(|(name, _)| name)
 }
 
 pub fn check(file: &File) -> Result<(), Vec<Diagnostic>> {
@@ -72,12 +105,18 @@ fn verify_rules_in_block(block: &[Stmt]) {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[allow(dead_code)]
+/// Track borrow state with location information for precise diagnostics.
+#[derive(Debug, Clone)]
 enum BorrowState {
     Unborrowed,
-    BorrowedImm,
-    BorrowedMut,
+    BorrowedImm { span: Span },
+    BorrowedMut { span: Span },
+}
+
+impl BorrowState {
+    fn is_borrowed(&self) -> bool {
+        !matches!(self, BorrowState::Unborrowed)
+    }
 }
 
 struct Checker<'a> {
@@ -172,12 +211,22 @@ impl<'a> Checker<'a> {
     }
 
     fn emit(&mut self, msg: impl Into<String>) {
-        self.errors.push(Diagnostic::new(msg));
+        self.errors.push(Diagnostic::error(msg, Span::single(0, 0)));
     }
 
     #[allow(dead_code)]
     fn emit_at(&mut self, msg: impl Into<String>, line: usize, col: usize) {
-        self.errors.push(Diagnostic::with_pos(msg, line, col));
+        self.errors.push(Diagnostic::error(msg, Span::single(line, col)));
+    }
+
+    #[allow(dead_code)]
+    fn emit_code(&mut self, code: &str, msg: impl Into<String>) {
+        self.errors.push(Diagnostic::error_code(code, msg, Span::single(0, 0)));
+    }
+
+    #[allow(dead_code)]
+    fn emit_with_code(&mut self, code: &str, msg: impl Into<String>, span: Span) {
+        self.errors.push(Diagnostic::error_code(code, msg, span));
     }
 
     fn push_borrow_scope(&mut self) {
@@ -188,9 +237,9 @@ impl<'a> Checker<'a> {
         self.borrows.pop();
     }
 
-    fn lookup_borrow(&self, name: &str) -> Option<BorrowState> {
+    fn lookup_borrow(&self, name: &str) -> Option<&BorrowState> {
         for scope in self.borrows.iter().rev() {
-            if let Some(&state) = scope.get(name) {
+            if let Some(state) = scope.get(name) {
                 return Some(state);
             }
         }
@@ -224,7 +273,7 @@ impl<'a> Checker<'a> {
             let mut visited = std::collections::HashSet::new();
             visited.insert(name.clone());
             if self.follows_alias_cycle(name, &visited) {
-                self.emit(format!("type alias cycle detected: '{}' forms a cycle", name));
+                self.emit_code(crate::diagnostic::codes::E0409, format!("type alias cycle detected: '{}' forms a cycle", name));
             }
         }
     }
@@ -250,7 +299,7 @@ impl<'a> Checker<'a> {
                     format!("{}::{}", self.module_path.join("::"), f.name)
                 };
                 if self.funcs.contains_key(&qualified_name) {
-                    self.emit(format!("duplicate function definition '{}'", qualified_name));
+                    self.emit_code(crate::diagnostic::codes::E0402, format!("duplicate function definition '{}'", qualified_name));
                     return;
                 }
                 let params: Vec<Type> = f.params.iter().map(|p| self.resolve_type(&p.ty)).collect();
@@ -278,7 +327,7 @@ impl<'a> Checker<'a> {
             }
             Item::Type(t) => {
                 if self.types.contains_key(&t.name) {
-                    self.emit(format!("duplicate type definition '{}'", t.name));
+                    self.emit_code(crate::diagnostic::codes::E0402, format!("duplicate type definition '{}'", t.name));
                     return;
                 }
                 match &t.kind {
@@ -465,7 +514,7 @@ impl<'a> Checker<'a> {
                     if let Type::Name(name, args) = &field_ty {
                         // Check that the type exists (unless it's a built-in)
                         if !Self::is_builtin_type(name) && !self.types.contains_key(name) {
-                            self.emit(format!("unknown type '{}' in actor field '{}'", name, field.name));
+                            self.emit_code(crate::diagnostic::codes::E0231, format!("unknown type '{}' in actor field '{}'", name, field.name));
                         }
                         // Also check type arguments
                         for arg in args {
@@ -530,11 +579,11 @@ impl<'a> Checker<'a> {
             Item::Impl(impl_def) => {
                 // Check that the trait exists
                 if !self.traits.contains_key(&impl_def.trait_name) {
-                    self.emit(format!("undefined trait '{}'", impl_def.trait_name));
+                    self.emit_code(crate::diagnostic::codes::E0406, format!("undefined trait '{}'", impl_def.trait_name));
                 }
                 // Check that the type exists
                 if !self.types.contains_key(&impl_def.type_name) && !Self::is_builtin_type(&impl_def.type_name) {
-                    self.emit(format!("undefined type '{}'", impl_def.type_name));
+                    self.emit_code(crate::diagnostic::codes::E0407, format!("undefined type '{}'", impl_def.type_name));
                 }
                 // Check that all required trait methods are implemented
                 if let Some(required_methods) = self.traits.get(&impl_def.trait_name).cloned() {
@@ -567,7 +616,7 @@ impl<'a> Checker<'a> {
         match ty {
             Type::Name(name, args) => {
                 if !Self::is_builtin_type(name) && !self.types.contains_key(name) {
-                    self.emit(format!("unknown type '{}' in {}", name, context));
+                    self.emit_code(crate::diagnostic::codes::E0231, format!("unknown type '{}' in {}", name, context));
                 }
                 for arg in args {
                     self.check_type_well_formed(arg, context);
@@ -714,11 +763,13 @@ impl<'a> Checker<'a> {
                     if let Stmt::MmsBlock { content: text, .. } = stmt {
                         if text.contains("requires:") || text.contains("ensures:") || text.contains("math:") {
                             // In strict mode, $$ locked functions should not have their contracts changed
-                            // For now, just warn that this is a $$ locked function
-                            self.emit(format!(
-                                "strict mode: function '{}' is $$ locked - contract modifications not allowed",
-                                name
-                            ));
+                            self.errors.push(
+                                Diagnostic::error_code(
+                                    crate::diagnostic::codes::E0501,
+                                    format!("strict mode: function '{}' is $$ locked - contract modifications not allowed", name),
+                                    Span::single(0, 0),
+                                ).with_help("remove $$ suffix to allow modification, or use $$? for AI-reviewable lock")
+                            );
                         }
                     }
                 }
@@ -728,10 +779,13 @@ impl<'a> Checker<'a> {
                 for stmt in body {
                     if let Stmt::MmsBlock { content: text, .. } = stmt {
                         if text.contains("requires:") || text.contains("ensures:") || text.contains("math:") {
-                            self.emit(format!(
-                                "strict mode: function '{}' is $ locked - contract modifications discouraged",
-                                name
-                            ));
+                            self.errors.push(
+                                Diagnostic::warning_code(
+                                    crate::diagnostic::codes::E0600,
+                                    format!("strict mode: function '{}' is $ locked - contract modifications discouraged", name),
+                                    Span::single(0, 0),
+                                ).with_help("remove $ suffix to allow modification")
+                            );
                         }
                     }
                 }
@@ -1012,7 +1066,26 @@ impl<'a> Checker<'a> {
                 return Type::Name(name.into(), vec![]);
             }
         }
-        self.emit(format!("undefined variable '{}'", name));
+        // Collect all known names for "did you mean?" suggestions
+        let mut candidates: Vec<String> = Vec::new();
+        for scope in scopes.iter().rev() {
+            candidates.extend(scope.keys().cloned());
+        }
+        candidates.extend(self.funcs.keys().cloned());
+        candidates.extend(self.types.keys().cloned());
+
+        let suggestion = suggest_name(name, &candidates, 3);
+        if let Some(suggested) = suggestion {
+            self.errors.push(
+                Diagnostic::error_code(
+                    crate::diagnostic::codes::E0400,
+                    format!("undefined variable '{}'", name),
+                    Span::single(0, 0),
+                ).with_help(format!("did you mean '{}'?", suggested))
+            );
+        } else {
+            self.emit_code(crate::diagnostic::codes::E0400, format!("undefined variable '{}'", name));
+        }
         Type::Name("unknown".into(), vec![])
     }
 

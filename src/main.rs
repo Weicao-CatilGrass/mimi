@@ -1,13 +1,15 @@
 mod ast;
 mod codegen;
 mod contracts;
-mod core;
+pub mod core;
+pub mod diagnostic;
 mod interp;
 mod lexer;
 mod loader;
 mod lsp;
 mod manifest;
 mod parser;
+pub mod span;
 mod verifier;
 #[cfg(test)]
 mod tests;
@@ -19,6 +21,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::ast::{File, Item, Stmt};
+use crate::diagnostic::format::{format_diagnostic, format_simple_error, strip_ansi, colors_enabled};
 
 #[derive(Parser, Debug)]
 #[command(name = "mimi", version = "0.1.1", about = "Mimi language driver")]
@@ -131,7 +134,7 @@ fn main() {
         Command::Doc { path, format } => doc(&path, &format),
     };
     if let Err(e) = result {
-        eprintln!("error: {}", e);
+        eprintln!("{}", format_simple_error(&e));
         std::process::exit(1);
     }
 }
@@ -202,7 +205,26 @@ fn check(path: Option<&Path>, extract_contracts: bool, strict: bool, verify_rule
     let mut file = if sketch {
         parser::Parser::new_sketch(tokens).parse_file()?
     } else {
-        parser::Parser::new(tokens).parse_file()?
+        let (file, parse_errors) = parser::Parser::new(tokens).parse_file_with_recovery();
+        if !parse_errors.is_empty() {
+            let use_color = colors_enabled();
+            let src_ref = Some(source.as_str());
+            let filename = &path.display().to_string();
+            for e in &parse_errors {
+                let formatted = format_diagnostic(&e.to_diagnostic(), src_ref, filename);
+                if use_color {
+                    eprint!("{}", formatted);
+                } else {
+                    eprint!("{}", strip_ansi(&formatted));
+                }
+            }
+            if parse_errors.iter().all(|e| e.span.as_ref().map_or(true, |s| s.start_line > 0)) {
+                // All errors have valid positions, continue to type checking
+            } else {
+                return Err(format!("{} parse error(s)", parse_errors.len()));
+            }
+        }
+        file
     };
     if sketch {
         println!("✓ {} parsed successfully (sketch mode)", path.display());
@@ -245,9 +267,17 @@ fn check(path: Option<&Path>, extract_contracts: bool, strict: bool, verify_rule
         core::check(&file)
     };
     if let Err(diagnostics) = check_result {
-        eprintln!("✗ {} has {} type error(s):", path.display(), diagnostics.len());
-        for d in diagnostics {
-            eprintln!("  - {}", d.message);
+        eprintln!("{} has {} type error(s):", path.display(), diagnostics.len());
+        let use_color = colors_enabled();
+        let src = fs::read_to_string(&path).ok();
+        let src_ref = src.as_deref();
+        for d in &diagnostics {
+            let formatted = format_diagnostic(d, src_ref, &path.display().to_string());
+            if use_color {
+                eprint!("{}", formatted);
+            } else {
+                eprint!("{}", strip_ansi(&formatted));
+            }
         }
         return Err("type checking failed".into());
     }
@@ -296,9 +326,17 @@ fn run(path: Option<&Path>, verify_contracts: bool, allocator: &str) -> Result<(
     };
 
     if let Err(diagnostics) = core::check(&merged_file) {
-        eprintln!("✗ {} has {} type error(s):", path.display(), diagnostics.len());
-        for d in diagnostics {
-            eprintln!("  - {}", d.message);
+        eprintln!("{} has {} type error(s):", path.display(), diagnostics.len());
+        let use_color = colors_enabled();
+        let src = fs::read_to_string(&path).ok();
+        let src_ref = src.as_deref();
+        for d in &diagnostics {
+            let formatted = format_diagnostic(d, src_ref, &path.display().to_string());
+            if use_color {
+                eprint!("{}", formatted);
+            } else {
+                eprint!("{}", strip_ansi(&formatted));
+            }
         }
         return Err("type checking failed".into());
     }
@@ -335,9 +373,17 @@ fn test(path: Option<&Path>, allocator: &str) -> Result<(), String> {
     };
 
     if let Err(diagnostics) = core::check(&merged_file) {
-        eprintln!("✗ {} has {} type error(s):", path.display(), diagnostics.len());
-        for d in diagnostics {
-            eprintln!("  - {}", d.message);
+        eprintln!("{} has {} type error(s):", path.display(), diagnostics.len());
+        let use_color = colors_enabled();
+        let src = fs::read_to_string(&path).ok();
+        let src_ref = src.as_deref();
+        for d in &diagnostics {
+            let formatted = format_diagnostic(d, src_ref, &path.display().to_string());
+            if use_color {
+                eprint!("{}", formatted);
+            } else {
+                eprint!("{}", strip_ansi(&formatted));
+            }
         }
         return Err("type checking failed".into());
     }
@@ -499,9 +545,17 @@ fn build(path: Option<&Path>, output: Option<&Path>, emit_ir: bool) -> Result<()
     let file = parser::Parser::new(tokens).parse_file()?;
 
     if let Err(diagnostics) = core::check(&file) {
-        eprintln!("✗ {} has {} type error(s):", path.display(), diagnostics.len());
-        for d in diagnostics {
-            eprintln!("  - {}", d.message);
+        eprintln!("{} has {} type error(s):", path.display(), diagnostics.len());
+        let use_color = colors_enabled();
+        let src = fs::read_to_string(&path).ok();
+        let src_ref = src.as_deref();
+        for d in &diagnostics {
+            let formatted = format_diagnostic(d, src_ref, &path.display().to_string());
+            if use_color {
+                eprint!("{}", formatted);
+            } else {
+                eprint!("{}", strip_ansi(&formatted));
+            }
         }
         return Err("type checking failed".into());
     }
