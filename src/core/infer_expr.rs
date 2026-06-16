@@ -507,6 +507,12 @@ impl<'a> Checker<'a> {
                 // type_of returns a Type descriptor
                 Type::Name("Type".into(), vec![])
             }
+            Expr::SliceExpr { target, start, end } => {
+                let target_ty = self.infer_expr(target, scopes);
+                if let Some(s) = start { let _ = self.infer_expr(s, scopes); }
+                if let Some(e) = end { let _ = self.infer_expr(e, scopes); }
+                Type::Slice(Box::new(target_ty))
+            }
             Expr::TypeInfo(_) => {
                 // type_info returns a record with type metadata
                 Type::Name("TypeInfo".into(), vec![])
@@ -917,6 +923,9 @@ impl<'a> Checker<'a> {
                     }
                 }
                 (covered, false)
+            }
+            Pattern::Array(_) | Pattern::Slice(_, _) => {
+                (Vec::new(), false)
             }
         }
     }

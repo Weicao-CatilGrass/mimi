@@ -266,3 +266,552 @@ func main() -> i32 {
     let v = run_source(src);
     assert_eq!(v, interp::Value::Int(52));
 }
+
+#[test]
+fn break_exits_while_loop() {
+    let src = r#"
+func main() -> i32 {
+    let mut i = 0;
+    while i < 10 {
+        if i == 3 {
+            break;
+        }
+        i = i + 1;
+    }
+    return i;
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::Int(3));
+}
+
+#[test]
+fn break_with_value() {
+    let src = r#"
+func main() -> i32 {
+    let mut i = 0;
+    while i < 10 {
+        if i == 5 {
+            break i * 2;
+        }
+        i = i + 1;
+    }
+    return 0;
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::Int(10));
+}
+
+#[test]
+fn continue_skips_iteration() {
+    let src = r#"
+func main() -> i32 {
+    let mut sum = 0;
+    let mut i = 0;
+    while i < 5 {
+        i = i + 1;
+        if i == 3 {
+            continue;
+        }
+        sum = sum + i;
+    }
+    return sum;
+}
+"#;
+    // sum = 1 + 2 + 4 + 5 = 12 (skips 3)
+    assert_eq!(run_source(src), interp::Value::Int(12));
+}
+
+#[test]
+fn break_in_nested_loop() {
+    let src = r#"
+func main() -> i32 {
+    let mut result = 0;
+    let mut i = 0;
+    while i < 3 {
+        let mut j = 0;
+        while j < 3 {
+            if j == 1 {
+                break;
+            }
+            result = result + 1;
+            j = j + 1;
+        }
+        i = i + 1;
+    }
+    return result;
+}
+"#;
+    // inner loop: j=0 executes (result+=1, j=1), then j=1 breaks
+    // so result += 1 per outer iteration, 3 outer iterations
+    assert_eq!(run_source(src), interp::Value::Int(3));
+}
+
+#[test]
+fn continue_in_for_loop() {
+    let src = r#"
+func main() -> i32 {
+    let mut sum = 0;
+    for x in [1, 2, 3, 4, 5] {
+        if x == 3 {
+            continue;
+        }
+        sum = sum + x;
+    }
+    return sum;
+}
+"#;
+    // sum = 1 + 2 + 4 + 5 = 12
+    assert_eq!(run_source(src), interp::Value::Int(12));
+}
+
+#[test]
+fn break_in_for_loop() {
+    let src = r#"
+func main() -> i32 {
+    let mut result = 0;
+    for x in [10, 20, 30, 40, 50] {
+        if x == 30 {
+            break;
+        }
+        result = result + x;
+    }
+    return result;
+}
+"#;
+    // result = 10 + 20 = 30
+    assert_eq!(run_source(src), interp::Value::Int(30));
+}
+
+#[test]
+fn break_outside_loop_error() {
+    let src = r#"
+func main() -> i32 {
+    break;
+    return 0;
+}
+"#;
+    let result = check_source(src);
+    assert!(result.is_err());
+    let errors = result.unwrap_err();
+    assert!(errors.iter().any(|e| e.message.contains("break outside of loop")));
+}
+
+#[test]
+fn continue_outside_loop_error() {
+    let src = r#"
+func main() -> i32 {
+    continue;
+    return 0;
+}
+"#;
+    let result = check_source(src);
+    assert!(result.is_err());
+    let errors = result.unwrap_err();
+    assert!(errors.iter().any(|e| e.message.contains("continue outside of loop")));
+}
+
+#[test]
+fn break_in_if_inside_loop() {
+    let src = r#"
+func main() -> i32 {
+    let mut i = 0;
+    while i < 10 {
+        if i == 5 {
+            break;
+        }
+        i = i + 1;
+    }
+    return i;
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::Int(5));
+}
+
+#[test]
+fn continue_while_condition_reevaluated() {
+    let src = r#"
+func main() -> i32 {
+    let mut count = 0;
+    let mut i = 0;
+    while i < 5 {
+        i = i + 1;
+        if i == 2 {
+            continue;
+        }
+        count = count + 1;
+    }
+    return count;
+}
+"#;
+    // i: 1(count=1), 2(skip), 3(count=2), 4(count=3), 5(count=4)
+    assert_eq!(run_source(src), interp::Value::Int(4));
+}
+
+#[test]
+fn array_literal_creation() {
+    let src = r#"
+func main() -> i32 {
+    let arr: [i32; 3] = [1, 2, 3];
+    return arr[0] + arr[1] + arr[2];
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::Int(6));
+}
+
+#[test]
+fn array_index_access() {
+    let src = r#"
+func main() -> i32 {
+    let arr: [i32; 5] = [10, 20, 30, 40, 50];
+    return arr[2];
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::Int(30));
+}
+
+#[test]
+fn array_index_out_of_bounds() {
+    let src = r#"
+func main() -> i32 {
+    let arr: [i32; 3] = [1, 2, 3];
+    return arr[5];
+}
+"#;
+    let result = run_source_result(src);
+    assert!(result.is_err());
+}
+
+#[test]
+fn array_type_annotation() {
+    let src = r#"
+func main() -> i32 {
+    let arr: [i32; 4] = [100, 200, 300, 400];
+    return arr[3];
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::Int(400));
+}
+
+#[test]
+fn array_size_mismatch_error() {
+    let src = r#"
+func main() -> i32 {
+    let arr: [i32; 2] = [1, 2, 3];
+    return arr[0];
+}
+"#;
+    let result = run_source_result(src);
+    assert!(result.is_err());
+}
+
+#[test]
+fn array_empty() {
+    let src = r#"
+func main() -> i32 {
+    let arr: [i32; 0] = [];
+    return 42;
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::Int(42));
+}
+
+#[test]
+fn array_single_element() {
+    let src = r#"
+func main() -> i32 {
+    let arr: [i32; 1] = [99];
+    return arr[0];
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::Int(99));
+}
+
+#[test]
+fn array_with_expressions() {
+    let src = r#"
+func main() -> i32 {
+    let x = 10;
+    let arr: [i32; 3] = [x, x + 1, x * 2];
+    return arr[0] + arr[1] + arr[2];
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::Int(41));
+}
+
+#[test]
+fn array_negative_index() {
+    let src = r#"
+func main() -> i32 {
+    let arr: [i32; 3] = [10, 20, 30];
+    return arr[-1];
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::Int(30));
+}
+
+#[test]
+fn array_equality() {
+    let src = r#"
+func main() -> bool {
+    let a: [i32; 3] = [1, 2, 3];
+    let b: [i32; 3] = [1, 2, 3];
+    return a == b;
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::Bool(true));
+}
+
+#[test]
+fn array_inequality() {
+    let src = r#"
+func main() -> bool {
+    let a: [i32; 3] = [1, 2, 3];
+    let b: [i32; 3] = [1, 2, 4];
+    return a == b;
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::Bool(false));
+}
+
+#[test]
+fn array_display() {
+    let src = r#"
+func main() -> string {
+    let arr: [i32; 3] = [1, 2, 3];
+    return to_string(arr);
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::String("[1, 2, 3]".to_string()));
+}
+
+#[test]
+fn slice_of_list() {
+    let src = r#"
+func main() -> i32 {
+    let arr = [10, 20, 30, 40, 50];
+    let s = arr[1..4];
+    return s[0] + s[1] + s[2];
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::Int(90));
+}
+
+#[test]
+fn slice_range_syntax() {
+    let src = r#"
+func main() -> i32 {
+    let arr = [1, 2, 3, 4, 5];
+    let s = arr[0..3];
+    return len(s);
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::Int(3));
+}
+
+#[test]
+fn slice_open_end() {
+    let src = r#"
+func main() -> i32 {
+    let arr = [10, 20, 30, 40, 50];
+    let s = arr[2..];
+    return len(s);
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::Int(3));
+}
+
+#[test]
+fn slice_open_start() {
+    let src = r#"
+func main() -> i32 {
+    let arr = [10, 20, 30, 40, 50];
+    let s = arr[..3];
+    return len(s);
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::Int(3));
+}
+
+#[test]
+fn slice_empty() {
+    let src = r#"
+func main() -> i32 {
+    let arr = [1, 2, 3];
+    let s = arr[1..1];
+    return len(s);
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::Int(0));
+}
+
+#[test]
+fn slice_full() {
+    let src = r#"
+func main() -> i32 {
+    let arr = [1, 2, 3];
+    let s = arr[..];
+    return len(s);
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::Int(3));
+}
+
+#[test]
+fn slice_out_of_bounds() {
+    let src = r#"
+func main() -> i32 {
+    let arr = [1, 2, 3];
+    let s = arr[1..10];
+    return 0;
+}
+"#;
+    let result = run_source_result(src);
+    assert!(result.is_err());
+}
+
+#[test]
+fn slice_start_greater_than_end() {
+    let src = r#"
+func main() -> i32 {
+    let arr = [1, 2, 3];
+    let s = arr[2..1];
+    return 0;
+}
+"#;
+    let result = run_source_result(src);
+    assert!(result.is_err());
+}
+
+#[test]
+fn slice_negative_index() {
+    let src = r#"
+func main() -> i32 {
+    let arr = [10, 20, 30, 40, 50];
+    let s = arr[-3..];
+    return s[0] + s[1] + s[2];
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::Int(120));
+}
+
+#[test]
+fn slice_equality() {
+    let src = r#"
+func main() -> bool {
+    let arr = [1, 2, 3, 4, 5];
+    let a = arr[0..3];
+    let b = arr[0..3];
+    return a == b;
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::Bool(true));
+}
+
+#[test]
+fn slice_display() {
+    let src = r#"
+func main() -> string {
+    let arr = [10, 20, 30];
+    let s = arr[1..3];
+    return to_string(s);
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::String("[20, 30]".to_string()));
+}
+
+#[test]
+fn slice_of_string() {
+    let src = r#"
+func main() -> string {
+    let s = "hello world";
+    return s[0..5];
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::String("hello".to_string()));
+}
+
+#[test]
+fn array_pattern_match() {
+    let src = r#"
+func main() -> i32 {
+    let arr: [i32; 3] = [1, 2, 3];
+    match arr {
+        [1, 2, 3] => 10,
+        _ => 0,
+    }
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::Int(10));
+}
+
+#[test]
+fn array_pattern_with_wildcard() {
+    let src = r#"
+func main() -> i32 {
+    let arr: [i32; 3] = [1, 2, 3];
+    match arr {
+        [1, _, _] => 10,
+        _ => 0,
+    }
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::Int(10));
+}
+
+#[test]
+fn array_pattern_wrong_length() {
+    let src = r#"
+func main() -> i32 {
+    let arr: [i32; 3] = [1, 2, 3];
+    match arr {
+        [1, 2] => 10,
+        _ => 0,
+    }
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::Int(0));
+}
+
+#[test]
+fn slice_pattern_prefix() {
+    let src = r#"
+func main() -> i32 {
+    let arr = [1, 2, 3, 4, 5];
+    let s = arr[1..4];
+    match s {
+        [2, 3, _] => 10,
+        _ => 0,
+    }
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::Int(10));
+}
+
+#[test]
+fn slice_pattern_with_rest() {
+    let src = r#"
+func main() -> i32 {
+    let arr = [10, 20, 30, 40, 50];
+    let s = arr[0..3];
+    match s {
+        [10, ..rest] => len(rest),
+        _ => 0,
+    }
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::Int(2));
+}
+
+#[test]
+fn array_pattern_with_variable() {
+    let src = r#"
+func main() -> i32 {
+    let arr: [i32; 3] = [10, 20, 30];
+    match arr {
+        [a, b, c] => a + b + c,
+        _ => 0,
+    }
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::Int(60));
+}

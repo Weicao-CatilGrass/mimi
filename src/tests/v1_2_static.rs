@@ -185,3 +185,28 @@ func main() -> i32 {
     let msgs: Vec<String> = errors.iter().map(|e| e.message.clone()).collect();
     assert!(msgs.iter().any(|m| m.contains("type alias cycle")), "Expected alias cycle error, got: {:?}", msgs);
 }
+
+#[test]
+fn strict_locked_func_no_mms_ok() {
+    let src = r#"
+func$ add(a: i32, b: i32) -> i32 {
+    a + b
+}
+"#;
+    let result = check_source_strict(src);
+    // $ locked function without mms blocks should pass
+    assert!(result.is_ok());
+}
+
+#[test]
+fn verify_rules_valid() {
+    let src = r#"
+func main() -> i32 {
+    desc "this is a description";
+    return 0;
+}
+"#;
+    let file = parse(src);
+    let errors = core::verify_rules(&file);
+    assert!(errors.is_empty());
+}

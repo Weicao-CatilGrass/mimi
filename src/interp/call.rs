@@ -169,7 +169,9 @@ impl<'a> Interpreter<'a> {
                 match &args[0] {
                     Value::String(s) => Ok(Value::Int(s.chars().count() as i64)),
                     Value::List(l) => Ok(Value::Int(l.len() as i64)),
-                    _ => Err("len expects a string or list".into()),
+                    Value::Array(a) => Ok(Value::Int(a.len() as i64)),
+                    Value::Slice { start, end, .. } => Ok(Value::Int((end - start) as i64)),
+                    _ => Err("len expects a string, list, array, or slice".into()),
                 }
             }
             "to_string" => {

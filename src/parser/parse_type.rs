@@ -73,6 +73,13 @@ impl Parser {
                 if mut_ {
                     self.advance();
                 }
+                // Check for &[T] slice type
+                if self.at(&TokenKind::LBracket) {
+                    self.advance();
+                    let elem_type = self.parse_type()?;
+                    self.expect(TokenKind::RBracket, "`]`")?;
+                    return Ok(Type::Slice(Box::new(elem_type)));
+                }
                 let inner = self.parse_type()?;
                 if mut_ {
                     Ok(Type::RefMut(Box::new(inner)))
@@ -109,6 +116,36 @@ impl Parser {
                 self.advance();
                 let inner = self.parse_type()?;
                 Ok(Type::Weak(Box::new(inner)))
+            }
+            TokenKind::LBracket => {
+                self.advance();
+                let elem_type = self.parse_type()?;
+                if self.at(&TokenKind::Semi) {
+                    self.advance();
+                    // [T; n] — fixed-size array
+                    let size_tok = self.peek();
+                    let size = match &size_tok.kind {
+                        TokenKind::Int(s) => s.parse::<usize>().map_err(|_| ParseError::new(
+                            "array size must be a non-negative integer",
+                            size_tok.line,
+                            size_tok.col,
+                        ))?,
+                        _ => return Err(ParseError::new(
+                            "expected integer array size after `;`",
+                            size_tok.line,
+                            size_tok.col,
+                        )),
+                    };
+                    self.advance();
+                    self.expect(TokenKind::RBracket, "`]`")?;
+                    Ok(Type::Array(Box::new(elem_type), size))
+                } else {
+                    return Err(ParseError::new(
+                        "expected `;` for array type `[T; n]`",
+                        self.peek().line,
+                        self.peek().col,
+                    ));
+                }
             }
             _ => Err(ParseError::new(
                 format!("expected type, found {}", tok.kind),

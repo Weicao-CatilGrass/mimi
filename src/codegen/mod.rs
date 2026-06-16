@@ -120,6 +120,9 @@ impl<'ctx> CodeGenerator<'ctx> {
                             .map_err(|e| format!("store error: {}", e))?;
                     }
                 }
+                Stmt::Break(_) | Stmt::Continue => {
+                    // Loops not yet supported in codegen; break/continue ignored
+                }
                 _ => {}
             }
         }

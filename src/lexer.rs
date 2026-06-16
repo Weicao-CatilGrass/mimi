@@ -41,6 +41,8 @@ pub enum TokenKind {
     In,
     While,
     Return,
+    Break,
+    Continue,
     Match,
     Use,
     Pub,
@@ -116,6 +118,7 @@ pub enum TokenKind {
     Semi,
     Comma,
     Dot,
+    DotDot,
     ColonColon,
     Arrow,
     FatArrow,
@@ -167,6 +170,8 @@ impl fmt::Display for TokenKind {
             TokenKind::In => "in",
             TokenKind::While => "while",
             TokenKind::Return => "return",
+            TokenKind::Break => "break",
+            TokenKind::Continue => "continue",
             TokenKind::Match => "match",
             TokenKind::Use => "use",
             TokenKind::Pub => "pub",
@@ -236,6 +241,7 @@ impl fmt::Display for TokenKind {
             TokenKind::Semi => ";",
             TokenKind::Comma => ",",
             TokenKind::Dot => ".",
+            TokenKind::DotDot => "..",
             TokenKind::ColonColon => "::",
             TokenKind::Arrow => "->",
             TokenKind::FatArrow => "=>",
@@ -574,6 +580,8 @@ impl<'a> Lexer<'a> {
             "in" => TokenKind::In,
             "while" => TokenKind::While,
             "return" => TokenKind::Return,
+            "break" => TokenKind::Break,
+            "continue" => TokenKind::Continue,
             "match" => TokenKind::Match,
             "use" => TokenKind::Use,
             "pub" => TokenKind::Pub,
@@ -919,6 +927,9 @@ impl<'a> Lexer<'a> {
                         self.advance();
                         self.advance();
                         (TokenKind::Ellipsis, Commitment::None)
+                    } else if self.peek() == Some('.') {
+                        self.advance();
+                        (TokenKind::DotDot, Commitment::None)
                     } else {
                         (TokenKind::Dot, Commitment::None)
                     }

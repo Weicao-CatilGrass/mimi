@@ -208,6 +208,10 @@ pub enum Pattern {
     Literal(Lit),
     Constructor(String, Vec<Pattern>),
     Tuple(Vec<Pattern>),
+    /// Array pattern: [p1, p2, ...]
+    Array(Vec<Pattern>),
+    /// Slice pattern: [p1, p2, ..rest]
+    Slice(Vec<Pattern>, Option<Box<Pattern>>),
 }
 
 /// Kind of shared ownership
@@ -235,6 +239,8 @@ pub enum Stmt {
         ref_: bool,  // let ref x = ... for arena references
     },
     Return(Option<Expr>),
+    Break(Option<Expr>),
+    Continue,
     Expr(Expr),
     If {
         cond: Expr,
@@ -331,6 +337,12 @@ pub enum Expr {
     },
     /// old(expr) - snapshot value at function entry for use in ensures
     Old(Box<Expr>),
+    /// Slice expression: expr[start..end]
+    SliceExpr {
+        target: Box<Expr>,
+        start: Option<Box<Expr>>,
+        end: Option<Box<Expr>>,
+    },
     /// Turbofish: func_name::<Type>(args) — explicit type instantiation
     Turbofish(String, Vec<Type>, Vec<Expr>),
 }
@@ -421,6 +433,10 @@ pub enum Type {
     Nothing,
     /// Allocator type for custom memory allocation
     Allocator,
+    /// Fixed-size array type: [T; n]
+    Array(Box<Type>, usize),
+    /// Slice type: &[T]
+    Slice(Box<Type>),
 }
 
 /// Kind of allocator for alloc blocks

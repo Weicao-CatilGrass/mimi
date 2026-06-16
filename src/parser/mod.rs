@@ -867,6 +867,34 @@ impl Parser {
                 self.expect(TokenKind::RParen, "`)")?;
                 Ok(Pattern::Tuple(pats))
             }
+            TokenKind::LBracket => {
+                self.advance();
+                let mut pats = Vec::new();
+                let mut rest = None;
+                if !self.at(&TokenKind::RBracket) {
+                    loop {
+                        if self.at(&TokenKind::DotDot) {
+                            // [p1, ..rest] — rest pattern
+                            self.advance();
+                            if !self.at(&TokenKind::RBracket) {
+                                rest = Some(Box::new(self.parse_pattern()?));
+                            }
+                            break;
+                        }
+                        pats.push(self.parse_pattern()?);
+                        if !self.at(&TokenKind::Comma) {
+                            break;
+                        }
+                        self.advance();
+                    }
+                }
+                self.expect(TokenKind::RBracket, "`]`")?;
+                if rest.is_some() {
+                    Ok(Pattern::Slice(pats, rest))
+                } else {
+                    Ok(Pattern::Array(pats))
+                }
+            }
             _ => Err(ParseError::new(format!("unexpected token in pattern {}", tok.kind), tok.line, tok.col)),
         }
     }
