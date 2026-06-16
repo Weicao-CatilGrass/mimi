@@ -253,6 +253,7 @@ dependencies = [
  "inkwell",
  "libloading",
  "mimispec",
+ "semver",
  "serde",
  "serde_json",
  "toml",

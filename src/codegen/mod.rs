@@ -1171,6 +1171,50 @@ impl<'ctx> CodeGenerator<'ctx> {
                 self.builder.position_at_end(ok_bb);
                 Ok(self.context.i64_type().const_int(0, false).into())
             }
+            "assert_ne" => {
+                if args.len() != 2 {
+                    return Err("assert_ne expects 2 arguments".into());
+                }
+                let a = args[0];
+                let b = args[1];
+                let ne = match (a, b) {
+                    (BasicMetadataValueEnum::IntValue(l), BasicMetadataValueEnum::IntValue(r)) => {
+                        self.builder.build_int_compare(inkwell::IntPredicate::NE, l, r, "cmp")
+                            .map_err(|e| format!("cmp error: {}", e))?
+                    }
+                    (BasicMetadataValueEnum::FloatValue(l), BasicMetadataValueEnum::FloatValue(r)) => {
+                        self.builder.build_float_compare(inkwell::FloatPredicate::ONE, l, r, "cmp")
+                            .map_err(|e| format!("cmp error: {}", e))?
+                    }
+                    _ => return Err("assert_ne requires same types".into()),
+                };
+                let function = self.builder.get_insert_block().unwrap().get_parent().unwrap();
+                let ok_bb = self.context.append_basic_block(function, "ane_ok");
+                let fail_bb = self.context.append_basic_block(function, "ane_fail");
+                self.builder.build_conditional_branch(ne, ok_bb, fail_bb)
+                    .map_err(|e| format!("branch error: {}", e))?;
+
+                self.builder.position_at_end(fail_bb);
+                let fmt_global = self.builder.build_global_string_ptr("assertion failed: values are equal\n", "ane_msg")
+                    .map_err(|e| format!("fmt error: {}", e))?;
+                let printf = self.module.get_function("printf")
+                    .ok_or_else(|| "printf not declared".to_string())?;
+                self.builder.build_call(printf, &[
+                    BasicMetadataValueEnum::PointerValue(fmt_global.as_pointer_value()),
+                ], "ane_printf")
+                    .map_err(|e| format!("printf error: {}", e))?;
+                let exit_fn = self.module.get_function("exit")
+                    .ok_or_else(|| "exit not declared".to_string())?;
+                self.builder.build_call(exit_fn, &[
+                    BasicMetadataValueEnum::IntValue(self.context.i32_type().const_int(1, false)),
+                ], "ane_exit")
+                    .map_err(|e| format!("exit error: {}", e))?;
+                self.builder.build_unconditional_branch(ok_bb)
+                    .map_err(|e| format!("branch error: {}", e))?;
+
+                self.builder.position_at_end(ok_bb);
+                Ok(self.context.i64_type().const_int(0, false).into())
+            }
             "range" => {
                 if args.len() != 2 {
                     return Err("range expects 2 arguments".into());
