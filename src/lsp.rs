@@ -76,6 +76,20 @@ impl LspServer {
                         "completionProvider": {
                             "triggerCharacters": [".", ":"]
                         },
+                        "hoverProvider": true,
+                        "definitionProvider": true,
+                        "referencesProvider": true,
+                        "renameProvider": true,
+                        "signatureHelpProvider": {
+                            "triggerCharacters": ["("]
+                        },
+                        "semanticTokensProvider": {
+                            "legend": {
+                                "tokenTypes": ["keyword", "function", "type", "variable", "number", "string", "comment", "operator"],
+                                "tokenModifiers": ["declaration", "definition"]
+                            },
+                            "full": true
+                        },
                         "diagnosticProvider": {
                             "interFileDependencies": false,
                             "workspaceDiagnostics": false
@@ -193,6 +207,80 @@ impl LspServer {
                     "jsonrpc": "2.0",
                     "id": id,
                     "result": symbols
+                }))
+            }
+            "textDocument/references" => {
+                let uri = msg.get("params")?
+                    .get("textDocument")?
+                    .get("uri")?
+                    .as_str()?;
+                let position = msg.get("params")?
+                    .get("position")?;
+                let line = position.get("line")?.as_u64()? as usize;
+                let character = position.get("character")?.as_u64()? as usize;
+                let text = self.documents.get(uri)?;
+                let include_decl = msg.get("params")?
+                    .get("context")?
+                    .get("includeDeclaration")?
+                    .as_bool()
+                    .unwrap_or(true);
+                let references = self.compute_references(text, line, character, uri, include_decl);
+                Some(serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "result": references
+                }))
+            }
+            "textDocument/rename" => {
+                let uri = msg.get("params")?
+                    .get("textDocument")?
+                    .get("uri")?
+                    .as_str()?;
+                let position = msg.get("params")?
+                    .get("position")?;
+                let line = position.get("line")?.as_u64()? as usize;
+                let character = position.get("character")?.as_u64()? as usize;
+                let new_name = msg.get("params")?
+                    .get("newName")?
+                    .as_str()?;
+                let text = self.documents.get(uri)?;
+                let workspace_edit = self.compute_rename(text, line, character, uri, new_name);
+                Some(serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "result": workspace_edit
+                }))
+            }
+            "textDocument/signatureHelp" => {
+                let uri = msg.get("params")?
+                    .get("textDocument")?
+                    .get("uri")?
+                    .as_str()?;
+                let position = msg.get("params")?
+                    .get("position")?;
+                let line = position.get("line")?.as_u64()? as usize;
+                let character = position.get("character")?.as_u64()? as usize;
+                let text = self.documents.get(uri)?;
+                let sig_help = self.compute_signature_help(text, line, character);
+                Some(serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "result": sig_help
+                }))
+            }
+            "textDocument/semanticTokens/full" => {
+                let uri = msg.get("params")?
+                    .get("textDocument")?
+                    .get("uri")?
+                    .as_str()?;
+                let text = self.documents.get(uri)?;
+                let tokens = self.compute_semantic_tokens(text);
+                Some(serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "result": {
+                        "data": tokens
+                    }
                 }))
             }
             "shutdown" => {
@@ -567,5 +655,336 @@ impl LspServer {
         }
 
         items
+    }
+
+    /// Find all references to the symbol at the given position
+    pub fn compute_references(&self, text: &str, line: usize, character: usize, uri: &str, include_decl: bool) -> Vec<serde_json::Value> {
+        let word = self.get_word_at(text, line, character);
+        if word.is_empty() {
+            return Vec::new();
+        }
+
+        let mut references = Vec::new();
+        let mut def_line: Option<usize> = None;
+        let mut def_col: Option<usize> = None;
+        let lines: Vec<&str> = text.lines().collect();
+
+        // First, find the definition location
+        if let Ok(tokens) = lexer::Lexer::new(text).tokenize() {
+            if let Ok(file) = parser::Parser::new(tokens).parse_file() {
+                for item in &file.items {
+                    match item {
+                        Item::Func(f) if f.name == word => {
+                            def_line = text.lines().position(|l| l.contains(&format!("func {}", word)));
+                            def_col = def_line.and_then(|l| lines.get(l).map(|line| line.find(&format!("func {}", word)).unwrap_or(0) + 5));
+                            break;
+                        }
+                        Item::Type(t) if t.name == word => {
+                            def_line = text.lines().position(|l| l.contains(&format!("type {}", word)));
+                            def_col = def_line.and_then(|l| lines.get(l).map(|line| line.find(&format!("type {}", word)).unwrap_or(0) + 5));
+                            break;
+                        }
+                        Item::Module(m) if m.name == word => {
+                            def_line = text.lines().position(|l| l.contains(&format!("module {}", word)));
+                            def_col = def_line.and_then(|l| lines.get(l).map(|line| line.find(&format!("module {}", word)).unwrap_or(0) + 7));
+                            break;
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+
+        // Add definition if requested
+        if include_decl {
+            if let Some(dl) = def_line {
+                references.push(serde_json::json!({
+                    "uri": uri,
+                    "range": {
+                        "start": { "line": dl, "character": def_col.unwrap_or(0) },
+                        "end": { "line": dl, "character": def_col.unwrap_or(0) + word.len() }
+                    }
+                }));
+            }
+        }
+
+        // Find all usages in text
+        for (i, line_text) in lines.iter().enumerate() {
+            let mut start = 0;
+            while let Some(pos) = line_text[start..].find(word.as_str()) {
+                let abs_pos = start + pos;
+                let before = abs_pos > 0 && line_text.chars().nth(abs_pos - 1).map(|c| c.is_alphanumeric() || c == '_').unwrap_or(false);
+                let after = line_text.chars().nth(abs_pos + word.len()).map(|c| c.is_alphanumeric() || c == '_').unwrap_or(false);
+
+                if !before && !after {
+                    // Skip definition location if we already added it
+                    if let Some(dl) = def_line {
+                        if i == dl && def_col.map_or(false, |dc| abs_pos == dc) {
+                            start = abs_pos + 1;
+                            continue;
+                        }
+                    }
+                    references.push(serde_json::json!({
+                        "uri": uri,
+                        "range": {
+                            "start": { "line": i, "character": abs_pos },
+                            "end": { "line": i, "character": abs_pos + word.len() }
+                        }
+                    }));
+                }
+                start = abs_pos + 1;
+            }
+        }
+
+        references
+    }
+
+    /// Rename all occurrences of the symbol at the given position
+    pub fn compute_rename(&self, text: &str, line: usize, character: usize, uri: &str, new_name: &str) -> Option<serde_json::Value> {
+        let word = self.get_word_at(text, line, character);
+        if word.is_empty() || word == new_name {
+            return None;
+        }
+
+        let mut changes = Vec::new();
+        let lines: Vec<&str> = text.lines().collect();
+
+        for (i, line_text) in lines.iter().enumerate() {
+            let mut start = 0;
+            while let Some(pos) = line_text[start..].find(word.as_str()) {
+                let abs_pos = start + pos;
+                let before = abs_pos > 0 && line_text.chars().nth(abs_pos - 1).map(|c| c.is_alphanumeric() || c == '_').unwrap_or(false);
+                let after = line_text.chars().nth(abs_pos + word.len()).map(|c| c.is_alphanumeric() || c == '_').unwrap_or(false);
+
+                if !before && !after {
+                    changes.push(serde_json::json!({
+                        "range": {
+                            "start": { "line": i, "character": abs_pos },
+                            "end": { "line": i, "character": abs_pos + word.len() }
+                        },
+                        "newText": new_name
+                    }));
+                }
+                start = abs_pos + 1;
+            }
+        }
+
+        if changes.is_empty() {
+            return None;
+        }
+
+        Some(serde_json::json!({
+            "changes": {
+                uri: changes
+            }
+        }))
+    }
+
+    /// Compute signature help at the given position
+    pub fn compute_signature_help(&self, text: &str, line: usize, character: usize) -> Option<serde_json::Value> {
+        let lines: Vec<&str> = text.lines().collect();
+        let current_line = lines.get(line)?;
+
+        // Find the function call: look backward for '(' and the function name
+        let before_cursor: String = current_line.chars().take(character).collect();
+        let paren_pos = before_cursor.rfind('(')?;
+        let before_paren = before_cursor[..paren_pos].trim_end();
+
+        // Extract function name
+        let func_name = before_paren.rsplit(|c: char| !c.is_alphanumeric() && c != '_')
+            .next()
+            .unwrap_or("");
+
+        if func_name.is_empty() {
+            return None;
+        }
+
+        // Count current argument index
+        let args_in_call = before_cursor[paren_pos + 1..].chars()
+            .filter(|&c| c == ',')
+            .count();
+
+        // Find function signature
+        let mut signatures = Vec::new();
+
+        if let Ok(tokens) = lexer::Lexer::new(text).tokenize() {
+            if let Ok(file) = parser::Parser::new(tokens).parse_file() {
+                for item in &file.items {
+                    if let Item::Func(f) = item {
+                        if f.name == func_name {
+                            let params: Vec<String> = f.params.iter()
+                                .map(|p| format!("{}: {:?}", p.name, p.ty))
+                                .collect();
+                            let ret = f.ret.as_ref().map(|t| format!(" -> {:?}", t)).unwrap_or_default();
+                            signatures.push(serde_json::json!({
+                                "label": format!("func {}({}){}", func_name, params.join(", "), ret),
+                                "documentation": format!("Function {}", func_name),
+                                "parameters": f.params.iter().map(|p| serde_json::json!({
+                                    "label": format!("{}: {:?}", p.name, p.ty),
+                                    "documentation": format!("Parameter {}", p.name)
+                                })).collect::<Vec<_>>()
+                            }));
+                        }
+                    }
+                }
+            }
+        }
+
+        // Check builtins
+        let builtin_sigs = vec![
+            ("println", "println(msg: string)", vec!["msg: string"]),
+            ("assert", "assert(condition: bool)", vec!["condition: bool"]),
+            ("assert_eq", "assert_eq(a, b)", vec!["a", "b"]),
+            ("len", "len(collection) -> i64", vec!["collection"]),
+            ("range", "range(start: i64, end: i64) -> list", vec!["start: i64", "end: i64"]),
+            ("push", "push(list, item) -> list", vec!["list", "item"]),
+            ("pop", "pop(list) -> item", vec!["list"]),
+            ("min", "min(a, b) -> a", vec!["a", "b"]),
+            ("max", "max(a, b) -> a", vec!["a", "b"]),
+        ];
+
+        for (name, label, params) in builtin_sigs {
+            if func_name == name {
+                signatures.push(serde_json::json!({
+                    "label": label,
+                    "documentation": format!("Built-in function {}", name),
+                    "parameters": params.iter().map(|p| serde_json::json!({
+                        "label": p,
+                        "documentation": ""
+                    })).collect::<Vec<_>>()
+                }));
+            }
+        }
+
+        if signatures.is_empty() {
+            return None;
+        }
+
+        Some(serde_json::json!({
+            "signatures": signatures,
+            "activeParameter": args_in_call
+        }))
+    }
+
+    /// Compute semantic tokens for the document
+    pub fn compute_semantic_tokens(&self, text: &str) -> Vec<u32> {
+        let mut tokens = Vec::new();
+
+        if let Ok(lexer_tokens) = lexer::Lexer::new(text).tokenize() {
+            let mut prev_line = 0u32;
+            let mut prev_start = 0u32;
+
+            for tok in &lexer_tokens {
+                let line = (tok.line as u32).saturating_sub(1);
+                let start = (tok.col as u32).saturating_sub(1);
+
+                // Calculate token length from kind
+                let len = match &tok.kind {
+                    crate::lexer::TokenKind::Ident(s) => s.len() as u32,
+                    crate::lexer::TokenKind::Int(s) => s.len() as u32,
+                    crate::lexer::TokenKind::Float(s) => s.len() as u32,
+                    crate::lexer::TokenKind::String(s) => s.len() as u32 + 2, // include quotes
+                    crate::lexer::TokenKind::FString(s) => s.len() as u32 + 2,
+                    _ => {
+                        // For keywords/operators, calculate from token kind
+                        match tok.kind {
+                            crate::lexer::TokenKind::Module => 6,
+                            crate::lexer::TokenKind::Type => 4,
+                            crate::lexer::TokenKind::Func => 4,
+                            crate::lexer::TokenKind::Fn => 2,
+                            crate::lexer::TokenKind::Actor => 5,
+                            crate::lexer::TokenKind::Let => 3,
+                            crate::lexer::TokenKind::Mut => 3,
+                            crate::lexer::TokenKind::Return => 6,
+                            crate::lexer::TokenKind::If => 2,
+                            crate::lexer::TokenKind::Else => 4,
+                            crate::lexer::TokenKind::While => 5,
+                            crate::lexer::TokenKind::For => 3,
+                            crate::lexer::TokenKind::Match => 5,
+                            crate::lexer::TokenKind::Spawn => 5,
+                            crate::lexer::TokenKind::Await => 5,
+                            crate::lexer::TokenKind::Extern => 6,
+                            crate::lexer::TokenKind::Trait => 5,
+                            crate::lexer::TokenKind::Impl => 4,
+                            crate::lexer::TokenKind::Cap => 3,
+                            crate::lexer::TokenKind::True => 4,
+                            crate::lexer::TokenKind::False => 5,
+                            crate::lexer::TokenKind::I32 => 3,
+                            crate::lexer::TokenKind::I64 => 3,
+                            crate::lexer::TokenKind::F64 => 3,
+                            crate::lexer::TokenKind::Bool => 4,
+                            crate::lexer::TokenKind::StringKw => 6,
+                            _ => 1,
+                        }
+                    }
+                };
+
+                let (token_type, modifiers) = match &tok.kind {
+                    crate::lexer::TokenKind::Func | crate::lexer::TokenKind::Type |
+                    crate::lexer::TokenKind::Module | crate::lexer::TokenKind::Actor |
+                    crate::lexer::TokenKind::Trait | crate::lexer::TokenKind::Impl => (0, vec![0]), // keyword + declaration
+                    crate::lexer::TokenKind::If | crate::lexer::TokenKind::Else |
+                    crate::lexer::TokenKind::While | crate::lexer::TokenKind::For |
+                    crate::lexer::TokenKind::Return | crate::lexer::TokenKind::Let |
+                    crate::lexer::TokenKind::Mut | crate::lexer::TokenKind::Match |
+                    crate::lexer::TokenKind::Spawn | crate::lexer::TokenKind::Await |
+                    crate::lexer::TokenKind::Extern | crate::lexer::TokenKind::Cap |
+                    crate::lexer::TokenKind::True | crate::lexer::TokenKind::False |
+                    crate::lexer::TokenKind::In | crate::lexer::TokenKind::Break |
+                    crate::lexer::TokenKind::Continue | crate::lexer::TokenKind::Use |
+                    crate::lexer::TokenKind::Pub | crate::lexer::TokenKind::Drop => (0, vec![]), // keyword
+                    crate::lexer::TokenKind::Int(_) | crate::lexer::TokenKind::Float(_) => (4, vec![]), // number
+                    crate::lexer::TokenKind::String(_) | crate::lexer::TokenKind::FString(_) => (5, vec![]), // string
+                    crate::lexer::TokenKind::Ident(_) => (3, vec![]), // variable
+                    crate::lexer::TokenKind::Plus | crate::lexer::TokenKind::Minus |
+                    crate::lexer::TokenKind::Star | crate::lexer::TokenKind::Slash |
+                    crate::lexer::TokenKind::Percent | crate::lexer::TokenKind::Eq |
+                    crate::lexer::TokenKind::Ne | crate::lexer::TokenKind::Lt |
+                    crate::lexer::TokenKind::Gt | crate::lexer::TokenKind::Le |
+                    crate::lexer::TokenKind::Ge | crate::lexer::TokenKind::And |
+                    crate::lexer::TokenKind::Or | crate::lexer::TokenKind::Not => (7, vec![]), // operator
+                    _ => continue,
+                };
+
+                let delta_line = line.saturating_sub(prev_line);
+                let delta_start = if delta_line == 0 {
+                    start.saturating_sub(prev_start)
+                } else {
+                    start
+                };
+
+                tokens.push(delta_line);
+                tokens.push(delta_start);
+                tokens.push(len);
+                tokens.push(token_type);
+                tokens.push(modifiers.iter().fold(0u32, |acc, m| acc | (1 << m)));
+
+                prev_line = line;
+                prev_start = start;
+            }
+        }
+
+        tokens
+    }
+
+    /// Helper: get the word at a given position
+    pub fn get_word_at(&self, text: &str, line: usize, character: usize) -> String {
+        let lines: Vec<&str> = text.lines().collect();
+        let current_line = match lines.get(line) {
+            Some(l) => l,
+            None => return String::new(),
+        };
+
+        let before_cursor: String = current_line.chars().take(character).collect();
+        let after_cursor: String = current_line.chars().skip(character).collect();
+
+        let word_start = before_cursor.rfind(|c: char| !c.is_alphanumeric() && c != '_').map(|i| i + 1).unwrap_or(0);
+        let word_end = after_cursor.find(|c: char| !c.is_alphanumeric() && c != '_').map(|i| character + i).unwrap_or(current_line.len());
+
+        if word_start >= word_end {
+            return String::new();
+        }
+
+        current_line[word_start..word_end].to_string()
     }
 }

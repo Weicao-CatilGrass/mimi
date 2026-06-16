@@ -236,3 +236,143 @@ fn diagnostic_strict_mode() {
     // Strict mode should still work
     let _ = result;
 }
+
+// ===================== Phase D: References Tests =====================
+
+#[test]
+fn references_function() {
+    let server = LspServer::new();
+    let text = "func add(a: i32, b: i32) -> i32 { a + b }\nfunc main() -> i32 { add(1, 2) }";
+    let refs = server.compute_references(text, 0, 5, "file:///test.mimi", true);
+    // Should find definition + usage
+    assert!(refs.len() >= 2, "should find at least 2 references to 'add', got {}", refs.len());
+}
+
+#[test]
+fn references_type() {
+    let server = LspServer::new();
+    let text = "type Point { x: i32, y: i32 }\nfunc main() -> i32 { 42 }";
+    let refs = server.compute_references(text, 0, 5, "file:///test.mimi", true);
+    assert!(refs.len() >= 1, "should find at least 1 reference to 'Point'");
+}
+
+#[test]
+fn references_exclude_declaration() {
+    let server = LspServer::new();
+    let text = "func add(a: i32, b: i32) -> i32 { a + b }\nfunc main() -> i32 { add(1, 2) }";
+    let refs = server.compute_references(text, 0, 5, "file:///test.mimi", false);
+    // Should find only usage, not declaration
+    assert!(refs.len() >= 1, "should find at least 1 reference excluding declaration");
+}
+
+// ===================== Phase D: Rename Tests =====================
+
+#[test]
+fn rename_function() {
+    let server = LspServer::new();
+    let text = "func add(a: i32, b: i32) -> i32 { a + b }\nfunc main() -> i32 { add(1, 2) }";
+    let result = server.compute_rename(text, 0, 5, "file:///test.mimi", "sum");
+    assert!(result.is_some(), "should rename 'add' to 'sum'");
+    let edit = result.unwrap();
+    let changes = edit.get("changes").unwrap();
+    let file_changes = changes.get("file:///test.mimi").unwrap().as_array().unwrap();
+    assert!(file_changes.len() >= 2, "should have at least 2 changes");
+}
+
+#[test]
+fn rename_no_change() {
+    let server = LspServer::new();
+    let text = "func add(a: i32, b: i32) -> i32 { a + b }";
+    let result = server.compute_rename(text, 0, 5, "file:///test.mimi", "add");
+    assert!(result.is_none(), "renaming to same name should return None");
+}
+
+// ===================== Phase D: Signature Help Tests =====================
+
+#[test]
+fn debug_signature_help() {
+    let server = LspServer::new();
+    let text = "func add(a: i32, b: i32) -> i32 { a + b }\nfunc main() { add(1, 2) }";
+    
+    // Position 18 is inside the add() call, after the comma
+    let result = server.compute_signature_help(text, 1, 18);
+    eprintln!("Result at 18: {:?}", result);
+    assert!(result.is_some(), "should show signature help for 'add'");
+}
+
+// ===================== Phase D: Signature Help Tests =====================
+
+#[test]
+fn signature_help_function() {
+    let server = LspServer::new();
+    let text = "func add(a: i32, b: i32) -> i32 { a + b }\nfunc main() { add(1, 2) }";
+    // Position 18 is inside the add() call, after the comma
+    let result = server.compute_signature_help(text, 1, 18);
+    assert!(result.is_some(), "should show signature help for 'add'");
+    let sig = result.unwrap();
+    let signatures = sig.get("signatures").unwrap().as_array().unwrap();
+    assert!(!signatures.is_empty(), "should have at least one signature");
+}
+
+#[test]
+fn signature_help_builtin() {
+    let server = LspServer::new();
+    let text = "func main() { println( ) }";
+    let result = server.compute_signature_help(text, 0, 18);
+    assert!(result.is_some(), "should show signature help for 'println'");
+}
+
+// ===================== Phase D: Semantic Tokens Tests =====================
+
+#[test]
+fn semantic_tokens_keywords() {
+    let server = LspServer::new();
+    let text = "func main() { let x = 42 }";
+    let tokens = server.compute_semantic_tokens(text);
+    // Should have tokens (delta_line, delta_start, len, type, modifiers)
+    assert!(!tokens.is_empty(), "should produce semantic tokens");
+    // Check that we have at least a few tokens
+    assert!(tokens.len() >= 10, "should have at least 10 token values (2+ tokens)");
+}
+
+#[test]
+fn semantic_tokens_types() {
+    let server = LspServer::new();
+    let text = "type Point { x: i32, y: i32 }";
+    let tokens = server.compute_semantic_tokens(text);
+    assert!(!tokens.is_empty(), "should produce semantic tokens for type definition");
+}
+
+#[test]
+fn semantic_tokens_numbers() {
+    let server = LspServer::new();
+    let text = "func main() { let x = 42 let y = 3.14 }";
+    let tokens = server.compute_semantic_tokens(text);
+    assert!(!tokens.is_empty(), "should produce semantic tokens for numbers");
+}
+
+#[test]
+fn debug_references() {
+    let server = LspServer::new();
+    let text = "func add(a: i32, b: i32) -> i32 { a + b }\nfunc main() -> i32 { add(1, 2) }";
+    
+    // Test get_word_at
+    let word = server.get_word_at(text, 0, 5);
+    eprintln!("Word at (0,5): '{}'", word);
+    
+    // Test references
+    let refs = server.compute_references(text, 0, 5, "file:///test.mimi", true);
+    eprintln!("References found: {}", refs.len());
+    for r in &refs {
+        eprintln!("  {:?}", r);
+    }
+    
+    // Debug: print lines
+    for (i, line) in text.lines().enumerate() {
+        eprintln!("Line {}: '{}'", i, line);
+    }
+    
+    // The test should pass
+    assert!(!word.is_empty(), "should extract word 'add'");
+    assert!(!refs.is_empty(), "should find references to 'add'");
+}
