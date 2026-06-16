@@ -157,6 +157,7 @@ impl<'a> Checker<'a> {
                 let actor_type_def = TypeDef {
                     name: actor.name.clone(),
                     commitment: actor.commitment,
+                    pub_: actor.pub_,
                     kind: TypeDefKind::Record(actor.fields.iter().map(|f| Field {
                         name: f.name.clone(),
                         ty: f.ty.clone(),

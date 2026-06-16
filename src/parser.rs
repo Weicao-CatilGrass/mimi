@@ -157,13 +157,34 @@ impl Parser {
     }
 
     fn parse_item(&mut self) -> Result<Item, ParseError> {
-        // TODO: pub
+        let pub_ = if self.at(&TokenKind::Pub) {
+            self.advance();
+            true
+        } else {
+            false
+        };
         match self.peek_kind() {
-            TokenKind::Func => Ok(Item::Func(self.parse_func()?)),
+            TokenKind::Func => {
+                let mut f = self.parse_func()?;
+                f.pub_ = pub_;
+                Ok(Item::Func(f))
+            }
             TokenKind::Module => Ok(Item::Module(self.parse_module()?)),
-            TokenKind::Type => Ok(Item::Type(self.parse_type_def()?)),
-            TokenKind::Newtype => Ok(Item::Type(self.parse_newtype()?)),
-            TokenKind::Actor => Ok(Item::Actor(self.parse_actor_def()?)),
+            TokenKind::Type => {
+                let mut t = self.parse_type_def()?;
+                t.pub_ = pub_;
+                Ok(Item::Type(t))
+            }
+            TokenKind::Newtype => {
+                let mut t = self.parse_newtype()?;
+                t.pub_ = pub_;
+                Ok(Item::Type(t))
+            }
+            TokenKind::Actor => {
+                let mut a = self.parse_actor_def()?;
+                a.pub_ = pub_;
+                Ok(Item::Actor(a))
+            }
             TokenKind::Cap => Ok(Item::Cap(self.parse_cap_def()?)),
             TokenKind::Rule => {
                 self.advance();
@@ -264,7 +285,7 @@ impl Parser {
         }
 
         self.expect(TokenKind::RBrace, "`}`")?;
-        Ok(ActorDef { name, commitment, fields, methods })
+        Ok(ActorDef { name, commitment, pub_: false, fields, methods })
     }
 
     fn parse_module(&mut self) -> Result<ModuleDef, ParseError> {
@@ -311,6 +332,7 @@ impl Parser {
         Ok(FuncDef {
             name,
             commitment,
+            pub_: false,
             params,
             ret,
             body,
@@ -1159,7 +1181,7 @@ impl Parser {
                 let variants = self.parse_enum_variants()?;
                 TypeDefKind::Enum(variants)
             };
-            return Ok(TypeDef { name, commitment, kind });
+            return Ok(TypeDef { name, commitment, pub_: false, kind });
         }
         if self.at(&TokenKind::Eq) {
             self.advance();
@@ -1168,6 +1190,7 @@ impl Parser {
             return Ok(TypeDef {
                 name,
                 commitment,
+                pub_: false,
                 kind: TypeDefKind::Alias(ty),
             });
         }
@@ -1182,18 +1205,18 @@ impl Parser {
         };
         self.skip_newlines();
         self.expect(TokenKind::RBrace, "`}`")?;
-        Ok(TypeDef { name, commitment, kind })
+        Ok(TypeDef { name, commitment, pub_: false, kind })
     }
 
     fn lookahead_is_record(&self) -> bool {
         // A record field looks like `ident: type`.
+        // Stop at newline to avoid scanning into next variant
         if let TokenKind::Ident(_) = self.peek_kind() {
             let mut pos = self.pos + 1;
             while pos < self.tokens.len() {
                 match &self.tokens[pos].kind {
                     TokenKind::Colon => return true,
-                    TokenKind::Newline | TokenKind::Comma => {}
-                    TokenKind::RBrace | TokenKind::Eof => return false,
+                    TokenKind::Newline | TokenKind::RBrace | TokenKind::Eof => return false,
                     _ => {}
                 }
                 pos += 1;
@@ -1389,6 +1412,7 @@ impl Parser {
         Ok(TypeDef {
             name,
             commitment,
+            pub_: false,
             kind: TypeDefKind::Newtype(ty),
         })
     }
