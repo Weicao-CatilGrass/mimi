@@ -5,13 +5,14 @@ mod core;
 mod interp;
 mod lexer;
 mod loader;
+mod manifest;
 mod parser;
 #[cfg(test)]
 mod tests;
 
 use clap::{Parser, Subcommand};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Parser, Debug)]
 #[command(name = "mimi", version = "0.1.1", about = "Mimi language driver")]
@@ -23,16 +24,16 @@ struct Args {
 #[derive(Subcommand, Debug)]
 enum Command {
     /// Parse and type-check a .mimi file (v0.1: parse only)
-    Check { path: PathBuf },
+    Check { path: Option<PathBuf> },
     /// Parse and run a .mimi file
-    Run { path: PathBuf },
+    Run { path: Option<PathBuf> },
 }
 
 fn main() {
     let args = Args::parse();
     let result = match args.cmd {
-        Command::Check { path } => check(&path),
-        Command::Run { path } => run(&path),
+        Command::Check { path } => check(path.as_deref()),
+        Command::Run { path } => run(path.as_deref()),
     };
     if let Err(e) = result {
         eprintln!("error: {}", e);
@@ -40,18 +41,32 @@ fn main() {
     }
 }
 
-fn is_sketch(path: &PathBuf) -> bool {
+/// Resolve the target path, either from argument or by finding mimi.toml
+fn resolve_path(arg: Option<&Path>) -> Result<PathBuf, String> {
+    if let Some(path) = arg {
+        return Ok(path.to_path_buf());
+    }
+    // Search for mimi.toml
+    let cwd = std::env::current_dir().map_err(|e| format!("cannot get cwd: {}", e))?;
+    match manifest::Manifest::find(&cwd)? {
+        Some((dir, m)) => Ok(m.entry_path(&dir)),
+        None => Err("no path specified and no mimi.toml found".into()),
+    }
+}
+
+fn is_sketch(path: &Path) -> bool {
     path.extension().map(|e| e == "mms").unwrap_or(false)
 }
 
-fn is_production(path: &PathBuf) -> bool {
+fn is_production(path: &Path) -> bool {
     path.extension().map(|e| e == "mimi").unwrap_or(false)
 }
 
-fn check(path: &PathBuf) -> Result<(), String> {
-    let source = fs::read_to_string(path)
+fn check(path: Option<&Path>) -> Result<(), String> {
+    let path = resolve_path(path)?;
+    let source = fs::read_to_string(&path)
         .map_err(|e| format!("failed to read {}: {}", path.display(), e))?;
-    let sketch = is_sketch(path);
+    let sketch = is_sketch(&path);
     let tokens = if sketch {
         lexer::Lexer::new_sketch(&source).tokenize()?
     } else {
@@ -66,7 +81,7 @@ fn check(path: &PathBuf) -> Result<(), String> {
         println!("✓ {} parsed successfully (sketch mode)", path.display());
         return Ok(());
     }
-    if !is_production(path) {
+    if !is_production(&path) {
         return Err(format!(
             "expected .mimi production file or .mms sketch file, got {}",
             path.display()
@@ -83,13 +98,14 @@ fn check(path: &PathBuf) -> Result<(), String> {
     Ok(())
 }
 
-fn run(path: &PathBuf) -> Result<(), String> {
-    let source = fs::read_to_string(path)
+fn run(path: Option<&Path>) -> Result<(), String> {
+    let path = resolve_path(path)?;
+    let source = fs::read_to_string(&path)
         .map_err(|e| format!("failed to read {}: {}", path.display(), e))?;
-    if is_sketch(path) {
+    if is_sketch(&path) {
         return Err("cannot run a .mms sketch file directly; promote to .mimi first".into());
     }
-    if !is_production(path) {
+    if !is_production(&path) {
         return Err(format!(
             "expected .mimi production file, got {}",
             path.display()
@@ -102,7 +118,7 @@ fn run(path: &PathBuf) -> Result<(), String> {
     let merged_file = if !file.imports.is_empty() {
         let base_dir = path.parent().unwrap_or_else(|| std::path::Path::new(".")).to_path_buf();
         let mut loader = loader::ModuleLoader::new(base_dir);
-        loader.load_main(path)?;
+        loader.load_main(&path)?;
         loader.merge_all()
     } else {
         file
