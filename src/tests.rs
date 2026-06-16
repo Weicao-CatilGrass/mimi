@@ -3396,3 +3396,70 @@ func main() -> i32 {
     let v = run_source(src);
     assert_eq!(v, interp::Value::Int(42));
 }
+
+// ==================== extern block tests ====================
+
+#[test]
+fn extern_block_basic() {
+    let src = r#"
+extern "C" {
+    func printf(fmt: string) -> i32;
+}
+
+func main() -> i32 {
+    42
+}
+"#;
+    let v = run_source(src);
+    assert_eq!(v, interp::Value::Int(42));
+}
+
+#[test]
+fn extern_block_multiple_funcs() {
+    let src = r#"
+extern "C" {
+    func malloc(size: i32) -> i32;
+    func free(ptr: i32);
+}
+
+func main() -> i32 {
+    42
+}
+"#;
+    let v = run_source(src);
+    assert_eq!(v, interp::Value::Int(42));
+}
+
+#[test]
+fn extern_block_with_cap() {
+    let src = r#"
+cap FileReadCap;
+
+extern "C" {
+    func read(fd: i32, file_cap: FileReadCap) -> string;
+}
+
+func main() -> i32 {
+    42
+}
+"#;
+    let v = run_source(src);
+    assert_eq!(v, interp::Value::Int(42));
+}
+
+#[test]
+fn extern_block_with_borrow() {
+    let src = r#"
+cap FileReadCap;
+
+extern "C" {
+    func read(fd: i32, file_cap: FileReadCap) -> string;
+}
+
+func main() -> i32 {
+    42
+}
+"#;
+    let v = run_source(src);
+    assert_eq!(v, interp::Value::Int(42));
+}

@@ -32,6 +32,7 @@ pub enum TokenKind {
     Trait,
     Impl,
     Where,
+    Extern,
     If,
     Else,
     For,
@@ -117,6 +118,7 @@ pub enum TokenKind {
     Question,
     Bang,
     Ellipsis,
+    At,
 
     Newline,
     Indent,
@@ -151,6 +153,7 @@ impl fmt::Display for TokenKind {
             TokenKind::Trait => "trait",
             TokenKind::Impl => "impl",
             TokenKind::Where => "where",
+            TokenKind::Extern => "extern",
             TokenKind::If => "if",
             TokenKind::Else => "else",
             TokenKind::For => "for",
@@ -230,6 +233,7 @@ impl fmt::Display for TokenKind {
             TokenKind::Question => "?",
             TokenKind::Bang => "!",
             TokenKind::Ellipsis => "...",
+            TokenKind::At => "@",
             TokenKind::Newline => "newline",
             TokenKind::Indent => "INDENT",
             TokenKind::Dedent => "DEDENT",
@@ -493,6 +497,7 @@ impl<'a> Lexer<'a> {
             "trait" => TokenKind::Trait,
             "impl" => TokenKind::Impl,
             "where" => TokenKind::Where,
+            "extern" => TokenKind::Extern,
             "if" => TokenKind::If,
             "else" => TokenKind::Else,
             "for" => TokenKind::For,
@@ -844,6 +849,10 @@ impl<'a> Lexer<'a> {
                 '?' => {
                     self.advance();
                     (TokenKind::Question, Commitment::None)
+                }
+                '@' => {
+                    self.advance();
+                    (TokenKind::At, Commitment::None)
                 }
                 _ => return Err(format!("unexpected character '{}' at {}:{}", c, line, col)),
             };

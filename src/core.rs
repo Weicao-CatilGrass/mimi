@@ -187,6 +187,9 @@ impl<'a> Checker<'a> {
             Item::Trait(_) | Item::Impl(_) => {
                 // Trait and impl definitions are collected but not type-checked in v1.1
             }
+            Item::ExternBlock(_) => {
+                // Extern blocks are collected but not type-checked in v1.1
+            }
         }
     }
 
@@ -288,6 +291,9 @@ impl<'a> Checker<'a> {
             Item::Rule(_) | Item::Desc(_) => {}
             Item::Trait(_) | Item::Impl(_) => {
                 // Trait and impl definitions are collected but not type-checked in v1.1
+            }
+            Item::ExternBlock(_) => {
+                // Extern blocks are collected but not type-checked in v1.1
             }
         }
     }
