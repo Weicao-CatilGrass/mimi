@@ -163,7 +163,38 @@ impl Parser {
         } else {
             false
         };
+        // Parse optional #[derive(...)] attribute
+        let derives = if self.at(&TokenKind::Hash) && self.pos + 1 < self.tokens.len() && self.tokens[self.pos + 1].kind == TokenKind::LBracket {
+            self.advance(); // skip #
+            self.advance(); // skip [
+            let mut derives = Vec::new();
+            if self.at(&TokenKind::Ident("derive".to_string())) {
+                self.advance(); // skip "derive"
+                self.expect(TokenKind::LParen, "`(`")?;
+                while !self.at(&TokenKind::RParen) && !self.at(&TokenKind::Eof) {
+                    let name = self.expect_ident()?;
+                    derives.push(name);
+                    if self.at(&TokenKind::Comma) {
+                        self.advance();
+                    }
+                }
+                self.expect(TokenKind::RParen, "`)`")?;
+            }
+            self.expect(TokenKind::RBracket, "`]`")?;
+            self.skip_newlines();
+            derives
+        } else {
+            Vec::new()
+        };
         match self.peek_kind() {
+            TokenKind::Comptime => {
+                // comptime func ... — comptime function modifier
+                self.advance();
+                let mut f = self.parse_func()?;
+                f.pub_ = pub_;
+                f.is_comptime = true;
+                Ok(Item::Func(f))
+            }
             TokenKind::Func => {
                 let mut f = self.parse_func()?;
                 f.pub_ = pub_;
@@ -171,7 +202,7 @@ impl Parser {
             }
             TokenKind::Module => Ok(Item::Module(self.parse_module()?)),
             TokenKind::Type => {
-                let mut t = self.parse_type_def()?;
+                let mut t = self.parse_type_def(derives)?;
                 t.pub_ = pub_;
                 Ok(Item::Type(t))
             }
@@ -526,6 +557,7 @@ impl Parser {
             where_clause,
             generics,
             effects,
+            is_comptime: false,
         })
     }
 
@@ -1274,6 +1306,19 @@ impl Parser {
             }
             TokenKind::Ident(name) => {
                 self.advance();
+                // Special handling for type reflection builtins
+                if name == "type_name" && self.at(&TokenKind::LParen) {
+                    self.advance();
+                    let inner = self.parse_expr(0)?;
+                    self.expect(TokenKind::RParen, "`)` for type_name")?;
+                    return Ok(Expr::TypeOf(Box::new(inner)));
+                }
+                if name == "type_info" && self.at(&TokenKind::LParen) {
+                    self.advance();
+                    let ty = self.parse_type()?;
+                    self.expect(TokenKind::RParen, "`)` for type_info")?;
+                    return Ok(Expr::TypeInfo(ty));
+                }
                 // Check for turbofish: name::<Type>(args)
                 if self.at(&TokenKind::ColonColon) {
                     self.advance();
@@ -1460,6 +1505,13 @@ impl Parser {
                 let e = self.parse_expr(0)?;
                 Expr::Await(Box::new(e))
             }
+            TokenKind::Comptime => {
+                self.advance();
+                self.skip_newlines();
+                self.expect(TokenKind::LBrace, "`{` for comptime block")?;
+                let body = self.parse_block()?;
+                Expr::Comptime(body)
+            }
             TokenKind::Quote => {
                 self.advance();
                 // Allow optional ! after quote (quote! syntax)
@@ -1548,7 +1600,7 @@ impl Parser {
         Ok(fields)
     }
 
-    fn parse_type_def(&mut self) -> Result<TypeDef, ParseError> {
+    fn parse_type_def(&mut self, derives: Vec<String>) -> Result<TypeDef, ParseError> {
         let commitment = self.expect_keyword(TokenKind::Type)?;
         let name = self.expect_ident()?;
         let generics = self.parse_generic_params()?;
@@ -1587,7 +1639,7 @@ impl Parser {
                 let variants = self.parse_enum_variants()?;
                 TypeDefKind::Enum(variants)
             };
-            return Ok(TypeDef { name, commitment, pub_: false, kind, generics });
+            return Ok(TypeDef { name, commitment, pub_: false, kind, generics, derives });
         }
         if self.at(&TokenKind::Eq) {
             self.advance();
@@ -1599,6 +1651,7 @@ impl Parser {
                 pub_: false,
                 kind: TypeDefKind::Alias(ty),
                 generics,
+                derives,
             });
         }
         self.expect(TokenKind::LBrace, "`{`")?;
@@ -1612,7 +1665,7 @@ impl Parser {
         };
         self.skip_newlines();
         self.expect(TokenKind::RBrace, "`}`")?;
-        Ok(TypeDef { name, commitment, pub_: false, kind, generics })
+        Ok(TypeDef { name, commitment, pub_: false, kind, generics, derives })
     }
 
     fn lookahead_is_record(&self) -> bool {
@@ -1814,6 +1867,7 @@ impl Parser {
             pub_: false,
             kind: TypeDefKind::Newtype(ty),
             generics,
+            derives: Vec::new(),
         })
     }
 }

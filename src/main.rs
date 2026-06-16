@@ -6,6 +6,7 @@ mod core;
 mod interp;
 mod lexer;
 mod loader;
+mod lsp;
 mod manifest;
 mod parser;
 #[cfg(test)]
@@ -45,6 +46,35 @@ enum Command {
         #[arg(long)]
         verify_contracts: bool,
     },
+    /// Run test functions (functions named test_*)
+    Test {
+        path: Option<PathBuf>,
+    },
+    /// Initialize a new mimi.toml
+    Init {
+        /// Package name
+        name: Option<String>,
+    },
+    /// Add a dependency
+    Add {
+        /// Package name
+        name: String,
+        /// Version requirement
+        #[arg(short, long)]
+        version: Option<String>,
+        /// Local path
+        #[arg(short, long)]
+        path: Option<String>,
+    },
+    /// Remove a dependency
+    Remove {
+        /// Package name
+        name: String,
+    },
+    /// List dependencies
+    List,
+    /// Start LSP server (stdin/stdout)
+    Lsp,
 }
 
 fn main() {
@@ -52,6 +82,12 @@ fn main() {
     let result = match args.cmd {
         Command::Check { path, extract_contracts, strict } => check(path.as_deref(), extract_contracts, strict),
         Command::Run { path, verify_contracts } => run(path.as_deref(), verify_contracts),
+        Command::Test { path } => test(path.as_deref()),
+        Command::Init { name } => init(name.as_deref()),
+        Command::Add { name, version, path } => add(&name, version.as_deref(), path.as_deref()),
+        Command::Remove { name } => remove(&name),
+        Command::List => list(),
+        Command::Lsp => lsp(),
     };
     if let Err(e) = result {
         eprintln!("error: {}", e);
@@ -216,4 +252,148 @@ fn run(path: Option<&Path>, verify_contracts: bool) -> Result<(), String> {
     let value = interp.run()?;
     println!("-> {}", value);
     Ok(())
+}
+
+fn test(path: Option<&Path>) -> Result<(), String> {
+    let path = resolve_path(path)?;
+    let source = fs::read_to_string(&path)
+        .map_err(|e| format!("failed to read {}: {}", path.display(), e))?;
+    if is_sketch(&path) {
+        return Err("cannot test a .mms sketch file directly; promote to .mimi first".into());
+    }
+    let tokens = lexer::Lexer::new(&source).tokenize()?;
+    let file = parser::Parser::new(tokens).parse_file()?;
+
+    // Load imports if any
+    let merged_file = if !file.imports.is_empty() {
+        let base_dir = path.parent().unwrap_or_else(|| std::path::Path::new(".")).to_path_buf();
+        let mut loader = loader::ModuleLoader::new(base_dir);
+        loader.load_main(&path)?;
+        loader.merge_all()
+    } else {
+        file
+    };
+
+    if let Err(diagnostics) = core::check(&merged_file) {
+        eprintln!("✗ {} has {} type error(s):", path.display(), diagnostics.len());
+        for d in diagnostics {
+            eprintln!("  - {}", d.message);
+        }
+        return Err("type checking failed".into());
+    }
+
+    // Find test functions (functions starting with "test_")
+    let test_funcs: Vec<String> = merged_file.items.iter().filter_map(|item| {
+        match item {
+            Item::Func(f) if f.name.starts_with("test_") => Some(f.name.clone()),
+            _ => None,
+        }
+    }).collect();
+
+    if test_funcs.is_empty() {
+        println!("No test functions found (functions starting with test_).");
+        return Ok(());
+    }
+
+    let mut passed = 0;
+    let mut failed = 0;
+    let mut errors = Vec::new();
+
+    for func_name in &test_funcs {
+        let mut interp = interp::Interpreter::new(&merged_file);
+        match interp.call_named(func_name, vec![]) {
+            Ok(_) => {
+                println!("  ✓ {}", func_name);
+                passed += 1;
+            }
+            Err(e) => {
+                println!("  ✗ {}: {}", func_name, e);
+                failed += 1;
+                errors.push((func_name.clone(), e));
+            }
+        }
+    }
+
+    println!("\n{} passed, {} failed", passed, failed);
+    if failed > 0 {
+        Err(format!("{} test(s) failed", failed))
+    } else {
+        Ok(())
+    }
+}
+
+fn init(name: Option<&str>) -> Result<(), String> {
+    let dir = std::env::current_dir().map_err(|e| format!("cannot get cwd: {}", e))?;
+    let toml_path = dir.join("mimi.toml");
+    if toml_path.exists() {
+        return Err("mimi.toml already exists".into());
+    }
+    let pkg_name = name.unwrap_or("my-package");
+    let manifest = manifest::Manifest::new(pkg_name);
+    manifest.save(&dir)?;
+    println!("✓ Created mimi.toml for package '{}'", pkg_name);
+
+    // Create main.mimi if it doesn't exist
+    let entry_path = manifest.entry_path(&dir);
+    if !entry_path.exists() {
+        std::fs::write(&entry_path, "func main() -> i32 {\n    42\n}\n")
+            .map_err(|e| format!("failed to create {}: {}", entry_path.display(), e))?;
+        println!("✓ Created {}", entry_path.display());
+    }
+    Ok(())
+}
+
+fn add(name: &str, version: Option<&str>, path: Option<&str>) -> Result<(), String> {
+    let cwd = std::env::current_dir().map_err(|e| format!("cannot get cwd: {}", e))?;
+    let (dir, mut manifest) = match manifest::Manifest::find(&cwd)? {
+        Some((d, m)) => (d, m),
+        None => return Err("no mimi.toml found; run 'mimi init' first".into()),
+    };
+    manifest.add_dependency(name, version, path);
+    manifest.save(&dir)?;
+    println!("✓ Added dependency '{}'", name);
+    Ok(())
+}
+
+fn remove(name: &str) -> Result<(), String> {
+    let cwd = std::env::current_dir().map_err(|e| format!("cannot get cwd: {}", e))?;
+    let (dir, mut manifest) = match manifest::Manifest::find(&cwd)? {
+        Some((d, m)) => (d, m),
+        None => return Err("no mimi.toml found".into()),
+    };
+    if manifest.remove_dependency(name) {
+        manifest.save(&dir)?;
+        println!("✓ Removed dependency '{}'", name);
+    } else {
+        println!("Dependency '{}' not found", name);
+    }
+    Ok(())
+}
+
+fn list() -> Result<(), String> {
+    let cwd = std::env::current_dir().map_err(|e| format!("cannot get cwd: {}", e))?;
+    let (_dir, manifest) = match manifest::Manifest::find(&cwd)? {
+        Some((d, m)) => (d, m),
+        None => return Err("no mimi.toml found".into()),
+    };
+    if let Some(deps) = &manifest.dependencies {
+        if deps.is_empty() {
+            println!("No dependencies.");
+        } else {
+            println!("Dependencies:");
+            for dep in deps {
+                let version = dep.version.as_deref().unwrap_or("*");
+                let source = dep.path.as_deref().unwrap_or("registry");
+                println!("  {} {} ({})", dep.name, version, source);
+            }
+        }
+    } else {
+        println!("No dependencies.");
+    }
+    Ok(())
+}
+
+fn lsp() -> Result<(), String> {
+    let mut server = lsp::LspServer::new();
+    server.run()
 }

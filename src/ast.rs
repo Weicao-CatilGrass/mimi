@@ -142,6 +142,7 @@ pub struct FuncDef {
     pub where_clause: Option<WhereClause>,
     pub generics: Vec<GenericParam>,
     pub effects: Vec<String>,
+    pub is_comptime: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -171,6 +172,7 @@ pub struct TypeDef {
     pub pub_: bool,
     pub kind: TypeDefKind,
     pub generics: Vec<GenericParam>,
+    pub derives: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -310,6 +312,12 @@ pub enum Expr {
     Quote(Block),
     /// Interpolation inside quote - evaluated at compile time and spliced into AST
     QuoteInterpolate(Box<Expr>),
+    /// Comptime block - evaluated at compile time
+    Comptime(Block),
+    /// TypeOf(expr) - get the runtime type of an expression as a string
+    TypeOf(Box<Expr>),
+    /// TypeInfo(Type) - get type metadata (fields, variants, methods)
+    TypeInfo(Type),
     /// Lambda/closure expression: fn(params) -> Ret { body }
     Lambda {
         params: Vec<Param>,

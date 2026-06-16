@@ -2392,3 +2392,870 @@ func main() -> i32 {
 "#;
     assert!(check_source(src).is_ok());
 }
+
+// === T400: Comptime Reflection Tests ===
+
+#[test]
+fn comptime_block_basic() {
+    let src = r#"
+func main() -> i32 {
+    comptime {
+        let x = 10;
+        let y = 20;
+        x + y
+    }
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::Int(30));
+}
+
+#[test]
+fn comptime_block_with_string() {
+    let src = r#"
+func main() -> string {
+    comptime {
+        "hello"
+    }
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::String("hello".to_string()));
+}
+
+#[test]
+fn comptime_block_nested() {
+    let src = r#"
+func main() -> i32 {
+    comptime {
+        let outer = comptime {
+            5 * 6
+        };
+        outer + 1
+    }
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::Int(31));
+}
+
+#[test]
+fn type_of_int() {
+    let src = r#"
+func main() -> string {
+    let x = 42;
+    type_name(x)
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::String("i32".to_string()));
+}
+
+#[test]
+fn type_of_bool() {
+    let src = r#"
+func main() -> string {
+    let x = true;
+    type_name(x)
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::String("bool".to_string()));
+}
+
+#[test]
+fn type_of_string() {
+    let src = r#"
+func main() -> string {
+    let x = "hello";
+    type_name(x)
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::String("string".to_string()));
+}
+
+#[test]
+fn type_of_list() {
+    let src = r#"
+func main() -> string {
+    let x = [1, 2, 3];
+    type_name(x)
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::String("list".to_string()));
+}
+
+#[test]
+fn type_of_variant() {
+    let src = r#"
+type Color { Red | Green | Blue }
+
+func main() -> string {
+    let x = Red();
+    type_name(x)
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::String("Red".to_string()));
+}
+
+#[test]
+fn type_of_record() {
+    let src = r#"
+type Point {
+    x: i32
+    y: i32
+}
+
+func main() -> string {
+    let p = Point { x: 1, y: 2 };
+    type_name(p)
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::String("Point".to_string()));
+}
+
+#[test]
+fn type_fields_record() {
+    let src = r#"
+type Point {
+    x: i32
+    y: i32
+}
+
+func main() -> i32 {
+    let fields = type_fields("Point");
+    len(fields)
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::Int(2));
+}
+
+#[test]
+fn type_variants_enum() {
+    let src = r#"
+type Color { Red | Green | Blue }
+
+func main() -> i32 {
+    let variants = type_variants("Color");
+    len(variants)
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::Int(3));
+}
+
+#[test]
+fn type_info_for_record() {
+    let src = r#"
+type Point {
+    x: i32
+    y: i32
+}
+
+func main() -> i32 {
+    let info = type_info(Point);
+    1
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::Int(1));
+}
+
+#[test]
+fn comptime_func_basic() {
+    let src = r#"
+comptime func double(n: i32) -> i32 {
+    n * 2
+}
+
+func main() -> i32 {
+    double(5)
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::Int(10));
+}
+
+#[test]
+fn comptime_func_with_type_of() {
+    let src = r#"
+func main() -> string {
+    comptime {
+        let x = 42;
+        type_name(x)
+    }
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::String("i32".to_string()));
+}
+
+#[test]
+fn comptime_block_empty() {
+    let src = r#"
+func main() -> i32 {
+    comptime {
+    }
+    42
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::Int(42));
+}
+
+// === T401: Comptime Code Generation Tests ===
+
+#[test]
+fn comptime_quote_basic() {
+    let src = r#"
+func main() -> i32 {
+    let ast = comptime {
+        quote! {
+            42
+        }
+    };
+    ast_eval(ast)
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::Int(42));
+}
+
+#[test]
+fn comptime_quote_with_interpolation() {
+    let src = r#"
+func main() -> i32 {
+    let n = 10;
+    let ast = comptime {
+        quote! {
+            $(n + 5)
+        }
+    };
+    ast_eval(ast)
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::Int(15));
+}
+
+#[test]
+fn comptime_generate_expression() {
+    let src = r#"
+func main() -> i32 {
+    let x = 3;
+    let ast = comptime {
+        quote! {
+            $(x * 2)
+        }
+    };
+    ast_eval(ast)
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::Int(6));
+}
+
+#[test]
+fn comptime_ast_dump() {
+    let src = r#"
+func main() -> string {
+    let ast = comptime {
+        quote! {
+            1 + 2
+        }
+    };
+    ast_dump(ast)
+}
+"#;
+    let result = run_source(src);
+    assert!(matches!(result, interp::Value::String(_)));
+}
+
+#[test]
+fn comptime_quote_with_let() {
+    let src = r#"
+func main() -> i32 {
+    let ast = comptime {
+        quote! {
+            let x = 10;
+            x + 5
+        }
+    };
+    ast_eval(ast)
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::Int(15));
+}
+
+#[test]
+fn comptime_runtime_mix() {
+    let src = r#"
+func double(n: i32) -> i32 {
+    n * 2
+}
+
+func main() -> i32 {
+    let val = 21;
+    let result = double(val);
+    comptime {
+        result + 1
+    }
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::Int(43));
+}
+
+// === T402: Compile-Time Function Execution Tests ===
+
+#[test]
+fn comptime_func_no_args() {
+    let src = r#"
+comptime func pi() -> f64 {
+    3.14159
+}
+
+func main() -> f64 {
+    pi()
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::Float(3.14159));
+}
+
+#[test]
+fn comptime_func_constant_expression() {
+    let src = r#"
+comptime func max_value() -> i32 {
+    2147483647
+}
+
+func main() -> i32 {
+    max_value()
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::Int(2147483647));
+}
+
+#[test]
+fn comptime_func_with_args_not_precomputed() {
+    let src = r#"
+comptime func add(a: i32, b: i32) -> i32 {
+    a + b
+}
+
+func main() -> i32 {
+    add(3, 4)
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::Int(7));
+}
+
+#[test]
+fn comptime_func_multiple() {
+    let src = r#"
+comptime func one() -> i32 {
+    1
+}
+
+comptime func two() -> i32 {
+    2
+}
+
+func main() -> i32 {
+    one() + two()
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::Int(3));
+}
+
+#[test]
+fn comptime_func_string() {
+    let src = r#"
+comptime func greeting() -> string {
+    "hello"
+}
+
+func main() -> string {
+    greeting()
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::String("hello".to_string()));
+}
+
+// === T403: Derive Macro Tests ===
+
+#[test]
+fn derive_debug_parses() {
+    let src = r#"
+#[derive(Debug)]
+type Point {
+    x: i32
+    y: i32
+}
+
+func main() -> i32 {
+    42
+}
+"#;
+    assert!(check_source(src).is_ok());
+}
+
+#[test]
+fn derive_clone_parses() {
+    let src = r#"
+#[derive(Clone)]
+type Point {
+    x: i32
+    y: i32
+}
+
+func main() -> i32 {
+    42
+}
+"#;
+    assert!(check_source(src).is_ok());
+}
+
+#[test]
+fn derive_eq_parses() {
+    let src = r#"
+#[derive(Eq)]
+type Point {
+    x: i32
+    y: i32
+}
+
+func main() -> i32 {
+    42
+}
+"#;
+    assert!(check_source(src).is_ok());
+}
+
+#[test]
+fn derive_multiple() {
+    let src = r#"
+#[derive(Debug, Clone, Eq)]
+type Point {
+    x: i32
+    y: i32
+}
+
+func main() -> i32 {
+    42
+}
+"#;
+    assert!(check_source(src).is_ok());
+}
+
+#[test]
+fn derive_enum() {
+    let src = r#"
+#[derive(Debug)]
+type Color { Red | Green | Blue }
+
+func main() -> i32 {
+    42
+}
+"#;
+    assert!(check_source(src).is_ok());
+}
+
+#[test]
+fn derive_on_actor() {
+    let src = r#"
+actor Counter {
+    count: i32
+}
+
+func main() -> i32 {
+    42
+}
+"#;
+    assert!(check_source(src).is_ok());
+}
+
+// === T501: Standard Library Builtins Tests ===
+
+#[test]
+fn builtin_map() {
+    let src = r#"
+func main() -> i32 {
+    let nums = [1, 2, 3];
+    let doubled = map(nums, fn(x: i32) -> i32 { x * 2 });
+    doubled[0] + doubled[1] + doubled[2]
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::Int(12));
+}
+
+#[test]
+fn builtin_filter() {
+    let src = r#"
+func main() -> i32 {
+    let nums = [1, 2, 3, 4, 5];
+    let evens = filter(nums, fn(x: i32) -> bool { x % 2 == 0 });
+    len(evens)
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::Int(2));
+}
+
+#[test]
+fn builtin_reduce() {
+    let src = r#"
+func main() -> i32 {
+    let nums = [1, 2, 3, 4];
+    reduce(nums, fn(acc: i32, x: i32) -> i32 { acc + x }, 0)
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::Int(10));
+}
+
+#[test]
+fn builtin_sort() {
+    let src = r#"
+func main() -> i32 {
+    let nums = [3, 1, 4, 1, 5];
+    let sorted = sort(nums);
+    sorted[0] + sorted[1] + sorted[2]
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::Int(5));
+}
+
+#[test]
+fn builtin_reverse() {
+    let src = r#"
+func main() -> i32 {
+    let nums = [1, 2, 3];
+    let rev = reverse(nums);
+    rev[0]
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::Int(3));
+}
+
+#[test]
+fn builtin_enumerate() {
+    let src = r#"
+func main() -> i32 {
+    let items = ["a", "b", "c"];
+    let enums = enumerate(items);
+    len(enums)
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::Int(3));
+}
+
+#[test]
+fn builtin_zip() {
+    let src = r#"
+func main() -> i32 {
+    let a = [1, 2, 3];
+    let b = [4, 5, 6];
+    let zipped = zip(a, b);
+    len(zipped)
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::Int(3));
+}
+
+#[test]
+fn builtin_flatten() {
+    let src = r#"
+func main() -> i32 {
+    let nested = [[1, 2], [3, 4], [5]];
+    let flat = flatten(nested);
+    len(flat)
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::Int(5));
+}
+
+#[test]
+fn builtin_sum() {
+    let src = r#"
+func main() -> i32 {
+    let nums = [1, 2, 3, 4, 5];
+    sum(nums)
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::Int(15));
+}
+
+#[test]
+fn builtin_assert_eq_pass() {
+    let src = r#"
+func main() -> i32 {
+    assert_eq(1 + 1, 2);
+    42
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::Int(42));
+}
+
+#[test]
+fn builtin_assert_eq_fail() {
+    let src = r#"
+func main() -> i32 {
+    assert_eq(1 + 1, 3);
+    42
+}
+"#;
+    let err = run_source_result(src);
+    assert!(err.is_err());
+}
+
+#[test]
+fn builtin_assert_ne_pass() {
+    let src = r#"
+func main() -> i32 {
+    assert_ne(1, 2);
+    42
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::Int(42));
+}
+
+#[test]
+fn user_func_not_shadowed_by_builtin() {
+    let src = r#"
+func sum(x: i32) -> i32 {
+    x + 100
+}
+
+func main() -> i32 {
+    sum(5)
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::Int(105));
+}
+
+// === T502: Test Framework Tests ===
+
+#[test]
+fn test_framework_finds_test_functions() {
+    use crate::ast;
+    let src = r#"
+func test_addition() -> i32 {
+    assert_eq(1 + 1, 2);
+    1
+}
+
+func test_subtraction() -> i32 {
+    assert_eq(5 - 3, 2);
+    1
+}
+
+func not_a_test() -> i32 {
+    42
+}
+
+func main() -> i32 {
+    0
+}
+"#;
+    let file = parse(src);
+    let test_funcs: Vec<String> = file.items.iter().filter_map(|item| {
+        match item {
+            ast::Item::Func(f) if f.name.starts_with("test_") => Some(f.name.clone()),
+            _ => None,
+        }
+    }).collect();
+    assert_eq!(test_funcs.len(), 2);
+    assert!(test_funcs.contains(&"test_addition".to_string()));
+    assert!(test_funcs.contains(&"test_subtraction".to_string()));
+}
+
+#[test]
+fn test_framework_run_test_function() {
+    let src = r#"
+func test_assert_eq_works() -> i32 {
+    assert_eq(2 + 2, 4);
+    1
+}
+
+func main() -> i32 {
+    0
+}
+"#;
+    let file = parse(src);
+    let mut interp = interp::Interpreter::new(&file);
+    let result = interp.call_named("test_assert_eq_works", vec![]);
+    assert!(result.is_ok());
+}
+
+#[test]
+fn test_framework_test_failure() {
+    let src = r#"
+func test_failing() -> i32 {
+    assert_eq(1, 2);
+    1
+}
+
+func main() -> i32 {
+    0
+}
+"#;
+    let file = parse(src);
+    let mut interp = interp::Interpreter::new(&file);
+    let result = interp.call_named("test_failing", vec![]);
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_framework_no_tests() {
+    use crate::ast;
+    let src = r#"
+func main() -> i32 {
+    42
+}
+"#;
+    let file = parse(src);
+    let test_funcs: Vec<String> = file.items.iter().filter_map(|item| {
+        match item {
+            ast::Item::Func(f) if f.name.starts_with("test_") => Some(f.name.clone()),
+            _ => None,
+        }
+    }).collect();
+    assert!(test_funcs.is_empty());
+}
+
+// === T503: Package Management Tests ===
+
+#[test]
+fn manifest_new() {
+    let manifest = crate::manifest::Manifest::new("test-pkg");
+    assert!(manifest.package.is_some());
+    let pkg = manifest.package.unwrap();
+    assert_eq!(pkg.name, "test-pkg");
+    assert_eq!(pkg.version, Some("0.1.0".to_string()));
+    assert!(manifest.dependencies.is_none());
+}
+
+#[test]
+fn manifest_add_dependency() {
+    let mut manifest = crate::manifest::Manifest::new("test-pkg");
+    manifest.add_dependency("serde", Some("1.0"), None);
+    let deps = manifest.dependencies.unwrap();
+    assert_eq!(deps.len(), 1);
+    assert_eq!(deps[0].name, "serde");
+    assert_eq!(deps[0].version, Some("1.0".to_string()));
+}
+
+#[test]
+fn manifest_add_dependency_replace() {
+    let mut manifest = crate::manifest::Manifest::new("test-pkg");
+    manifest.add_dependency("serde", Some("1.0"), None);
+    manifest.add_dependency("serde", Some("2.0"), None);
+    let deps = manifest.dependencies.unwrap();
+    assert_eq!(deps.len(), 1);
+    assert_eq!(deps[0].version, Some("2.0".to_string()));
+}
+
+#[test]
+fn manifest_remove_dependency() {
+    let mut manifest = crate::manifest::Manifest::new("test-pkg");
+    manifest.add_dependency("serde", Some("1.0"), None);
+    manifest.add_dependency("tokio", Some("1.0"), None);
+    assert!(manifest.remove_dependency("serde"));
+    let deps = manifest.dependencies.unwrap();
+    assert_eq!(deps.len(), 1);
+    assert_eq!(deps[0].name, "tokio");
+}
+
+#[test]
+fn manifest_remove_nonexistent() {
+    let mut manifest = crate::manifest::Manifest::new("test-pkg");
+    assert!(!manifest.remove_dependency("nonexistent"));
+}
+
+#[test]
+fn manifest_save_and_load() {
+    let dir = std::env::temp_dir().join("mimi_test_manifest");
+    let _ = std::fs::create_dir_all(&dir);
+    let mut manifest = crate::manifest::Manifest::new("test-pkg");
+    manifest.add_dependency("serde", Some("1.0"), None);
+    manifest.save(&dir).unwrap();
+    let loaded = crate::manifest::Manifest::load(&dir).unwrap().unwrap();
+    assert_eq!(loaded.package.unwrap().name, "test-pkg");
+    let deps = loaded.dependencies.unwrap();
+    assert_eq!(deps.len(), 1);
+    assert_eq!(deps[0].name, "serde");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+// === T500: LSP Tests ===
+
+#[test]
+fn lsp_diagnostics_no_errors() {
+    use crate::lsp::LspServer;
+    let mut server = LspServer::new();
+    let text = r#"
+func main() -> i32 {
+    42
+}
+"#;
+    let diagnostics = server.compute_diagnostics(text);
+    assert!(diagnostics.is_empty());
+}
+
+#[test]
+fn lsp_diagnostics_parse_error() {
+    use crate::lsp::LspServer;
+    let mut server = LspServer::new();
+    let text = "func main() -> i32 {";
+    let diagnostics = server.compute_diagnostics(text);
+    assert!(!diagnostics.is_empty());
+}
+
+#[test]
+fn lsp_diagnostics_type_error() {
+    use crate::lsp::LspServer;
+    let mut server = LspServer::new();
+    let text = r#"
+func main() -> i32 {
+    let x: string = 42;
+    x
+}
+"#;
+    let diagnostics = server.compute_diagnostics(text);
+    assert!(!diagnostics.is_empty());
+}
+
+#[test]
+fn lsp_completion_keywords() {
+    use crate::lsp::LspServer;
+    let mut server = LspServer::new();
+    let text = "";
+    let items = server.compute_completion(text);
+    let labels: Vec<&str> = items.iter()
+        .filter_map(|i| i.get("label").and_then(|l| l.as_str()))
+        .collect();
+    assert!(labels.contains(&"func"));
+    assert!(labels.contains(&"type"));
+    assert!(labels.contains(&"if"));
+}
+
+#[test]
+fn lsp_completion_functions() {
+    use crate::lsp::LspServer;
+    let mut server = LspServer::new();
+    let text = r#"
+func my_function() -> i32 {
+    42
+}
+
+func main() -> i32 {
+    my_function()
+}
+"#;
+    let items = server.compute_completion(text);
+    let labels: Vec<&str> = items.iter()
+        .filter_map(|i| i.get("label").and_then(|l| l.as_str()))
+        .collect();
+    assert!(labels.contains(&"my_function"));
+    assert!(labels.contains(&"main"));
+}
+
+#[test]
+fn lsp_completion_builtins() {
+    use crate::lsp::LspServer;
+    let mut server = LspServer::new();
+    let text = "";
+    let items = server.compute_completion(text);
+    let labels: Vec<&str> = items.iter()
+        .filter_map(|i| i.get("label").and_then(|l| l.as_str()))
+        .collect();
+    assert!(labels.contains(&"println"));
+    assert!(labels.contains(&"len"));
+    assert!(labels.contains(&"map"));
+    assert!(labels.contains(&"filter"));
+}

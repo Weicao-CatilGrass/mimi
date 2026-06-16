@@ -122,6 +122,7 @@ pub enum TokenKind {
     Bang,
     Ellipsis,
     At,
+    Hash,
 
     Newline,
     Indent,
@@ -240,6 +241,7 @@ impl fmt::Display for TokenKind {
             TokenKind::Bang => "!",
             TokenKind::Ellipsis => "...",
             TokenKind::At => "@",
+            TokenKind::Hash => "#",
             TokenKind::Newline => "newline",
             TokenKind::Indent => "INDENT",
             TokenKind::Dedent => "DEDENT",
@@ -925,6 +927,10 @@ impl<'a> Lexer<'a> {
                 '@' => {
                     self.advance();
                     (TokenKind::At, Commitment::None)
+                }
+                '#' => {
+                    self.advance();
+                    (TokenKind::Hash, Commitment::None)
                 }
                 _ => return Err(format!("unexpected character '{}' at {}:{}", c, line, col)),
             };

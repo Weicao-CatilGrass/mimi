@@ -1,14 +1,14 @@
 use std::path::{Path, PathBuf};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// mimi.toml package configuration
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Manifest {
     pub package: Option<Package>,
     pub dependencies: Option<Vec<Dependency>>,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Package {
     pub name: String,
     pub version: Option<String>,
@@ -16,7 +16,7 @@ pub struct Package {
     pub entry: Option<String>,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Dependency {
     pub name: String,
     pub version: Option<String>,
@@ -59,5 +59,51 @@ impl Manifest {
             .and_then(|p| p.entry.as_deref())
             .unwrap_or("main.mimi");
         base_dir.join(entry)
+    }
+
+    /// Add a dependency
+    pub fn add_dependency(&mut self, name: &str, version: Option<&str>, path: Option<&str>) {
+        let deps = self.dependencies.get_or_insert_with(Vec::new);
+        // Remove existing dependency with same name
+        deps.retain(|d| d.name != name);
+        deps.push(Dependency {
+            name: name.to_string(),
+            version: version.map(|v| v.to_string()),
+            path: path.map(|p| p.to_string()),
+        });
+    }
+
+    /// Remove a dependency
+    pub fn remove_dependency(&mut self, name: &str) -> bool {
+        if let Some(deps) = &mut self.dependencies {
+            let len_before = deps.len();
+            deps.retain(|d| d.name != name);
+            deps.len() < len_before
+        } else {
+            false
+        }
+    }
+
+    /// Save mimi.toml to a directory
+    pub fn save(&self, dir: &Path) -> Result<(), String> {
+        let toml_path = dir.join("mimi.toml");
+        let content = toml::to_string_pretty(self)
+            .map_err(|e| format!("failed to serialize manifest: {}", e))?;
+        std::fs::write(&toml_path, content)
+            .map_err(|e| format!("failed to write {}: {}", toml_path.display(), e))?;
+        Ok(())
+    }
+
+    /// Create a new empty manifest
+    pub fn new(name: &str) -> Self {
+        Manifest {
+            package: Some(Package {
+                name: name.to_string(),
+                version: Some("0.1.0".to_string()),
+                description: None,
+                entry: Some("main.mimi".to_string()),
+            }),
+            dependencies: None,
+        }
     }
 }
