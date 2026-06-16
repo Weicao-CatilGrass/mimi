@@ -2376,7 +2376,7 @@ func main() -> i32 {
     1
 }
 "#;
-    let file = parse(src);
+    let _file = parse(src);
     let v = run_source(src);
     assert_eq!(v, interp::Value::Int(1));
 }
