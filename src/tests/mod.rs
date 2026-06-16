@@ -20,10 +20,16 @@ pub(crate) fn run_source_result(src: &str) -> Result<interp::Value, String> {
     let tokens = lexer::Lexer::new(src).tokenize().map_err(|e| e)?;
     let file = parser::Parser::new(tokens).parse_file().map_err(|e| e.message)?;
     let mut interp = interp::Interpreter::new(&file);
+    interp.verify_contracts = true;
     interp.run()
 }
 
 pub(crate) fn check_source(src: &str) -> Result<(), Vec<core::Diagnostic>> {
     let file = parse(src);
     core::check(&file)
+}
+
+pub(crate) fn check_source_strict(src: &str) -> Result<(), Vec<core::Diagnostic>> {
+    let file = parse(src);
+    core::check_strict(&file)
 }

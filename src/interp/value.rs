@@ -75,7 +75,7 @@ pub enum Value {
     List(Vec<Value>),
     Tuple(Vec<Value>),
     Variant(String, Vec<Value>),
-    Record(HashMap<String, Value>),
+    Record(Option<String>, HashMap<String, Value>),
     Future(std::sync::Arc<std::sync::Mutex<std::sync::mpsc::Receiver<Result<Value, String>>>>),
     Error(String),
     ArenaRef(usize, usize),
@@ -94,6 +94,10 @@ pub enum Value {
     WeakShared(ArcWeak<RwLock<Value>>),
     WeakLocal(SendWeak<RefCell<Value>>),
     Cap(Vec<String>),
+    /// Immutable reference: &T
+    Ref(SendRc<RefCell<Value>>),
+    /// Mutable reference: &mut T
+    RefMut(SendRc<RefCell<Value>>),
 }
 
 #[derive(Debug, Clone)]
@@ -169,7 +173,7 @@ impl std::fmt::Display for Value {
                 }
                 write!(f, ")")
             }
-            Value::Record(fields) => {
+            Value::Record(_, fields) => {
                 write!(f, "{{")?;
                 let mut first = true;
                 for (k, v) in fields.iter() {
@@ -210,6 +214,14 @@ impl std::fmt::Display for Value {
                 None => write!(f, "weak_local(None)"),
             },
             Value::Cap(names) => write!(f, "cap({})", names.join(" + ")),
+            Value::Ref(rc) => {
+                let v = rc.0.borrow();
+                write!(f, "&{}", v)
+            }
+            Value::RefMut(rc) => {
+                let v = rc.0.borrow();
+                write!(f, "&mut {}", v)
+            }
         }
     }
 }
@@ -219,9 +231,13 @@ pub(crate) fn contains_arena_ref(v: &Value, arena_id: usize) -> bool {
         Value::ArenaRef(id, _) => *id == arena_id,
         Value::List(elems) => elems.iter().any(|e| contains_arena_ref(e, arena_id)),
         Value::Tuple(elems) => elems.iter().any(|e| contains_arena_ref(e, arena_id)),
-        Value::Record(fields) => fields.values().any(|v| contains_arena_ref(v, arena_id)),
+        Value::Record(_, fields) => fields.values().any(|v| contains_arena_ref(v, arena_id)),
         Value::Variant(_, args) => args.iter().any(|v| contains_arena_ref(v, arena_id)),
         Value::Newtype(inner) => contains_arena_ref(inner, arena_id),
+        Value::Ref(rc) | Value::RefMut(rc) => {
+            let v = rc.0.borrow();
+            contains_arena_ref(&v, arena_id)
+        }
         _ => false,
     }
 }
@@ -261,10 +277,23 @@ pub(crate) fn values_equal(a: &Value, b: &Value) -> bool {
         (Value::Variant(an, av), Value::Variant(bn, bv)) => {
             an == bn && av.len() == bv.len() && av.iter().zip(bv.iter()).all(|(x, y)| values_equal(x, y))
         }
-        (Value::Record(a), Value::Record(b)) => {
+        (Value::Record(_, a), Value::Record(_, b)) => {
             a.len() == b.len() && a.iter().all(|(k, v)| b.get(k).map(|bv| values_equal(v, bv)).unwrap_or(false))
         }
         (Value::Newtype(a), Value::Newtype(b)) => values_equal(a, b),
+        (Value::Ref(a), Value::Ref(b)) | (Value::RefMut(a), Value::RefMut(b)) => {
+            let va = a.0.borrow();
+            let vb = b.0.borrow();
+            values_equal(&va, &vb)
+        }
+        (Value::Ref(a), _) => {
+            let va = a.0.borrow();
+            values_equal(&va, b)
+        }
+        (_, Value::Ref(b)) => {
+            let vb = b.0.borrow();
+            values_equal(a, &vb)
+        }
         _ => false,
     }
 }
