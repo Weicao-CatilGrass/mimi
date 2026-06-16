@@ -188,6 +188,7 @@ impl Parser {
             TokenKind::Cap => Ok(Item::Cap(self.parse_cap_def()?)),
             TokenKind::Trait => Ok(Item::Trait(self.parse_trait_def()?)),
             TokenKind::Impl => Ok(Item::Impl(self.parse_impl_def()?)),
+            TokenKind::Extern => Ok(Item::ExternBlock(self.parse_extern_block()?)),
             TokenKind::Rule => {
                 self.advance();
                 let s = self.expect_string()?;
@@ -303,6 +304,82 @@ impl Parser {
             type_name,
             methods,
         })
+    }
+
+    fn parse_extern_block(&mut self) -> Result<ExternBlock, ParseError> {
+        self.expect(TokenKind::Extern, "`extern`")?;
+        // Parse optional ABI string: extern "C" { ... }
+        let abi = if self.at(&TokenKind::String("".into())) {
+            // Get the actual string value
+            let tok = self.peek().clone();
+            if let TokenKind::String(s) = &tok.kind {
+                let abi = s.clone();
+                self.advance();
+                abi
+            } else {
+                "C".to_string()
+            }
+        } else {
+            "C".to_string()
+        };
+        self.skip_newlines();
+        self.expect(TokenKind::LBrace, "`{`")?;
+        let mut funcs = Vec::new();
+        self.skip_newlines();
+        while !self.at(&TokenKind::RBrace) && !self.at(&TokenKind::Eof) {
+            self.skip_newlines();
+            if self.at(&TokenKind::RBrace) || self.at(&TokenKind::Eof) {
+                break;
+            }
+            // Parse extern function signature
+            self.expect(TokenKind::Func, "`func`")?;
+            let name = self.expect_ident()?;
+            self.expect(TokenKind::LParen, "`(`")?;
+            let mut params = Vec::new();
+            if !self.at(&TokenKind::RParen) {
+                loop {
+                    // Check for cap @ annotation
+                    let cap_mode = if self.at(&TokenKind::Cap) {
+                        self.advance();
+                        self.expect(TokenKind::At, "`@`")?;
+                        Some(CapMode::Move) // Default to move
+                    } else if self.at(&TokenKind::BitAnd) {
+                        // & means borrow
+                        self.advance();
+                        Some(CapMode::Borrow)
+                    } else {
+                        None
+                    };
+                    let param_name = self.expect_ident()?;
+                    self.expect(TokenKind::Colon, "`:`")?;
+                    let ty = self.parse_type()?;
+                    params.push(ExternParam {
+                        name: param_name,
+                        ty,
+                        cap_mode,
+                    });
+                    if !self.at(&TokenKind::Comma) {
+                        break;
+                    }
+                    self.advance();
+                }
+            }
+            self.expect(TokenKind::RParen, "`)`")?;
+            let ret = if self.at(&TokenKind::Arrow) {
+                self.advance();
+                Some(self.parse_type()?)
+            } else {
+                None
+            };
+            self.match_semi();
+            funcs.push(ExternFunc {
+                name,
+                params,
+                ret,
+            });
+        }
+        self.expect(TokenKind::RBrace, "`}`")?;
+        Ok(ExternBlock { abi, funcs })
     }
 
     fn parse_actor_def(&mut self) -> Result<ActorDef, ParseError> {

@@ -47,8 +47,35 @@ pub enum Item {
     Cap(CapDef),
     Trait(TraitDef),
     Impl(ImplDef),
+    ExternBlock(ExternBlock),
     Rule(String),
     Desc(String),
+}
+
+#[derive(Debug, Clone)]
+pub struct ExternBlock {
+    pub abi: String,
+    pub funcs: Vec<ExternFunc>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ExternFunc {
+    pub name: String,
+    pub params: Vec<ExternParam>,
+    pub ret: Option<Type>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ExternParam {
+    pub name: String,
+    pub ty: Type,
+    pub cap_mode: Option<CapMode>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CapMode {
+    Borrow,
+    Move,
 }
 
 #[derive(Debug, Clone)]
