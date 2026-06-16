@@ -271,6 +271,7 @@ impl<'a> Checker<'a> {
                         ty: f.ty.clone(),
                     }).collect()),
                     generics: Vec::new(),
+                    derives: Vec::new(),
                 };
                 self.types.insert(actor.name.clone(), actor_type_def);
 
@@ -562,6 +563,11 @@ impl<'a> Checker<'a> {
                 self.cap_vars.last_mut().unwrap().insert(p.name.clone(), false);
             }
             scopes[0].insert(p.name.clone(), ty);
+        }
+        // Comptime functions: type-check body but mark as compile-time evaluable
+        if func.is_comptime {
+            // Comptime functions can only use pure expressions (no side effects)
+            // For now, just type-check the body normally
         }
         // Check all-return-paths requirement
         if !matches!(&ret, Type::Name(n, _) if n == "unit") && !self.block_returns_on_all_paths(&func.body) {
@@ -1516,6 +1522,26 @@ impl<'a> Checker<'a> {
             Expr::Quote(_) | Expr::QuoteInterpolate(_) => {
                 // quote! returns an AST value
                 Type::Name("AST".into(), vec![])
+            }
+            Expr::Comptime(block) => {
+                // Comptime block: infer type from last expression
+                let mut result_type = Type::Name("unit".into(), vec![]);
+                for stmt in block {
+                    match stmt {
+                        Stmt::Expr(e) => result_type = self.infer_expr(e, scopes),
+                        Stmt::Return(Some(e)) => { result_type = self.infer_expr(e, scopes); break; }
+                        _ => {}
+                    }
+                }
+                result_type
+            }
+            Expr::TypeOf(_) => {
+                // type_of returns a Type descriptor
+                Type::Name("Type".into(), vec![])
+            }
+            Expr::TypeInfo(_) => {
+                // type_info returns a record with type metadata
+                Type::Name("TypeInfo".into(), vec![])
             }
             Expr::Old(expr) => {
                 // old(x) returns the same type as x

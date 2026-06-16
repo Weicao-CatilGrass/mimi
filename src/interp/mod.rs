@@ -43,6 +43,10 @@ pub struct Interpreter<'a> {
     type_impls: HashMap<String, HashMap<String, Vec<FuncDef>>>,
     /// Extern function declarations: func_name -> ExternFunc
     extern_funcs: HashMap<String, ExternFunc>,
+    /// Type definitions for reflection: type_name -> (fields, variants)
+    type_defs: HashMap<String, TypeDef>,
+    /// Pre-computed results for comptime functions (no-arg functions evaluated at startup)
+    comptime_results: HashMap<String, Value>,
     /// Loaded shared libraries: lib_path -> Library handle
     loaded_libs: Vec<libloading::Library>,
 }
@@ -61,10 +65,14 @@ impl<'a> Interpreter<'a> {
         let mut trait_defs = HashMap::new();
         let mut type_impls: HashMap<String, HashMap<String, Vec<FuncDef>>> = HashMap::new();
         let mut extern_funcs: HashMap<String, ExternFunc> = HashMap::new();
+        let mut type_defs: HashMap<String, TypeDef> = HashMap::new();
         for item in &file.items {
             Self::collect_traits(item, &mut trait_defs, &mut type_impls);
             Self::collect_extern_funcs(item, &mut extern_funcs);
+            Self::collect_type_defs(item, &mut type_defs);
         }
+        // Expand built-in derive macros
+        Self::expand_derives(&type_defs, &mut trait_defs, &mut type_impls);
         Self {
             file,
             env: vec![HashMap::new()],
@@ -82,6 +90,8 @@ impl<'a> Interpreter<'a> {
             trait_defs,
             type_impls,
             extern_funcs,
+            type_defs,
+            comptime_results: HashMap::new(),
             loaded_libs: Vec::new(),
         }
     }
@@ -143,6 +153,112 @@ impl<'a> Interpreter<'a> {
         }
     }
 
+    fn collect_type_defs(item: &Item, out: &mut HashMap<String, TypeDef>) {
+        match item {
+            Item::Type(t) => {
+                out.insert(t.name.clone(), t.clone());
+            }
+            Item::Actor(actor) => {
+                let actor_type_def = TypeDef {
+                    name: actor.name.clone(),
+                    commitment: actor.commitment,
+                    pub_: actor.pub_,
+                    kind: TypeDefKind::Record(actor.fields.iter().map(|f| Field {
+                        name: f.name.clone(),
+                        ty: f.ty.clone(),
+                    }).collect()),
+                    generics: Vec::new(),
+                    derives: Vec::new(),
+                };
+                out.insert(actor.name.clone(), actor_type_def);
+            }
+            Item::Module(m) => {
+                for inner in &m.items {
+                    Self::collect_type_defs(inner, out);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Expand built-in derive macros for types
+    fn expand_derives(type_defs: &HashMap<String, TypeDef>, _trait_defs: &mut HashMap<String, TraitDef>, type_impls: &mut HashMap<String, HashMap<String, Vec<FuncDef>>>) {
+        for (type_name, type_def) in type_defs {
+            for derive_name in &type_def.derives {
+                match derive_name.as_str() {
+                    "Debug" => {
+                        // Generate to_string method for Debug
+                        let to_string_func = FuncDef {
+                            name: "to_string".to_string(),
+                            commitment: Commitment::None,
+                            pub_: false,
+                            params: vec![],
+                            ret: Some(Type::Name("string".into(), vec![])),
+                            body: vec![],
+                            where_clause: None,
+                            generics: vec![],
+                            effects: vec![],
+                            is_comptime: false,
+                        };
+                        type_impls
+                            .entry(type_name.clone())
+                            .or_default()
+                            .entry("Debug".to_string())
+                            .or_default()
+                            .push(to_string_func);
+                    }
+                    "Clone" => {
+                        // Generate clone method for Clone
+                        let clone_func = FuncDef {
+                            name: "clone".to_string(),
+                            commitment: Commitment::None,
+                            pub_: false,
+                            params: vec![],
+                            ret: Some(Type::Name(type_name.clone(), vec![])),
+                            body: vec![],
+                            where_clause: None,
+                            generics: vec![],
+                            effects: vec![],
+                            is_comptime: false,
+                        };
+                        type_impls
+                            .entry(type_name.clone())
+                            .or_default()
+                            .entry("Clone".to_string())
+                            .or_default()
+                            .push(clone_func);
+                    }
+                    "Eq" => {
+                        // Generate eq method for Eq
+                        let eq_func = FuncDef {
+                            name: "eq".to_string(),
+                            commitment: Commitment::None,
+                            pub_: false,
+                            params: vec![Param {
+                                name: "other".to_string(),
+                                ty: Type::Name(type_name.clone(), vec![]),
+                                mut_: false,
+                            }],
+                            ret: Some(Type::Name("bool".into(), vec![])),
+                            body: vec![],
+                            where_clause: None,
+                            generics: vec![],
+                            effects: vec![],
+                            is_comptime: false,
+                        };
+                        type_impls
+                            .entry(type_name.clone())
+                            .or_default()
+                            .entry("Eq".to_string())
+                            .or_default()
+                            .push(eq_func);
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
     fn collect_traits(item: &Item, trait_defs: &mut HashMap<String, TraitDef>, type_impls: &mut HashMap<String, HashMap<String, Vec<FuncDef>>>) {
         match item {
             Item::Trait(trait_def) => {
@@ -190,9 +306,121 @@ impl<'a> Interpreter<'a> {
         }
     }
 
+    /// Get the type name of a runtime value
+    fn value_type_name(&self, val: &Value) -> String {
+        match val {
+            Value::Int(_) => "i32".into(),
+            Value::Float(_) => "f64".into(),
+            Value::Bool(_) => "bool".into(),
+            Value::String(_) => "string".into(),
+            Value::Unit => "unit".into(),
+            Value::List(_) => "list".into(),
+            Value::Tuple(_) => "tuple".into(),
+            Value::Variant(name, _) => name.clone(),
+            Value::Record(Some(name), _) => name.clone(),
+            Value::Record(None, _) => "record".into(),
+            Value::Error(_) => "error".into(),
+            Value::Newtype(v) => self.value_type_name(v),
+            Value::Type(name) => name.clone(),
+            Value::Closure { .. } => "closure".into(),
+            Value::QuoteAst(_) => "AST".into(),
+            Value::Shared(_) => "shared".into(),
+            Value::LocalShared(_) => "local_shared".into(),
+            Value::Ref(_) => "ref".into(),
+            Value::RefMut(_) => "ref_mut".into(),
+            Value::Cap(_) => "cap".into(),
+            Value::Actor(_) => "actor".into(),
+            Value::Future(_) => "future".into(),
+            Value::ArenaRef(_, _) => "arena_ref".into(),
+            Value::ArenaBlock(_) => "arena_block".into(),
+            Value::WeakShared(_) | Value::WeakLocal(_) => "weak".into(),
+        }
+    }
+
+    /// Resolve a Type AST node to a type name string
+    fn resolve_type_name(&self, ty: &Type) -> String {
+        match ty {
+            Type::Name(name, _) => name.clone(),
+            Type::Ref(inner) => format!("&{}", self.resolve_type_name(inner)),
+            Type::RefMut(inner) => format!("&mut {}", self.resolve_type_name(inner)),
+            Type::Option(inner) => format!("Option<{}>", self.resolve_type_name(inner)),
+            Type::Result(ok, err) => format!("Result<{}, {}>", self.resolve_type_name(ok), self.resolve_type_name(err)),
+            Type::Tuple(elems) => {
+                let names: Vec<String> = elems.iter().map(|e| self.resolve_type_name(e)).collect();
+                format!("({})", names.join(", "))
+            }
+            Type::Func(args, ret) => {
+                let arg_names: Vec<String> = args.iter().map(|a| self.resolve_type_name(a)).collect();
+                format!("({}) -> {}", arg_names.join(", "), self.resolve_type_name(ret))
+            }
+            Type::Cap(name) => format!("cap {}", name),
+            Type::Shared(inner) => format!("shared {}", self.resolve_type_name(inner)),
+            Type::LocalShared(inner) => format!("local_shared {}", self.resolve_type_name(inner)),
+            Type::Weak(inner) => format!("weak {}", self.resolve_type_name(inner)),
+            Type::Newtype(name, _) => name.clone(),
+            Type::Nothing => "nothing".into(),
+        }
+    }
+
+    /// Get type info for a type name
+    fn type_info_for(&self, type_name: &str) -> Result<Value, String> {
+        if let Some(type_def) = self.type_defs.get(type_name) {
+            let mut fields_map = HashMap::new();
+            match &type_def.kind {
+                TypeDefKind::Record(fields) => {
+                    for f in fields {
+                        let field_info = vec![
+                            (Value::String("name".into()), Value::String(f.name.clone())),
+                            (Value::String("type".into()), Value::String(self.resolve_type_name(&f.ty))),
+                        ];
+                        fields_map.insert(f.name.clone(), Value::Tuple(field_info.into_iter().map(|(_, v)| v).collect()));
+                    }
+                }
+                TypeDefKind::Enum(variants) => {
+                    for v in variants {
+                        let variant_info = vec![
+                            Value::String(v.name.clone()),
+                            Value::Bool(v.payload.is_some()),
+                        ];
+                        fields_map.insert(v.name.clone(), Value::Tuple(variant_info));
+                    }
+                }
+                TypeDefKind::Alias(ty) => {
+                    fields_map.insert("alias_of".into(), Value::String(self.resolve_type_name(ty)));
+                }
+                TypeDefKind::Newtype(ty) => {
+                    fields_map.insert("inner".into(), Value::String(self.resolve_type_name(ty)));
+                }
+            }
+            let mut info = HashMap::new();
+            info.insert("name".into(), Value::String(type_name.into()));
+            info.insert("fields".into(), Value::List(fields_map.into_values().collect()));
+            Ok(Value::Record(None, info))
+        } else {
+            Err(format!("unknown type '{}'", type_name))
+        }
+    }
+
     pub fn run(&mut self) -> Result<Value, String> {
+        // Evaluate comptime functions (no-arg) at startup
+        self.eval_comptime_funcs()?;
         let main = self.find_function("main").ok_or("no main() function found")?;
         self.call_func(&main, vec![])
+    }
+
+    /// Evaluate comptime functions with no arguments at startup
+    fn eval_comptime_funcs(&mut self) -> Result<(), String> {
+        let funcs: Vec<FuncDef> = self.file.items.iter().filter_map(|item| {
+            match item {
+                Item::Func(f) if f.is_comptime && f.params.is_empty() => Some(f.clone()),
+                _ => None,
+            }
+        }).collect();
+        for func in funcs {
+            let result = self.call_func(&func, vec![])?;
+            self.comptime_results.insert(func.name.clone(), result);
+        }
+        Ok(())
     }
 
     fn find_function(&self, name: &str) -> Option<FuncDef> {
@@ -1229,6 +1457,38 @@ impl<'a> Interpreter<'a> {
                 }
                 self.call_func(&func, arg_vals)
             }
+            Expr::Comptime(block) => {
+                // Comptime block: evaluate all statements, return last expression value
+                let mut result = Value::Unit;
+                let len = block.len();
+                for (i, stmt) in block.iter().enumerate() {
+                    let is_last = i == len - 1;
+                    match stmt {
+                        Stmt::Expr(e) if is_last => {
+                            result = self.eval_expr(e)?;
+                        }
+                        Stmt::Expr(e) => {
+                            self.eval_expr(e)?;
+                        }
+                        _ => {
+                            if let Some(v) = self.eval_stmt(stmt)? {
+                                result = v;
+                            }
+                        }
+                    }
+                }
+                Ok(result)
+            }
+            Expr::TypeOf(expr) => {
+                let val = self.eval_expr(expr)?;
+                let type_name = self.value_type_name(&val);
+                Ok(Value::String(type_name))
+            }
+            Expr::TypeInfo(ty) => {
+                let type_name = self.resolve_type_name(ty);
+                let info = self.type_info_for(&type_name)?;
+                Ok(info)
+            }
         }
     }
 
@@ -1381,10 +1641,23 @@ impl<'a> Interpreter<'a> {
                 }
                 Ok(QuotedAst::Call(Box::new(QuotedAst::Ident(name.clone())), q_args))
             }
+            Expr::Comptime(block) => {
+                // Quote comptime block as a block
+                self.quote_block(block)
+            }
+            Expr::TypeOf(e) => {
+                // Quote type_of as a function call
+                let q_arg = self.quote_expr(e)?;
+                Ok(QuotedAst::Call(Box::new(QuotedAst::Ident("type_of".into())), vec![q_arg]))
+            }
+            Expr::TypeInfo(_ty) => {
+                // Quote type_info as a function call
+                Ok(QuotedAst::Call(Box::new(QuotedAst::Ident("type_info".into())), vec![]))
+            }
         }
     }
 
-    fn call_named(&mut self, name: &str, args: Vec<Value>) -> Result<Value, String> {
+    pub fn call_named(&mut self, name: &str, args: Vec<Value>) -> Result<Value, String> {
         // First check if the name is bound to a closure in the local scope
         if let Some(v) = self.lookup(name) {
             match v {
@@ -1435,6 +1708,10 @@ impl<'a> Interpreter<'a> {
                 return Ok(Value::Newtype(Box::new(args.into_iter().next().unwrap())));
             }
             return Ok(Value::Variant(name.into(), args));
+        }
+        // Check user-defined functions before builtins
+        if let Some(func) = self.find_function(name) {
+            return self.call_func(&func, args);
         }
         match name {
             "println" => {
@@ -1583,6 +1860,208 @@ impl<'a> Interpreter<'a> {
                 }
                 Ok(Value::String(line))
             }
+            "assert_eq" => {
+                if args.len() != 2 {
+                    return Err("assert_eq expects 2 arguments".into());
+                }
+                if !values_equal(&args[0], &args[1]) {
+                    return Err(format!("assertion failed: {} != {}", args[0], args[1]));
+                }
+                Ok(Value::Unit)
+            }
+            "assert_ne" => {
+                if args.len() != 2 {
+                    return Err("assert_ne expects 2 arguments".into());
+                }
+                if values_equal(&args[0], &args[1]) {
+                    return Err(format!("assertion failed: {} == {}", args[0], args[1]));
+                }
+                Ok(Value::Unit)
+            }
+            "map" => {
+                if args.len() != 2 {
+                    return Err("map expects 2 arguments (list, closure)".into());
+                }
+                match (&args[0], &args[1]) {
+                    (Value::List(l), Value::Closure { params, body, captured, .. }) => {
+                        if params.len() != 1 {
+                            return Err("map closure must take 1 argument".into());
+                        }
+                        let mut result = Vec::new();
+                        for item in l {
+                            self.push_scope();
+                            for (n, v) in captured {
+                                self.bind(n, v.clone());
+                            }
+                            self.bind(&params[0].name, item.clone());
+                            let val = self.eval_block(body)?;
+                            self.pop_scope();
+                            result.push(val.unwrap_or(Value::Unit));
+                        }
+                        Ok(Value::List(result))
+                    }
+                    _ => Err("map expects (list, closure)".into()),
+                }
+            }
+            "filter" => {
+                if args.len() != 2 {
+                    return Err("filter expects 2 arguments (list, closure)".into());
+                }
+                match (&args[0], &args[1]) {
+                    (Value::List(l), Value::Closure { params, body, captured, .. }) => {
+                        if params.len() != 1 {
+                            return Err("filter closure must take 1 argument".into());
+                        }
+                        let mut result = Vec::new();
+                        for item in l {
+                            self.push_scope();
+                            for (n, v) in captured {
+                                self.bind(n, v.clone());
+                            }
+                            self.bind(&params[0].name, item.clone());
+                            let val = self.eval_block(body)?;
+                            self.pop_scope();
+                            if is_truthy(&val.unwrap_or(Value::Unit)) {
+                                result.push(item.clone());
+                            }
+                        }
+                        Ok(Value::List(result))
+                    }
+                    _ => Err("filter expects (list, closure)".into()),
+                }
+            }
+            "reduce" => {
+                if args.len() != 3 {
+                    return Err("reduce expects 3 arguments (list, closure, initial)".into());
+                }
+                match (&args[0], &args[1]) {
+                    (Value::List(l), Value::Closure { params, body, captured, .. }) => {
+                        if params.len() != 2 {
+                            return Err("reduce closure must take 2 arguments (acc, elem)".into());
+                        }
+                        let mut acc = args[2].clone();
+                        for item in l {
+                            self.push_scope();
+                            for (n, v) in captured {
+                                self.bind(n, v.clone());
+                            }
+                            self.bind(&params[0].name, acc.clone());
+                            self.bind(&params[1].name, item.clone());
+                            let val = self.eval_block(body)?;
+                            self.pop_scope();
+                            acc = val.unwrap_or(Value::Unit);
+                        }
+                        Ok(acc)
+                    }
+                    _ => Err("reduce expects (list, closure, initial)".into()),
+                }
+            }
+            "sort" => {
+                if args.len() != 1 {
+                    return Err("sort expects 1 argument (list)".into());
+                }
+                match &args[0] {
+                    Value::List(l) => {
+                        let mut sorted = l.clone();
+                        sorted.sort_by(|a, b| {
+                            match (a, b) {
+                                (Value::Int(x), Value::Int(y)) => x.cmp(y),
+                                (Value::Float(x), Value::Float(y)) => x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal),
+                                (Value::String(x), Value::String(y)) => x.cmp(y),
+                                _ => std::cmp::Ordering::Equal,
+                            }
+                        });
+                        Ok(Value::List(sorted))
+                    }
+                    _ => Err("sort expects a list".into()),
+                }
+            }
+            "reverse" => {
+                if args.len() != 1 {
+                    return Err("reverse expects 1 argument (list)".into());
+                }
+                match &args[0] {
+                    Value::List(l) => {
+                        let mut reversed = l.clone();
+                        reversed.reverse();
+                        Ok(Value::List(reversed))
+                    }
+                    _ => Err("reverse expects a list".into()),
+                }
+            }
+            "flatten" => {
+                if args.len() != 1 {
+                    return Err("flatten expects 1 argument (list of lists)".into());
+                }
+                match &args[0] {
+                    Value::List(l) => {
+                        let mut result = Vec::new();
+                        for item in l {
+                            match item {
+                                Value::List(inner) => result.extend(inner.clone()),
+                                _ => result.push(item.clone()),
+                            }
+                        }
+                        Ok(Value::List(result))
+                    }
+                    _ => Err("flatten expects a list".into()),
+                }
+            }
+            "zip" => {
+                if args.len() != 2 {
+                    return Err("zip expects 2 arguments (list, list)".into());
+                }
+                match (&args[0], &args[1]) {
+                    (Value::List(a), Value::List(b)) => {
+                        let len = a.len().min(b.len());
+                        let result: Vec<Value> = (0..len)
+                            .map(|i| Value::Tuple(vec![a[i].clone(), b[i].clone()]))
+                            .collect();
+                        Ok(Value::List(result))
+                    }
+                    _ => Err("zip expects two lists".into()),
+                }
+            }
+            "enumerate" => {
+                if args.len() != 1 {
+                    return Err("enumerate expects 1 argument (list)".into());
+                }
+                match &args[0] {
+                    Value::List(l) => {
+                        let result: Vec<Value> = l.iter()
+                            .enumerate()
+                            .map(|(i, v)| Value::Tuple(vec![Value::Int(i as i64), v.clone()]))
+                            .collect();
+                        Ok(Value::List(result))
+                    }
+                    _ => Err("enumerate expects a list".into()),
+                }
+            }
+            "sum" => {
+                if args.len() != 1 {
+                    return Err("sum expects 1 argument (list)".into());
+                }
+                match &args[0] {
+                    Value::List(l) => {
+                        let mut total_int = 0i64;
+                        let mut total_float = 0f64;
+                        let mut is_float = false;
+                        for v in l {
+                            match v {
+                                Value::Int(n) => total_int += n,
+                                Value::Float(n) => { total_float += n; is_float = true; }
+                                _ => return Err("sum expects a list of numbers".into()),
+                            }
+                        }
+                        if is_float {
+                            Ok(Value::Float(total_float + total_int as f64))
+                        } else {
+                            Ok(Value::Int(total_int))
+                        }
+                    }
+                    _ => Err("sum expects a list".into()),
+                }
+            }
             "ast_dump" => {
                 if args.len() != 1 {
                     return Err("ast_dump expects 1 argument (a quoted AST)".into());
@@ -1601,11 +2080,107 @@ impl<'a> Interpreter<'a> {
                     other => Err(format!("ast_eval expects a QuoteAst, got {}", other)),
                 }
             }
+            "type_name" => {
+                if args.len() != 1 {
+                    return Err("type_name expects 1 argument (a value)".into());
+                }
+                let type_name = self.value_type_name(&args[0]);
+                Ok(Value::String(type_name))
+            }
+            "type_fields" => {
+                if args.len() != 1 {
+                    return Err("type_fields expects 1 argument (a type name string)".into());
+                }
+                match &args[0] {
+                    Value::String(name) => {
+                        if let Some(type_def) = self.type_defs.get(name) {
+                            match &type_def.kind {
+                                TypeDefKind::Record(fields) => {
+                                    let field_names: Vec<Value> = fields.iter()
+                                        .map(|f| Value::String(f.name.clone()))
+                                        .collect();
+                                    Ok(Value::List(field_names))
+                                }
+                                TypeDefKind::Enum(variants) => {
+                                    let variant_names: Vec<Value> = variants.iter()
+                                        .map(|v| Value::String(v.name.clone()))
+                                        .collect();
+                                    Ok(Value::List(variant_names))
+                                }
+                                _ => Ok(Value::List(vec![])),
+                            }
+                        } else {
+                            Err(format!("unknown type '{}'", name))
+                        }
+                    }
+                    Value::Type(name) => {
+                        if let Some(type_def) = self.type_defs.get(name) {
+                            match &type_def.kind {
+                                TypeDefKind::Record(fields) => {
+                                    let field_names: Vec<Value> = fields.iter()
+                                        .map(|f| Value::String(f.name.clone()))
+                                        .collect();
+                                    Ok(Value::List(field_names))
+                                }
+                                TypeDefKind::Enum(variants) => {
+                                    let variant_names: Vec<Value> = variants.iter()
+                                        .map(|v| Value::String(v.name.clone()))
+                                        .collect();
+                                    Ok(Value::List(variant_names))
+                                }
+                                _ => Ok(Value::List(vec![])),
+                            }
+                        } else {
+                            Err(format!("unknown type '{}'", name))
+                        }
+                    }
+                    _ => Err("type_fields expects a type name string or Type value".into()),
+                }
+            }
+            "type_variants" => {
+                if args.len() != 1 {
+                    return Err("type_variants expects 1 argument (a type name string)".into());
+                }
+                match &args[0] {
+                    Value::String(name) => {
+                        if let Some(type_def) = self.type_defs.get(name) {
+                            match &type_def.kind {
+                                TypeDefKind::Enum(variants) => {
+                                    let variant_names: Vec<Value> = variants.iter()
+                                        .map(|v| Value::String(v.name.clone()))
+                                        .collect();
+                                    Ok(Value::List(variant_names))
+                                }
+                                _ => Ok(Value::List(vec![])),
+                            }
+                        } else {
+                            Err(format!("unknown type '{}'", name))
+                        }
+                    }
+                    Value::Type(name) => {
+                        if let Some(type_def) = self.type_defs.get(name) {
+                            match &type_def.kind {
+                                TypeDefKind::Enum(variants) => {
+                                    let variant_names: Vec<Value> = variants.iter()
+                                        .map(|v| Value::String(v.name.clone()))
+                                        .collect();
+                                    Ok(Value::List(variant_names))
+                                }
+                                _ => Ok(Value::List(vec![])),
+                            }
+                        } else {
+                            Err(format!("unknown type '{}'", name))
+                        }
+                    }
+                    _ => Err("type_variants expects a type name string or Type value".into()),
+                }
+            }
             _ => {
-                let func = self
-                    .find_function(name)
-                    .ok_or_else(|| format!("undefined function '{}'", name))?;
-                self.call_func(&func, args)
+                // Check for pre-computed comptime function results
+                if let Some(result) = self.comptime_results.get(name) {
+                    return Ok(result.clone());
+                }
+                Err(format!("undefined function '{}'", name))
             }
         }
     }

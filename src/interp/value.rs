@@ -98,6 +98,8 @@ pub enum Value {
     Ref(SendRc<RefCell<Value>>),
     /// Mutable reference: &mut T
     RefMut(SendRc<RefCell<Value>>),
+    /// Type descriptor for comptime reflection
+    Type(String),
 }
 
 #[derive(Debug, Clone)]
@@ -222,6 +224,7 @@ impl std::fmt::Display for Value {
                 let v = rc.0.borrow();
                 write!(f, "&mut {}", v)
             }
+            Value::Type(name) => write!(f, "{}", name),
         }
     }
 }
@@ -238,6 +241,7 @@ pub(crate) fn contains_arena_ref(v: &Value, arena_id: usize) -> bool {
             let v = rc.0.borrow();
             contains_arena_ref(&v, arena_id)
         }
+        Value::Type(_) => false,
         _ => false,
     }
 }
@@ -294,6 +298,7 @@ pub(crate) fn values_equal(a: &Value, b: &Value) -> bool {
             let vb = b.0.borrow();
             values_equal(a, &vb)
         }
+        (Value::Type(a), Value::Type(b)) => a == b,
         _ => false,
     }
 }
