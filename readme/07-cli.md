@@ -102,21 +102,29 @@ mimi test <file.mimi>
 
 运行所有以 `test_` 开头的函数。
 
+### 选项
+
+| 选项 | 说明 |
+|------|------|
+| `--filter <pattern>` | 按模式过滤测试（子串匹配） |
+| `--verbose` | 显示详细的失败信息 |
+| `--allocator={system,arena,bump}` | 设置默认分配器 |
+
 ### 测试函数命名
 
 ```mimi
 func test_basic_addition() {
-    assert_eq(2 + 2, 4);
+    assert_eq(2 + 2, 4)
 }
 
 func test_string_concat() {
-    assert_eq("hello" + " world", "hello world");
+    assert_eq("hello" + " world", "hello world")
 }
 
 func test_with_setup() {
-    let data = setup_test_data();
-    assert(data.is_valid());
-    cleanup(data);
+    let data = setup_test_data()
+    assert(data.is_valid())
+    cleanup(data)
 }
 ```
 
@@ -128,17 +136,24 @@ mimi test tests/basic.mimi
 
 # 运行所有测试
 mimi test tests/
+
+# 过滤测试
+mimi test --filter addition tests/basic.mimi
+
+# 显示详细输出
+mimi test --verbose tests/basic.mimi
 ```
 
 ### 输出
 
 ```
-Running tests in tests/basic.mimi...
-  test_basic_addition ... ✓ PASSED
-  test_string_concat ... ✓ PASSED
-  test_with_setup ... ✓ PASSED
+Running 3 test(s)...
 
-3 tests passed, 0 failed
+  ✓ test_basic_addition
+  ✓ test_string_concat
+  ✓ test_with_setup
+
+3 passed, 0 failed
 ```
 
 ---
@@ -250,9 +265,20 @@ mimi lsp
 ```
 
 启动 LSP 服务器（JSON-RPC over stdin/stdout），为编辑器提供：
-- 诊断信息
-- 代码补全
-- 悬停信息
+
+### 支持的功能
+
+| 功能 | 说明 |
+|------|------|
+| 诊断 | 解析错误 + 类型错误，实时更新 |
+| 代码补全 | 关键字、函数名、类型名、内置函数 |
+| 悬停信息 | 函数签名、类型信息、内置函数文档 |
+| 跳转定义 | 跳转到函数/类型/模块定义 |
+| 查找引用 | 查找符号的所有使用位置 |
+| 重命名 | 重命名符号并更新所有引用 |
+| 签名帮助 | 函数调用时显示参数信息 |
+| 语义高亮 | 基于 AST 的精确语法着色 |
+| 文档符号 | 文件内所有定义的概览 |
 
 ---
 

@@ -132,7 +132,9 @@ func? maybe_change() { ... }      // 不确定：AI 可审视
 | `comptime` | ✅ | `comptime func`, `quote!` |
 | `mms {}` 块 | ✅ | MimiSpec 嵌入 |
 | 意图后缀 | ✅ | `$`, `$$`, `?`, `??` |
-| `extern "C"` | ✅ | FFI 块 |
+| `extern "C"` | ✅ | FFI 块 + LLVM codegen |
 | `pub` 可见性 | ✅ | 函数、类型、Actor |
 | 列表推导 | ✅ | `[expr for x in list]` |
 | 分配器 | ✅ | `alloc(Arena)`, `alloc(Bump)`, `alloc(System)` |
+| 标准库 | ✅ | `std::io`, `std::math`, `std::collections`, `std::string`, `std::fs` |
+| LSP 支持 | ✅ | 诊断、补全、悬停、跳转、引用、重命名、签名帮助、语义 token |
