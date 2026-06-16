@@ -54,7 +54,7 @@ func main() -> i32 {
         } else { None }
     });
     assert!(func.is_some());
-    let has_mms = func.unwrap().body.iter().any(|s| matches!(s, crate::ast::Stmt::MmsBlock(_)));
+    let has_mms = func.unwrap().body.iter().any(|s| matches!(s, crate::ast::Stmt::MmsBlock { .. }));
     assert!(has_mms, "mms block should be present in parsed function body");
 }
 
@@ -88,7 +88,7 @@ fn extract_contracts_from_file(file: &crate::ast::File) -> HashMap<String, contr
         if let crate::ast::Item::Func(func) = item {
             let mut contract = contracts::Contract::default();
             for stmt in &func.body {
-                if let crate::ast::Stmt::MmsBlock(text) = stmt {
+                if let crate::ast::Stmt::MmsBlock { content: text, .. } = stmt {
                     let c = contracts::extract_contracts(text);
                     contract.requires.extend(c.requires);
                     contract.ensures.extend(c.ensures);

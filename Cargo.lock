@@ -252,10 +252,21 @@ dependencies = [
  "clap",
  "inkwell",
  "libloading",
+ "mimispec",
  "serde",
  "serde_json",
  "toml",
  "z3",
+]
+
+[[package]]
+name = "mimispec"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "serde",
+ "serde_json",
+ "thiserror",
 ]
 
 [[package]]
