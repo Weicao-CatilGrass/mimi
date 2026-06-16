@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 mod ast;
+mod codegen;
 mod contracts;
 mod core;
 mod interp;
@@ -9,6 +10,7 @@ mod loader;
 mod lsp;
 mod manifest;
 mod parser;
+mod verifier;
 #[cfg(test)]
 mod tests;
 
@@ -45,10 +47,16 @@ enum Command {
         /// Enable runtime contract verification
         #[arg(long)]
         verify_contracts: bool,
+        /// Default allocator type: system, arena, or bump
+        #[arg(long, default_value = "system")]
+        allocator: String,
     },
     /// Run test functions (functions named test_*)
     Test {
         path: Option<PathBuf>,
+        /// Default allocator type: system, arena, or bump
+        #[arg(long, default_value = "system")]
+        allocator: String,
     },
     /// Initialize a new mimi.toml
     Init {
@@ -75,19 +83,35 @@ enum Command {
     List,
     /// Start LSP server (stdin/stdout)
     Lsp,
+    /// Verify contracts using Z3 SMT solver
+    Verify {
+        path: Option<PathBuf>,
+    },
+    /// Compile a .mimi file to native code
+    Build {
+        path: Option<PathBuf>,
+        /// Output path for the compiled binary
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+        /// Emit LLVM IR instead of compiling
+        #[arg(long)]
+        emit_ir: bool,
+    },
 }
 
 fn main() {
     let args = Args::parse();
     let result = match args.cmd {
         Command::Check { path, extract_contracts, strict } => check(path.as_deref(), extract_contracts, strict),
-        Command::Run { path, verify_contracts } => run(path.as_deref(), verify_contracts),
-        Command::Test { path } => test(path.as_deref()),
+        Command::Run { path, verify_contracts, allocator } => run(path.as_deref(), verify_contracts, &allocator),
+        Command::Test { path, allocator } => test(path.as_deref(), &allocator),
         Command::Init { name } => init(name.as_deref()),
         Command::Add { name, version, path } => add(&name, version.as_deref(), path.as_deref()),
         Command::Remove { name } => remove(&name),
         Command::List => list(),
         Command::Lsp => lsp(),
+        Command::Verify { path } => verify(path.as_deref()),
+        Command::Build { path, output, emit_ir } => build(path.as_deref(), output.as_deref(), emit_ir),
     };
     if let Err(e) = result {
         eprintln!("error: {}", e);
@@ -214,7 +238,7 @@ fn check(path: Option<&Path>, extract_contracts: bool, strict: bool) -> Result<(
     Ok(())
 }
 
-fn run(path: Option<&Path>, verify_contracts: bool) -> Result<(), String> {
+fn run(path: Option<&Path>, verify_contracts: bool, allocator: &str) -> Result<(), String> {
     let path = resolve_path(path)?;
     let source = fs::read_to_string(&path)
         .map_err(|e| format!("failed to read {}: {}", path.display(), e))?;
@@ -249,12 +273,17 @@ fn run(path: Option<&Path>, verify_contracts: bool) -> Result<(), String> {
     }
     let mut interp = interp::Interpreter::new(&merged_file);
     interp.verify_contracts = verify_contracts;
+    interp.default_allocator = match allocator {
+        "arena" => interp::AllocatorKind::Arena,
+        "bump" => interp::AllocatorKind::Bump,
+        _ => interp::AllocatorKind::System,
+    };
     let value = interp.run()?;
     println!("-> {}", value);
     Ok(())
 }
 
-fn test(path: Option<&Path>) -> Result<(), String> {
+fn test(path: Option<&Path>, allocator: &str) -> Result<(), String> {
     let path = resolve_path(path)?;
     let source = fs::read_to_string(&path)
         .map_err(|e| format!("failed to read {}: {}", path.display(), e))?;
@@ -301,6 +330,11 @@ fn test(path: Option<&Path>) -> Result<(), String> {
 
     for func_name in &test_funcs {
         let mut interp = interp::Interpreter::new(&merged_file);
+        interp.default_allocator = match allocator {
+            "arena" => interp::AllocatorKind::Arena,
+            "bump" => interp::AllocatorKind::Bump,
+            _ => interp::AllocatorKind::System,
+        };
         match interp.call_named(func_name, vec![]) {
             Ok(_) => {
                 println!("  ✓ {}", func_name);
@@ -396,4 +430,87 @@ fn list() -> Result<(), String> {
 fn lsp() -> Result<(), String> {
     let mut server = lsp::LspServer::new();
     server.run()
+}
+
+fn verify(path: Option<&Path>) -> Result<(), String> {
+    let path = resolve_path(path)?;
+    let source = fs::read_to_string(&path)
+        .map_err(|e| format!("failed to read {}: {}", path.display(), e))?;
+    let results = verifier::verify_source(&source)?;
+    if results.is_empty() {
+        println!("No contracts to verify in {}", path.display());
+    } else {
+        let mut all_passed = true;
+        for r in &results {
+            let icon = match r.status {
+                verifier::VerifStatus::Verified => "✓",
+                verifier::VerifStatus::Failed => "✗",
+                verifier::VerifStatus::Unknown => "?",
+            };
+            println!("  {} {}: {}", icon, r.func_name, r.message);
+            if r.status == verifier::VerifStatus::Failed {
+                all_passed = false;
+            }
+        }
+        println!("\n{}/{} verified", results.iter().filter(|r| r.status == verifier::VerifStatus::Verified).count(), results.len());
+        if !all_passed {
+            return Err("verification failed".into());
+        }
+    }
+    Ok(())
+}
+
+fn build(path: Option<&Path>, output: Option<&Path>, emit_ir: bool) -> Result<(), String> {
+    let path = resolve_path(path)?;
+    let source = fs::read_to_string(&path)
+        .map_err(|e| format!("failed to read {}: {}", path.display(), e))?;
+    let tokens = lexer::Lexer::new(&source).tokenize()?;
+    let file = parser::Parser::new(tokens).parse_file()?;
+
+    if let Err(diagnostics) = core::check(&file) {
+        eprintln!("✗ {} has {} type error(s):", path.display(), diagnostics.len());
+        for d in diagnostics {
+            eprintln!("  - {}", d.message);
+        }
+        return Err("type checking failed".into());
+    }
+
+    let context = inkwell::context::Context::create();
+    let module_name = path.file_stem().and_then(|s| s.to_str()).unwrap_or("main");
+    let mut codegen = codegen::CodeGenerator::new(&context, module_name);
+
+    codegen.compile_file(&file)?;
+
+    if emit_ir {
+        println!("{}", codegen.emit_ir());
+        return Ok(());
+    }
+
+    let output_path_buf = output.map(|p| p.to_path_buf()).unwrap_or_else(|| {
+        let mut out = path.clone();
+        out.set_extension("");
+        out
+    });
+    let output_path = output.unwrap_or(&output_path_buf);
+
+    codegen.compile_to_object(&output_path.with_extension("o"))?;
+
+    // Link with cc to create executable
+    let obj_path = output_path.with_extension("o");
+    let status = std::process::Command::new("cc")
+        .arg(obj_path.to_str().unwrap())
+        .arg("-o")
+        .arg(output_path.to_str().unwrap())
+        .status()
+        .map_err(|e| format!("failed to run linker: {}", e))?;
+
+    // Cleanup object file
+    let _ = std::fs::remove_file(&obj_path);
+
+    if status.success() {
+        println!("✓ Compiled {} → {}", path.display(), output_path.display());
+    } else {
+        return Err(format!("linker failed with exit code {:?}", status.code()));
+    }
+    Ok(())
 }
