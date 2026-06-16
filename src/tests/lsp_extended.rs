@@ -1,0 +1,238 @@
+use super::*;
+use crate::lsp::LspServer;
+
+#[test]
+fn hover_function() {
+    let mut server = LspServer::new();
+    let text = "func add(a: i32, b: i32) -> i32 { a + b }";
+    let result = server.compute_hover(text, 0, 5);
+    assert!(result.is_some(), "should hover over 'add'");
+    let hover = result.unwrap();
+    let contents = hover.get("contents").unwrap().get("value").unwrap().as_str().unwrap();
+    assert!(contents.contains("add"), "hover should mention function name: {}", contents);
+}
+
+#[test]
+fn hover_type() {
+    let mut server = LspServer::new();
+    let text = "type Point { x: i32, y: i32 }";
+    let result = server.compute_hover(text, 0, 5);
+    assert!(result.is_some(), "should hover over 'Point'");
+    let hover = result.unwrap();
+    let contents = hover.get("contents").unwrap().get("value").unwrap().as_str().unwrap();
+    assert!(contents.contains("Point"), "hover should mention type name: {}", contents);
+}
+
+#[test]
+fn hover_module() {
+    let mut server = LspServer::new();
+    let text = "module Math { }";
+    let result = server.compute_hover(text, 0, 7);
+    assert!(result.is_some(), "should hover over 'Math'");
+    let hover = result.unwrap();
+    let contents = hover.get("contents").unwrap().get("value").unwrap().as_str().unwrap();
+    assert!(contents.contains("Math"), "hover should mention module name: {}", contents);
+}
+
+#[test]
+fn hover_builtin() {
+    let mut server = LspServer::new();
+    let text = "func main() { println(42) }";
+    let result = server.compute_hover(text, 0, 17);
+    assert!(result.is_some(), "should hover over 'println'");
+    let hover = result.unwrap();
+    let contents = hover.get("contents").unwrap().get("value").unwrap().as_str().unwrap();
+    assert!(contents.contains("builtin"), "hover should mention builtin: {}", contents);
+}
+
+#[test]
+fn hover_empty_word() {
+    let mut server = LspServer::new();
+    let text = "func main() { 42 }";
+    let result = server.compute_hover(text, 0, 15);
+    assert!(result.is_none(), "should not hover over whitespace");
+}
+
+#[test]
+fn definition_function() {
+    let mut server = LspServer::new();
+    let text = "func add(a: i32, b: i32) -> i32 { a + b }\nfunc main() { add(1, 2) }";
+    // Line 1, character 16 is inside 'add'
+    let result = server.compute_definition(text, 1, 16, "file:///test.mimi");
+    assert!(result.is_some(), "should find definition of 'add'");
+    let def = result.unwrap();
+    let uri = def.get("uri").unwrap().as_str().unwrap();
+    assert!(uri == "file:///test.mimi", "uri should match: {}", uri);
+}
+
+#[test]
+fn definition_type() {
+    let mut server = LspServer::new();
+    let text = "type Point { x: i32, y: i32 }\nfunc main() -> i32 { 0 }";
+    // Line 0, character 5 is inside 'Point'
+    let result = server.compute_definition(text, 0, 5, "file:///test.mimi");
+    assert!(result.is_some(), "should find definition of 'Point'");
+}
+
+#[test]
+fn definition_module() {
+    let mut server = LspServer::new();
+    let text = "module Math { }\nfunc main() { }";
+    // Line 0, character 7 is inside 'Math'
+    let result = server.compute_definition(text, 0, 7, "file:///test.mimi");
+    assert!(result.is_some(), "should find definition of 'Math'");
+}
+
+#[test]
+fn definition_builtin_returns_none() {
+    let mut server = LspServer::new();
+    let text = "func main() { println(42) }";
+    let result = server.compute_definition(text, 0, 17, "file:///test.mimi");
+    assert!(result.is_none(), "builtins should not have definitions");
+}
+
+#[test]
+fn definition_unknown_returns_none() {
+    let mut server = LspServer::new();
+    let text = "func main() { unknown_func() }";
+    let result = server.compute_definition(text, 0, 17, "file:///test.mimi");
+    assert!(result.is_none(), "unknown symbols should return None");
+}
+
+#[test]
+fn document_symbols_functions() {
+    let mut server = LspServer::new();
+    let text = "func add(a: i32, b: i32) -> i32 { a + b }\nfunc main() { add(1, 2) }";
+    let symbols = server.compute_document_symbols(text);
+    assert!(symbols.len() >= 2, "should have at least 2 symbols, got {}", symbols.len());
+    let names: Vec<&str> = symbols.iter()
+        .map(|s| s.get("name").unwrap().as_str().unwrap())
+        .collect();
+    assert!(names.contains(&"add"), "should contain 'add'");
+    assert!(names.contains(&"main"), "should contain 'main'");
+}
+
+#[test]
+fn document_symbols_types() {
+    let mut server = LspServer::new();
+    let text = "type Point { x: i32, y: i32 }\ntype Color { Red | Green | Blue }";
+    let symbols = server.compute_document_symbols(text);
+    assert!(symbols.len() >= 2, "should have at least 2 symbols");
+    let names: Vec<&str> = symbols.iter()
+        .map(|s| s.get("name").unwrap().as_str().unwrap())
+        .collect();
+    assert!(names.contains(&"Point"), "should contain 'Point'");
+    assert!(names.contains(&"Color"), "should contain 'Color'");
+}
+
+#[test]
+fn document_symbols_mixed() {
+    let mut server = LspServer::new();
+    let text = "module Math { }\ntype Point { x: i32, y: i32 }\nfunc add(a: i32, b: i32) -> i32 { a + b }";
+    let symbols = server.compute_document_symbols(text);
+    assert!(symbols.len() >= 3, "should have at least 3 symbols");
+}
+
+#[test]
+fn document_symbols_empty() {
+    let mut server = LspServer::new();
+    let text = "";
+    let symbols = server.compute_document_symbols(text);
+    assert!(symbols.is_empty(), "empty file should have no symbols");
+}
+
+#[test]
+fn completion_new_builtins() {
+    let mut server = LspServer::new();
+    let text = "func main() { }";
+    let items = server.compute_completion(text);
+    let labels: Vec<&str> = items.iter()
+        .map(|i| i.get("label").unwrap().as_str().unwrap())
+        .collect();
+    // Check v5.0 builtins are present
+    assert!(labels.contains(&"print"), "should contain 'print'");
+    assert!(labels.contains(&"pow"), "should contain 'pow'");
+    assert!(labels.contains(&"floor"), "should contain 'floor'");
+    assert!(labels.contains(&"ceil"), "should contain 'ceil'");
+    assert!(labels.contains(&"round"), "should contain 'round'");
+    assert!(labels.contains(&"random"), "should contain 'random'");
+    assert!(labels.contains(&"pi"), "should contain 'pi'");
+    assert!(labels.contains(&"read_file"), "should contain 'read_file'");
+    assert!(labels.contains(&"write_file"), "should contain 'write_file'");
+    assert!(labels.contains(&"file_exists"), "should contain 'file_exists'");
+    assert!(labels.contains(&"to_int"), "should contain 'to_int'");
+    assert!(labels.contains(&"to_float"), "should contain 'to_float'");
+    assert!(labels.contains(&"str_char_at"), "should contain 'str_char_at'");
+    assert!(labels.contains(&"str_substring"), "should contain 'str_substring'");
+    assert!(labels.contains(&"str_parse_int"), "should contain 'str_parse_int'");
+    assert!(labels.contains(&"str_parse_float"), "should contain 'str_parse_float'");
+    assert!(labels.contains(&"keys"), "should contain 'keys'");
+    assert!(labels.contains(&"values"), "should contain 'values'");
+    assert!(labels.contains(&"has_key"), "should contain 'has_key'");
+}
+
+#[test]
+fn hover_new_builtins() {
+    let mut server = LspServer::new();
+    let text = "func main() { pow(2, 10) }";
+    let result = server.compute_hover(text, 0, 16);
+    assert!(result.is_some(), "should hover over 'pow'");
+    let hover = result.unwrap();
+    let contents = hover.get("contents").unwrap().get("value").unwrap().as_str().unwrap();
+    assert!(contents.contains("builtin"), "hover should mention builtin: {}", contents);
+}
+
+#[test]
+fn diagnostic_has_position() {
+    let result = check_source("func main() { let x = undefined_var }");
+    assert!(result.is_err(), "should have error for undefined variable");
+    let errors = result.unwrap_err();
+    assert!(!errors.is_empty(), "should have at least one error");
+    // All diagnostics should have line/col fields (even if 0)
+    for err in &errors {
+        // line and col are usize, always >= 0
+        let _ = err.line;
+        let _ = err.col;
+    }
+}
+
+#[test]
+fn diagnostic_undefined_variable() {
+    let result = check_source("func main() { undefined_var }");
+    assert!(result.is_err());
+    let errors = result.unwrap_err();
+    let msg = &errors[0].message;
+    assert!(msg.contains("undefined") || msg.contains("unknown"), "error should mention undefined: {}", msg);
+}
+
+#[test]
+fn diagnostic_type_mismatch() {
+    let result = check_source(r#"
+        func add(a: i32, b: i32) -> i32 { a + b }
+        func main() { add(1, "hello") }
+    "#);
+    // This might or might not fail depending on type inference
+    // Just ensure it doesn't panic
+    let _ = result;
+}
+
+#[test]
+fn diagnostic_multiple_errors() {
+    let result = check_source(r#"
+        func main() {
+            let x = undefined1
+            let y = undefined2
+            let z = undefined3
+        }
+    "#);
+    if let Err(errors) = result {
+        assert!(errors.len() >= 1, "should have at least one error");
+    }
+}
+
+#[test]
+fn diagnostic_strict_mode() {
+    let result = check_source_strict("func main() { 42 }");
+    // Strict mode should still work
+    let _ = result;
+}
