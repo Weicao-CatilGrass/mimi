@@ -768,3 +768,148 @@ fn codegen_list_with_function_call() {
         }
     "#);
 }
+
+// ===================== Phase B: Extern FFI Codegen Tests =====================
+
+#[test]
+fn codegen_extern_block_basic() {
+    assert_compiles(r#"
+        extern "C" {
+            func my_func(x: i32) -> i32;
+        }
+        func main() -> i32 {
+            42
+        }
+    "#);
+    let ir = compile_to_ir(r#"
+        extern "C" {
+            func my_func(x: i32) -> i32;
+        }
+        func main() -> i32 {
+            42
+        }
+    "#);
+    assert!(ir.contains("declare"), "IR should contain 'declare' for extern function");
+    assert!(ir.contains("my_func"), "IR should contain extern function name");
+}
+
+#[test]
+fn codegen_extern_block_multiple_funcs() {
+    assert_compiles(r#"
+        extern "C" {
+            func ext_add(a: i32, b: i32) -> i32;
+            func ext_sub(a: i32, b: i32) -> i32;
+        }
+        func main() -> i32 {
+            42
+        }
+    "#);
+    let ir = compile_to_ir(r#"
+        extern "C" {
+            func ext_add(a: i32, b: i32) -> i32;
+            func ext_sub(a: i32, b: i32) -> i32;
+        }
+        func main() -> i32 {
+            42
+        }
+    "#);
+    assert!(ir.contains("ext_add"), "IR should contain ext_add");
+    assert!(ir.contains("ext_sub"), "IR should contain ext_sub");
+}
+
+#[test]
+fn codegen_extern_block_void_return() {
+    assert_compiles(r#"
+        extern "C" {
+            func ext_print(msg: string);
+        }
+        func main() {
+            42
+        }
+    "#);
+}
+
+#[test]
+fn codegen_extern_block_no_params() {
+    assert_compiles(r#"
+        extern "C" {
+            func ext_get_time() -> i64;
+        }
+        func main() -> i64 {
+            ext_get_time()
+        }
+    "#);
+    let ir = compile_to_ir(r#"
+        extern "C" {
+            func ext_get_time() -> i64;
+        }
+        func main() -> i64 {
+            ext_get_time()
+        }
+    "#);
+    assert!(ir.contains("call"), "IR should contain call to extern function");
+}
+
+#[test]
+fn codegen_extern_block_with_user_func() {
+    assert_compiles(r#"
+        extern "C" {
+            func ext_multiply(a: i32, b: i32) -> i32;
+        }
+        func add(a: i32, b: i32) -> i32 {
+            a + b
+        }
+        func main() -> i32 {
+            add(1, 2)
+        }
+    "#);
+}
+
+#[test]
+fn codegen_extern_in_module() {
+    assert_compiles(r#"
+        module mylib {
+            extern "C" {
+                func lib_func(x: i32) -> i32;
+            }
+        }
+        func main() -> i32 {
+            42
+        }
+    "#);
+}
+
+// ===================== Phase B: Stdlib Module Tests =====================
+
+#[test]
+fn codegen_stdlib_module_parse() {
+    assert_compiles(r#"
+        module mymath {
+            pub func add(a: i32, b: i32) -> i32 {
+                a + b
+            }
+            pub func mul(a: i32, b: i32) -> i32 {
+                a * b
+            }
+        }
+        func main() -> i32 {
+            42
+        }
+    "#);
+}
+
+#[test]
+fn codegen_nested_module() {
+    assert_compiles(r#"
+        module utils {
+            module myhelpers {
+                pub func square(x: i32) -> i32 {
+                    x * x
+                }
+            }
+        }
+        func main() -> i32 {
+            42
+        }
+    "#);
+}
