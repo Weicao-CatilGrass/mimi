@@ -61,6 +61,7 @@ pub struct CapDef {
 pub struct ActorDef {
     pub name: String,
     pub commitment: Commitment,
+    pub pub_: bool,
     pub fields: Vec<ActorField>,
     pub methods: Vec<FuncDef>,
 }
@@ -77,6 +78,7 @@ pub struct ActorField {
 pub struct FuncDef {
     pub name: String,
     pub commitment: Commitment,
+    pub pub_: bool,
     pub params: Vec<Param>,
     pub ret: Option<Type>,
     pub body: Block,
@@ -100,6 +102,7 @@ pub struct ModuleDef {
 pub struct TypeDef {
     pub name: String,
     pub commitment: Commitment,
+    pub pub_: bool,
     pub kind: TypeDefKind,
 }
 
