@@ -313,3 +313,67 @@ impl Display for User {
     }
 }
 ```
+
+---
+
+## 9. 标准库
+
+Mimi 提供以下标准库模块：
+
+### 9.1 内置函数
+
+以下函数无需导入，直接可用：
+
+| 函数 | 说明 |
+|------|------|
+| `println(msg)` | 打印并换行 |
+| `print(msg)` | 打印不换行 |
+| `eprintln(msg)` | 打印到标准错误 |
+| `assert(cond)` | 断言条件为真 |
+| `assert_eq(a, b)` | 断言两个值相等 |
+| `assert_ne(a, b)` | 断言两个值不相等 |
+| `len(collection)` | 获取长度 |
+| `push(list, item)` | 向列表添加元素 |
+| `pop(list)` | 从列表移除最后一个元素 |
+| `range(start, end)` | 生成整数序列 |
+| `abs(x)` | 绝对值 |
+| `min(a, b)` / `max(a, b)` | 最小值/最大值 |
+| `sqrt(x)` | 平方根 |
+| `floor(x)` / `ceil(x)` / `round(x)` | 取整 |
+| `to_string(val)` | 转换为字符串 |
+
+### 9.2 std 模块
+
+```mimi
+// 数学函数
+use std::mymath
+let x = mymath::square(5)      // 25
+let y = mymath::factorial(5)   // 120
+
+// 集合操作
+use std::collections
+let total = collections::sum([1, 2, 3])
+let evens = collections::filter(nums, fn(x: i32) -> bool { x % 2 == 0 })
+
+// 字符串操作
+use std::string
+let upper = string::to_upper("hello")
+let parts = string::split("a,b,c", ",")
+
+// 文件系统
+use std::fs
+let content = fs::read_file("data.txt")
+fs::write_file("output.txt", "content")
+let exists = fs::file_exists("config.toml")
+```
+
+### 9.3 可用模块
+
+| 模块 | 说明 | 关键函数 |
+|------|------|----------|
+| `std::io` | 文件 I/O | `read_line`, `read_lines`, `write_lines` |
+| `std::mymath` | 数学函数 | `square`, `cube`, `clamp`, `factorial`, `fibonacci` |
+| `std::collections` | 集合操作 | `sum`, `product`, `contains`, `find`, `reverse`, `filter`, `map`, `reduce` |
+| `std::string` | 字符串处理 | `contains`, `split`, `join`, `replace`, `trim`, `repeat` |
+| `std::fs` | 文件系统 | `read_file`, `write_file`, `file_exists`, `is_file`, `is_dir` |
+```

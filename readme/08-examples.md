@@ -430,3 +430,135 @@ func main() -> i32 {
     0
 }
 ```
+
+---
+
+## 16. 列表操作
+
+```mimi
+func main() -> i32 {
+    // 创建列表
+    let nums = [1, 2, 3, 4, 5]
+
+    // 内置函数
+    let len = len(nums)           // 5
+    push(nums, 6)                 // [1, 2, 3, 4, 5, 6]
+    let last = pop(nums)          // 6
+
+    // 高阶函数
+    let doubled = map(nums, fn(x: i32) -> i32 { x * 2 })
+    let evens = filter(nums, fn(x: i32) -> bool { x % 2 == 0 })
+    let sum = reduce(nums, fn(a: i32, b: i32) -> i32 { a + b }, 0)
+
+    // 集合操作
+    let total = sum(nums)         // 15
+    let reversed = reverse(nums)  // [5, 4, 3, 2, 1]
+    let has_three = contains(nums, 3)  // true
+
+    println("Sum:", sum, "Doubled:", doubled)
+    0
+}
+```
+
+---
+
+## 17. 标准库使用
+
+```mimi
+// 数学函数
+use std::mymath
+
+func main() -> i32 {
+    let x = mymath::square(5)       // 25
+    let y = mymath::cube(3)         // 27
+    let z = mymath::clamp(15, 0, 10)  // 10
+    let f = mymath::factorial(5)    // 120
+    let fib = mymath::fibonacci(10) // 55
+
+    println("Square:", x, "Factorial:", f)
+    0
+}
+```
+
+---
+
+## 18. 测试框架
+
+```mimi
+// test_math.mimi
+func test_addition() {
+    assert_eq(2 + 2, 4)
+}
+
+func test_string_operations() {
+    let s = "hello world"
+    assert_eq(len(s), 11)
+    assert_eq(to_string(42), "42")
+}
+
+func test_list_operations() {
+    let nums = [1, 2, 3]
+    assert_eq(len(nums), 3)
+    assert_eq(sum(nums), 6)
+}
+
+func test_edge_cases() {
+    assert_ne(1, 2)
+    assert(10 > 5)
+}
+```
+
+运行测试：
+
+```bash
+# 运行所有测试
+mimi test test_math.mimi
+
+# 过滤测试
+mimi test --filter addition test_math.mimi
+
+# 显示详细输出
+mimi test --verbose test_math.mimi
+```
+
+---
+
+## 19. 模块化项目
+
+```
+my_project/
+├── mimi.toml
+├── main.mimi
+├── models.mimi
+└── utils/
+    ├── math.mimi
+    └── string.mimi
+```
+
+```mimi
+// main.mimi
+use crate::models::User
+use crate::utils::math::calculate_tax
+
+func main() -> i32 {
+    let user = User { name: "Alice", balance: 1000.0 }
+    let tax = calculate_tax(user.balance)
+    println("Tax:", tax)
+    0
+}
+```
+
+---
+
+## 20. 编译为原生代码
+
+```bash
+# 编译为可执行文件
+mimi build main.mimi
+
+# 输出 LLVM IR（调试用）
+mimi build --emit-ir main.mimi > output.ll
+
+# 编译并运行
+./main
+```
