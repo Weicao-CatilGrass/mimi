@@ -52,6 +52,7 @@ pub(crate) mod actor_concurrent;
 pub(crate) mod derive_methods;
 pub(crate) mod builtin_extended;
 pub(crate) mod cap_runtime;
+pub(crate) mod codegen_control;
 
 use crate::{core, interp, lexer, parser};
 
