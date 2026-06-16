@@ -8,7 +8,7 @@ use std::sync::{Arc, RwLock, Weak as ArcWeak};
 /// Safe in our interpreter because LocalShared values are never shared across OS threads;
 /// parasteps creates fresh Interpreter clones per thread.
 #[derive(Debug, Clone)]
-struct SendRc<T>(Rc<T>);
+pub(crate) struct SendRc<T>(pub(crate) Rc<T>);
 unsafe impl<T: Clone> Send for SendRc<T> {}
 unsafe impl<T: Clone> Sync for SendRc<T> {}
 impl<T> std::ops::Deref for SendRc<T> {
@@ -18,11 +18,11 @@ impl<T> std::ops::Deref for SendRc<T> {
 
 /// Wrapper around RcWeak that implements Send/Sync.
 #[derive(Debug, Clone)]
-struct SendWeak<T>(RcWeak<T>);
+pub(crate) struct SendWeak<T>(pub(crate) RcWeak<T>);
 unsafe impl<T: Clone> Send for SendWeak<T> {}
 unsafe impl<T: Clone> Sync for SendWeak<T> {}
 impl<T> SendWeak<T> {
-    fn upgrade(&self) -> Option<SendRc<T>> {
+    pub(crate) fn upgrade(&self) -> Option<SendRc<T>> {
         self.0.upgrade().map(SendRc)
     }
 }
@@ -1353,7 +1353,7 @@ impl<'a> Interpreter<'a> {
                 }).collect();
                 Ok(QuotedAst::Match(q_subject, q_arms?))
             }
-            Expr::Lambda { params, ret, body } => {
+            Expr::Lambda { params: _, ret: _, body } => {
                 // Quote the lambda body as a block
                 let quoted_body = self.quote_block(body)?;
                 // Represent lambda as a call to a synthetic function

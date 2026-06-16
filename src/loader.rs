@@ -59,7 +59,7 @@ impl ModuleLoader {
             .unwrap_or("unknown")
             .to_string();
 
-        let mut loaded = LoadedModule {
+        let loaded = LoadedModule {
             path: path.to_path_buf(),
             file,
         };
