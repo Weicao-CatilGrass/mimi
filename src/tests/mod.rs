@@ -56,6 +56,7 @@ pub(crate) mod codegen_control;
 pub(crate) mod lsp_extended;
 pub(crate) mod cli_commands;
 pub(crate) mod mms_integration;
+pub(crate) mod package_management;
 
 use crate::{core, interp, lexer, parser};
 

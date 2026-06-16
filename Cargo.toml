@@ -19,3 +19,4 @@ libloading = "0.8"
 z3 = "0.20.0"
 inkwell = { version = "0.5", features = ["llvm18-0"] }
 mimispec = { path = "../mimispec" }
+semver = "1.0"

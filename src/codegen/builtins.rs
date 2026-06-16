@@ -86,8 +86,8 @@ pub fn register_runtime<'ctx>(module: &Module<'ctx>, ctx: &'ctx Context) {
 
 pub fn is_builtin(name: &str) -> bool {
     matches!(name,
-        "println" | "print" | "eprintln" | "assert" | "assert_eq"
-        | "range" | "len" | "to_string" | "abs" | "min" | "max"
+        "println" | "print" | "eprintln" | "assert" | "assert_eq" | "assert_ne"
+        | "assert_approx_eq" | "range" | "len" | "to_string" | "abs" | "min" | "max"
         | "push" | "pop" | "sqrt" | "floor" | "ceil" | "round"
         | "int_to_string" | "float_to_string" | "string_to_int"
         | "exit"

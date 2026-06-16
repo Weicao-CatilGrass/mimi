@@ -6,6 +6,7 @@ pub mod diagnostic;
 mod interp;
 mod lexer;
 mod loader;
+mod lockfile;
 mod lsp;
 mod manifest;
 mod parser;
@@ -61,6 +62,12 @@ enum Command {
         /// Default allocator type: system, arena, or bump
         #[arg(long, default_value = "system")]
         allocator: String,
+        /// Filter tests by pattern (substring match)
+        #[arg(long, short)]
+        filter: Option<String>,
+        /// Show verbose output for failed tests
+        #[arg(long, short)]
+        verbose: bool,
     },
     /// Initialize a new mimi.toml
     Init {
@@ -122,7 +129,7 @@ fn main() {
     let result = match args.cmd {
         Command::Check { path, extract_contracts, strict, verify_rules } => check(path.as_deref(), extract_contracts, strict, verify_rules),
         Command::Run { path, verify_contracts, allocator } => run(path.as_deref(), verify_contracts, &allocator),
-        Command::Test { path, allocator } => test(path.as_deref(), &allocator),
+        Command::Test { path, allocator, filter, verbose } => test(path.as_deref(), &allocator, filter.as_deref(), verbose),
         Command::Init { name } => init(name.as_deref()),
         Command::Add { name, version, path } => add(&name, version.as_deref(), path.as_deref()),
         Command::Remove { name } => remove(&name),
@@ -352,7 +359,7 @@ fn run(path: Option<&Path>, verify_contracts: bool, allocator: &str) -> Result<(
     Ok(())
 }
 
-fn test(path: Option<&Path>, allocator: &str) -> Result<(), String> {
+fn test(path: Option<&Path>, allocator: &str, filter: Option<&str>, verbose: bool) -> Result<(), String> {
     let path = resolve_path(path)?;
     let source = fs::read_to_string(&path)
         .map_err(|e| format!("failed to read {}: {}", path.display(), e))?;
@@ -396,10 +403,23 @@ fn test(path: Option<&Path>, allocator: &str) -> Result<(), String> {
         }
     }).collect();
 
+    // Apply filter if specified
+    let test_funcs: Vec<String> = if let Some(pattern) = filter {
+        test_funcs.into_iter()
+            .filter(|name| name.contains(pattern))
+            .collect()
+    } else {
+        test_funcs
+    };
+
     if test_funcs.is_empty() {
-        println!("No test functions found (functions starting with test_).");
+        println!("No test functions found{}.",
+            if filter.is_some() { format!(" matching '{}'", filter.unwrap()) } else { String::new() }
+        );
         return Ok(());
     }
+
+    println!("Running {} test(s)...\n", test_funcs.len());
 
     let mut passed = 0;
     let mut failed = 0;
@@ -414,19 +434,29 @@ fn test(path: Option<&Path>, allocator: &str) -> Result<(), String> {
         };
         match interp.call_named(func_name, vec![]) {
             Ok(_) => {
-                println!("  ✓ {}", func_name);
+                println!("  \x1b[32m✓\x1b[0m {}", func_name);
                 passed += 1;
             }
             Err(e) => {
-                println!("  ✗ {}: {}", func_name, e);
+                if verbose {
+                    println!("  \x1b[31m✗\x1b[0m {}\n    Error: {}", func_name, e);
+                } else {
+                    println!("  \x1b[31m✗\x1b[0m {}: {}", func_name, e);
+                }
                 failed += 1;
                 errors.push((func_name.clone(), e));
             }
         }
     }
 
-    println!("\n{} passed, {} failed", passed, failed);
+    println!("\n\x1b[1m{}\x1b[0m passed, \x1b[1m{}\x1b[0m failed", passed, failed);
     if failed > 0 {
+        if verbose {
+            println!("\nFailed tests:");
+            for (name, err) in &errors {
+                println!("  {}: {}", name, err);
+            }
+        }
         Err(format!("{} test(s) failed", failed))
     } else {
         Ok(())
@@ -544,7 +574,17 @@ fn build(path: Option<&Path>, output: Option<&Path>, emit_ir: bool) -> Result<()
     let tokens = lexer::Lexer::new(&source).tokenize()?;
     let file = parser::Parser::new(tokens).parse_file()?;
 
-    if let Err(diagnostics) = core::check(&file) {
+    // Load all imports and merge into single file
+    let merged_file = if !file.imports.is_empty() {
+        let base_dir = path.parent().unwrap_or_else(|| std::path::Path::new(".")).to_path_buf();
+        let mut loader = loader::ModuleLoader::new(base_dir);
+        loader.load_main(&path)?;
+        loader.merge_all()
+    } else {
+        file
+    };
+
+    if let Err(diagnostics) = core::check(&merged_file) {
         eprintln!("{} has {} type error(s):", path.display(), diagnostics.len());
         let use_color = colors_enabled();
         let src = fs::read_to_string(&path).ok();
@@ -564,7 +604,7 @@ fn build(path: Option<&Path>, output: Option<&Path>, emit_ir: bool) -> Result<()
     let module_name = path.file_stem().and_then(|s| s.to_str()).unwrap_or("main");
     let mut codegen = codegen::CodeGenerator::new(&context, module_name);
 
-    codegen.compile_file(&file)?;
+    codegen.compile_file(&merged_file)?;
 
     if emit_ir {
         println!("{}", codegen.emit_ir());
