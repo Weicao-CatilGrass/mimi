@@ -435,11 +435,56 @@ use another_package::some_func;
 
 ---
 
-## 11. 版本历史
+## 11. MimiSpec 集成
+
+Mimi 通过 `mms {}` 块支持嵌入 MimiSpec 意图描述，实现意图→实现的契约绑定。
+
+### 11.1 `mms {}` 超级注释
+
+```mimi
+func pay(order: Order, amount: f64) -> Result<(), Err> {
+    mms {
+        func Pay(order, amount):
+            desc "处理支付：检查余额、扣款、改状态"
+            rule "支付必须幂等"
+            requires: order.status == Pending
+            ensures: order.status == Paid
+            steps:
+                check balance
+                charge payment
+                order.status = Paid to done
+    }
+    
+    // Mimi 实现
+    requires: order.status == Pending
+    ensures: order.status == Paid
+    
+    let balance = check_balance(order)?;
+    charge_payment(amount)?;
+    order.status = Paid;
+    Ok(())
+}
+```
+
+### 11.2 设计约束
+
+- `mms {}` 是元数据块，编译器忽略其内容
+- `mms {}` 内部保持 MimiSpec 缩进语法
+- 契约从 `mms {}` 块提取，实现层可省略重复
+- 两语言保持独立，通过 `mms {}` 块耦合
+
+### 11.3 详细设计
+
+完整设计规范见 [`mms-integration.md`](./mms-integration.md)。
+
+---
+
+## 12. 版本历史
 
 - v0.x - 早期草案：定义核心语法、AAM 内存模型、并发、Saga 补偿。
 - v1.0 - 基线整合版：确立 L4 花括号体、逻辑安全支柱、`cap` 显式 drop + `+` 组合、`newtype` / `type` 别名分工、契约检查分级等基线决策。
 - v1.1 - 特性扩展版：新增 `cap.split()` 能力分解、`old()` 契约快照语义、`math:` 块编译时求值、`trait`/`impl` 基础多态、`where` 约束语法、`extern "C"` FFI 块支持。
+- v1.2 - 集成版：新增 `mms {}` 超级注释支持 MimiSpec 嵌入，实现意图→实现的契约绑定。
 
 ---
 
