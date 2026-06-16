@@ -1,0 +1,49 @@
+module string:
+
+    pub func contains(s: string, substr: string) -> bool {
+        false
+    }
+
+    pub func starts_with(s: string, prefix: string) -> bool {
+        false
+    }
+
+    pub func ends_with(s: string, suffix: string) -> bool {
+        false
+    }
+
+    pub func substring(s: string, start: i32, end: i32) -> string {
+        ""
+    }
+
+    pub func char_at(s: string, index: i32) -> string {
+        ""
+    }
+
+    pub func to_upper(s: string) -> string {
+        s
+    }
+
+    pub func to_lower(s: string) -> string {
+        s
+    }
+
+    pub func trim(s: string) -> string {
+        s
+    }
+
+    pub func split(s: string, delimiter: string) -> List {
+        []
+    }
+
+    pub func join(list: List, delimiter: string) -> string {
+        ""
+    }
+
+    pub func repeat(s: string, count: i32) -> string {
+        ""
+    }
+
+    pub func replace(s: string, from: string, to: string) -> string {
+        s
+    }

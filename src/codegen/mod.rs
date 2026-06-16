@@ -51,21 +51,52 @@ impl<'ctx> CodeGenerator<'ctx> {
                 _ => {}
             }
         }
-        // Second pass: compile functions
+        // Second pass: register extern functions and compile user functions
         for item in &file.items {
             match item {
+                Item::ExternBlock(block) => {
+                    self.register_extern_block(block)?;
+                }
                 Item::Func(f) if !f.is_comptime => self.compile_func(f)?,
                 Item::Module(m) => {
                     for inner in &m.items {
-                        if let Item::Func(f) = inner {
-                            if !f.is_comptime {
-                                self.compile_func(f)?;
+                        match inner {
+                            Item::ExternBlock(block) => {
+                                self.register_extern_block(block)?;
                             }
+                            Item::Func(f) if !f.is_comptime => self.compile_func(f)?,
+                            _ => {}
                         }
                     }
                 }
                 _ => {}
             }
+        }
+        Ok(())
+    }
+
+    fn register_extern_block(&mut self, block: &crate::ast::ExternBlock) -> Result<(), String> {
+        for ef in &block.funcs {
+            let mut param_tys = Vec::new();
+            for p in &ef.params {
+                let ty = types::mimi_type_to_llvm(self.context, &p.ty)
+                    .unwrap_or(BasicTypeEnum::IntType(self.context.i64_type()));
+                param_tys.push(types::basic_to_metadata(self.context, ty));
+            }
+            let ret_ty = match &ef.ret {
+                Some(ty) => types::mimi_type_to_llvm(self.context, ty)
+                    .unwrap_or(BasicTypeEnum::IntType(self.context.i64_type())),
+                None => BasicTypeEnum::IntType(self.context.i64_type()),
+            };
+            let fn_type = match ret_ty {
+                BasicTypeEnum::IntType(t) => t.fn_type(&param_tys, false),
+                BasicTypeEnum::FloatType(t) => t.fn_type(&param_tys, false),
+                BasicTypeEnum::PointerType(t) => t.fn_type(&param_tys, false),
+                BasicTypeEnum::StructType(t) => t.fn_type(&param_tys, false),
+                BasicTypeEnum::ArrayType(t) => t.fn_type(&param_tys, false),
+                _ => self.context.i64_type().fn_type(&param_tys, false),
+            };
+            self.module.add_function(&ef.name, fn_type, Some(inkwell::module::Linkage::External));
         }
         Ok(())
     }
