@@ -354,23 +354,70 @@ payment-sdk = { path = "../payment-sdk" }
 
 ---
 
-## 12. 与 MimiSpec 的自洽细节
+## 12. 与 MimiSpec 的集成：`mms {}` 超级注释
 
-- **锁后缀**：`.mimis` 中的 `$` 进入 `.mimi` 后继续生效，编译器控制工具行为。
-- **`@import` 兼容**：`.mimi` 遇到 `@import "file.mimis"` 时，会尝试加载该文件并解析为模块，允许 `.mimis` 中的类型和函数声明被引用（但 `.mimis` 文件不会被编译为代码，仅作为接口定义）。
-- **`desc` 作为实体**：在 `.mimi` 中，`desc` 仍然是合法实体，它会被存储为元数据，并可由 `mimi doc` 提取。在花括号体内，`desc` 也可以作为语句出现（语义为“此处意图说明”），但不对应任何运行时代码。
-- **`rule` 编译模式**：`.mimi` 中的 `rule` 默认不产生编译检查，除非使用 `--verify-rules` 或 `--strict`。
+Mimi 通过 `mms {}` 块支持嵌入 MimiSpec 意图描述，实现意图→实现的契约绑定。
+
+### 12.1 语法集成
+
+```mimi
+func pay(order: Order, amount: f64) -> Result<(), Err> {
+    mms {
+        func Pay(order, amount):
+            desc "处理支付：检查余额、扣款、改状态"
+            rule "支付必须幂等"
+            requires: order.status == Pending
+            ensures: order.status == Paid
+            steps:
+                check balance
+                charge payment
+                order.status = Paid to done
+    }
+    
+    // Mimi 实现
+    requires: order.status == Pending
+    ensures: order.status == Paid
+    
+    let balance = check_balance(order)?;
+    charge_payment(amount)?;
+    order.status = Paid;
+    Ok(())
+}
+```
+
+### 12.2 设计约束
+
+- `mms {}` 是元数据块，编译器忽略其内容
+- `mms {}` 内部保持 MimiSpec 缩进语法
+- 契约从 `mms {}` 块提取，实现层可省略重复
+- 两语言保持独立，通过 `mms {}` 块耦合
+
+### 12.3 AI 协作工作流
+
+1. **意图草图**：人类在 `.mms` 文件中写意图
+2. **意图嵌入**：人类将 `.mms` 内容放入 `.mimi` 文件的 `mms {}` 块
+3. **实现生成**：AI 读取 `mms {}` 块中的意图，生成 Mimi 实现
+4. **契约验证**：编译器验证实现是否满足契约
+5. **持续协作**：人类修改意图，AI 更新实现，编译器重新验证
+
+### 12.4 详细设计
+
+完整设计规范见 [`mms-integration.md`](./mms-integration.md)。
 
 ---
 
 ## 13. 未来方向与开放问题
 
-1. **形式化验证集成**：`--verify-contracts` 目前只是规划，需选定 SMT 后端（如 Z3）。
-2. **分布式 Actor**：actor 目前仅限进程内，未来可透明远程化。
-3. **编译期反射与序列化**：通过 `comptime` 实现零开销序列化框架。
-4. **效应系统**：将 `cap` 扩展为完整的代数效应，标记函数的副作用（纯、抛出、异步等）。
-5. **LSP 与 IDE 支持**：需在语言设计稳定后实现语言服务器。
+1. **`mms {}` 块实现**：实现 `mms {}` 块的解析、存储和契约提取。
+2. **契约验证器**：实现编译器级别的契约满足性检查。
+3. **AI 工具链**：实现 AI 读取 `mms {}` 块、生成实现、保持契约一致的工具链。
+4. **形式化验证集成**：`--verify-contracts` 目前只是规划，需选定 SMT 后端（如 Z3）。
+5. **分布式 Actor**：actor 目前仅限进程内，未来可透明远程化。
+6. **编译期反射与序列化**：通过 `comptime` 实现零开销序列化框架。
+7. **效应系统**：将 `cap` 扩展为完整的代数效应，标记函数的副作用（纯、抛出、异步等）。
+8. **LSP 与 IDE 支持**：需在语言设计稳定后实现语言服务器。
 
 ---
 
 Mimi 的长期目标是让“从模糊意图到精确代码”的每一步都有编译器与工具参与，使人类与 AI 在锁与不确定的边界上持续协作。
+`mms {}` 超级注释方案是实现这一目标的关键机制——它让 MimiSpec 的意图描述与 Mimi 的生产实现自然耦合，同时保持两语言的独立性。
