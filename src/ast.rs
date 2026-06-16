@@ -45,8 +45,31 @@ pub enum Item {
     Type(TypeDef),
     Actor(ActorDef),
     Cap(CapDef),
+    Trait(TraitDef),
+    Impl(ImplDef),
     Rule(String),
     Desc(String),
+}
+
+#[derive(Debug, Clone)]
+pub struct TraitDef {
+    pub name: String,
+    pub commitment: Commitment,
+    pub methods: Vec<TraitMethod>,
+}
+
+#[derive(Debug, Clone)]
+pub struct TraitMethod {
+    pub name: String,
+    pub params: Vec<Param>,
+    pub ret: Option<Type>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ImplDef {
+    pub trait_name: String,
+    pub type_name: String,
+    pub methods: Vec<FuncDef>,
 }
 
 #[derive(Debug, Clone)]

@@ -186,6 +186,8 @@ impl Parser {
                 Ok(Item::Actor(a))
             }
             TokenKind::Cap => Ok(Item::Cap(self.parse_cap_def()?)),
+            TokenKind::Trait => Ok(Item::Trait(self.parse_trait_def()?)),
+            TokenKind::Impl => Ok(Item::Impl(self.parse_impl_def()?)),
             TokenKind::Rule => {
                 self.advance();
                 let s = self.expect_string()?;
@@ -237,6 +239,69 @@ impl Parser {
             name,
             commitment,
             combined_with,
+        })
+    }
+
+    fn parse_trait_def(&mut self) -> Result<TraitDef, ParseError> {
+        let commitment = self.expect_keyword(TokenKind::Trait)?;
+        let name = self.expect_ident()?;
+        self.skip_newlines();
+        self.expect(TokenKind::LBrace, "`{`")?;
+        let mut methods = Vec::new();
+        self.skip_newlines();
+        while !self.at(&TokenKind::RBrace) && !self.at(&TokenKind::Eof) {
+            self.skip_newlines();
+            if self.at(&TokenKind::RBrace) || self.at(&TokenKind::Eof) {
+                break;
+            }
+            // Parse method signature (no body)
+            self.expect(TokenKind::Func, "`func`")?;
+            let method_name = self.expect_ident()?;
+            self.expect(TokenKind::LParen, "`(`")?;
+            let params = self.parse_params()?;
+            self.expect(TokenKind::RParen, "`)`")?;
+            let ret = if self.at(&TokenKind::Arrow) {
+                self.advance();
+                Some(self.parse_type()?)
+            } else {
+                None
+            };
+            self.match_semi();
+            methods.push(TraitMethod {
+                name: method_name,
+                params,
+                ret,
+            });
+        }
+        self.expect(TokenKind::RBrace, "`}`")?;
+        Ok(TraitDef {
+            name,
+            commitment,
+            methods,
+        })
+    }
+
+    fn parse_impl_def(&mut self) -> Result<ImplDef, ParseError> {
+        self.expect(TokenKind::Impl, "`impl`")?;
+        let trait_name = self.expect_ident()?;
+        self.expect(TokenKind::For, "`for`")?;
+        let type_name = self.expect_ident()?;
+        self.skip_newlines();
+        self.expect(TokenKind::LBrace, "`{`")?;
+        let mut methods = Vec::new();
+        self.skip_newlines();
+        while !self.at(&TokenKind::RBrace) && !self.at(&TokenKind::Eof) {
+            self.skip_newlines();
+            if self.at(&TokenKind::RBrace) || self.at(&TokenKind::Eof) {
+                break;
+            }
+            methods.push(self.parse_func()?);
+        }
+        self.expect(TokenKind::RBrace, "`}`")?;
+        Ok(ImplDef {
+            trait_name,
+            type_name,
+            methods,
         })
     }
 

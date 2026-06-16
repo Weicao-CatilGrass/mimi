@@ -3248,3 +3248,76 @@ func main() -> bool {
     let v = run_source(src);
     assert_eq!(v, interp::Value::Bool(true));
 }
+
+// ==================== trait/impl tests ====================
+
+#[test]
+fn trait_definition() {
+    let src = r#"
+trait Display {
+    func to_string() -> string;
+}
+
+func main() -> i32 {
+    42
+}
+"#;
+    let v = run_source(src);
+    assert_eq!(v, interp::Value::Int(42));
+}
+
+#[test]
+fn trait_with_impl() {
+    let src = r#"
+trait Display {
+    func to_string() -> string;
+}
+
+type MyType {
+    value: i32
+}
+
+impl Display for MyType {
+    func to_string() -> string {
+        return "MyType";
+    }
+}
+
+func main() -> i32 {
+    42
+}
+"#;
+    let v = run_source(src);
+    assert_eq!(v, interp::Value::Int(42));
+}
+
+#[test]
+fn trait_multiple_methods() {
+    let src = r#"
+trait Printable {
+    func to_string() -> string;
+    func print();
+}
+
+func main() -> i32 {
+    42
+}
+"#;
+    let v = run_source(src);
+    assert_eq!(v, interp::Value::Int(42));
+}
+
+#[test]
+fn trait_with_params() {
+    let src = r#"
+trait Addable {
+    func add(x: i32) -> i32;
+}
+
+func main() -> i32 {
+    42
+}
+"#;
+    let v = run_source(src);
+    assert_eq!(v, interp::Value::Int(42));
+}
