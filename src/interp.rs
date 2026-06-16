@@ -872,7 +872,17 @@ impl<'a> Interpreter<'a> {
                     _ => return Err("assignment target must be a variable".into()),
                 }
             }
-            Stmt::Desc(_) | Stmt::Requires(_) | Stmt::Ensures(_) | Stmt::Math(_) | Stmt::Ellipsis => {}
+            Stmt::Desc(_) | Stmt::Requires(_) | Stmt::Ensures(_) | Stmt::Ellipsis => {}
+            Stmt::Math(exprs) => {
+                // Math block: evaluate constant expressions at compile time
+                for expr in exprs {
+                    if let Ok(val) = self.eval_expr(expr) {
+                        // Store the result if it's a constant
+                        // For now, just evaluate and discard (verification conditions)
+                        let _ = val;
+                    }
+                }
+            }
             Stmt::Drop(expr) => {
                 // Evaluate and discard the value (for linear capability drops)
                 self.eval_expr(expr)?;
