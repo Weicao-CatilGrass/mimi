@@ -78,12 +78,12 @@ pub(crate) fn run_source_result(src: &str) -> Result<interp::Value, String> {
     interp.run()
 }
 
-pub(crate) fn check_source(src: &str) -> Result<(), Vec<core::Diagnostic>> {
+pub(crate) fn check_source(src: &str) -> Result<(), Vec<crate::diagnostic::Diagnostic>> {
     let file = parse(src);
     core::check(&file)
 }
 
-pub(crate) fn check_source_strict(src: &str) -> Result<(), Vec<core::Diagnostic>> {
+pub(crate) fn check_source_strict(src: &str) -> Result<(), Vec<crate::diagnostic::Diagnostic>> {
     let file = parse(src);
     core::check_strict(&file)
 }

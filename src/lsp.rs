@@ -246,10 +246,11 @@ impl LspServer {
             for err in errs {
                 diagnostics.push(serde_json::json!({
                     "range": {
-                        "start": { "line": 0, "character": 0 },
-                        "end": { "line": 0, "character": 100 }
+                        "start": { "line": err.span.start_line.saturating_sub(1), "character": err.span.start_col.saturating_sub(1) },
+                        "end": { "line": err.span.end_line.saturating_sub(1), "character": err.span.end_col.saturating_sub(1) }
                     },
                     "severity": 1,
+                    "source": "mimi",
                     "message": err.message
                 }));
             }

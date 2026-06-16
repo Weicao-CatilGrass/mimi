@@ -132,7 +132,7 @@ impl ModuleLoader {
 
     /// Type-check all loaded modules
     #[allow(dead_code)]
-    pub fn check_all(&self) -> Result<(), Vec<core::Diagnostic>> {
+    pub fn check_all(&self) -> Result<(), Vec<crate::diagnostic::Diagnostic>> {
         for module in self.modules.values() {
             core::check(&module.file)?;
         }
