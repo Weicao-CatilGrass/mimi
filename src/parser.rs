@@ -1158,7 +1158,7 @@ impl Parser {
         Ok(parts)
     }
 
-    fn parse_expr(&mut self, min_prec: u8) -> Result<Expr, ParseError> {
+    pub fn parse_expr(&mut self, min_prec: u8) -> Result<Expr, ParseError> {
         let mut lhs = self.parse_unary()?;
         loop {
             let (op, prec, right_assoc) = match self.peek_kind() {
@@ -1212,6 +1212,10 @@ impl Parser {
                 } else {
                     Ok(Expr::Unary(UnOp::Ref, Box::new(self.parse_unary()?)))
                 }
+            }
+            TokenKind::Star => {
+                self.advance();
+                Ok(Expr::Unary(UnOp::Deref, Box::new(self.parse_unary()?)))
             }
             TokenKind::Old => {
                 self.advance();
@@ -1291,9 +1295,23 @@ impl Parser {
                         self.expect(TokenKind::RParen, "`)`")?;
                         Expr::Turbofish(name, type_args, args)
                     } else {
-                        // Plain path separator (e.g., module::func)
+                        // Plain path separator (e.g., module::func or module::sub::func)
                         let field = self.expect_ident()?;
-                        Expr::Field(Box::new(Expr::Ident(name)), field)
+                        let mut e = Expr::Field(Box::new(Expr::Ident(name)), field);
+                        // Support chained :: (e.g., Outer::Inner::func)
+                        while self.at(&TokenKind::ColonColon) {
+                            self.advance();
+                            let field = self.expect_ident()?;
+                            e = Expr::Field(Box::new(e), field);
+                        }
+                        // Check for function call: Module::func(args)
+                        if self.at(&TokenKind::LParen) {
+                            self.advance();
+                            let args = self.parse_args()?;
+                            self.expect(TokenKind::RParen, "`)`")?;
+                            e = Expr::Call(Box::new(e), args);
+                        }
+                        e
                     }
                 } else {
                 let mut e = Expr::Ident(name);

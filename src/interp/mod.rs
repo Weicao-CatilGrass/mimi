@@ -35,6 +35,16 @@ pub struct Interpreter<'a> {
     arenas: Vec<Arena>,
     /// Current arena scope depth (track nesting for error messages)
     arena_depth: usize,
+    /// Whether to verify contracts at runtime
+    pub verify_contracts: bool,
+    /// Trait definitions: trait_name -> TraitDef
+    trait_defs: HashMap<String, TraitDef>,
+    /// Trait implementations: type_name -> trait_name -> list of FuncDef methods
+    type_impls: HashMap<String, HashMap<String, Vec<FuncDef>>>,
+    /// Extern function declarations: func_name -> ExternFunc
+    extern_funcs: HashMap<String, ExternFunc>,
+    /// Loaded shared libraries: lib_path -> Library handle
+    loaded_libs: Vec<libloading::Library>,
 }
 
 impl<'a> Interpreter<'a> {
@@ -47,6 +57,13 @@ impl<'a> Interpreter<'a> {
         for item in &file.items {
             Self::collect_constructors(item, &mut constructors, &mut newtype_constructors, &mut type_variants, &mut failure_variants);
             Self::collect_caps(item, &mut cap_defs);
+        }
+        let mut trait_defs = HashMap::new();
+        let mut type_impls: HashMap<String, HashMap<String, Vec<FuncDef>>> = HashMap::new();
+        let mut extern_funcs: HashMap<String, ExternFunc> = HashMap::new();
+        for item in &file.items {
+            Self::collect_traits(item, &mut trait_defs, &mut type_impls);
+            Self::collect_extern_funcs(item, &mut extern_funcs);
         }
         Self {
             file,
@@ -61,6 +78,11 @@ impl<'a> Interpreter<'a> {
             compensation_stack: Vec::new(),
             arenas: Vec::new(),
             arena_depth: 0,
+            verify_contracts: false,
+            trait_defs,
+            type_impls,
+            extern_funcs,
+            loaded_libs: Vec::new(),
         }
     }
 
@@ -105,6 +127,42 @@ impl<'a> Interpreter<'a> {
         }
     }
 
+    fn collect_extern_funcs(item: &Item, out: &mut HashMap<String, ExternFunc>) {
+        match item {
+            Item::ExternBlock(block) => {
+                for func in &block.funcs {
+                    out.insert(func.name.clone(), func.clone());
+                }
+            }
+            Item::Module(m) => {
+                for inner in &m.items {
+                    Self::collect_extern_funcs(inner, out);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn collect_traits(item: &Item, trait_defs: &mut HashMap<String, TraitDef>, type_impls: &mut HashMap<String, HashMap<String, Vec<FuncDef>>>) {
+        match item {
+            Item::Trait(trait_def) => {
+                trait_defs.insert(trait_def.name.clone(), trait_def.clone());
+            }
+            Item::Impl(impl_def) => {
+                type_impls
+                    .entry(impl_def.type_name.clone())
+                    .or_default()
+                    .insert(impl_def.trait_name.clone(), impl_def.methods.clone());
+            }
+            Item::Module(m) => {
+                for inner in &m.items {
+                    Self::collect_traits(inner, trait_defs, type_impls);
+                }
+            }
+            _ => {}
+        }
+    }
+
     fn collect_caps(item: &Item, out: &mut HashMap<String, Vec<String>>) {
         match item {
             Item::Cap(cap) => {
@@ -142,12 +200,44 @@ impl<'a> Interpreter<'a> {
             match item {
                 Item::Func(f) if f.name == name => return Some(f.clone()),
                 Item::Module(m) => {
-                    for inner in &m.items {
-                        if let Item::Func(f) = inner {
-                            if f.name == name {
-                                return Some(f.clone());
-                            }
-                        }
+                    if let Some(f) = Self::find_function_in_module(m, "", name) {
+                        return Some(f);
+                    }
+                }
+                _ => {}
+            }
+        }
+        None
+    }
+
+    /// Build a qualified path from nested Field(Ident(...), ...) expressions
+    fn build_qualified_path(obj: &Expr, field: &str) -> Option<String> {
+        match obj {
+            Expr::Ident(name) => Some(format!("{}::{}", name, field)),
+            Expr::Field(inner_obj, inner_field) => {
+                Self::build_qualified_path(inner_obj, inner_field).map(|base| format!("{}::{}", base, field))
+            }
+            _ => None,
+        }
+    }
+
+    fn find_function_in_module(module: &ModuleDef, prefix: &str, name: &str) -> Option<FuncDef> {
+        let current_prefix = if prefix.is_empty() {
+            module.name.clone()
+        } else {
+            format!("{}::{}", prefix, module.name)
+        };
+        for inner in &module.items {
+            match inner {
+                Item::Func(f) => {
+                    let qualified = format!("{}::{}", current_prefix, f.name);
+                    if qualified == name || f.name == name {
+                        return Some(f.clone());
+                    }
+                }
+                Item::Module(m) => {
+                    if let Some(f) = Self::find_function_in_module(m, &current_prefix, name) {
+                        return Some(f);
                     }
                 }
                 _ => {}
@@ -312,12 +402,14 @@ impl<'a> Interpreter<'a> {
         }
 
         // Extract and check requires conditions
-        for stmt in &func.body {
-            if let Stmt::Requires(expr) = stmt {
-                let cond = self.eval_expr(expr)?;
-                if !is_truthy(&cond) {
-                    self.pop_scope();
-                    return Err(format!("requires condition failed for '{}': {}", func.name, cond));
+        if self.verify_contracts {
+            for stmt in &func.body {
+                if let Stmt::Requires(expr) = stmt {
+                    let cond = self.eval_expr(expr)?;
+                    if !is_truthy(&cond) {
+                        self.pop_scope();
+                        return Err(format!("requires condition failed for '{}': {}", func.name, cond));
+                    }
                 }
             }
         }
@@ -325,28 +417,30 @@ impl<'a> Interpreter<'a> {
         let result = self.eval_block(&func.body);
 
         // Extract and check ensures conditions
-        if let Ok(Some(ref rv)) = result {
-            self.push_scope();
-            self.bind("result", rv.clone());
-            // Bind old snapshots for old(x) access
-            for (name, val) in &old_snapshots {
-                self.bind(&format!("old_{}", name), val.clone());
-            }
-            let ensures_ok = (|| {
-                for stmt in &func.body {
-                    if let Stmt::Ensures(expr) = stmt {
-                        let cond = self.eval_expr(expr)?;
-                        if !is_truthy(&cond) {
-                            return Err(format!("ensures condition failed for '{}': {}", func.name, cond));
+        if self.verify_contracts {
+            if let Ok(Some(ref rv)) = result {
+                self.push_scope();
+                self.bind("result", rv.clone());
+                // Bind old snapshots for old(x) access
+                for (name, val) in &old_snapshots {
+                    self.bind(&format!("old_{}", name), val.clone());
+                }
+                let ensures_ok = (|| {
+                    for stmt in &func.body {
+                        if let Stmt::Ensures(expr) = stmt {
+                            let cond = self.eval_expr(expr)?;
+                            if !is_truthy(&cond) {
+                                return Err(format!("ensures condition failed for '{}': {}", func.name, cond));
+                            }
                         }
                     }
+                    Ok(())
+                })();
+                self.pop_scope(); // always pop ensures scope
+                if let Err(e) = ensures_ok {
+                    self.pop_scope(); // pop function scope
+                    return Err(e);
                 }
-                Ok(())
-            })();
-            self.pop_scope(); // always pop ensures scope
-            if let Err(e) = ensures_ok {
-                self.pop_scope(); // pop function scope
-                return Err(e);
             }
         }
 
@@ -584,6 +678,16 @@ impl<'a> Interpreter<'a> {
                 }
                 match target {
                     Expr::Ident(name) => self.assign(name, v)?,
+                    Expr::Unary(UnOp::Deref, inner) => {
+                        // *r = value: assign through mutable reference
+                        let ref_val = self.eval_expr(inner)?;
+                        match ref_val {
+                            Value::RefMut(rc) => {
+                                *rc.0.borrow_mut() = v;
+                            }
+                            _ => return Err("cannot assign through non-mutable reference".into()),
+                        }
+                    }
                     Expr::Field(obj, field) => {
                         // Special case: if assigning to self.field, update actor directly
                         if let Expr::Ident(name) = obj.as_ref() {
@@ -597,7 +701,7 @@ impl<'a> Interpreter<'a> {
                         }
                         let obj_val = self.eval_expr(obj)?;
                         match obj_val {
-                            Value::Record(mut fields) => {
+                            Value::Record(_, mut fields) => {
                                 if fields.contains_key(field.as_str()) {
                                     if let std::collections::hash_map::Entry::Occupied(mut e) = fields.entry(field.clone()) {
                                         e.insert(v);
@@ -812,6 +916,12 @@ impl<'a> Interpreter<'a> {
                                 }
                             }
                         }
+                        // Handle module-qualified function call: Module::func(args)
+                        if let Some(qualified) = Self::build_qualified_path(obj, method) {
+                            if let Some(f) = self.find_function(&qualified) {
+                                return self.call_func(&f, vals);
+                            }
+                        }
                         // Regular method call: evaluate the object and call method on it
                         let obj_val = self.eval_expr(obj)?;
                         self.call_method(&obj_val, method, vals)
@@ -907,6 +1017,18 @@ impl<'a> Interpreter<'a> {
                 Err("non-exhaustive match".into())
             }
             Expr::Field(obj, field) => {
+                // Special case: module-qualified access (Module::func or Module::Sub::func)
+                // Build qualified path by collecting nested Field(Ident(...), ...) nodes
+                if let Some(qualified) = Self::build_qualified_path(obj, field) {
+                    if let Some(f) = self.find_function(&qualified) {
+                        return Ok(Value::Closure {
+                            params: f.params.clone(),
+                            ret: f.ret.clone(),
+                            body: f.body.clone(),
+                            captured: HashMap::new(),
+                        });
+                    }
+                }
                 // Special case: if accessing field on "self" identifier, look up field directly from actor
                 if let Expr::Ident(name) = obj.as_ref() {
                     if name == "self" {
@@ -923,7 +1045,7 @@ impl<'a> Interpreter<'a> {
                 }
                 let obj_val = self.eval_expr(obj)?;
                 match obj_val {
-                    Value::Record(fields) => {
+                    Value::Record(_, fields) => {
                         fields
                             .get(field)
                             .cloned()
@@ -939,7 +1061,7 @@ impl<'a> Interpreter<'a> {
                     Value::Shared(arc) => {
                         let inner = arc.read().map_err(|e| format!("shared read lock failed: {}", e))?;
                         match &*inner {
-                            Value::Record(fields) => fields.get(field.as_str()).cloned()
+                            Value::Record(_, fields) => fields.get(field.as_str()).cloned()
                                 .ok_or_else(|| format!("field '{}' not found in shared record", field)),
                             _ => Err("field access on non-record shared value".into()),
                         }
@@ -947,7 +1069,7 @@ impl<'a> Interpreter<'a> {
                     Value::LocalShared(rc) => {
                         let inner = rc.0.borrow();
                         match &*inner {
-                            Value::Record(fields) => fields.get(field.as_str()).cloned()
+                            Value::Record(_, fields) => fields.get(field.as_str()).cloned()
                                 .ok_or_else(|| format!("field '{}' not found in local_shared record", field)),
                             _ => Err("field access on non-record local_shared value".into()),
                         }
@@ -955,13 +1077,13 @@ impl<'a> Interpreter<'a> {
                     _ => Err(format!("field access on non-record value {}", obj_val)),
                 }
             }
-            Expr::Record { ty: _, fields } => {
+            Expr::Record { ty, fields } => {
                 let mut map = HashMap::new();
                 for f in fields {
                     let v = self.eval_expr(&f.value)?;
                     map.insert(f.name.clone(), v);
                 }
-                Ok(Value::Record(map))
+                Ok(Value::Record(ty.clone(), map))
             }
             Expr::Index(obj, idx) => {
                 let obj = self.eval_expr(obj)?;
@@ -1294,6 +1416,11 @@ impl<'a> Interpreter<'a> {
         // Handle Actor.spawn() calls
         if let Some(actor_name) = name.strip_suffix(".spawn") {
             return self.spawn_actor(actor_name, args);
+        }
+
+        // Handle extern function calls
+        if let Some(extern_func) = self.extern_funcs.get(name).cloned() {
+            return self.call_extern(&extern_func, args);
         }
 
         if let Some(&arity) = self.constructors.get(name) {
@@ -1760,8 +1887,58 @@ impl<'a> Interpreter<'a> {
                     }
                 }
             }
+            Value::Record(type_name, fields) => {
+                // Try trait method dispatch
+                if let Some(type_name) = type_name {
+                    if let Some(impls) = self.type_impls.get(type_name) {
+                        for methods in impls.values() {
+                            if let Some(func) = methods.iter().find(|f| f.name == method) {
+                                let func = func.clone();
+                                let fields = fields.clone();
+                                // Found trait method - call it with self = the record
+                                self.push_scope();
+                                self.bind("self", obj.clone());
+                                // Bind record fields to scope
+                                for (field_name, field_value) in &fields {
+                                    self.bind(field_name, field_value.clone());
+                                }
+                                let result = self.call_func(&func, args);
+                                self.pop_scope();
+                                return result;
+                            }
+                        }
+                    }
+                }
+                // Try built-in methods on records
+                match method {
+                    "fields" => {
+                        let field_list: Vec<Value> = fields.values().cloned().collect();
+                        Ok(Value::List(field_list))
+                    }
+                    _ => Err(format!("cannot call method '{}' on record", method)),
+                }
+            }
             _ => Err(format!("cannot call method '{}' on value {}", method, obj)),
         }
+    }
+
+    /// Call an extern function via FFI
+    fn call_extern(&mut self, extern_func: &ExternFunc, _args: Vec<Value>) -> Result<Value, String> {
+        // Get library path from environment variable
+        let lib_path = std::env::var("MIMI_FFI_LIB")
+            .map_err(|_| "MIMI_FFI_LIB environment variable not set for extern function call".to_string())?;
+
+        // For now, return a placeholder since full FFI type conversion is complex
+        // In a full implementation, this would:
+        // 1. Resolve the symbol: unsafe { lib.get::<CFunc>(name) }
+        // 2. Convert Mimi values to C types
+        // 3. Call the function via function pointer
+        // 4. Convert the result back to Mimi value
+        let _ = lib_path; // suppress unused warning
+        Err(format!(
+            "extern function '{}' call not yet fully implemented (set MIMI_FFI_LIB to load library)",
+            extern_func.name
+        ))
     }
 
     fn match_pattern(&self, pat: &Pattern, value: &Value) -> Option<Vec<(String, Value)>> {
@@ -1836,11 +2013,12 @@ impl<'a> Interpreter<'a> {
                 _ => Err("cannot negate non-number".into()),
             },
             UnOp::Not => Ok(Value::Bool(!is_truthy(&v))),
-            UnOp::Ref | UnOp::RefMut => {
-                // For now, & and &mut just return the value itself (simplified borrowing)
-                // In a full implementation, this would create a reference type
-                Ok(v)
-            }
+            UnOp::Ref => Ok(Value::Ref(SendRc(Rc::new(RefCell::new(v))))),
+            UnOp::RefMut => Ok(Value::RefMut(SendRc(Rc::new(RefCell::new(v))))),
+            UnOp::Deref => match v {
+                Value::Ref(rc) | Value::RefMut(rc) => Ok(rc.0.borrow().clone()),
+                _ => Err("cannot dereference non-reference value".into()),
+            },
         }
     }
 

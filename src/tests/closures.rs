@@ -415,7 +415,7 @@ fn borrow_mutable() {
 func main() -> i32 {
     let mut x = 42;
     let r = &mut x;
-    r
+    *r
 }
 "#;
     let v = run_source(src);
@@ -428,7 +428,7 @@ fn borrow_does_not_move_copy() {
 func main() -> i32 {
     let x = 42;
     let r = &x;
-    x + r
+    x + *r
 }
 "#;
     let v = run_source(src);

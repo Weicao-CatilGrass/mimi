@@ -382,6 +382,7 @@ pub enum UnOp {
     Not,
     Ref,
     RefMut,
+    Deref,
 }
 
 #[derive(Debug, Clone)]

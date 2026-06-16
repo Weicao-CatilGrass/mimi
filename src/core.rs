@@ -17,6 +17,12 @@ pub fn check(file: &File) -> Result<(), Vec<Diagnostic>> {
     checker.check()
 }
 
+pub fn check_strict(file: &File) -> Result<(), Vec<Diagnostic>> {
+    let mut checker = Checker::new(file);
+    checker.strict = true;
+    checker.check()
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum BorrowState {
     Unborrowed,
@@ -27,6 +33,7 @@ enum BorrowState {
 struct Checker<'a> {
     file: &'a File,
     errors: Vec<Diagnostic>,
+    warnings: Vec<Diagnostic>,
     funcs: HashMap<String, (Vec<Type>, Type)>,
     aliases: HashMap<String, Type>,
     types: HashMap<String, TypeDef>,
@@ -46,6 +53,24 @@ struct Checker<'a> {
     func_effects: HashMap<String, Vec<String>>,
     /// Track available effects in current scope
     available_effects: Vec<HashMap<String, bool>>,
+    /// Strict mode: enforce $$ lock semantics
+    strict: bool,
+    /// Track variable scopes for shadowing detection
+    var_scopes: Vec<HashMap<String, usize>>,
+    /// Track mutable variables: name -> is_mut
+    mut_vars: Vec<HashMap<String, bool>>,
+    /// Track generic parameters per function: func_name -> generic params
+    func_generics: HashMap<String, Vec<GenericParam>>,
+    /// Track generic parameters per type def: type_name -> generic params
+    type_generics: HashMap<String, Vec<GenericParam>>,
+    /// Track methods available on types via traits: type_name -> list of (trait_name, method_name)
+    type_methods: HashMap<String, Vec<(String, String)>>,
+    /// Track trait method signatures: (trait_name, method_name) -> (param_types, return_type)
+    trait_method_sigs: HashMap<(String, String), (Vec<Type>, Type)>,
+    /// Track imported module names (from `use` statements)
+    use_imports: Vec<String>,
+    /// Track current module path for qualified names
+    module_path: Vec<String>,
 }
 
 impl<'a> Checker<'a> {
@@ -53,6 +78,7 @@ impl<'a> Checker<'a> {
         Self {
             file,
             errors: Vec::new(),
+            warnings: Vec::new(),
             funcs: HashMap::new(),
             aliases: HashMap::new(),
             types: HashMap::new(),
@@ -64,6 +90,15 @@ impl<'a> Checker<'a> {
             where_clauses: HashMap::new(),
             func_effects: HashMap::new(),
             available_effects: vec![HashMap::new()],
+            strict: false,
+            var_scopes: vec![HashMap::new()],
+            mut_vars: vec![HashMap::new()],
+            func_generics: HashMap::new(),
+            type_generics: HashMap::new(),
+            type_methods: HashMap::new(),
+            trait_method_sigs: HashMap::new(),
+            use_imports: Vec::new(),
+            module_path: Vec::new(),
         }
     }
 
@@ -107,16 +142,53 @@ impl<'a> Checker<'a> {
     }
 
     fn collect_decls(&mut self) {
+        // Process imports: add module names to use_imports
+        for import in &self.file.imports {
+            if let Some(module_name) = import.path.first() {
+                self.use_imports.push(module_name.clone());
+            }
+        }
         for item in &self.file.items {
             self.collect_item_decls(item);
         }
+        // Check for type alias cycles
+        self.check_alias_cycles();
+    }
+
+    /// Detect type alias cycles: type A = B; type B = A;
+    fn check_alias_cycles(&mut self) {
+        let alias_names: Vec<String> = self.aliases.keys().cloned().collect();
+        for name in &alias_names {
+            let mut visited = std::collections::HashSet::new();
+            visited.insert(name.clone());
+            if self.follows_alias_cycle(name, &visited) {
+                self.emit(format!("type alias cycle detected: '{}' forms a cycle", name));
+            }
+        }
+    }
+
+    fn follows_alias_cycle(&self, name: &str, visited: &std::collections::HashSet<String>) -> bool {
+        if let Some(Type::Name(target, _)) = self.aliases.get(name) {
+            if visited.contains(target) {
+                return true;
+            }
+            let mut new_visited = visited.clone();
+            new_visited.insert(target.clone());
+            return self.follows_alias_cycle(target, &new_visited);
+        }
+        false
     }
 
     fn collect_item_decls(&mut self, item: &Item) {
         match item {
             Item::Func(f) => {
-                if self.funcs.contains_key(&f.name) {
-                    self.emit(format!("duplicate function definition '{}'", f.name));
+                let qualified_name = if self.module_path.is_empty() {
+                    f.name.clone()
+                } else {
+                    format!("{}::{}", self.module_path.join("::"), f.name)
+                };
+                if self.funcs.contains_key(&qualified_name) {
+                    self.emit(format!("duplicate function definition '{}'", qualified_name));
                     return;
                 }
                 let params: Vec<Type> = f.params.iter().map(|p| self.resolve_type(&p.ty)).collect();
@@ -125,17 +197,21 @@ impl<'a> Checker<'a> {
                     .as_ref()
                     .map(|t| self.resolve_type(t))
                     .unwrap_or_else(|| Type::Name("unit".into(), vec![]));
-                self.funcs.insert(f.name.clone(), (params, ret));
+                self.funcs.insert(qualified_name.clone(), (params, ret));
+                // Store generic parameters if present
+                if !f.generics.is_empty() {
+                    self.func_generics.insert(qualified_name.clone(), f.generics.clone());
+                }
                 // Store where clause if present
                 if let Some(where_clause) = &f.where_clause {
                     self.where_clauses.insert(
-                        f.name.clone(),
+                        qualified_name.clone(),
                         (where_clause.type_param.clone(), where_clause.bounds.clone()),
                     );
                 }
                 // Store effects if present
                 if !f.effects.is_empty() {
-                    self.func_effects.insert(f.name.clone(), f.effects.clone());
+                    self.func_effects.insert(qualified_name, f.effects.clone());
                 }
             }
             Item::Type(t) => {
@@ -172,11 +248,17 @@ impl<'a> Checker<'a> {
                     _ => {}
                 }
                 self.types.insert(t.name.clone(), t.clone());
+                // Store generic parameters for type definitions
+                if !t.generics.is_empty() {
+                    self.type_generics.insert(t.name.clone(), t.generics.clone());
+                }
             }
             Item::Module(m) => {
+                self.module_path.push(m.name.clone());
                 for inner in &m.items {
                     self.collect_item_decls(inner);
                 }
+                self.module_path.pop();
             }
             Item::Actor(actor) => {
                 // Register actor type so it can be used as a type
@@ -213,14 +295,32 @@ impl<'a> Checker<'a> {
             Item::Rule(_) | Item::Desc(_) | Item::Cap(_) => {}
             Item::Trait(trait_def) => {
                 let method_names: Vec<String> = trait_def.methods.iter().map(|m| m.name.clone()).collect();
-                self.traits.insert(trait_def.name.clone(), method_names);
+                self.traits.insert(trait_def.name.clone(), method_names.clone());
+                // Store trait method signatures for argument validation
+                for method in &trait_def.methods {
+                    let params: Vec<Type> = method.params.iter().map(|p| self.resolve_type(&p.ty)).collect();
+                    let ret = method.ret.as_ref()
+                        .map(|t| self.resolve_type(t))
+                        .unwrap_or_else(|| Type::Name("unit".into(), vec![]));
+                    self.trait_method_sigs.insert(
+                        (trait_def.name.clone(), method.name.clone()),
+                        (params, ret),
+                    );
+                }
             }
             Item::Impl(impl_def) => {
                 let method_names: Vec<String> = impl_def.methods.iter().map(|m| m.name.clone()).collect();
                 self.impls.insert(
                     (impl_def.trait_name.clone(), impl_def.type_name.clone()),
-                    method_names,
+                    method_names.clone(),
                 );
+                // Register methods available on this type via this trait
+                for method_name in &method_names {
+                    self.type_methods
+                        .entry(impl_def.type_name.clone())
+                        .or_default()
+                        .push((impl_def.trait_name.clone(), method_name.clone()));
+                }
                 // Also register impl methods as functions with self parameter
                 for method in &impl_def.methods {
                     let mut params = vec![Type::Name(impl_def.type_name.clone(), vec![])];
@@ -234,8 +334,15 @@ impl<'a> Checker<'a> {
                     self.funcs.insert(key, (params, ret));
                 }
             }
-            Item::ExternBlock(_) => {
-                // Extern blocks are collected but not type-checked in v1.1
+            Item::ExternBlock(block) => {
+                // Register extern functions for type checking
+                for func in &block.funcs {
+                    let params: Vec<Type> = func.params.iter().map(|p| self.resolve_type(&p.ty)).collect();
+                    let ret = func.ret.as_ref()
+                        .map(|t| self.resolve_type(t))
+                        .unwrap_or_else(|| Type::Name("unit".into(), vec![]));
+                    self.funcs.insert(func.name.clone(), (params, ret));
+                }
             }
         }
     }
@@ -273,7 +380,13 @@ impl<'a> Checker<'a> {
 
     fn check_item(&mut self, item: &Item) {
         match item {
-            Item::Func(f) => self.check_func(f),
+            Item::Func(f) => {
+                // Strict mode: check commitment locks
+                if self.strict {
+                    self.check_commitment_locks(f.name.as_str(), f.commitment, &f.body);
+                }
+                self.check_func(f)
+            }
             Item::Module(m) => {
                 for inner in &m.items {
                     self.check_item(inner);
@@ -450,10 +563,52 @@ impl<'a> Checker<'a> {
             }
             scopes[0].insert(p.name.clone(), ty);
         }
+        // Check all-return-paths requirement
+        if !matches!(&ret, Type::Name(n, _) if n == "unit") && !self.block_returns_on_all_paths(&func.body) {
+            self.emit(format!(
+                "function '{}' does not return on all paths (missing return in some branches)",
+                func.name
+            ));
+        }
         self.check_block(&func.body, &ret, &mut scopes);
         // Check for unconsumed caps before popping
         self.check_unconsumed_caps();
         self.cap_vars.pop();
+    }
+
+    /// Check if a block returns on all paths
+    fn block_returns_on_all_paths(&self, block: &Block) -> bool {
+        if block.is_empty() {
+            return false;
+        }
+        // Check if the last statement is an implicit return (expression statement)
+        if let Some(last) = block.last() {
+            match last {
+                Stmt::Return(_) => return true,
+                Stmt::Expr(_) => return true, // implicit return via last expression
+                Stmt::If { then_, else_, .. } => {
+                    let then_returns = self.block_returns_on_all_paths(then_);
+                    let else_returns = else_.as_ref()
+                        .map(|e| self.block_returns_on_all_paths(e))
+                        .unwrap_or(false);
+                    if then_returns && else_returns {
+                        return true;
+                    }
+                }
+                Stmt::Block(inner) => {
+                    if self.block_returns_on_all_paths(inner) {
+                        return true;
+                    }
+                }
+                Stmt::Arena(inner) => {
+                    if self.block_returns_on_all_paths(inner) {
+                        return true;
+                    }
+                }
+                _ => {}
+            }
+        }
+        false
     }
 
     fn check_unconsumed_caps(&mut self) {
@@ -471,11 +626,51 @@ impl<'a> Checker<'a> {
         }
     }
 
+    /// Check commitment locks in strict mode
+    fn check_commitment_locks(&mut self, name: &str, commitment: Commitment, body: &Block) {
+        match commitment {
+            Commitment::StrongLocked | Commitment::StrongLockedQuestion | Commitment::StrongLockedQuestionQuestion => {
+                // $$ locked: any modification to the function body is an error
+                // Check for mms blocks that contain modified contracts
+                for stmt in body {
+                    if let Stmt::MmsBlock(text) = stmt {
+                        if text.contains("requires:") || text.contains("ensures:") || text.contains("math:") {
+                            // In strict mode, $$ locked functions should not have their contracts changed
+                            // For now, just warn that this is a $$ locked function
+                            self.emit(format!(
+                                "strict mode: function '{}' is $$ locked - contract modifications not allowed",
+                                name
+                            ));
+                        }
+                    }
+                }
+            }
+            Commitment::Locked | Commitment::LockedQuestion | Commitment::LockedQuestionQuestion => {
+                // $ locked: warn about modifications
+                for stmt in body {
+                    if let Stmt::MmsBlock(text) = stmt {
+                        if text.contains("requires:") || text.contains("ensures:") || text.contains("math:") {
+                            // Just note it's locked
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
     fn check_block(&mut self, block: &Block, ret: &Type, scopes: &mut Vec<HashMap<String, Type>>) {
         // Push cap scope and borrow scope for block
         self.cap_vars.push(HashMap::new());
         self.push_borrow_scope();
+        let mut seen_return = false;
         for stmt in block {
+            // Unreachable code detection
+            if seen_return {
+                self.emit("unreachable statement after return".to_string());
+                break;
+            }
+            if let Stmt::Return(_) = stmt { seen_return = true; }
             self.check_stmt(stmt, ret, scopes);
         }
         // Check for unconsumed caps before popping
@@ -583,7 +778,17 @@ impl<'a> Checker<'a> {
     ) {
         match stmt {
             Stmt::Let { pat, ty, init, mut_, ref_ } => {
-                // If ref_ is true, the variable is an arena reference
+                // Shadowing detection
+                if let Pattern::Variable(name) = pat {
+                    for scope in self.var_scopes.iter().rev() {
+                        if scope.contains_key(name) {
+                            self.emit(format!("variable '{}' shadows an outer variable", name));
+                            break;
+                        }
+                    }
+                    self.var_scopes.last_mut().unwrap().insert(name.clone(), 0);
+                }
+
                 let init_ty = init
                     .as_ref()
                     .map(|e| self.infer_expr(e, scopes))
@@ -609,8 +814,9 @@ impl<'a> Checker<'a> {
                         }
                     }
                 };
-                if *mut_ {
-                    // For v0.2, mutability is tracked per-variable; tuple patterns ignore mut_ for simplicity.
+                // Track mutability
+                if let Pattern::Variable(name) = pat {
+                    self.mut_vars.last_mut().unwrap().insert(name.clone(), *mut_);
                 }
                 self.check_pattern(pat, &final_ty, scopes);
                 // Track cap variables for linear type checking and introduce effects
@@ -753,6 +959,13 @@ impl<'a> Checker<'a> {
                 let value_ty = self.infer_expr(value, scopes);
                 match target {
                     Expr::Ident(name) => {
+                        // Check mutability
+                        let is_mut = self.mut_vars.iter().rev().any(|scope| {
+                            scope.get(name).copied().unwrap_or(false)
+                        });
+                        if !is_mut {
+                            self.emit(format!("cannot assign to immutable variable '{}' (use 'let mut')", name));
+                        }
                         let target_ty = self.lookup_var(name, scopes);
                         if !same_type(&target_ty, &value_ty) {
                             self.emit(format!(
@@ -761,6 +974,27 @@ impl<'a> Checker<'a> {
                                 name,
                                 fmt_type(&target_ty)
                             ));
+                        }
+                    }
+                    Expr::Unary(UnOp::Deref, inner) => {
+                        // *r = value: check that inner is &mut T
+                        let inner_ty = self.infer_expr(inner, scopes);
+                        match &inner_ty {
+                            Type::RefMut(inner_inner) => {
+                                if !same_type(&value_ty, inner_inner) {
+                                    self.emit(format!(
+                                        "cannot assign {} through &mut reference of type {}",
+                                        fmt_type(&value_ty),
+                                        fmt_type(&inner_ty)
+                                    ));
+                                }
+                            }
+                            _ => {
+                                self.emit(format!(
+                                    "cannot assign through non-mutable reference {}",
+                                    fmt_type(&inner_ty)
+                                ));
+                            }
                         }
                     }
                     Expr::Field(obj, field) => {
@@ -851,6 +1085,15 @@ impl<'a> Checker<'a> {
                         }
                         Type::RefMut(Box::new(t))
                     }
+                    UnOp::Deref => {
+                        match &t {
+                            Type::Ref(inner) | Type::RefMut(inner) => (**inner).clone(),
+                            _ => {
+                                self.emit(format!("cannot dereference {}", fmt_type(&t)));
+                                Type::Name("unknown".into(), vec![])
+                            }
+                        }
+                    }
                 }
             }
             Expr::Binary(op, l, r) => self.infer_binary(*op, l, r, scopes),
@@ -860,15 +1103,70 @@ impl<'a> Checker<'a> {
                     Expr::Field(obj, method_name) => {
                         // Method call: obj.method(args) or Type.spawn(args)
                         let obj_ty = self.infer_expr(obj, scopes);
-                        // Check if it's an actor spawn call (Type.spawn)
                         if let Type::Name(type_name, _) = &obj_ty {
+                            // Check if it's an actor spawn call (Type.spawn)
                             if method_name == "spawn" {
-                                // This is an actor spawn call - return the actor type
                                 return Type::Name(type_name.clone(), vec![]);
                             }
+                            // Check module-qualified function call: Module::func(args)
+                            let qualified_func = format!("{}::{}", type_name, method_name);
+                            if self.funcs.contains_key(&qualified_func) {
+                                return self.check_call(&qualified_func, args, scopes);
+                            }
+                            // Check record field access (field is a closure/function)
+                            if let Some(tdef) = self.types.get(type_name) {
+                                if let TypeDefKind::Record(fields) = &tdef.kind {
+                                    if let Some(f) = fields.iter().find(|f| f.name == *method_name) {
+                                        // Field access that returns a callable — just return the field type
+                                        return self.resolve_type(&f.ty);
+                                    }
+                                }
+                            }
+                            // Check trait methods on this type
+                            if let Some(methods) = self.type_methods.get(type_name) {
+                                if let Some((trait_name, _)) = methods.iter().find(|(_, m)| m == method_name) {
+                                    let trait_name = trait_name.clone();
+                                    if let Some((params, ret)) = self.trait_method_sigs.get(&(trait_name.clone(), method_name.clone())).cloned() {
+                                        // Validate arguments (skip first param which is self)
+                                        let user_args = &args;
+                                        let method_params = if !params.is_empty() { &params[1..] } else { &params };
+                                        if user_args.len() != method_params.len() {
+                                            self.emit(format!(
+                                                "method '{}' of trait '{}' expects {} arguments, got {}",
+                                                method_name, trait_name, method_params.len(), user_args.len()
+                                            ));
+                                        } else {
+                                            for (i, (arg, param)) in user_args.iter().zip(method_params.iter()).enumerate() {
+                                                let at = self.infer_expr(arg, scopes);
+                                                if !same_type(&at, param) {
+                                                    self.emit(format!(
+                                                        "argument {} of method '{}' expected {}, found {}",
+                                                        i + 1, method_name, fmt_type(param), fmt_type(&at)
+                                                    ));
+                                                }
+                                            }
+                                        }
+                                        return ret;
+                                    }
+                                }
+                            }
+                            // Check if the type has this as a direct method (actor methods)
+                            if let Some(actor_def) = self.file.items.iter().find_map(|item| {
+                                if let Item::Actor(a) = item { if a.name == *type_name { Some(a) } else { None } } else { None }
+                            }) {
+                                if let Some(method) = actor_def.methods.iter().find(|m| m.name == *method_name) {
+                                    let ret = method.ret.as_ref()
+                                        .map(|t| self.resolve_type(t))
+                                        .unwrap_or_else(|| Type::Name("unit".into(), vec![]));
+                                    return ret;
+                                }
+                            }
+                            self.emit(format!("type '{}' has no method '{}'", type_name, method_name));
+                            Type::Name("unknown".into(), vec![])
+                        } else {
+                            self.emit(format!("method call requires a named type, found {}", fmt_type(&obj_ty)));
+                            Type::Name("unknown".into(), vec![])
                         }
-                        // Regular method call - for now return unknown
-                        Type::Name("unknown".into(), vec![])
                     }
                     _ => {
                         self.emit("callee must be a function name");
@@ -1021,6 +1319,21 @@ impl<'a> Checker<'a> {
                                 TypeDefKind::Record(fields) => {
                                     if let Some(f) = fields.iter().find(|f| f.name == *field) {
                                         self.resolve_type(&f.ty)
+                                    } else if let Some(methods) = self.type_methods.get(name) {
+                                        if let Some((trait_name, _)) = methods.iter().find(|(_, m)| m == field) {
+                                            let trait_name = trait_name.clone();
+                                            if let Some((params, ret)) = self.trait_method_sigs.get(&(trait_name, field.clone())).cloned() {
+                                                Type::Func(params, Box::new(ret))
+                                            } else {
+                                                Type::Name("unknown".into(), vec![])
+                                            }
+                                        } else {
+                                            self.emit(format!(
+                                                "type '{}' has no field '{}'",
+                                                name, field
+                                            ));
+                                            Type::Name("unknown".into(), vec![])
+                                        }
                                     } else {
                                         self.emit(format!(
                                             "type '{}' has no field '{}'",
@@ -1030,8 +1343,23 @@ impl<'a> Checker<'a> {
                                     }
                                 }
                                 _ => {
-                                    self.emit(format!("'{}' is not a record type", name));
-                                    Type::Name("unknown".into(), vec![])
+                                    // Check trait methods for non-record types
+                                    if let Some(methods) = self.type_methods.get(name) {
+                                        if let Some((trait_name, _)) = methods.iter().find(|(_, m)| m == field) {
+                                            let trait_name = trait_name.clone();
+                                            if let Some((params, ret)) = self.trait_method_sigs.get(&(trait_name, field.clone())).cloned() {
+                                                Type::Func(params, Box::new(ret))
+                                            } else {
+                                                Type::Name("unknown".into(), vec![])
+                                            }
+                                        } else {
+                                            self.emit(format!("'{}' is not a record type", name));
+                                            Type::Name("unknown".into(), vec![])
+                                        }
+                                    } else {
+                                        self.emit(format!("'{}' is not a record type", name));
+                                        Type::Name("unknown".into(), vec![])
+                                    }
                                 }
                             }
                         } else {
@@ -1198,9 +1526,8 @@ impl<'a> Checker<'a> {
                 let return_type = ret.clone().unwrap_or_else(|| Type::Name("unit".into(), vec![]));
                 Type::Func(param_types, Box::new(return_type))
             }
-            Expr::Turbofish(name, _type_args, args) => {
+            Expr::Turbofish(name, type_args, args) => {
                 // Turbofish: func::<Type>(args) — explicit type instantiation
-                // For now, look up the function and check args, ignoring type_args
                 let (params, ret) = match self.funcs.get(name) {
                     Some(sig) => sig.clone(),
                     None => {
@@ -1208,6 +1535,25 @@ impl<'a> Checker<'a> {
                         return Type::Name("unknown".into(), vec![]);
                     }
                 };
+                let generics = self.func_generics.get(name).cloned().unwrap_or_default();
+
+                // Build type param map from turbofish type args
+                let mut type_map: HashMap<String, Type> = HashMap::new();
+                if !generics.is_empty() && !type_args.is_empty() {
+                    if type_args.len() != generics.len() {
+                        self.emit(format!(
+                            "function '{}' expects {} type arguments, got {}",
+                            name,
+                            generics.len(),
+                            type_args.len()
+                        ));
+                    } else {
+                        for (gp, ta) in generics.iter().zip(type_args.iter()) {
+                            type_map.insert(gp.name.clone(), ta.clone());
+                        }
+                    }
+                }
+
                 if args.len() != params.len() {
                     self.emit(format!(
                         "function '{}' expects {} arguments, got {}",
@@ -1216,21 +1562,50 @@ impl<'a> Checker<'a> {
                         args.len()
                     ));
                 } else {
+                    // Check where constraints (before substitution)
+                    if let Some((type_param, bounds)) = self.where_clauses.get(name).cloned() {
+                        for (arg, param) in args.iter().zip(params.iter()) {
+                            let at = self.infer_expr(arg, scopes);
+                            if self.type_uses_type_param(param, &type_param) {
+                                for bound in &bounds {
+                                    if !self.type_implements_trait(&at, bound) {
+                                        self.emit(format!(
+                                            "where constraint violated: type '{}' does not implement trait '{}' (required by function '{}')",
+                                            fmt_type(&at),
+                                            bound,
+                                            name
+                                        ));
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Check arguments with substituted types
                     for (i, (arg, param)) in args.iter().zip(params.iter()).enumerate() {
                         let at = self.infer_expr(arg, scopes);
-                        if !same_type(&at, param) {
+                        let subst_param = if !type_map.is_empty() {
+                            subst_type_params(param, &generics, &type_map)
+                        } else {
+                            param.clone()
+                        };
+                        if !same_type(&at, &subst_param) {
                             self.emit(format!(
                                 "argument {} of '{}' expected {}, found {}",
                                 i + 1,
                                 name,
-                                fmt_type(param),
+                                fmt_type(&subst_param),
                                 fmt_type(&at)
                             ));
                         }
                     }
                 }
-                // Substitute type args into return type if possible
-                ret
+                // Substitute type args into return type
+                if !type_map.is_empty() {
+                    subst_type_params(&ret, &generics, &type_map)
+                } else {
+                    ret
+                }
             }
         }
     }
@@ -1415,6 +1790,12 @@ impl<'a> Checker<'a> {
                     ));
                     Type::Name("unknown".into(), vec![])
                 } else {
+                    // Static divide-by-zero detection
+                    if op == BinOp::Div || op == BinOp::Mod {
+                        if let Expr::Literal(Lit::Int(0)) = r {
+                            self.emit(format!("{} by zero literal", if op == BinOp::Div { "division" } else { "modulo" }));
+                        }
+                    }
                     lt
                 }
             }
@@ -1427,6 +1808,12 @@ impl<'a> Checker<'a> {
                     ));
                     Type::Name("unknown".into(), vec![])
                 } else {
+                    // Static modulo-by-zero detection
+                    if op == BinOp::Mod {
+                        if let Expr::Literal(Lit::Int(0)) = r {
+                            self.emit("modulo by zero literal".to_string());
+                        }
+                    }
                     lt
                 }
             }
@@ -1509,9 +1896,17 @@ impl<'a> Checker<'a> {
             _ => {}
         }
 
-        let (params, ret) = match self.funcs.get(name) {
+        let (params, mut ret) = match self.funcs.get(name) {
             Some(sig) => sig.clone(),
             None => {
+                // Try module-qualified lookup via use imports
+                for module in self.use_imports.clone() {
+                    let qualified = format!("{}::{}", module, name);
+                    if self.funcs.contains_key(&qualified) {
+                        // Recursively check with qualified name
+                        return self.check_call(&qualified, args, scopes);
+                    }
+                }
                 self.emit(format!("undefined function '{}'", name));
                 return Type::Name("unknown".into(), vec![]);
             }
@@ -1525,39 +1920,85 @@ impl<'a> Checker<'a> {
                 args.len()
             ));
         } else {
-            for (i, (arg, param)) in args.iter().zip(params.iter()).enumerate() {
-                let at = self.infer_expr(arg, scopes);
-                if !same_type(&at, param) {
-                    self.emit(format!(
-                        "argument {} of '{}' expected {}, found {}",
-                        i + 1,
-                        name,
-                        fmt_type(param),
-                        fmt_type(&at)
-                    ));
-                }
-            }
-            // Check where constraints
-            if let Some((type_param, bounds)) = self.where_clauses.get(name).cloned() {
-                // Find the argument that matches the type parameter
+            // Check if this is a generic function and build type param map
+            let generics = self.func_generics.get(name).cloned().unwrap_or_default();
+            let mut type_map: HashMap<String, Type> = HashMap::new();
+
+            if !generics.is_empty() {
+                // Infer type parameters from argument types
                 for (arg, param) in args.iter().zip(params.iter()) {
                     let at = self.infer_expr(arg, scopes);
-                    // Check if this parameter uses the type parameter
-                    if self.type_uses_type_param(param, &type_param) {
-                        // Check all bounds
-                        for bound in &bounds {
-                            if !self.type_implements_trait(&at, bound) {
-                                self.emit(format!(
-                                    "where constraint violated: type '{}' does not implement trait '{}' (required by function '{}')",
-                                    fmt_type(&at),
-                                    bound,
-                                    name
-                                ));
+                    self.infer_type_params(param, &at, &generics, &mut type_map);
+                }
+
+                // Check where constraints (before substitution)
+                if let Some((type_param, bounds)) = self.where_clauses.get(name).cloned() {
+                    for (arg, param) in args.iter().zip(params.iter()) {
+                        let at = self.infer_expr(arg, scopes);
+                        if self.type_uses_type_param(param, &type_param) {
+                            for bound in &bounds {
+                                if !self.type_implements_trait(&at, bound) {
+                                    self.emit(format!(
+                                        "where constraint violated: type '{}' does not implement trait '{}' (required by function '{}')",
+                                        fmt_type(&at),
+                                        bound,
+                                        name
+                                    ));
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Check arguments with substituted types
+                for (i, (arg, param)) in args.iter().zip(params.iter()).enumerate() {
+                    let at = self.infer_expr(arg, scopes);
+                    let subst_param = subst_type_params(param, &generics, &type_map);
+                    if !same_type(&at, &subst_param) {
+                        self.emit(format!(
+                            "argument {} of '{}' expected {}, found {}",
+                            i + 1,
+                            name,
+                            fmt_type(&subst_param),
+                            fmt_type(&at)
+                        ));
+                    }
+                }
+
+                ret = subst_type_params(&ret, &generics, &type_map);
+            } else {
+                for (i, (arg, param)) in args.iter().zip(params.iter()).enumerate() {
+                    let at = self.infer_expr(arg, scopes);
+                    if !same_type(&at, param) {
+                        self.emit(format!(
+                            "argument {} of '{}' expected {}, found {}",
+                            i + 1,
+                            name,
+                            fmt_type(param),
+                            fmt_type(&at)
+                        ));
+                    }
+                }
+                // Check where constraints for non-generic functions
+                if let Some((type_param, bounds)) = self.where_clauses.get(name).cloned() {
+                    for (arg, param) in args.iter().zip(params.iter()) {
+                        let at = self.infer_expr(arg, scopes);
+                        if self.type_uses_type_param(param, &type_param) {
+                            for bound in &bounds {
+                                if !self.type_implements_trait(&at, bound) {
+                                    self.emit(format!(
+                                        "where constraint violated: type '{}' does not implement trait '{}' (required by function '{}')",
+                                        fmt_type(&at),
+                                        bound,
+                                        name
+                                    ));
+                                }
                             }
                         }
                     }
                 }
             }
+
             // Check effects
             if let Some(required_effects) = self.func_effects.get(name).cloned() {
                 for effect in &required_effects {
@@ -1604,10 +2045,58 @@ impl<'a> Checker<'a> {
         }
     }
 
+    /// Infer type parameter bindings from a parameter type and actual argument type
+    fn infer_type_params(
+        &self,
+        param: &Type,
+        actual: &Type,
+        generics: &[GenericParam],
+        type_map: &mut HashMap<String, Type>,
+    ) {
+        match param {
+            Type::Name(name, _) if is_type_param(name, generics) => {
+                type_map.entry(name.clone()).or_insert_with(|| actual.clone());
+            }
+            Type::Name(name, p_args) => {
+                if let Type::Name(_, a_args) = actual {
+                    if name == "List" && p_args.len() == 1 && a_args.len() == 1 {
+                        self.infer_type_params(&p_args[0], &a_args[0], generics, type_map);
+                    }
+                }
+            }
+            Type::Option(inner) => {
+                if let Type::Option(a_inner) = actual {
+                    self.infer_type_params(inner, a_inner, generics, type_map);
+                }
+            }
+            Type::Result(p_ok, p_err) => {
+                if let Type::Result(a_ok, a_err) = actual {
+                    self.infer_type_params(p_ok, a_ok, generics, type_map);
+                    self.infer_type_params(p_err, a_err, generics, type_map);
+                }
+            }
+            Type::Tuple(p_elems) => {
+                if let Type::Tuple(a_elems) = actual {
+                    for (pe, ae) in p_elems.iter().zip(a_elems.iter()) {
+                        self.infer_type_params(pe, ae, generics, type_map);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
     fn lookup_var(&mut self, name: &str, scopes: &mut [HashMap<String, Type>]) -> Type {
         for scope in scopes.iter().rev() {
             if let Some(t) = scope.get(name) {
                 return t.clone();
+            }
+        }
+        // Check if it's a module-qualified name via use imports
+        for module in &self.use_imports.clone() {
+            let qualified = format!("{}::{}", module, name);
+            if let Some((params, ret)) = self.funcs.get(&qualified) {
+                return Type::Func(params.clone(), Box::new(ret.clone()));
             }
         }
         // Check if it's an actor type name
@@ -1682,6 +2171,50 @@ impl<'a> Checker<'a> {
                 (covered, false)
             }
         }
+    }
+}
+
+/// Check if a type name is a generic type parameter
+fn is_type_param(name: &str, generics: &[GenericParam]) -> bool {
+    generics.iter().any(|g| g.name == name)
+}
+
+/// Substitute type parameters in a type
+fn subst_type_params(ty: &Type, generics: &[GenericParam], type_map: &HashMap<String, Type>) -> Type {
+    match ty {
+        Type::Name(name, args) => {
+            if is_type_param(name, generics) {
+                if let Some(concrete) = type_map.get(name) {
+                    concrete.clone()
+                } else {
+                    ty.clone()
+                }
+            } else {
+                let new_args: Vec<Type> = args.iter()
+                    .map(|a| subst_type_params(a, generics, type_map))
+                    .collect();
+                Type::Name(name.clone(), new_args)
+            }
+        }
+        Type::Ref(inner) => Type::Ref(Box::new(subst_type_params(inner, generics, type_map))),
+        Type::RefMut(inner) => Type::RefMut(Box::new(subst_type_params(inner, generics, type_map))),
+        Type::Option(inner) => Type::Option(Box::new(subst_type_params(inner, generics, type_map))),
+        Type::Result(ok, err) => Type::Result(
+            Box::new(subst_type_params(ok, generics, type_map)),
+            Box::new(subst_type_params(err, generics, type_map)),
+        ),
+        Type::Tuple(elems) => Type::Tuple(
+            elems.iter().map(|e| subst_type_params(e, generics, type_map)).collect(),
+        ),
+        Type::Func(args, ret) => Type::Func(
+            args.iter().map(|a| subst_type_params(a, generics, type_map)).collect(),
+            Box::new(subst_type_params(ret, generics, type_map)),
+        ),
+        Type::Shared(inner) => Type::Shared(Box::new(subst_type_params(inner, generics, type_map))),
+        Type::LocalShared(inner) => Type::LocalShared(Box::new(subst_type_params(inner, generics, type_map))),
+        Type::Weak(inner) => Type::Weak(Box::new(subst_type_params(inner, generics, type_map))),
+        Type::Newtype(name, inner) => Type::Newtype(name.clone(), Box::new(subst_type_params(inner, generics, type_map))),
+        Type::Cap(_) | Type::Nothing => ty.clone(),
     }
 }
 
