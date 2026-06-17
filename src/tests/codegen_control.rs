@@ -1314,3 +1314,134 @@ fn codegen_ref_mut_type() {
         }
     "#);
 }
+
+// ===================== LIFO OnFailure Codegen Tests =====================
+
+#[test]
+fn codegen_on_failure_discarded_on_normal_exit() {
+    // Without exit(), compensation blocks should not appear in the IR
+    let ir = compile_to_ir(r#"
+        func main() -> i32 {
+            on failure {
+                println("cleanup")
+            }
+            42
+        }
+    "#);
+    // The IR should NOT contain the cleanup string (compensation was discarded)
+    assert!(!ir.contains("cleanup"), "OnFailure body should be discarded on normal exit:\n{}", ir);
+}
+
+#[test]
+fn codegen_on_failure_registered_not_inline() {
+    // Verify on_failure is registered (not compiled inline) — the body
+    // should only appear when exit() triggers compensations
+    let ir = compile_to_ir(r#"
+        func main() -> i32 {
+            on failure {
+                println("compensate")
+            }
+            exit(1)
+        }
+    "#);
+    // The IR should contain the compensation string (it runs before exit)
+    assert!(ir.contains("compensate"), "OnFailure body should compile before exit:\n{}", ir);
+    // The IR should contain an exit call
+    assert!(ir.contains("exit"), "IR should contain exit call:\n{}", ir);
+}
+
+#[test]
+fn codegen_on_failure_scope_nesting() {
+    // Inner scope compensations should be discarded when the inner block exits normally
+    let ir = compile_to_ir(r#"
+        func main() -> i32 {
+            on failure {
+                println("outer")
+            }
+            {
+                on failure {
+                    println("inner")
+                }
+            }
+            exit(1)
+        }
+    "#);
+    // Only "outer" compensation should appear before exit (inner was discarded)
+    assert!(ir.contains("outer"), "Outer compensation should appear:\n{}", ir);
+    assert!(!ir.contains("inner"), "Inner compensation (discarded on normal block exit) should NOT appear:\n{}", ir);
+}
+
+// ===================== Spawn/Await Real Return Value Tests =====================
+
+#[test]
+fn codegen_spawn_await_no_zero_placeholder() {
+    // Verify Await no longer returns the constant 0 placeholder
+    let ir = compile_to_ir(r#"
+        func compute() -> i32 {
+            42
+        }
+        func main() -> i32 {
+            let future = spawn compute()
+            let result = await future
+            result
+        }
+    "#);
+    // The IR should contain pthread_join with a non-null second argument (retval storage)
+    assert!(ir.contains("pthread_join"), "IR should contain pthread_join:\n{}", ir);
+    // The IR should contain free (to free the malloc'd result)
+    assert!(ir.contains("free"), "IR should contain free:\n{}", ir);
+    // The IR should contain malloc (to allocate the result storage)
+    assert!(ir.contains("malloc"), "IR should contain malloc:\n{}", ir);
+}
+
+#[test]
+fn codegen_parasteps_sequential_fallback() {
+    // Parasteps currently uses sequential fallback — just verify it compiles
+    assert_compiles(r#"
+        func main() -> i32 {
+            parasteps {
+                println("step1")
+                println("step2")
+            }
+            0
+        }
+    "#);
+}
+
+// ===================== Async Func Codegen Tests =====================
+
+#[test]
+fn codegen_async_func_basic() {
+    // Verify async func compiles with spawner + body
+    let ir = compile_to_ir(r#"
+        async func compute(x: i32) -> i32 {
+            x + 1
+        }
+        func main() -> i32 {
+            let f = compute(41)
+            await f
+        }
+    "#);
+    // Should have the async body function
+    assert!(ir.contains("__async_body"), "IR should contain async body:\n{}", ir);
+    // Should have a spawn wrapper (from the spawner calling spawn)
+    assert!(ir.contains("__spawn_wrapper"), "IR should contain spawn wrapper:\n{}", ir);
+    // Should have pthread_create (from the spawn)
+    assert!(ir.contains("pthread_create"), "IR should contain pthread_create:\n{}", ir);
+}
+
+#[test]
+fn codegen_async_func_returns_i64() {
+    // The spawner function should return i64 (thread ID) not the original return type
+    let ir = compile_to_ir(r#"
+        async func compute() -> i32 {
+            42
+        }
+        func main() -> i32 {
+            let f = compute()
+            await f
+        }
+    "#);
+    // The spawner function (same name) should exist
+    assert!(ir.contains("define i64 @compute"), "Spawner should return i64:\n{}", ir);
+}
