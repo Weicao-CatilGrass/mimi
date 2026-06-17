@@ -815,3 +815,78 @@ func main() -> i32 {
 "#;
     assert_eq!(run_source(src), interp::Value::Int(60));
 }
+
+#[test]
+fn range_for_loop() {
+    let src = r#"
+func main() -> i32 {
+    let mut sum = 0;
+    for i in 0..5 {
+        sum = sum + i;
+    }
+    return sum;
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::Int(10));
+}
+
+#[test]
+fn range_display() {
+    let src = r#"
+func main() -> i32 {
+    let r = 1..10;
+    return 0;
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::Int(0));
+}
+
+#[test]
+fn async_func_basic() {
+    let src = r#"
+async func add_one(x: i32) -> i32 {
+    return x + 1;
+}
+
+func main() -> i32 {
+    let f = add_one(5);
+    return await f;
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::Int(6));
+}
+
+#[test]
+fn impl_trait_return_type() {
+    let src = r#"
+type Point {
+    x: i32
+    y: i32
+}
+
+func make_point() -> impl Display {
+    return Point { x: 1, y: 2 };
+}
+
+func main() -> i32 {
+    let p = make_point();
+    return 42;
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::Int(42));
+}
+
+#[test]
+fn impl_trait_multiple_bounds() {
+    let src = r#"
+func make_value() -> impl Printable + Cloneable {
+    return 42;
+}
+
+func main() -> i32 {
+    let v = make_value();
+    return 99;
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::Int(99));
+}

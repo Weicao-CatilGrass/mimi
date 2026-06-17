@@ -145,6 +145,7 @@ pub struct FuncDef {
     pub generics: Vec<GenericParam>,
     pub effects: Vec<String>,
     pub is_comptime: bool,
+    pub is_async: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -355,6 +356,11 @@ pub enum Expr {
         start: Option<Box<Expr>>,
         end: Option<Box<Expr>>,
     },
+    /// Range expression: start..end
+    Range {
+        start: Box<Expr>,
+        end: Box<Expr>,
+    },
     /// Turbofish: func_name::<Type>(args) — explicit type instantiation
     Turbofish(String, Vec<Type>, Vec<Expr>),
 }
@@ -411,6 +417,7 @@ pub enum BinOp {
     BitXor,
     Shl,
     Shr,
+    Range,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -449,6 +456,8 @@ pub enum Type {
     Array(Box<Type>, usize),
     /// Slice type: &[T]
     Slice(Box<Type>),
+    /// impl Trait return type — opaque type implementing listed traits
+    ImplTrait(Vec<String>),
 }
 
 /// Kind of allocator for alloc blocks

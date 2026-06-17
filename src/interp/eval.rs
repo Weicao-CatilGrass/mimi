@@ -184,6 +184,15 @@ impl<'a> Interpreter<'a> {
                 let iter = self.eval_expr(iterable)?;
                 let list = match iter {
                     Value::List(l) => l,
+                    Value::Range { start, end } => {
+                        let mut items = Vec::new();
+                        if start <= end {
+                            for i in start..end {
+                                items.push(Value::Int(i));
+                            }
+                        }
+                        items
+                    }
                     other => return Err(format!("cannot iterate over {}", other)),
                 };
                 for item in list {
@@ -454,7 +463,7 @@ impl<'a> Interpreter<'a> {
                             let (tx, rx) = std::sync::mpsc::channel();
                             let expr = expr.clone();
                             let file = self.file.clone();
-                            std::thread::spawn(move || {
+                            super::pool::get_pool().execute(move || {
                                 let mut interp = Interpreter::new(&file);
                                 let result = interp.eval_expr(&expr);
                                 let _ = tx.send(result);
@@ -469,7 +478,7 @@ impl<'a> Interpreter<'a> {
                                     let (tx, rx) = std::sync::mpsc::channel();
                                     let expr = expr.clone();
                                     let file = self.file.clone();
-                                    std::thread::spawn(move || {
+                                    super::pool::get_pool().execute(move || {
                                         let mut interp = Interpreter::new(&file);
                                         let result = interp.eval_expr(&expr);
                                         let _ = tx.send(result);
@@ -966,7 +975,7 @@ impl<'a> Interpreter<'a> {
                 };
 
                 if let Some((actor_handle, method, args_vals)) = spawned {
-                    std::thread::spawn(move || {
+                    super::pool::get_pool().execute(move || {
                         let empty_file = File { imports: vec![], items: vec![] };
                         let mut interp = Interpreter::new(&empty_file);
                         let actor_val = Value::Actor(actor_handle);
@@ -996,7 +1005,7 @@ impl<'a> Interpreter<'a> {
                                 Value::Actor(h) => h.clone(),
                                 _ => unreachable!(),
                             };
-                            std::thread::spawn(move || {
+                            super::pool::get_pool().execute(move || {
                                 let empty_file = File { imports: vec![], items: vec![] };
                                 let mut interp = Interpreter::new(&empty_file);
                                 let actor_val = Value::Actor(actor_arc);
@@ -1102,6 +1111,14 @@ impl<'a> Interpreter<'a> {
                 let type_name = self.resolve_type_name(ty);
                 let info = self.type_info_for(&type_name)?;
                 Ok(info)
+            }
+            Expr::Range { start, end } => {
+                let start_val = self.eval_expr(start)?;
+                let end_val = self.eval_expr(end)?;
+                match (start_val, end_val) {
+                    (Value::Int(s), Value::Int(e)) => Ok(Value::Range { start: s, end: e }),
+                    _ => Err("range requires integer operands".into()),
+                }
             }
         }
     }
@@ -1234,6 +1251,10 @@ impl<'a> Interpreter<'a> {
                 (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a >> b)),
                 _ => Err(format!("cannot apply '>>' to {} and {}", Self::type_name(&left), Self::type_name(&right))),
             },
+            BinOp::Range => match (&left, &right) {
+                (Value::Int(a), Value::Int(b)) => Ok(Value::Range { start: *a, end: *b }),
+                _ => Err(format!("cannot apply '..' to {} and {}", Self::type_name(&left), Self::type_name(&right))),
+            },
             BinOp::Assign => Err("assignment as expression not supported".into()),
             BinOp::And | BinOp::Or => unreachable!(),
         }
@@ -1270,6 +1291,7 @@ impl<'a> Interpreter<'a> {
             Value::WeakShared(_) | Value::WeakLocal(_) => "weak",
             Value::Allocator(_) => "allocator",
             Value::Slice { .. } => "slice",
+            Value::Range { .. } => "range",
         }
     }
 }

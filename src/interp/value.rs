@@ -113,6 +113,11 @@ pub enum Value {
         start: usize,
         end: usize,
     },
+    /// Range value: start..end
+    Range {
+        start: i64,
+        end: i64,
+    },
 }
 
 /// Kind of allocator
@@ -263,6 +268,7 @@ impl std::fmt::Display for Value {
                 }
                 write!(f, "]")
             }
+            Value::Range { start, end } => write!(f, "{}..{}", start, end),
         }
     }
 }
@@ -406,6 +412,7 @@ fn type_name(val: &Value) -> &'static str {
         Value::WeakShared(_) | Value::WeakLocal(_) => "weak",
         Value::Allocator(_) => "allocator",
         Value::Slice { .. } => "slice",
+        Value::Range { .. } => "range",
     }
 }
 

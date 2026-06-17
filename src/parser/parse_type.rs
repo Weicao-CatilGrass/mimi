@@ -131,6 +131,37 @@ impl Parser {
                 self.advance();
                 Ok(Type::Cap(name))
             }
+            TokenKind::Impl => {
+                self.advance();
+                let mut traits = Vec::new();
+                let trait_tok = self.peek();
+                let trait_name = match &trait_tok.kind {
+                    TokenKind::Ident(n) => n.clone(),
+                    _ => return Err(ParseError::new(
+                        "expected trait name after `impl`",
+                        trait_tok.line,
+                        trait_tok.col,
+                    )),
+                };
+                self.advance();
+                traits.push(trait_name);
+                // Parse additional traits: impl Trait1 + Trait2
+                while self.at(&TokenKind::Plus) {
+                    self.advance();
+                    let next_tok = self.peek();
+                    let next_name = match &next_tok.kind {
+                        TokenKind::Ident(n) => n.clone(),
+                        _ => return Err(ParseError::new(
+                            "expected trait name after `+`",
+                            next_tok.line,
+                            next_tok.col,
+                        )),
+                    };
+                    self.advance();
+                    traits.push(next_name);
+                }
+                Ok(Type::ImplTrait(traits))
+            }
             TokenKind::LBracket => {
                 self.advance();
                 let elem_type = self.parse_type()?;

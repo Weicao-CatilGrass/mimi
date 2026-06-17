@@ -445,119 +445,184 @@ impl<'ctx> CodeGenerator<'ctx> {
                     self.builder.position_at_end(merge_bb);
                 }
                 Stmt::For { var, iterable, body } => {
-                    // For loop: compile to while loop over index
                     let function = self.builder.get_insert_block().unwrap().get_parent().unwrap();
                     let iterable_val = self.compile_expr(iterable, &vars)?;
-                    let list_ptr = match iterable_val {
-                        BasicValueEnum::PointerValue(pv) => pv,
-                        _ => return Err("for loop requires a list".into()),
-                    };
 
-                    // Get list length (first element of list struct)
-                    let list_struct_ty = inkwell::types::BasicTypeEnum::StructType(
-                        self.context.struct_type(&[
+                    if let Expr::Binary(BinOp::Range, start_expr, end_expr) = iterable {
+                        let start_val = self.compile_expr(start_expr, &vars)?;
+                        let end_val = self.compile_expr(end_expr, &vars)?;
+                        let start_iv = if let BasicValueEnum::IntValue(iv) = start_val { iv } else { return Err("range start must be i64".into()); };
+                        let end_iv = if let BasicValueEnum::IntValue(iv) = end_val { iv } else { return Err("range end must be i64".into()); };
+
+                        let idx_alloca = self.builder.build_alloca(self.context.i64_type(), "idx")
+                            .map_err(|e| format!("alloca error: {}", e))?;
+                        self.builder.build_store(idx_alloca, start_iv)
+                            .map_err(|e| format!("store error: {}", e))?;
+
+                        let loop_bb = self.context.append_basic_block(function, "forloop");
+                        let body_bb = self.context.append_basic_block(function, "forbody");
+                        let merge_bb = self.context.append_basic_block(function, "forcont");
+
+                        self.builder.build_unconditional_branch(loop_bb)
+                            .map_err(|e| format!("branch error: {}", e))?;
+
+                        self.builder.position_at_end(loop_bb);
+                        let idx_val = self.builder.build_load(
                             BasicTypeEnum::IntType(self.context.i64_type()),
-                            BasicTypeEnum::PointerType(self.context.ptr_type(inkwell::AddressSpace::default())),
-                        ], false)
-                    );
-                    let list_len_gep = self.builder.build_struct_gep(
-                        list_struct_ty,
-                        list_ptr,
-                        0,
-                        "list.len"
-                    ).map_err(|e| format!("gep error: {}", e))?;
-                    let list_len = self.builder.build_load(
-                        BasicTypeEnum::IntType(self.context.i64_type()),
-                        list_len_gep,
-                        "len"
-                    ).map_err(|e| format!("load error: {}", e))?;
+                            idx_alloca,
+                            "idx"
+                        ).map_err(|e| format!("load error: {}", e))?;
+                        let idx_iv = if let BasicValueEnum::IntValue(iv) = idx_val { iv } else { return Err("index must be i64".into()); };
+                        let cmp = self.builder.build_int_compare(inkwell::IntPredicate::SLT, idx_iv, end_iv, "cmp")
+                            .map_err(|e| format!("cmp error: {}", e))?;
+                        self.builder.build_conditional_branch(cmp, body_bb, merge_bb)
+                            .map_err(|e| format!("branch error: {}", e))?;
 
-                    // Create index variable
-                    let idx_alloca = self.builder.build_alloca(self.context.i64_type(), "idx")
-                        .map_err(|e| format!("alloca error: {}", e))?;
-                    self.builder.build_store(idx_alloca, self.context.i64_type().const_int(0, false))
-                        .map_err(|e| format!("store error: {}", e))?;
+                        self.builder.position_at_end(body_bb);
+                        let old_break = self.loop_break.take();
+                        let old_continue = self.loop_continue.take();
+                        self.loop_break = Some(merge_bb);
+                        self.loop_continue = Some(loop_bb);
 
-                    // Loop condition: idx < len
-                    let loop_bb = self.context.append_basic_block(function, "forloop");
-                    let body_bb = self.context.append_basic_block(function, "forbody");
-                    let merge_bb = self.context.append_basic_block(function, "forcont");
+                        let elem_alloca = self.builder.build_alloca(BasicTypeEnum::IntType(self.context.i64_type()), var)
+                            .map_err(|e| format!("alloca error: {}", e))?;
+                        self.builder.build_store(elem_alloca, idx_val)
+                            .map_err(|e| format!("store error: {}", e))?;
+                        vars.insert(var.clone(), (elem_alloca, BasicTypeEnum::IntType(self.context.i64_type())));
 
-                    self.builder.build_unconditional_branch(loop_bb)
-                        .map_err(|e| format!("branch error: {}", e))?;
+                        self.compile_block(body, &mut vars)?;
 
-                    self.builder.position_at_end(loop_bb);
-                    let idx_val = self.builder.build_load(
-                        BasicTypeEnum::IntType(self.context.i64_type()),
-                        idx_alloca,
-                        "idx"
-                    ).map_err(|e| format!("load error: {}", e))?;
-                    let idx_iv = if let BasicValueEnum::IntValue(iv) = idx_val { iv } else { return Err("index must be i64".into()); };
-                    let len_iv = if let BasicValueEnum::IntValue(iv) = list_len { iv } else { return Err("length must be i64".into()); };
-                    let cmp = self.builder.build_int_compare(inkwell::IntPredicate::SLT, idx_iv, len_iv, "cmp")
-                        .map_err(|e| format!("cmp error: {}", e))?;
-                    self.builder.build_conditional_branch(cmp, body_bb, merge_bb)
-                        .map_err(|e| format!("branch error: {}", e))?;
+                        vars.remove(var);
+                        self.loop_break = old_break;
+                        self.loop_continue = old_continue;
 
-                    // Body
-                    self.builder.position_at_end(body_bb);
-                    let old_break = self.loop_break.take();
-                    let old_continue = self.loop_continue.take();
-                    self.loop_break = Some(merge_bb);
-                    self.loop_continue = Some(loop_bb);
-
-                    // Get list data pointer
-                    let data_gep = self.builder.build_struct_gep(
-                        list_struct_ty,
-                        list_ptr,
-                        1,
-                        "list.data"
-                    ).map_err(|e| format!("gep error: {}", e))?;
-                    let data_ptr = self.builder.build_load(
-                        BasicTypeEnum::PointerType(self.context.ptr_type(inkwell::AddressSpace::default())),
-                        data_gep,
-                        "data"
-                    ).map_err(|e| format!("load error: {}", e))?;
-                    let data_pv = if let BasicValueEnum::PointerValue(pv) = data_ptr { pv } else { return Err("data must be pointer".into()); };
-
-                    // GEP to get element
-                    let elem_ptr = unsafe {
-                        self.builder.build_gep(
+                        let idx_val = self.builder.build_load(
                             BasicTypeEnum::IntType(self.context.i64_type()),
-                            data_pv,
-                            &[idx_iv],
-                            "elem"
-                        )
-                    }.map_err(|e| format!("gep error: {}", e))?;
-                    let elem = self.builder.build_load(
-                        BasicTypeEnum::IntType(self.context.i64_type()),
-                        elem_ptr,
-                        "elem_val"
-                    ).map_err(|e| format!("load error: {}", e))?;
-
-                    // Bind loop variable
-                    let elem_alloca = self.builder.build_alloca(BasicTypeEnum::IntType(self.context.i64_type()), var)
-                        .map_err(|e| format!("alloca error: {}", e))?;
-                    self.builder.build_store(elem_alloca, elem)
-                        .map_err(|e| format!("store error: {}", e))?;
-                    vars.insert(var.clone(), (elem_alloca, BasicTypeEnum::IntType(self.context.i64_type())));
-
-                    // Compile body
-                    self.compile_block(body, &mut vars)?;
-
-                    // Increment index
-                    if self.builder.get_insert_block().unwrap().get_terminator().is_none() {
-                        let next_idx = self.builder.build_int_add(idx_iv, self.context.i64_type().const_int(1, false), "next_idx")
+                            idx_alloca,
+                            "idx"
+                        ).map_err(|e| format!("load error: {}", e))?;
+                        let idx_iv = if let BasicValueEnum::IntValue(iv) = idx_val { iv } else { return Err("index must be i64".into()); };
+                        let one = self.context.i64_type().const_int(1, false);
+                        let next_idx = self.builder.build_int_add(idx_iv, one, "next_idx")
                             .map_err(|e| format!("add error: {}", e))?;
                         self.builder.build_store(idx_alloca, next_idx)
                             .map_err(|e| format!("store error: {}", e))?;
+
                         self.builder.build_unconditional_branch(loop_bb)
                             .map_err(|e| format!("branch error: {}", e))?;
-                    }
 
-                    self.loop_break = old_break;
-                    self.loop_continue = old_continue;
-                    self.builder.position_at_end(merge_bb);
+                        self.builder.position_at_end(merge_bb);
+                    } else {
+                        let list_ptr = match iterable_val {
+                            BasicValueEnum::PointerValue(pv) => pv,
+                            _ => return Err("for loop requires a list or range".into()),
+                        };
+
+                        let list_struct_ty = inkwell::types::BasicTypeEnum::StructType(
+                            self.context.struct_type(&[
+                                BasicTypeEnum::IntType(self.context.i64_type()),
+                                BasicTypeEnum::PointerType(self.context.ptr_type(inkwell::AddressSpace::default())),
+                            ], false)
+                        );
+                        let list_len_gep = self.builder.build_struct_gep(
+                            list_struct_ty,
+                            list_ptr,
+                            0,
+                            "list.len"
+                        ).map_err(|e| format!("gep error: {}", e))?;
+                        let list_len = self.builder.build_load(
+                            BasicTypeEnum::IntType(self.context.i64_type()),
+                            list_len_gep,
+                            "len"
+                        ).map_err(|e| format!("load error: {}", e))?;
+
+                        let idx_alloca = self.builder.build_alloca(self.context.i64_type(), "idx")
+                            .map_err(|e| format!("alloca error: {}", e))?;
+                        self.builder.build_store(idx_alloca, self.context.i64_type().const_int(0, false))
+                            .map_err(|e| format!("store error: {}", e))?;
+
+                        let loop_bb = self.context.append_basic_block(function, "forloop");
+                        let body_bb = self.context.append_basic_block(function, "forbody");
+                        let merge_bb = self.context.append_basic_block(function, "forcont");
+
+                        self.builder.build_unconditional_branch(loop_bb)
+                            .map_err(|e| format!("branch error: {}", e))?;
+
+                        self.builder.position_at_end(loop_bb);
+                        let idx_val = self.builder.build_load(
+                            BasicTypeEnum::IntType(self.context.i64_type()),
+                            idx_alloca,
+                            "idx"
+                        ).map_err(|e| format!("load error: {}", e))?;
+                        let idx_iv = if let BasicValueEnum::IntValue(iv) = idx_val { iv } else { return Err("index must be i64".into()); };
+                        let len_iv = if let BasicValueEnum::IntValue(iv) = list_len { iv } else { return Err("length must be i64".into()); };
+                        let cmp = self.builder.build_int_compare(inkwell::IntPredicate::SLT, idx_iv, len_iv, "cmp")
+                            .map_err(|e| format!("cmp error: {}", e))?;
+                        self.builder.build_conditional_branch(cmp, body_bb, merge_bb)
+                            .map_err(|e| format!("branch error: {}", e))?;
+
+                        self.builder.position_at_end(body_bb);
+                        let old_break = self.loop_break.take();
+                        let old_continue = self.loop_continue.take();
+                        self.loop_break = Some(merge_bb);
+                        self.loop_continue = Some(loop_bb);
+
+                        let data_gep = self.builder.build_struct_gep(
+                            list_struct_ty,
+                            list_ptr,
+                            1,
+                            "list.data"
+                        ).map_err(|e| format!("gep error: {}", e))?;
+                        let data_ptr = self.builder.build_load(
+                            BasicTypeEnum::PointerType(self.context.ptr_type(inkwell::AddressSpace::default())),
+                            data_gep,
+                            "data"
+                        ).map_err(|e| format!("load error: {}", e))?;
+                        let data_pv = if let BasicValueEnum::PointerValue(pv) = data_ptr { pv } else { return Err("data must be pointer".into()); };
+
+                        let elem_ptr = unsafe {
+                            self.builder.build_gep(
+                                BasicTypeEnum::IntType(self.context.i64_type()),
+                                data_pv,
+                                &[idx_iv],
+                                "elem"
+                            )
+                        }.map_err(|e| format!("gep error: {}", e))?;
+                        let elem = self.builder.build_load(
+                            BasicTypeEnum::IntType(self.context.i64_type()),
+                            elem_ptr,
+                            "elem_val"
+                        ).map_err(|e| format!("load error: {}", e))?;
+
+                        let elem_alloca = self.builder.build_alloca(BasicTypeEnum::IntType(self.context.i64_type()), var)
+                            .map_err(|e| format!("alloca error: {}", e))?;
+                        self.builder.build_store(elem_alloca, elem)
+                            .map_err(|e| format!("store error: {}", e))?;
+                        vars.insert(var.clone(), (elem_alloca, BasicTypeEnum::IntType(self.context.i64_type())));
+
+                        self.compile_block(body, &mut vars)?;
+
+                        vars.remove(var);
+                        self.loop_break = old_break;
+                        self.loop_continue = old_continue;
+
+                        let idx_val = self.builder.build_load(
+                            BasicTypeEnum::IntType(self.context.i64_type()),
+                            idx_alloca,
+                            "idx"
+                        ).map_err(|e| format!("load error: {}", e))?;
+                        let idx_iv = if let BasicValueEnum::IntValue(iv) = idx_val { iv } else { return Err("index must be i64".into()); };
+                        let one = self.context.i64_type().const_int(1, false);
+                        let next_idx = self.builder.build_int_add(idx_iv, one, "next_idx")
+                            .map_err(|e| format!("add error: {}", e))?;
+                        self.builder.build_store(idx_alloca, next_idx)
+                            .map_err(|e| format!("store error: {}", e))?;
+
+                        self.builder.build_unconditional_branch(loop_bb)
+                            .map_err(|e| format!("branch error: {}", e))?;
+
+                        self.builder.position_at_end(merge_bb);
+                    }
                 }
                 Stmt::Break(_) => {
                     if let Some(target) = self.loop_break {
@@ -798,7 +863,23 @@ impl<'ctx> CodeGenerator<'ctx> {
                             Err("not requires boolean type".into())
                         }
                     }
-                    _ => Err(format!("unsupported unary operator {:?}", op)),
+                    UnOp::Ref | UnOp::RefMut => {
+                        let ty = v.get_type();
+                        let alloca = self.builder.build_alloca(ty, "ref")
+                            .map_err(|e| format!("alloca error: {}", e))?;
+                        self.builder.build_store(alloca, v)
+                            .map_err(|e| format!("store error: {}", e))?;
+                        Ok(alloca.into())
+                    }
+                    UnOp::Deref => {
+                        if let BasicValueEnum::PointerValue(ptr) = v {
+                            let i64_ty = self.context.i64_type();
+                            Ok(self.builder.build_load(i64_ty, ptr, "deref")
+                                .map_err(|e| format!("load error: {}", e))?.into())
+                        } else {
+                            Err("deref requires pointer type".into())
+                        }
+                    }
                 }
             }
             Expr::Call(callee, args) => {
@@ -1208,6 +1289,11 @@ impl<'ctx> CodeGenerator<'ctx> {
                     Ok(self.builder.build_or(l, r, "or").map_err(|e| format!("or error: {}", e))?.into()),
                 _ => Err("or requires boolean types".into()),
             },
+            BinOp::Range => {
+                // Range is primarily used in for loops, which handle it specially
+                // For standalone range expressions, we return an error for now
+                Err("range expression not supported in codegen, use in for loop".into())
+            }
             _ => Err(format!("unsupported binary operator {:?}", op)),
         }
     }

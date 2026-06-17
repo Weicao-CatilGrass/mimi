@@ -489,6 +489,7 @@ impl<'a> Checker<'a> {
             Type::Array(inner, size) => Type::Array(Box::new(self.resolve_type(inner)), *size),
             Type::Slice(inner) => Type::Slice(Box::new(self.resolve_type(inner))),
             Type::Nothing => Type::Nothing,
+            Type::ImplTrait(traits) => Type::ImplTrait(traits.clone()),
         }
     }
 
@@ -649,6 +650,13 @@ impl<'a> Checker<'a> {
             Type::Cap(_) | Type::Nothing | Type::Allocator => {}
             Type::Array(inner, _) | Type::Slice(inner) => {
                 self.check_type_well_formed(inner, context);
+            }
+            Type::ImplTrait(traits) => {
+                for trait_name in traits {
+                    if !self.traits.contains_key(trait_name) {
+                        self.emit(format!("unknown trait '{}' in impl Trait in {}", trait_name, context));
+                    }
+                }
             }
         }
     }
@@ -1154,6 +1162,7 @@ fn subst_type_params(ty: &Type, generics: &[GenericParam], type_map: &HashMap<St
         Type::Cap(_) | Type::Nothing | Type::Allocator => ty.clone(),
         Type::Array(inner, size) => Type::Array(Box::new(subst_type_params(inner, generics, type_map)), *size),
         Type::Slice(inner) => Type::Slice(Box::new(subst_type_params(inner, generics, type_map))),
+        Type::ImplTrait(traits) => Type::ImplTrait(traits.clone()),
     }
 }
 
@@ -1184,6 +1193,8 @@ fn same_type(a: &Type, b: &Type) -> bool {
         (Type::Array(a_inner, a_size), Type::Array(b_inner, b_size)) => {
             a_size == b_size && same_type(a_inner, b_inner)
         }
+        (Type::Slice(a), Type::Slice(b)) => same_type(a, b),
+        (Type::ImplTrait(a), Type::ImplTrait(b)) => a == b,
         _ => false,
     }
 }
@@ -1227,5 +1238,6 @@ fn fmt_type(t: &Type) -> String {
         Type::Allocator => "Allocator".to_string(),
         Type::Array(inner, size) => format!("[{}; {}]", fmt_type(inner), size),
         Type::Slice(inner) => format!("[{}]", fmt_type(inner)),
+        Type::ImplTrait(traits) => format!("impl {}", traits.join(" + ")),
     }
 }

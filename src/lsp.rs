@@ -584,6 +584,7 @@ impl LspServer {
             "return", "let", "mut", "shared", "local_shared", "weak",
             "match", "spawn", "await", "try", "comptime", "quote",
             "extern", "actor", "trait", "impl", "cap", "true", "false",
+            "async", "newtype", "arena", "alloc", "requires", "ensures",
         ];
 
         for kw in keywords {
@@ -620,6 +621,29 @@ impl LspServer {
                                 "label": m.name,
                                 "kind": 1, // Module
                                 "detail": format!("module {}", m.name),
+                            }));
+                        }
+                        Item::Trait(t) => {
+                            let method_names: Vec<String> = t.methods.iter().map(|m| m.name.clone()).collect();
+                            items.push(serde_json::json!({
+                                "label": t.name,
+                                "kind": 11, // Interface
+                                "detail": format!("trait {} {{ {} }}", t.name, method_names.join(", ")),
+                            }));
+                        }
+                        Item::Actor(a) => {
+                            let method_names: Vec<String> = a.methods.iter().map(|m| m.name.clone()).collect();
+                            items.push(serde_json::json!({
+                                "label": a.name,
+                                "kind": 23, // Struct (closest match)
+                                "detail": format!("actor {} {{ {} }}", a.name, method_names.join(", ")),
+                            }));
+                            items.push(serde_json::json!({
+                                "label": format!("{}.spawn", a.name),
+                                "kind": 3, // Function
+                                "detail": format!("actor {} constructor", a.name),
+                                "insertText": format!("{}.spawn(${{1}})", a.name),
+                                "insertTextFormat": 2,
                             }));
                         }
                         _ => {}
@@ -907,6 +931,7 @@ impl LspServer {
                             crate::lexer::TokenKind::Trait => 5,
                             crate::lexer::TokenKind::Impl => 4,
                             crate::lexer::TokenKind::Cap => 3,
+                            crate::lexer::TokenKind::Async => 5,
                             crate::lexer::TokenKind::True => 4,
                             crate::lexer::TokenKind::False => 5,
                             crate::lexer::TokenKind::I32 => 3,
@@ -922,13 +947,15 @@ impl LspServer {
                 let (token_type, modifiers) = match &tok.kind {
                     crate::lexer::TokenKind::Func | crate::lexer::TokenKind::Type |
                     crate::lexer::TokenKind::Module | crate::lexer::TokenKind::Actor |
-                    crate::lexer::TokenKind::Trait | crate::lexer::TokenKind::Impl => (0, vec![0]), // keyword + declaration
+                    crate::lexer::TokenKind::Trait | crate::lexer::TokenKind::Impl |
+                    crate::lexer::TokenKind::Newtype => (0, vec![0]), // keyword + declaration
                     crate::lexer::TokenKind::If | crate::lexer::TokenKind::Else |
                     crate::lexer::TokenKind::While | crate::lexer::TokenKind::For |
                     crate::lexer::TokenKind::Return | crate::lexer::TokenKind::Let |
                     crate::lexer::TokenKind::Mut | crate::lexer::TokenKind::Match |
                     crate::lexer::TokenKind::Spawn | crate::lexer::TokenKind::Await |
                     crate::lexer::TokenKind::Extern | crate::lexer::TokenKind::Cap |
+                    crate::lexer::TokenKind::Async |
                     crate::lexer::TokenKind::True | crate::lexer::TokenKind::False |
                     crate::lexer::TokenKind::In | crate::lexer::TokenKind::Break |
                     crate::lexer::TokenKind::Continue | crate::lexer::TokenKind::Use |
