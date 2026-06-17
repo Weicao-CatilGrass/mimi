@@ -1430,6 +1430,13 @@ impl<'a> Interpreter<'a> {
                    raw_args[4], raw_args[5], raw_args[6], raw_args[7])
         };
 
+        // Priority 2: Capture errno after C call if enabled
+        let errno_value = if contract.check_errno {
+            Some(unsafe { *libc::__errno_location() })
+        } else {
+            None
+        };
+
         let return_value = self.ffi_ret_to_value(result, &contract.ret)?;
 
         // Stage 4: Check postcondition (ensures) after the C call
@@ -1461,6 +1468,62 @@ impl<'a> Interpreter<'a> {
                         ));
                     }
                 }
+            }
+        }
+
+        // Priority 2: Map errno to Result if enabled
+        if let Some(errno) = errno_value {
+            if errno != 0 {
+                // Create an Err result with errno information
+                let errno_name = match errno {
+                    1 => "EPERM",
+                    2 => "ENOENT",
+                    3 => "ESRCH",
+                    4 => "EINTR",
+                    5 => "EIO",
+                    6 => "ENXIO",
+                    7 => "E2BIG",
+                    8 => "ENOEXEC",
+                    9 => "EBADF",
+                    10 => "ECHILD",
+                    11 => "EAGAIN",
+                    12 => "ENOMEM",
+                    13 => "EACCES",
+                    14 => "EFAULT",
+                    16 => "EBUSY",
+                    17 => "EEXIST",
+                    18 => "EXDEV",
+                    19 => "ENODEV",
+                    20 => "ENOTDIR",
+                    21 => "EISDIR",
+                    22 => "EINVAL",
+                    23 => "ENFILE",
+                    24 => "EMFILE",
+                    25 => "ENOTTY",
+                    26 => "ETXTBSY",
+                    27 => "EFBIG",
+                    28 => "ENOSPC",
+                    29 => "ESPIPE",
+                    30 => "EROFS",
+                    32 => "EPIPE",
+                    34 => "EDOM",
+                    36 => "ERANGE",
+                    38 => "ENOSYS",
+                    39 => "ENOTEMPTY",
+                    97 => "EAFNOSUPPORT",
+                    98 => "EADDRINUSE",
+                    99 => "EADDRNOTAVAIL",
+                    101 => "ENETUNREACH",
+                    104 => "ECONNRESET",
+                    110 => "ETIMEDOUT",
+                    111 => "ECONNREFUSED",
+                    113 => "EHOSTUNREACH",
+                    _ => "UNKNOWN",
+                };
+                return Err(format!(
+                    "FFI errno: {} (code {})",
+                    errno_name, errno
+                ));
             }
         }
 
