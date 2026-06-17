@@ -777,6 +777,115 @@ impl<'a> Interpreter<'a> {
                     _ => Err("str_parse_float expects a string".into()),
                 }
             }
+            // Additional string operations
+            "str_split" => {
+                if args.len() != 2 { return Err("str_split expects 2 arguments (string, delimiter)".into()); }
+                match (&args[0], &args[1]) {
+                    (Value::String(s), Value::String(delimiter)) => {
+                        let mut parts = Vec::new();
+                        for p in s.split(delimiter.as_str()) {
+                            parts.push(Value::String(p.to_string()));
+                        }
+                        Ok(Value::List(parts))
+                    }
+                    _ => Err("str_split expects (string, string)".into()),
+                }
+            }
+            "str_join" => {
+                if args.len() != 2 { return Err("str_join expects 2 arguments (list, separator)".into()); }
+                match (&args[0], &args[1]) {
+                    (Value::List(parts), Value::String(sep)) => {
+                        let mut strings = Vec::new();
+                        for p in parts {
+                            match p {
+                                Value::String(s) => strings.push(s.clone()),
+                                _ => return Err("str_join: list elements must be strings".into()),
+                            }
+                        }
+                        Ok(Value::String(strings.join(sep)))
+                    }
+                    _ => Err("str_join expects (list, string)".into()),
+                }
+            }
+            "str_trim" => {
+                if args.len() != 1 { return Err("str_trim expects 1 argument".into()); }
+                match &args[0] {
+                    Value::String(s) => Ok(Value::String(s.trim().to_string())),
+                    _ => Err("str_trim expects a string".into()),
+                }
+            }
+            "str_starts_with" => {
+                if args.len() != 2 { return Err("str_starts_with expects 2 arguments".into()); }
+                match (&args[0], &args[1]) {
+                    (Value::String(s), Value::String(prefix)) => {
+                        Ok(Value::Bool(s.starts_with(prefix.as_str())))
+                    }
+                    _ => Err("str_starts_with expects (string, string)".into()),
+                }
+            }
+            "str_ends_with" => {
+                if args.len() != 2 { return Err("str_ends_with expects 2 arguments".into()); }
+                match (&args[0], &args[1]) {
+                    (Value::String(s), Value::String(suffix)) => {
+                        Ok(Value::Bool(s.ends_with(suffix.as_str())))
+                    }
+                    _ => Err("str_ends_with expects (string, string)".into()),
+                }
+            }
+            "str_replace" => {
+                if args.len() != 3 { return Err("str_replace expects 3 arguments".into()); }
+                match (&args[0], &args[1], &args[2]) {
+                    (Value::String(s), Value::String(from), Value::String(to)) => {
+                        Ok(Value::String(s.replace(from.as_str(), to.as_str())))
+                    }
+                    _ => Err("str_replace expects (string, string, string)".into()),
+                }
+            }
+            "str_to_upper" => {
+                if args.len() != 1 { return Err("str_to_upper expects 1 argument".into()); }
+                match &args[0] {
+                    Value::String(s) => Ok(Value::String(s.to_uppercase())),
+                    _ => Err("str_to_upper expects a string".into()),
+                }
+            }
+            "str_to_lower" => {
+                if args.len() != 1 { return Err("str_to_lower expects 1 argument".into()); }
+                match &args[0] {
+                    Value::String(s) => Ok(Value::String(s.to_lowercase())),
+                    _ => Err("str_to_lower expects a string".into()),
+                }
+            }
+            "str_repeat" => {
+                if args.len() != 2 { return Err("str_repeat expects 2 arguments".into()); }
+                match (&args[0], &args[1]) {
+                    (Value::String(s), Value::Int(n)) => {
+                        if *n < 0 { return Err("str_repeat: count must be non-negative".into()); }
+                        Ok(Value::String(s.repeat(*n as usize)))
+                    }
+                    _ => Err("str_repeat expects (string, int)".into()),
+                }
+            }
+            "str_contains" => {
+                if args.len() != 2 { return Err("str_contains expects 2 arguments".into()); }
+                match (&args[0], &args[1]) {
+                    (Value::String(s), Value::String(sub)) => {
+                        Ok(Value::Bool(s.contains(sub.as_str())))
+                    }
+                    _ => Err("str_contains expects (string, string)".into()),
+                }
+            }
+            "str_index_of" => {
+                if args.len() != 2 { return Err("str_index_of expects 2 arguments".into()); }
+                match (&args[0], &args[1]) {
+                    (Value::String(s), Value::String(sub)) => {
+                        match s.find(sub.as_str()) {
+                            Some(idx) => Ok(Value::Tuple(vec![Value::Bool(true), Value::Int(idx as i64)])),
+                            None => Ok(Value::Tuple(vec![Value::Bool(false), Value::Int(-1)])),
+                        }
+                    }
+                    _ => Err("str_index_of expects (string, string)".into()),
+                }
+            }
             "keys" => {
                 if args.len() != 1 { return Err("keys expects 1 argument (record)".into()); }
                 match &args[0] {
