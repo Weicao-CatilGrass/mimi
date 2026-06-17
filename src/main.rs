@@ -813,6 +813,7 @@ fn build(path: Option<&Path>, output: Option<&Path>, emit_ir: bool, strict: bool
     // Link with cc to create executable
     let obj_path = output_path.with_extension("o");
     let status = std::process::Command::new("cc")
+        .arg("-no-pie")
         .arg(obj_path.to_str().ok_or("object path is not valid UTF-8")?)
         .arg("-o")
         .arg(output_path.to_str().ok_or("output path is not valid UTF-8")?)

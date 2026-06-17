@@ -1554,3 +1554,232 @@ fn codegen_for_list_empty() {
         }
     "#);
 }
+
+// ===================== Codegen Builtin Coverage Tests =====================
+
+#[test]
+fn codegen_type_name_known_var() {
+    // type_name on a known-typed variable should resolve at compile time
+    let ir = compile_to_ir(r#"
+        func main() -> i32 {
+            let x: i32 = 42
+            type_name(x)
+            0
+        }
+    "#);
+    assert!(ir.contains("type_name"), "IR should contain the type name string:\n{}", ir);
+}
+
+#[test]
+fn codegen_type_fields_record() {
+    assert_compiles(r#"
+        type Point { x: i32, y: i32 }
+        func main() -> i32 {
+            let fields = type_fields("Point")
+            0
+        }
+    "#);
+}
+
+#[test]
+fn codegen_contains_list() {
+    assert_compiles(r#"
+        func main() -> i32 {
+            let xs = [1, 2, 3, 4, 5]
+            let found = contains(xs, 3)
+            0
+        }
+    "#);
+}
+
+#[test]
+fn codegen_map_basic() {
+    assert_compiles(r#"
+        func double(x: i32) -> i32 { x * 2 }
+        func main() -> i32 {
+            let xs = [1, 2, 3]
+            let ys = map(xs, double)
+            0
+        }
+    "#);
+}
+
+#[test]
+fn codegen_filename_exists() {
+    // file_exists should work via FFI to access()
+    assert_compiles(r#"
+        func main() -> i32 {
+            let exists = file_exists("/")
+            0
+        }
+    "#);
+}
+
+#[test]
+fn codegen_str_char_at_basic() {
+    assert_compiles(r#"
+        func main() -> i32 {
+            let c = str_char_at("hello", 0)
+            0
+        }
+    "#);
+}
+
+#[test]
+fn codegen_str_trim_basic() {
+    assert_compiles(r#"
+        func main() -> i32 {
+            let s = str_trim("  hello  ")
+            0
+        }
+    "#);
+}
+
+#[test]
+fn codegen_str_to_upper_basic() {
+    assert_compiles(r#"
+        func main() -> i32 {
+            let s = str_to_upper("hello")
+            0
+        }
+    "#);
+}
+
+#[test]
+fn codegen_pow_basic() {
+    assert_compiles(r#"
+        func main() -> i32 {
+            let x = pow(2.0, 3.0)
+            0
+        }
+    "#);
+}
+
+#[test]
+fn codegen_parse_int() {
+    assert_compiles(r#"
+        func main() -> i32 {
+            let n = str_parse_int("42")
+            0
+        }
+    "#);
+}
+
+#[test]
+fn codegen_str_repeat() {
+    assert_compiles(r#"
+        func main() -> i32 {
+            let s = str_repeat("ab", 3)
+            0
+        }
+    "#);
+}
+
+#[test]
+fn codegen_str_contains() {
+    assert_compiles(r#"
+        func main() -> i32 {
+            let found = str_contains("hello world", "world")
+            0
+        }
+    "#);
+}
+
+// ===================== End-to-End Codegen Runtime Tests =====================
+
+fn can_link() -> bool {
+    std::process::Command::new("cc").arg("--version").output().is_ok()
+}
+
+#[test]
+fn e2e_hello_world() {
+    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    let stdout = super::compile_and_run(r#"
+        func main() -> i32 {
+            println("hello from mimi")
+            0
+        }
+    "#).unwrap();
+    assert_eq!(stdout.trim(), "hello from mimi");
+}
+
+#[test]
+fn e2e_arithmetic() {
+    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    let stdout = super::compile_and_run(r#"
+        func add(a: i32, b: i32) -> i32 { a + b }
+        func main() -> i32 {
+            println(add(40, 2))
+            0
+        }
+    "#).unwrap();
+    assert_eq!(stdout.trim(), "42");
+}
+
+#[test]
+fn e2e_list_for_loop() {
+    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    let stdout = super::compile_and_run(r#"
+        func sum(xs: List<i32>) -> i32 {
+            let mut total = 0
+            for x in xs {
+                total = total + x
+            }
+            total
+        }
+        func main() -> i32 {
+            println(sum([1, 2, 3, 4, 5]))
+            0
+        }
+    "#).unwrap();
+    assert_eq!(stdout.trim(), "15");
+}
+
+#[test]
+fn e2e_map_fn_ref() {
+    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    let stdout = super::compile_and_run(r#"
+        func double(x: i32) -> i32 { x * 2 }
+        func main() -> i32 {
+            let xs = [1, 2, 3]
+            let ys = map(xs, double)
+            for x in ys {
+                println(x)
+            }
+            0
+        }
+    "#).unwrap();
+    assert_eq!(stdout.trim(), "2\n4\n6");
+}
+
+#[test]
+fn e2e_filter_fn_ref() {
+    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    let stdout = super::compile_and_run(r#"
+        func is_even(x: i32) -> bool { x % 2 == 0 }
+        func main() -> i32 {
+            let xs = [1, 2, 3, 4, 5]
+            let ys = filter(xs, is_even)
+            for x in ys {
+                println(x)
+            }
+            0
+        }
+    "#).unwrap();
+    assert_eq!(stdout.trim(), "2\n4");
+}
+
+#[test]
+fn e2e_reduce_fn_ref() {
+    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    let stdout = super::compile_and_run(r#"
+        func add(a: i32, b: i32) -> i32 { a + b }
+        func main() -> i32 {
+            let xs = [1, 2, 3, 4, 5]
+            let total = reduce(xs, add, 0)
+            println(total)
+            0
+        }
+    "#).unwrap();
+    assert_eq!(stdout.trim(), "15");
+}
