@@ -19,6 +19,8 @@ pub struct FfiContract {
     pub requires: Option<Expr>,
     /// Postcondition: must hold after the C function returns.
     pub ensures: Option<Expr>,
+    /// Whether to capture errno after the C call and map to Result.
+    pub check_errno: bool,
 }
 
 /// How a single argument is translated from a Mimi value to a C ABI argument.
@@ -95,12 +97,25 @@ impl FfiContract {
             .as_ref()
             .map(FfiRetContract::from_type)
             .unwrap_or(FfiRetContract::Unit);
+
+        // Auto-enable errno checking if return type is Result-like
+        // (convention: negative return values indicate errors)
+        let check_errno = matches!(&func.ret, Some(Type::Name(name, _)) if name == "i32" || name == "i64");
+
         Self {
             args,
             ret,
             requires: func.requires.clone(),
             ensures: func.ensures.clone(),
+            check_errno,
         }
+    }
+
+    /// Create a contract with explicit errno checking
+    pub fn from_extern_with_errno(func: &ExternFunc) -> Self {
+        let mut contract = Self::from_extern(func);
+        contract.check_errno = true;
+        contract
     }
 }
 
