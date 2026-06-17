@@ -708,6 +708,7 @@ impl<'a> Checker<'a> {
             Type::Cap(_) | Type::Shared(_) | Type::LocalShared(_) | Type::Weak(_)
                 | Type::CShared(_) | Type::CBorrow(_) | Type::CBorrowMut(_)
                 | Type::RawPtr(_) | Type::RawPtrMut(_) | Type::RawString | Type::Allocator => ty.clone(),
+            Type::CBuffer(inner) => Type::CBuffer(Box::new(self.resolve_type(inner))),
             Type::Newtype(name, inner) => Type::Newtype(name.clone(), Box::new(self.resolve_type(inner))),
             Type::Array(inner, size) => Type::Array(Box::new(self.resolve_type(inner)), *size),
             Type::Slice(inner) => Type::Slice(Box::new(self.resolve_type(inner))),
@@ -730,6 +731,8 @@ impl<'a> Checker<'a> {
             Type::RawString => true,
             // C function pointers
             Type::ExternFunc(_, _) => true,
+            // C buffer with automatic memory management
+            Type::CBuffer(_) => true,
             // References are not allowed directly; must use c_borrow / c_borrow_mut
             Type::Ref(_) | Type::RefMut(_) => false,
             // Shared ownership is not allowed directly; must use c_shared
@@ -958,6 +961,9 @@ impl<'a> Checker<'a> {
                 }
                 self.check_type_well_formed_inner(ret, context, allow_passport);
             }
+            Type::CBuffer(inner) => {
+                self.check_type_well_formed_inner(inner, context, allow_passport);
+            }
             Type::Newtype(name, inner) => {
                 if !self.types.contains_key(name) && !self.newtypes.contains_key(name) {
                     self.emit(format!("unknown newtype '{}' in {}", name, context));
@@ -993,6 +999,7 @@ impl<'a> Checker<'a> {
             Type::Tuple(elems) => elems.iter().any(|e| Self::type_contains_passport(e)),
             Type::Func(args, ret) => args.iter().any(|a| Self::type_contains_passport(a)) || Self::type_contains_passport(ret),
             Type::ExternFunc(args, ret) => args.iter().any(|a| Self::type_contains_passport(a)) || Self::type_contains_passport(ret),
+            Type::CBuffer(inner) => Self::type_contains_passport(inner),
             Type::Newtype(_, inner) => Self::type_contains_passport(inner),
             Type::Cap(_) | Type::Nothing | Type::Allocator => false,
             Type::ImplTrait(_) => false,
@@ -1507,6 +1514,7 @@ pub fn subst_type_params(ty: &Type, generics: &[GenericParam], type_map: &HashMa
             args.iter().map(|a| subst_type_params(a, generics, type_map)).collect(),
             Box::new(subst_type_params(ret, generics, type_map)),
         ),
+        Type::CBuffer(inner) => Type::CBuffer(Box::new(subst_type_params(inner, generics, type_map))),
         Type::Array(inner, size) => Type::Array(Box::new(subst_type_params(inner, generics, type_map)), *size),
         Type::Slice(inner) => Type::Slice(Box::new(subst_type_params(inner, generics, type_map))),
         Type::ImplTrait(traits) => Type::ImplTrait(traits.clone()),
@@ -1596,5 +1604,6 @@ pub fn fmt_type(t: &Type) -> String {
             let args_str: Vec<String> = args.iter().map(|a| fmt_type(a)).collect();
             format!("extern \"C\" fn({}) -> {}", args_str.join(", "), fmt_type(ret))
         }
+        Type::CBuffer(inner) => format!("CBuffer<{}>", fmt_type(inner)),
     }
 }

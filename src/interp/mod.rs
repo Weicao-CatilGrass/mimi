@@ -386,6 +386,7 @@ impl<'a> Interpreter<'a> {
             Value::Allocator(_) => "Allocator".into(),
             Value::Slice { .. } => "slice".into(),
             Value::Range { .. } => "range".into(),
+            Value::CBuffer(_) => "CBuffer".into(),
         }
     }
 
@@ -425,6 +426,7 @@ impl<'a> Interpreter<'a> {
             Type::Array(inner, size) => format!("[{}; {}]", self.resolve_type_name(inner), size),
             Type::Slice(inner) => format!("[{}]", self.resolve_type_name(inner)),
             Type::ImplTrait(traits) => format!("impl {}", traits.join(" + ")),
+            Type::CBuffer(inner) => format!("CBuffer<{}>", self.resolve_type_name(inner)),
         }
     }
 

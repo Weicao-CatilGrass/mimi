@@ -118,6 +118,8 @@ pub enum Value {
         start: i64,
         end: i64,
     },
+    /// C buffer with automatic memory management (malloc/free)
+    CBuffer(std::sync::Arc<CBufferInner>),
 }
 
 /// Kind of allocator
@@ -126,6 +128,31 @@ pub enum AllocatorKind {
     System,
     Arena,
     Bump,
+}
+
+/// C buffer wrapper that automatically frees memory on drop
+pub struct CBufferInner {
+    pub ptr: *mut u8,
+    pub size: usize,
+}
+
+unsafe impl Send for CBufferInner {}
+unsafe impl Sync for CBufferInner {}
+
+impl Drop for CBufferInner {
+    fn drop(&mut self) {
+        if !self.ptr.is_null() && self.size > 0 {
+            unsafe {
+                libc::free(self.ptr as *mut libc::c_void);
+            }
+        }
+    }
+}
+
+impl std::fmt::Debug for CBufferInner {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "CBuffer({:p}, {} bytes)", self.ptr, self.size)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -269,6 +296,7 @@ impl std::fmt::Display for Value {
                 write!(f, "]")
             }
             Value::Range { start, end } => write!(f, "{}..{}", start, end),
+            Value::CBuffer(inner) => write!(f, "CBuffer({:p}, {} bytes)", inner.ptr, inner.size),
         }
     }
 }
@@ -416,6 +444,7 @@ pub(crate) fn type_name(val: &Value) -> &'static str {
         Value::Allocator(_) => "allocator",
         Value::Slice { .. } => "slice",
         Value::Range { .. } => "range",
+        Value::CBuffer(_) => "c_buffer",
     }
 }
 

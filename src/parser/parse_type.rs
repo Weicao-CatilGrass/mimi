@@ -136,6 +136,13 @@ impl Parser {
                 self.advance();
                 Ok(Type::RawString)
             }
+            TokenKind::Ident(ref name) if name == "CBuffer" => {
+                self.advance();
+                self.expect(TokenKind::Lt, "`<`")?;
+                let inner = self.parse_type()?;
+                self.expect(TokenKind::Gt, "`>`")?;
+                Ok(Type::CBuffer(Box::new(inner)))
+            }
             TokenKind::Star => {
                 self.advance();
                 let mut_ = self.at(&TokenKind::Mut);
