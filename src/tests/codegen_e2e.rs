@@ -477,3 +477,55 @@ fn e2e_str_replace() {
     "#).unwrap();
     assert_eq!(stdout.trim(), "hello mimi");
 }
+
+// ===================== List Operations =====================
+
+#[test]
+fn e2e_push_pop() {
+    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    let stdout = compile_and_run(r#"
+        func main() -> i32 {
+            let xs = [1, 2, 3]
+            push(xs, 4)
+            println(len(xs))
+            let last = pop(xs)
+            println(last)
+            println(len(xs))
+            0
+        }
+    "#).unwrap();
+    assert_eq!(stdout.trim(), "4\n4\n3");
+}
+
+#[test]
+fn e2e_push_pop_empty() {
+    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    let stdout = compile_and_run(r#"
+        func main() -> i32 {
+            let xs = []
+            push(xs, 10)
+            println(len(xs))
+            let val = pop(xs)
+            println(val)
+            println(len(xs))
+            0
+        }
+    "#).unwrap();
+    assert_eq!(stdout.trim(), "1\n10\n0");
+}
+
+#[test]
+fn e2e_push_loop() {
+    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    let stdout = compile_and_run(r#"
+        func main() -> i32 {
+            let xs = []
+            for i in range(0, 5) {
+                push(xs, i * 10)
+            }
+            println(len(xs))
+            0
+        }
+    "#).unwrap();
+    assert_eq!(stdout.trim(), "5");
+}
