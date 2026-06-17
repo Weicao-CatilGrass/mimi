@@ -230,3 +230,129 @@ func main() -> i32 {
     // Should return without crashing
     assert_eq!(v, interp::Value::Int(0));
 }
+
+// ===================== String Operations Tests =====================
+
+#[test]
+fn builtin_str_split() {
+    let src = r#"
+func main() -> i32 {
+    let parts = str_split("a,b,c", ",")
+    len(parts)
+}
+"#;
+    let v = run_source(src);
+    assert_eq!(v, interp::Value::Int(3));
+}
+
+#[test]
+fn builtin_str_join() {
+    let src = r#"
+func main() -> string {
+    let parts = ["a", "b", "c"]
+    str_join(parts, ",")
+}
+"#;
+    let v = run_source(src);
+    assert_eq!(v, interp::Value::String("a,b,c".to_string()));
+}
+
+#[test]
+fn builtin_str_trim() {
+    let src = r#"
+func main() -> string {
+    str_trim("  hello  ")
+}
+"#;
+    let v = run_source(src);
+    assert_eq!(v, interp::Value::String("hello".to_string()));
+}
+
+#[test]
+fn builtin_str_starts_with() {
+    let src = r#"
+func main() -> bool {
+    str_starts_with("hello world", "hello")
+}
+"#;
+    let v = run_source(src);
+    assert_eq!(v, interp::Value::Bool(true));
+}
+
+#[test]
+fn builtin_str_ends_with() {
+    let src = r#"
+func main() -> bool {
+    str_ends_with("hello world", "world")
+}
+"#;
+    let v = run_source(src);
+    assert_eq!(v, interp::Value::Bool(true));
+}
+
+#[test]
+fn builtin_str_replace() {
+    let src = r#"
+func main() -> string {
+    str_replace("hello world", "world", "mimi")
+}
+"#;
+    let v = run_source(src);
+    assert_eq!(v, interp::Value::String("hello mimi".to_string()));
+}
+
+#[test]
+fn builtin_str_to_upper() {
+    let src = r#"
+func main() -> string {
+    str_to_upper("hello")
+}
+"#;
+    let v = run_source(src);
+    assert_eq!(v, interp::Value::String("HELLO".to_string()));
+}
+
+#[test]
+fn builtin_str_to_lower() {
+    let src = r#"
+func main() -> string {
+    str_to_lower("HELLO")
+}
+"#;
+    let v = run_source(src);
+    assert_eq!(v, interp::Value::String("hello".to_string()));
+}
+
+#[test]
+fn builtin_str_repeat() {
+    let src = r#"
+func main() -> string {
+    str_repeat("ab", 3)
+}
+"#;
+    let v = run_source(src);
+    assert_eq!(v, interp::Value::String("ababab".to_string()));
+}
+
+#[test]
+fn builtin_str_contains() {
+    let src = r#"
+func main() -> bool {
+    str_contains("hello world", "world")
+}
+"#;
+    let v = run_source(src);
+    assert_eq!(v, interp::Value::Bool(true));
+}
+
+#[test]
+fn builtin_str_index_of() {
+    let src = r#"
+func main() -> i32 {
+    let (found, idx) = str_index_of("hello world", "world")
+    idx
+}
+"#;
+    let v = run_source(src);
+    assert_eq!(v, interp::Value::Int(6));
+}
