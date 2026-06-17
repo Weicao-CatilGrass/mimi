@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <stdio.h>
 #include <string.h>
 #include <stdint.h>
 #include "mimi_runtime.h"
@@ -296,6 +297,22 @@ const char* mimi_str_join(const MimiList* list, const char* sep) {
     }
     *p = '\0';
     return result;
+}
+
+void mimi_try_exit(int64_t payload) {
+    /* Try to interpret payload as a string pointer */
+    const char* s = (const char*)payload;
+    /* Heuristic: if the pointer looks like a valid userspace address and
+       the first few bytes look like printable ASCII, treat it as a string */
+    if (payload > 0x1000 && payload < 0x7fffffffffff) {
+        /* Check first byte for printable ASCII */
+        if (s[0] >= 0x20 && s[0] < 0x7f) {
+            fprintf(stderr, "Error: %s\n", s);
+            exit(1);
+        }
+    }
+    fprintf(stderr, "Error: Result::Err(%ld)\n", (long)payload);
+    exit(1);
 }
 
 const char* mimi_str_replace(const char* s, const char* from, const char* to) {

@@ -172,6 +172,11 @@ pub fn register_runtime<'ctx>(module: &Module<'ctx>, ctx: &'ctx Context) {
             BasicMetadataTypeEnum::PointerType(i8_ptr),
         ], false),
         Some(inkwell::module::Linkage::External));
+
+    // mimi_try_exit(payload): print error and exit(1) for ? operator
+    module.add_function("mimi_try_exit",
+        void.fn_type(&[BasicMetadataTypeEnum::IntType(i64)], false),
+        Some(inkwell::module::Linkage::External));
 }
 
 pub fn is_builtin(name: &str) -> bool {

@@ -31,4 +31,9 @@ const char* mimi_str_join(const MimiList* list, const char* sep);
 /* str_replace(s, from, to) → heap-allocated result string */
 const char* mimi_str_replace(const char* s, const char* from, const char* to);
 
+/* mimi_try_exit(payload): print error message from ? operator and exit(1).
+   payload is an i64 — if it looks like a valid string pointer, print it;
+   otherwise print as integer. */
+void mimi_try_exit(int64_t payload);
+
 #endif
