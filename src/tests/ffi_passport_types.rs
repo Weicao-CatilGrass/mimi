@@ -145,7 +145,7 @@ fn cap_values_are_registered() {
 cap TestCap;
 
 extern "C" {
-    func __mimi_test_no_such_function_12345(cap: TestCap) -> i32;
+    func __mimi_test_no_such_function_12345(cap @ c: TestCap) -> i32;
 }
 
 func main() -> i32 {
