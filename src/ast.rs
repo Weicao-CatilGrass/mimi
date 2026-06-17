@@ -457,6 +457,8 @@ pub enum Type {
     Func(Vec<Type>, Box<Type>),
     /// C-compatible function pointer: extern "C" fn(Args...) -> Ret
     ExternFunc(Vec<Type>, Box<Type>),
+    /// C buffer type with automatic memory management (malloc/free)
+    CBuffer(Box<Type>),
     /// Capability type for linear capabilities
     Cap(String),
     /// Shared ownership (atomic refcount, thread-safe)

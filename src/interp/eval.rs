@@ -1300,6 +1300,7 @@ impl<'a> Interpreter<'a> {
             Value::Allocator(_) => "allocator",
             Value::Slice { .. } => "slice",
             Value::Range { .. } => "range",
+            Value::CBuffer(_) => "c_buffer",
         }
     }
 }

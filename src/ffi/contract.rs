@@ -125,6 +125,10 @@ impl FfiArgContract {
                 // Function pointer - pass as opaque handle
                 FfiArgContract::RawPtr(Box::new(Type::Name("unit".to_string(), vec![])))
             }
+            Type::CBuffer(inner) => {
+                // CBuffer is a managed pointer - pass as opaque handle
+                FfiArgContract::RawPtr(inner.clone())
+            }
             other => FfiArgContract::Unsupported(format!("{:?}", other)),
         }
     }
@@ -149,6 +153,10 @@ impl FfiRetContract {
             Type::ExternFunc(_, _) => {
                 // Function pointer - return as opaque handle
                 FfiRetContract::RawPtr(Box::new(Type::Name("unit".to_string(), vec![])))
+            }
+            Type::CBuffer(inner) => {
+                // CBuffer is a managed pointer - return as opaque handle
+                FfiRetContract::RawPtr(inner.clone())
             }
             other => FfiRetContract::Unsupported(format!("{:?}", other)),
         }
