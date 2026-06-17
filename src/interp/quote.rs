@@ -178,6 +178,15 @@ impl<'a> Interpreter<'a> {
                     args,
                 ))
             }
+            Expr::Range { start, end } => {
+                let q_start = self.quote_expr(start)?;
+                let q_end = self.quote_expr(end)?;
+                Ok(QuotedAst::Binary(
+                    BinOp::Range,
+                    Box::new(q_start),
+                    Box::new(q_end),
+                ))
+            }
         }
     }
 

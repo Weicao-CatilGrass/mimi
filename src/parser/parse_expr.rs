@@ -13,6 +13,7 @@ impl Parser {
                 TokenKind::Gt => (BinOp::Gt, 4, false),
                 TokenKind::Le => (BinOp::Le, 4, false),
                 TokenKind::Ge => (BinOp::Ge, 4, false),
+                TokenKind::DotDot => (BinOp::Range, 3, false),
                 TokenKind::BitOr => (BinOp::BitOr, 5, false),
                 TokenKind::BitXor => (BinOp::BitXor, 6, false),
                 TokenKind::BitAnd => (BinOp::BitAnd, 7, false),
@@ -29,6 +30,42 @@ impl Parser {
             if prec < min_prec {
                 break;
             }
+            self.advance();
+            let next_min = if right_assoc { prec } else { prec + 1 };
+            let rhs = self.parse_expr(next_min)?;
+            lhs = Expr::Binary(op, Box::new(lhs), Box::new(rhs));
+        }
+        Ok(lhs)
+    }
+
+    /// Parse an expression without consuming `..` (used for slice start parsing)
+    fn parse_expr_without_range(&mut self) -> Result<Expr, ParseError> {
+        let mut lhs = self.parse_unary()?;
+        loop {
+            let (op, prec, right_assoc) = match self.peek_kind() {
+                TokenKind::OrOr => (BinOp::Or, 1, false),
+                TokenKind::AndAnd => (BinOp::And, 2, false),
+                TokenKind::EqEq => (BinOp::EqCmp, 3, false),
+                TokenKind::Ne => (BinOp::NeCmp, 3, false),
+                TokenKind::Lt => (BinOp::Lt, 4, false),
+                TokenKind::Gt => (BinOp::Gt, 4, false),
+                TokenKind::Le => (BinOp::Le, 4, false),
+                TokenKind::Ge => (BinOp::Ge, 4, false),
+                TokenKind::BitOr => (BinOp::BitOr, 5, false),
+                TokenKind::BitXor => (BinOp::BitXor, 6, false),
+                TokenKind::BitAnd => (BinOp::BitAnd, 7, false),
+                TokenKind::Shl => (BinOp::Shl, 8, false),
+                TokenKind::Shr => (BinOp::Shr, 8, false),
+                TokenKind::Plus => (BinOp::Add, 9, false),
+                TokenKind::Minus => (BinOp::Sub, 9, false),
+                TokenKind::Star => (BinOp::Mul, 10, false),
+                TokenKind::Slash => (BinOp::Div, 10, false),
+                TokenKind::Percent => (BinOp::Mod, 10, false),
+                TokenKind::Pow => (BinOp::Pow, 11, true),
+                // Stop before `..` to allow slice syntax parsing
+                TokenKind::DotDot => break,
+                _ => break,
+            };
             self.advance();
             let next_min = if right_assoc { prec } else { prec + 1 };
             let rhs = self.parse_expr(next_min)?;
@@ -181,7 +218,8 @@ impl Parser {
                                 end,
                             };
                         } else {
-                            let first = self.parse_expr(0)?;
+                            // Parse the start expression, but stop before `..` to handle slice syntax
+                            let first = self.parse_expr_without_range()?;
                             if self.at(&TokenKind::DotDot) {
                                 // arr[start..end] or arr[start..]
                                 self.advance();
@@ -300,7 +338,8 @@ impl Parser {
                                 end,
                             };
                         } else {
-                            let first = self.parse_expr(0)?;
+                            // Parse the start expression, but stop before `..` to handle slice syntax
+                            let first = self.parse_expr_without_range()?;
                             if self.at(&TokenKind::DotDot) {
                                 // arr[start..end] or arr[start..]
                                 self.advance();

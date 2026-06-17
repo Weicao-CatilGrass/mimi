@@ -8,6 +8,7 @@ mod pattern;
 mod quote;
 mod actor;
 pub mod error;
+pub(crate) mod pool;
 
 pub use value::*;
 pub use error::InterpError;
@@ -229,6 +230,7 @@ impl<'a> Interpreter<'a> {
                             generics: vec![],
                             effects: vec![],
                             is_comptime: false,
+                            is_async: false,
                         };
                         type_impls
                             .entry(type_name.clone())
@@ -250,6 +252,7 @@ impl<'a> Interpreter<'a> {
                             generics: vec![],
                             effects: vec![],
                             is_comptime: false,
+                            is_async: false,
                         };
                         type_impls
                             .entry(type_name.clone())
@@ -275,6 +278,7 @@ impl<'a> Interpreter<'a> {
                             generics: vec![],
                             effects: vec![],
                             is_comptime: false,
+                            is_async: false,
                         };
                         type_impls
                             .entry(type_name.clone())
@@ -367,6 +371,7 @@ impl<'a> Interpreter<'a> {
             Value::WeakShared(_) | Value::WeakLocal(_) => "weak".into(),
             Value::Allocator(_) => "Allocator".into(),
             Value::Slice { .. } => "slice".into(),
+            Value::Range { .. } => "range".into(),
         }
     }
 
@@ -395,6 +400,7 @@ impl<'a> Interpreter<'a> {
             Type::Allocator => "Allocator".into(),
             Type::Array(inner, size) => format!("[{}; {}]", self.resolve_type_name(inner), size),
             Type::Slice(inner) => format!("[{}]", self.resolve_type_name(inner)),
+            Type::ImplTrait(traits) => format!("impl {}", traits.join(" + ")),
         }
     }
 

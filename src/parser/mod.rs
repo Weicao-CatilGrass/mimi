@@ -321,6 +321,14 @@ impl Parser {
                 f.is_comptime = true;
                 Ok(Item::Func(f))
             }
+            TokenKind::Async => {
+                // async func ... — async function modifier
+                self.advance();
+                let mut f = self.parse_func()?;
+                f.pub_ = pub_;
+                f.is_async = true;
+                Ok(Item::Func(f))
+            }
             TokenKind::Func => {
                 let mut f = self.parse_func()?;
                 f.pub_ = pub_;
@@ -684,6 +692,7 @@ impl Parser {
             generics,
             effects,
             is_comptime: false,
+            is_async: false,
         })
     }
 

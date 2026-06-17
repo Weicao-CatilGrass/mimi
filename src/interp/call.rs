@@ -10,6 +10,12 @@ impl<'a> Interpreter<'a> {
                 args.len()
             ));
         }
+        
+        // Handle async functions
+        if func.is_async {
+            return self.call_async_func(func, args);
+        }
+        
         self.push_call(&func.name);
         self.push_scope();
 
@@ -1068,6 +1074,41 @@ impl<'a> Interpreter<'a> {
                 Err(format!("undefined function '{}'", name))
             }
         }
+    }
+
+    /// Call an async function - spawns a new thread and returns a Future
+    fn call_async_func(&mut self, func: &FuncDef, args: Vec<Value>) -> Result<Value, String> {
+        if func.params.len() != args.len() {
+            return Err(format!(
+                "function {} expects {} arguments, got {}",
+                func.name,
+                func.params.len(),
+                args.len()
+            ));
+        }
+
+        // Clone the function and arguments for the new thread
+        let func_clone = func.clone();
+        let args_clone = args;
+
+        // Create a channel for the result
+        let (tx, rx) = std::sync::mpsc::channel();
+
+        // Spawn a new thread to execute the async function body directly
+        super::pool::get_pool().execute(move || {
+            let empty_file = crate::ast::File { imports: vec![], items: vec![] };
+            let mut interp = Interpreter::new(&empty_file);
+            interp.push_scope();
+            for (p, a) in func_clone.params.iter().zip(args_clone) {
+                interp.bind(&p.name, a);
+            }
+            let result = interp.eval_block(&func_clone.body).map(|v| v.unwrap_or(Value::Unit));
+            interp.pop_scope();
+            let _ = tx.send(result);
+        });
+
+        // Return a Future value
+        Ok(Value::Future(std::sync::Arc::new(std::sync::Mutex::new(rx))))
     }
 
     pub(crate) fn call_method(&mut self, obj: &Value, method: &str, args: Vec<Value>) -> Result<Value, String> {

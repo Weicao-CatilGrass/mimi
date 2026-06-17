@@ -565,6 +565,11 @@ impl<'a> Checker<'a> {
                 if let Some(e) = end { let _ = self.infer_expr(e, scopes); }
                 Type::Slice(Box::new(target_ty))
             }
+            Expr::Range { start, end } => {
+                let _ = self.infer_expr(start, scopes);
+                let _ = self.infer_expr(end, scopes);
+                Type::Name("Range".into(), vec![])
+            }
             Expr::TypeInfo(_) => {
                 // type_info returns a record with type metadata
                 Type::Name("TypeInfo".into(), vec![])
@@ -757,6 +762,18 @@ impl<'a> Checker<'a> {
                     ));
                 }
                 Type::Name("bool".into(), vec![])
+            }
+            BinOp::Range => {
+                if !same_type(&lt, &rt) || !is_int(&lt) {
+                    self.emit(format!(
+                        "range requires matching integer types, found {} and {}",
+                        fmt_type(&lt),
+                        fmt_type(&rt)
+                    ));
+                    Type::Name("unknown".into(), vec![])
+                } else {
+                    Type::Name("Range".into(), vec![])
+                }
             }
             BinOp::And | BinOp::Or => unreachable!("logical operators handled above"),
             BinOp::Assign => {
