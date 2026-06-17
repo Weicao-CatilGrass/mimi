@@ -1059,10 +1059,10 @@ impl<'a> Checker<'a> {
                 return Type::Func(params.clone(), Box::new(ret.clone()));
             }
         }
-        // Check if it's an actor type name
+        // Check if it's a type name (actor/record or enum)
         if let Some(tdef) = self.types.get(name) {
-            if matches!(tdef.kind, TypeDefKind::Record(_)) {
-                // This is an actor type - return it as a type
+            if matches!(tdef.kind, TypeDefKind::Record(_) | TypeDefKind::Enum(_)) {
+                // This is a type name - return it as a type
                 return Type::Name(name.into(), vec![]);
             }
         }

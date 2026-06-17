@@ -80,6 +80,11 @@ impl<'a> Interpreter<'a> {
             Self::collect_constructors(item, &mut constructors, &mut newtype_constructors, &mut type_variants, &mut failure_variants);
             Self::collect_caps(item, &mut cap_defs);
         }
+        // Register built-in Result/Option constructors
+        constructors.insert("Ok".to_string(), 1);
+        constructors.insert("Err".to_string(), 1);
+        constructors.insert("Some".to_string(), 1);
+        constructors.insert("None".to_string(), 0);
         let mut trait_defs = HashMap::new();
         let mut type_impls: HashMap<String, HashMap<String, Vec<FuncDef>>> = HashMap::new();
         let mut extern_funcs: HashMap<String, ExternFunc> = HashMap::new();
