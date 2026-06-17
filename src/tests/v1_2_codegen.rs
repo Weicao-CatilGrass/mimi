@@ -1,9 +1,5 @@
 use super::*;
 
-// ============================================================
-// T600: LLVM Codegen
-// ============================================================
-
 fn compile_to_ir(src: &str) -> String {
     let file = parse(src);
     let context = inkwell::context::Context::create();

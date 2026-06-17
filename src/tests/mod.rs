@@ -59,6 +59,11 @@ pub(crate) mod mms_integration;
 pub(crate) mod package_management;
 pub(crate) mod property;
 
+// === CODEGEN test modules ===
+pub(crate) mod codegen_e2e;
+pub(crate) mod codegen_ir;
+pub(crate) mod codegen_advanced;
+
 use crate::{core, interp, lexer, parser};
 
 pub(crate) fn parse(src: &str) -> crate::ast::File {
@@ -90,7 +95,7 @@ pub(crate) fn check_source_strict(src: &str) -> Result<(), Vec<crate::diagnostic
     core::check_strict(&file)
 }
 
-/// End-to-end codegen test: compile Mimi source → LLVM → native binary → execute → return stdout
+/// End-to-end codegen test: compile Mimi source -> LLVM -> native binary -> execute -> return stdout
 /// Requires `cc` and `ld` on PATH. Skips test if linker is unavailable.
 pub(crate) fn compile_and_run(src: &str) -> Result<String, String> {
     use std::process::Command;
@@ -99,16 +104,13 @@ pub(crate) fn compile_and_run(src: &str) -> Result<String, String> {
     static E2E_COUNTER: AtomicU64 = AtomicU64::new(0);
     let counter = E2E_COUNTER.fetch_add(1, Ordering::Relaxed);
 
-    // Parse
     let tokens = crate::lexer::Lexer::new(src).tokenize().map_err(|e| format!("lexer: {}", e))?;
     let file = crate::parser::Parser::new(tokens).parse_file().map_err(|e| format!("parser: {}", e))?;
 
-    // Codegen
     let context = inkwell::context::Context::create();
     let mut codegen = crate::codegen::CodeGenerator::new(&context, "e2e_test");
     codegen.compile_file(&file)?;
 
-    // Write temp files
     let tmp_dir = std::env::temp_dir().join(format!("mimi_e2e_{}_{}", std::process::id(), counter));
     std::fs::create_dir_all(&tmp_dir).map_err(|e| format!("mkdir: {}", e))?;
     let obj_path = tmp_dir.join("test.o");
@@ -116,7 +118,6 @@ pub(crate) fn compile_and_run(src: &str) -> Result<String, String> {
 
     codegen.compile_to_object(&obj_path)?;
 
-    // Link (pass -no-pie to avoid PIE relocation errors with LLVM-generated code)
     let status = Command::new("cc")
         .arg("-no-pie").arg(&obj_path).arg("-o").arg(&bin_path)
         .status()
@@ -126,13 +127,11 @@ pub(crate) fn compile_and_run(src: &str) -> Result<String, String> {
         return Err(format!("linker failed with exit code {:?}", status.code()));
     }
 
-    // Run
     let output = Command::new(&bin_path)
         .output()
         .map_err(|e| format!("run: {}", e))?;
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
 
-    // Cleanup
     let _ = std::fs::remove_dir_all(&tmp_dir);
 
     if !output.status.success() {
