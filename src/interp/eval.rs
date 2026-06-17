@@ -719,6 +719,31 @@ impl<'a> Interpreter<'a> {
                             captured: HashMap::new(),
                         });
                     }
+                    // Check if it's an enum variant constructor (e.g., Color::Red)
+                    if let Expr::Ident(_type_name) = obj.as_ref() {
+                        if let Some(&ctor_arity) = self.constructors.get(field.as_str()) {
+                            if ctor_arity == 0 {
+                                // 0-arity variant: return the variant value directly
+                                return Ok(Value::Variant(field.clone(), vec![]));
+                            } else {
+                                // N-arity variant: return a closure that constructs it
+                                let field_clone = field.clone();
+                                return Ok(Value::Closure {
+                                    params: (0..ctor_arity).map(|i| Param {
+                                        name: format!("arg{}", i),
+                                        ty: Type::Name("unknown".into(), vec![]),
+                                        mut_: false,
+                                    }).collect(),
+                                    ret: None,
+                                    body: vec![Stmt::Return(Some(Expr::Call(
+                                        Box::new(Expr::Ident(field_clone)),
+                                        (0..ctor_arity).map(|i| Expr::Ident(format!("arg{}", i))).collect(),
+                                    )))],
+                                    captured: HashMap::new(),
+                                });
+                            }
+                        }
+                    }
                 }
                 // Special case: if accessing field on "self" identifier, look up field directly from actor
                 if let Expr::Ident(name) = obj.as_ref() {

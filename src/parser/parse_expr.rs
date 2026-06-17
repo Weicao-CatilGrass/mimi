@@ -475,6 +475,47 @@ impl Parser {
                 let body = self.parse_block()?;
                 Expr::Lambda { params, ret, body }
             }
+            // Keywords as identifiers in expression context (e.g., Func, Module for enum comparison)
+            ref kw if is_keyword_token(kw) => {
+                let name = kind.source_text().to_string();
+                self.advance();
+                let mut e = Expr::Ident(name);
+                loop {
+                    if self.at(&TokenKind::LParen) {
+                        self.advance();
+                        let args = self.parse_args()?;
+                        self.expect(TokenKind::RParen, "`)`")?;
+                        e = Expr::Call(Box::new(e), args);
+                    } else if self.at(&TokenKind::Dot) {
+                        self.advance();
+                        let field = self.expect_ident()?;
+                        e = Expr::Field(Box::new(e), field);
+                    } else if self.at(&TokenKind::LBracket) {
+                        self.advance();
+                        let first = self.parse_expr(0)?;
+                        if self.at(&TokenKind::DotDot) {
+                            self.advance();
+                            let end = if self.at(&TokenKind::RBracket) {
+                                None
+                            } else {
+                                Some(Box::new(self.parse_expr(0)?))
+                            };
+                            self.expect(TokenKind::RBracket, "`]`")?;
+                            e = Expr::SliceExpr {
+                                target: Box::new(e),
+                                start: Some(Box::new(first)),
+                                end,
+                            };
+                        } else {
+                            self.expect(TokenKind::RBracket, "`]`")?;
+                            e = Expr::Index(Box::new(e), Box::new(first));
+                        }
+                    } else {
+                        break;
+                    }
+                }
+                e
+            }
             _ => {
                 let (line, col) = (self.peek().line, self.peek().col);
                 return Err(ParseError::new(
@@ -529,4 +570,22 @@ impl Parser {
         }
         Ok(fields)
     }
+}
+
+/// Check if a token kind is a keyword that can be used as an identifier in expression context.
+fn is_keyword_token(kind: &TokenKind) -> bool {
+    matches!(kind,
+        TokenKind::Module | TokenKind::Type | TokenKind::Func | TokenKind::Fn |
+        TokenKind::Actor | TokenKind::Newtype | TokenKind::Let | TokenKind::Mut |
+        TokenKind::Ref | TokenKind::Shared | TokenKind::LocalShared | TokenKind::Weak |
+        TokenKind::Arena | TokenKind::Cap | TokenKind::Trait | TokenKind::Impl |
+        TokenKind::Where | TokenKind::Extern | TokenKind::Use | TokenKind::Pub |
+        TokenKind::Drop | TokenKind::Steps | TokenKind::Parasteps | TokenKind::Flow |
+        TokenKind::Ui | TokenKind::Binds | TokenKind::On | TokenKind::Failure |
+        TokenKind::Requires | TokenKind::Ensures | TokenKind::Math | TokenKind::Desc |
+        TokenKind::Rule | TokenKind::Mms | TokenKind::With | TokenKind::And |
+        TokenKind::Or | TokenKind::Not | TokenKind::I32 | TokenKind::I64 |
+        TokenKind::F64 | TokenKind::Bool | TokenKind::StringKw | TokenKind::Nothing |
+        TokenKind::True | TokenKind::False | TokenKind::Unit
+    )
 }

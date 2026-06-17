@@ -116,6 +116,13 @@ impl<'a> Checker<'a> {
                                         return self.resolve_type(&f.ty);
                                     }
                                 }
+                                // Check enum variant access (e.g., TokenKind::Func)
+                                if let TypeDefKind::Enum(variants) = &tdef.kind {
+                                    if let Some(v) = variants.iter().find(|v| v.name == *method_name) {
+                                        // Enum variant access — return the enum type
+                                        return Type::Name(type_name.clone(), vec![]);
+                                    }
+                                }
                             }
                             // Check trait methods on this type
                             if let Some(methods) = self.type_methods.get(type_name) {
@@ -346,6 +353,21 @@ impl<'a> Checker<'a> {
                                             "type '{}' has no field '{}'",
                                             name, field
                                         ));
+                                        Type::Name("unknown".into(), vec![])
+                                    }
+                                }
+                                TypeDefKind::Enum(variants) => {
+                                    // Check enum variant access (e.g., TokenKind::Func)
+                                    if let Some(_v) = variants.iter().find(|v| v.name == *field) {
+                                        // Return a function that constructs this variant
+                                        let variant_func = format!("{}::{}", name, field);
+                                        if let Some((params, ret)) = self.funcs.get(&variant_func) {
+                                            Type::Func(params.clone(), Box::new(ret.clone()))
+                                        } else {
+                                            Type::Name(name.into(), vec![])
+                                        }
+                                    } else {
+                                        self.emit(format!("type '{}' has no variant '{}'", name, field));
                                         Type::Name("unknown".into(), vec![])
                                     }
                                 }
@@ -791,6 +813,247 @@ impl<'a> Checker<'a> {
                     }
                 }
                 return Type::Name("f64".into(), vec![]);
+            }
+            "len" => {
+                if args.len() != 1 {
+                    self.emit("len expects 1 argument");
+                } else {
+                    self.infer_expr(&args[0], scopes);
+                }
+                return Type::Name("i32".into(), vec![]);
+            }
+            "to_string" => {
+                if args.len() != 1 {
+                    self.emit("to_string expects 1 argument");
+                } else {
+                    self.infer_expr(&args[0], scopes);
+                }
+                return Type::Name("string".into(), vec![]);
+            }
+            "to_int" => {
+                if args.len() != 1 {
+                    self.emit("to_int expects 1 argument");
+                } else {
+                    self.infer_expr(&args[0], scopes);
+                }
+                return Type::Name("i32".into(), vec![]);
+            }
+            "to_float" => {
+                if args.len() != 1 {
+                    self.emit("to_float expects 1 argument");
+                } else {
+                    self.infer_expr(&args[0], scopes);
+                }
+                return Type::Name("f64".into(), vec![]);
+            }
+            "abs" => {
+                if args.len() != 1 {
+                    self.emit("abs expects 1 argument");
+                } else {
+                    let t = self.infer_expr(&args[0], scopes);
+                    if !is_numeric(&t) {
+                        self.emit("abs expects a numeric argument");
+                    }
+                }
+                return Type::Name("unknown".into(), vec![]);
+            }
+            "push" => {
+                if args.len() != 2 {
+                    self.emit("push expects 2 arguments");
+                } else {
+                    self.infer_expr(&args[0], scopes);
+                    self.infer_expr(&args[1], scopes);
+                }
+                return Type::Name("unit".into(), vec![]);
+            }
+            "pop" => {
+                if args.len() != 1 {
+                    self.emit("pop expects 1 argument");
+                } else {
+                    self.infer_expr(&args[0], scopes);
+                }
+                return Type::Name("unknown".into(), vec![]);
+            }
+            "min" | "max" => {
+                if args.len() != 2 {
+                    self.emit(&format!("{} expects 2 arguments", name));
+                } else {
+                    let t1 = self.infer_expr(&args[0], scopes);
+                    let t2 = self.infer_expr(&args[1], scopes);
+                    if !same_type(&t1, &t2) {
+                        self.emit(&format!("{} expects matching types, found {} and {}", name, fmt_type(&t1), fmt_type(&t2)));
+                    }
+                }
+                return Type::Name("unknown".into(), vec![]);
+            }
+            "contains" => {
+                if args.len() != 2 {
+                    self.emit("contains expects 2 arguments");
+                } else {
+                    self.infer_expr(&args[0], scopes);
+                    self.infer_expr(&args[1], scopes);
+                }
+                return Type::Name("bool".into(), vec![]);
+            }
+            "assert_eq" | "assert_ne" => {
+                if args.len() != 2 {
+                    self.emit(&format!("{} expects 2 arguments", name));
+                } else {
+                    let t1 = self.infer_expr(&args[0], scopes);
+                    let t2 = self.infer_expr(&args[1], scopes);
+                    if !same_type(&t1, &t2) {
+                        self.emit(&format!("{} expects matching types, found {} and {}", name, fmt_type(&t1), fmt_type(&t2)));
+                    }
+                }
+                return Type::Name("unit".into(), vec![]);
+            }
+            "input" => {
+                return Type::Name("string".into(), vec![]);
+            }
+            "map" | "filter" => {
+                if args.len() != 2 {
+                    self.emit(&format!("{} expects 2 arguments", name));
+                } else {
+                    let list_ty = self.infer_expr(&args[0], scopes);
+                    self.infer_expr(&args[1], scopes);
+                    if name == "map" {
+                        return Type::Name("List".into(), vec![Type::Name("unknown".into(), vec![])]);
+                    } else {
+                        return list_ty;
+                    }
+                }
+                return Type::Name("unknown".into(), vec![]);
+            }
+            "reduce" => {
+                if args.len() != 3 {
+                    self.emit("reduce expects 3 arguments");
+                } else {
+                    self.infer_expr(&args[0], scopes);
+                    self.infer_expr(&args[1], scopes);
+                    self.infer_expr(&args[2], scopes);
+                }
+                return Type::Name("unknown".into(), vec![]);
+            }
+            "sort" | "reverse" | "flatten" => {
+                if args.len() != 1 {
+                    self.emit(&format!("{} expects 1 argument", name));
+                } else {
+                    self.infer_expr(&args[0], scopes);
+                }
+                return Type::Name("List".into(), vec![Type::Name("unknown".into(), vec![])]);
+            }
+            "zip" | "enumerate" => {
+                if args.len() != 1 {
+                    self.emit(&format!("{} expects 1 argument", name));
+                } else {
+                    self.infer_expr(&args[0], scopes);
+                }
+                return Type::Name("List".into(), vec![Type::Name("unknown".into(), vec![])]);
+            }
+            "sum" => {
+                if args.len() != 1 {
+                    self.emit("sum expects 1 argument");
+                } else {
+                    self.infer_expr(&args[0], scopes);
+                }
+                return Type::Name("i32".into(), vec![]);
+            }
+            "pow" | "floor" | "ceil" | "round" => {
+                if args.len() != 2 {
+                    self.emit(&format!("{} expects 2 arguments", name));
+                } else {
+                    self.infer_expr(&args[0], scopes);
+                    self.infer_expr(&args[1], scopes);
+                }
+                return Type::Name("f64".into(), vec![]);
+            }
+            "random" => {
+                return Type::Name("f64".into(), vec![]);
+            }
+            "pi" => {
+                return Type::Name("f64".into(), vec![]);
+            }
+            "type_name" | "type_fields" | "type_variants" => {
+                if args.len() != 1 {
+                    self.emit(&format!("{} expects 1 argument", name));
+                } else {
+                    self.infer_expr(&args[0], scopes);
+                }
+                return Type::Name("string".into(), vec![]);
+            }
+            "keys" | "values" => {
+                if args.len() != 1 {
+                    self.emit(&format!("{} expects 1 argument", name));
+                } else {
+                    self.infer_expr(&args[0], scopes);
+                }
+                return Type::Name("List".into(), vec![Type::Name("unknown".into(), vec![])]);
+            }
+            "has_key" => {
+                if args.len() != 2 {
+                    self.emit("has_key expects 2 arguments");
+                } else {
+                    self.infer_expr(&args[0], scopes);
+                    self.infer_expr(&args[1], scopes);
+                }
+                return Type::Name("bool".into(), vec![]);
+            }
+            "print" => {
+                for a in args {
+                    self.infer_expr(a, scopes);
+                }
+                return Type::Name("unit".into(), vec![]);
+            }
+            "Ok" => {
+                if args.len() != 1 {
+                    self.emit("Ok expects 1 argument");
+                } else {
+                    self.infer_expr(&args[0], scopes);
+                }
+                return Type::Name("unknown".into(), vec![]);
+            }
+            "Err" => {
+                if args.len() != 1 {
+                    self.emit("Err expects 1 argument");
+                } else {
+                    self.infer_expr(&args[0], scopes);
+                }
+                return Type::Name("unknown".into(), vec![]);
+            }
+            "Some" => {
+                if args.len() != 1 {
+                    self.emit("Some expects 1 argument");
+                } else {
+                    self.infer_expr(&args[0], scopes);
+                }
+                return Type::Name("unknown".into(), vec![]);
+            }
+            "None" => {
+                if args.len() != 0 {
+                    self.emit("None expects 0 arguments");
+                }
+                return Type::Name("unknown".into(), vec![]);
+            }
+            "ast_dump" | "ast_eval" => {
+                for a in args {
+                    self.infer_expr(a, scopes);
+                }
+                return Type::Name("unknown".into(), vec![]);
+            }
+            "allocator_system" | "allocator_arena" | "allocator_bump" => {
+                return Type::Name("unknown".into(), vec![]);
+            }
+            "alloc" => {
+                for a in args {
+                    self.infer_expr(a, scopes);
+                }
+                return Type::Name("unknown".into(), vec![]);
+            }
+            "arena_reset" | "bump_used" => {
+                for a in args {
+                    self.infer_expr(a, scopes);
+                }
+                return Type::Name("unit".into(), vec![]);
             }
             _ => {}
         }
