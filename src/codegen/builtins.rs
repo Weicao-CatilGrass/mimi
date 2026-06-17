@@ -111,5 +111,10 @@ pub fn is_builtin(name: &str) -> bool {
         | "exit" | "lexer" | "parse"
         | "input" | "file_exists" | "read_file" | "write_file" | "str_char_at"
         | "str_contains" | "str_starts_with" | "str_ends_with"
+        | "pow" | "random" | "pi"
+        | "str_parse_int" | "str_parse_float" | "to_int" | "to_float"
+        | "str_index_of" | "str_repeat" | "str_trim"
+        | "str_to_upper" | "str_to_lower" | "str_substring"
+        | "contains"
     )
 }
