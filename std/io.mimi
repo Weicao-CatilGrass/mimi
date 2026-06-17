@@ -1,27 +1,3 @@
-module io:
-
-    pub func read_line() -> string {
-        ""
-    }
-
-    pub func read_lines(path: string) -> List {
-        []
-    }
-
-    pub func write_lines(path: string, lines: List) {
-    }
-
-    pub func append_file(path: string, content: string) {
-    }
-
-    pub func print_list(list: List) {
-        for x in list {
-            println(x)
-        }
-    }
-
-    pub func print_map(list: List, f: func(i32) -> i32) {
-        for x in list {
-            println(f(x))
-        }
-    }
+pub func input(prompt: string) -> string {
+    ""
+}
