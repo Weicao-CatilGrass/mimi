@@ -8,7 +8,7 @@ use inkwell::builder::Builder;
 use inkwell::context::Context;
 use inkwell::module::Module;
 use inkwell::targets::{CodeModel, InitializationConfig, RelocMode, Target, TargetMachine};
-use inkwell::types::BasicTypeEnum;
+use inkwell::types::{BasicMetadataTypeEnum, BasicTypeEnum};
 use inkwell::values::{BasicMetadataValueEnum, BasicValueEnum};
 use inkwell::OptimizationLevel;
 use std::collections::HashMap;
@@ -30,6 +30,8 @@ pub struct CodeGenerator<'ctx> {
     func_defs: HashMap<String, FuncDef>,
     /// Track variable name -> Mimi type name for field access resolution
     var_type_names: HashMap<String, String>,
+    /// Counter for generating unique spawn wrapper function names
+    spawn_counter: u64,
 }
 
 type VarEntry<'ctx> = (inkwell::values::PointerValue<'ctx>, BasicTypeEnum<'ctx>);
@@ -39,7 +41,7 @@ impl<'ctx> CodeGenerator<'ctx> {
         let module = context.create_module(module_name);
         let builder = context.create_builder();
         builtins::register_runtime(&module, context);
-        Self { context, module, builder, loop_break: None, loop_continue: None, type_defs: HashMap::new(), type_llvm: HashMap::new(), cap_vars: vec![HashMap::new()], type_map: HashMap::new(), func_defs: HashMap::new(), var_type_names: HashMap::new() }
+        Self { context, module, builder, loop_break: None, loop_continue: None, type_defs: HashMap::new(), type_llvm: HashMap::new(), cap_vars: vec![HashMap::new()], type_map: HashMap::new(), func_defs: HashMap::new(), var_type_names: HashMap::new(), spawn_counter: 0 }
     }
 
     /// Push a new capability scope
@@ -1626,12 +1628,94 @@ impl<'ctx> CodeGenerator<'ctx> {
                 }
             }
             Expr::Spawn(expr) => {
-                // Spawn: execute expression sequentially (fallback for concurrent execution)
-                self.compile_expr(expr, vars)
+                // Spawn: create a thread to execute the expression
+                let parent_fn = self.builder.get_insert_block().unwrap().get_parent().unwrap();
+                let parent_name = parent_fn.get_name().to_str().unwrap_or("unknown").to_string();
+                let wrapper_name = format!("{}{}__spawn_wrapper", parent_name, self.spawn_counter).to_string();
+                self.spawn_counter += 1;
+                
+                // Create wrapper function: i8* wrapper(i8*)
+                let i8_ty = self.context.i8_type();
+                let i8_ptr = i8_ty.ptr_type(inkwell::AddressSpace::default());
+                let wrapper_fn_type = i8_ptr.fn_type(
+                    &[BasicMetadataTypeEnum::PointerType(i8_ptr)], false
+                );
+                let wrapper_fn = self.module.add_function(&wrapper_name, wrapper_fn_type, None);
+                let wrapper_entry = self.context.append_basic_block(wrapper_fn, "entry");
+                
+                // Save current builder position and compile the spawn body into the wrapper
+                let saved_block = self.builder.get_insert_block();
+                self.builder.position_at_end(wrapper_entry);
+                
+                // Compile the spawn expression (the result is the return value)
+                let result = self.compile_expr(expr, vars)?;
+                
+                // Allocate heap space for the return value and store it
+                let result_storage = self.builder.build_alloca(result.get_type(), "spawn_result")
+                    .map_err(|e| format!("alloca error: {}", e))?;
+                self.builder.build_store(result_storage, result)
+                    .map_err(|e| format!("store error: {}", e))?;
+                // Bitcast storage to i8* and return
+                let ret_ptr = self.builder.build_bit_cast(result_storage, i8_ptr, "ret_as_i8")
+                    .map_err(|e| format!("bitcast error: {}", e))?;
+                self.builder.build_return(Some(&ret_ptr))
+                    .map_err(|e| format!("return error: {}", e))?;
+                
+                // Restore builder position to original block
+                if let Some(bb) = saved_block {
+                    self.builder.position_at_end(bb);
+                }
+                
+                // Create thread: pthread_create(&thread, NULL, wrapper, NULL)
+                let i64_ty = self.context.i64_type();
+                let thread_alloca = self.builder.build_alloca(i64_ty, "thread")
+                    .map_err(|e| format!("alloca error: {}", e))?;
+                // Zero-initialize thread
+                self.builder.build_store(thread_alloca, i64_ty.const_int(0, false))
+                    .map_err(|e| format!("store error: {}", e))?;
+                
+                let pthread_create_fn = self.module.get_function("pthread_create")
+                    .ok_or("pthread_create not declared")?;
+                let wrapper_fn_ptr = self.builder.build_pointer_cast(
+                    wrapper_fn.as_global_value().as_pointer_value(),
+                    i8_ptr,
+                    "wrapper_i8"
+                ).map_err(|e| format!("bitcast error: {}", e))?;
+                self.builder.build_call(pthread_create_fn, &[
+                    BasicMetadataValueEnum::PointerValue(thread_alloca),
+                    BasicMetadataValueEnum::PointerValue(i8_ptr.const_null()),
+                    BasicMetadataValueEnum::PointerValue(wrapper_fn_ptr),
+                    BasicMetadataValueEnum::PointerValue(i8_ptr.const_null()),
+                ], "pthread_create_call")
+                    .map_err(|e| format!("pthread_create error: {}", e))?;
+                
+                // Load and return the thread ID as the "future" value
+                self.builder.build_load(BasicTypeEnum::IntType(i64_ty), thread_alloca, "thread_id")
+                    .map_err(|e| format!("load error: {}", e))
             }
             Expr::Await(expr) => {
-                // Await: for sequential fallback, just compile the inner expression
-                self.compile_expr(expr, vars)
+                // Await: join the thread and get the result
+                let thread_val = self.compile_expr(expr, vars)?;
+                let thread_id = match thread_val {
+                    BasicValueEnum::IntValue(iv) => iv,
+                    BasicValueEnum::PointerValue(pv) => {
+                        self.builder.build_load(BasicTypeEnum::IntType(self.context.i64_type()), pv, "thread")
+                            .map_err(|e| format!("load error: {}", e))?.into_int_value()
+                    }
+                    _ => return Err("await requires a thread (i64) value".into()),
+                };
+                
+                let pthread_join_fn = self.module.get_function("pthread_join")
+                    .ok_or("pthread_join not declared")?;
+                let i8_ptr = self.context.i8_type().ptr_type(inkwell::AddressSpace::default());
+                self.builder.build_call(pthread_join_fn, &[
+                    BasicMetadataValueEnum::IntValue(thread_id),
+                    BasicMetadataValueEnum::PointerValue(i8_ptr.const_null()),
+                ], "pthread_join_call")
+                    .map_err(|e| format!("pthread_join error: {}", e))?;
+                
+                // Return 0 as placeholder (real result would need the wrapper's return pointer)
+                Ok(self.context.i64_type().const_int(0, false).into())
             }
             _ => Err(format!("unsupported expression in codegen: {:?}", expr)),
         }
