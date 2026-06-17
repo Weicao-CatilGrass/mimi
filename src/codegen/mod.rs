@@ -34,6 +34,14 @@ pub struct CodeGenerator<'ctx> {
     spawn_counter: u64,
     /// Strict mode: skip non-locked ($/$$) fragments during compilation
     pub strict: bool,
+    /// True when inside a parasteps block (enables thread-ID tracking for final join)
+    in_parasteps: bool,
+    /// Thread IDs created during parasteps that need joining at block end
+    parasteps_thread_ids: Vec<inkwell::values::IntValue<'ctx>>,
+    /// Compensation blocks registered via `on failure` (LIFO stack of scopes)
+    compensation_blocks: Vec<Vec<Stmt>>,
+    /// Stack of scope start indices into compensation_blocks
+    comp_scope_stack: Vec<usize>,
 }
 
 type VarEntry<'ctx> = (inkwell::values::PointerValue<'ctx>, BasicTypeEnum<'ctx>);
@@ -43,7 +51,64 @@ impl<'ctx> CodeGenerator<'ctx> {
         let module = context.create_module(module_name);
         let builder = context.create_builder();
         builtins::register_runtime(&module, context);
-        Self { context, module, builder, loop_break: None, loop_continue: None, type_defs: HashMap::new(), type_llvm: HashMap::new(), cap_vars: vec![HashMap::new()], type_map: HashMap::new(), func_defs: HashMap::new(), var_type_names: HashMap::new(), spawn_counter: 0, strict: false }
+        Self { context, module, builder, loop_break: None, loop_continue: None, type_defs: HashMap::new(), type_llvm: HashMap::new(), cap_vars: vec![HashMap::new()], type_map: HashMap::new(), func_defs: HashMap::new(), var_type_names: HashMap::new(), spawn_counter: 0, strict: false, compensation_blocks: Vec::new(), comp_scope_stack: Vec::new(), in_parasteps: false, parasteps_thread_ids: Vec::new() }
+    }
+
+    /// Enter parallel parasteps mode: track thread IDs for joining at block end
+    fn enter_parasteps(&mut self) {
+        self.in_parasteps = true;
+        self.parasteps_thread_ids.clear();
+    }
+
+    /// Leave parallel parasteps mode: join all spawned threads
+    fn leave_parasteps(&mut self) -> Result<(), String> {
+        if !self.in_parasteps {
+            return Ok(());
+        }
+        // Join all remaining threads (spawns not awaited within the parasteps block)
+        let i8_type = self.context.i8_type();
+        let i8_ptr = i8_type.ptr_type(inkwell::AddressSpace::default());
+        let join_fn = self.module.get_function("pthread_join")
+            .ok_or("pthread_join not declared")?;
+        for &thread_id in &self.parasteps_thread_ids {
+            self.builder.build_call(join_fn, &[
+                BasicMetadataValueEnum::IntValue(thread_id),
+                BasicMetadataValueEnum::PointerValue(i8_ptr.const_null()),
+            ], "parasteps_join")
+                .map_err(|e| format!("parasteps join error: {}", e))?;
+        }
+        self.parasteps_thread_ids.clear();
+        self.in_parasteps = false;
+        Ok(())
+    }
+
+    /// Push a new compensation scope
+    fn push_comp_scope(&mut self) {
+        self.comp_scope_stack.push(self.compensation_blocks.len());
+    }
+
+    /// Pop the current compensation scope (discard blocks registered in it — normal exit)
+    fn pop_comp_scope(&mut self) {
+        if let Some(start) = self.comp_scope_stack.pop() {
+            self.compensation_blocks.truncate(start);
+        }
+    }
+
+    /// Register a compensation block for LIFO execution on error exit
+    fn register_comp(&mut self, stmts: &Block) {
+        self.compensation_blocks.push(stmts.clone());
+    }
+
+    /// Compile all registered compensation blocks in LIFO order
+    fn compile_compensations(
+        &mut self,
+        vars: &mut HashMap<String, VarEntry<'ctx>>,
+    ) -> Result<(), String> {
+        let blocks: Vec<Block> = self.compensation_blocks.iter().rev().cloned().collect();
+        for stmts in &blocks {
+            self.compile_block(stmts, vars)?;
+        }
+        Ok(())
     }
 
     /// Push a new capability scope
@@ -404,6 +469,7 @@ impl<'ctx> CodeGenerator<'ctx> {
         self.builder.position_at_end(entry);
         
         self.push_cap_scope();
+        self.push_comp_scope();
         
         let mut vars: HashMap<String, VarEntry> = HashMap::new();
         
@@ -428,16 +494,26 @@ impl<'ctx> CodeGenerator<'ctx> {
         
         let mut last_val: BasicValueEnum = self.context.i64_type().const_int(0, false).into();
         for stmt in &method.body {
+            // Run compensations before exit()
+            if let Stmt::Expr(Expr::Call(callee, _)) = stmt {
+                if let Expr::Ident(name) = &**callee {
+                    if name == "exit" {
+                        self.compile_compensations(&mut vars)?;
+                    }
+                }
+            }
             match stmt {
                 Stmt::Expr(expr) => {
                     last_val = self.compile_expr(expr, &vars)?;
                 }
                 Stmt::Return(Some(expr)) => {
+                    self.pop_comp_scope();
                     let val = self.compile_expr(expr, &vars)?;
                     self.builder.build_return(Some(&val)).map_err(|e| format!("return error: {}", e))?;
                     return Ok(());
                 }
                 Stmt::Return(None) => {
+                    self.pop_comp_scope();
                     self.builder.build_return(None).map_err(|e| format!("return error: {}", e))?;
                     return Ok(());
                 }
@@ -571,13 +647,16 @@ impl<'ctx> CodeGenerator<'ctx> {
                 }
                 Stmt::MmsBlock { .. } => {}
                 Stmt::Parasteps(block) => {
+                    // Parasteps: execute spawn statements in parallel, join at block end
+                    self.enter_parasteps();
                     self.compile_block(block, &mut vars)?;
+                    self.leave_parasteps()?;
                 }
                 Stmt::Drop(expr) => {
                     self.compile_expr(expr, &vars)?;
                 }
                 Stmt::OnFailure(block) => {
-                    self.compile_block(block, &mut vars)?;
+                    self.register_comp(block);
                 }
                 Stmt::Arena(block) | Stmt::Unsafe(block) | Stmt::Alloc { body: block, .. } => {
                     self.compile_block(block, &mut vars)?;
@@ -591,6 +670,7 @@ impl<'ctx> CodeGenerator<'ctx> {
         }
         
         self.check_unconsumed_caps()?;
+        self.pop_comp_scope();
         self.pop_cap_scope();
         
         if self.builder.get_insert_block().unwrap().get_terminator().is_none() {
@@ -599,7 +679,58 @@ impl<'ctx> CodeGenerator<'ctx> {
         Ok(())
     }
 
+    /// Compile an async function: generate body + spawner
+    fn compile_async_func(&mut self, func: &FuncDef) -> Result<(), String> {
+        // 1. Compile the actual body as a hidden function
+        let body_name = format!("{}__async_body", func.name);
+        let body_func = FuncDef {
+            name: body_name,
+            commitment: func.commitment.clone(),
+            pub_: false,
+            params: func.params.clone(),
+            ret: func.ret.clone(),
+            body: func.body.clone(),
+            where_clause: None,
+            generics: vec![],
+            effects: vec![],
+            is_comptime: false,
+            is_async: false,
+        };
+        self.compile_func(&body_func)?;
+
+        // 2. Compile the public spawner: func name(args) -> i64 { spawn name__async_body(args) }
+        // Build call args: name__async_body(arg1, arg2, ...)
+        let call_args: Vec<Expr> = func.params.iter().map(|p| {
+            Expr::Ident(p.name.clone())
+        }).collect();
+        let spawn_body = Expr::Spawn(Box::new(
+            Expr::Call(
+                Box::new(Expr::Ident(format!("{}__async_body", func.name))),
+                call_args,
+            )
+        ));
+        let spawner_func = FuncDef {
+            name: func.name.clone(),
+            commitment: func.commitment.clone(),
+            pub_: func.pub_,
+            params: func.params.clone(),
+            ret: Some(Type::Name("i64".into(), vec![])),
+            body: vec![Stmt::Expr(spawn_body)],
+            where_clause: None,
+            generics: vec![],
+            effects: vec![],
+            is_comptime: false,
+            is_async: false,
+        };
+        self.compile_func(&spawner_func)?;
+        Ok(())
+    }
+
     fn compile_func(&mut self, func: &FuncDef) -> Result<(), String> {
+        // Delegate async funcs to compile_async_func
+        if func.is_async {
+            return self.compile_async_func(func);
+        }
         let ret_type = match &func.ret {
             Some(ty) => types::mimi_type_to_llvm(self.context, ty)
                 .unwrap_or(BasicTypeEnum::IntType(self.context.i64_type())),
@@ -628,8 +759,9 @@ impl<'ctx> CodeGenerator<'ctx> {
         let entry = self.context.append_basic_block(function, "entry");
         self.builder.position_at_end(entry);
 
-        // Push capability scope for function body
+        // Push scopes for function body
         self.push_cap_scope();
+        self.push_comp_scope();
 
         let mut vars: HashMap<String, VarEntry<'ctx>> = HashMap::new();
         for (i, param) in func.params.iter().enumerate() {
@@ -649,16 +781,26 @@ impl<'ctx> CodeGenerator<'ctx> {
 
         let mut last_val: BasicValueEnum = self.context.i64_type().const_int(0, false).into();
         for stmt in &func.body {
+            // Run compensations before exit()
+            if let Stmt::Expr(Expr::Call(callee, _)) = stmt {
+                if let Expr::Ident(name) = &**callee {
+                    if name == "exit" {
+                        self.compile_compensations(&mut vars)?;
+                    }
+                }
+            }
             match stmt {
                 Stmt::Expr(expr) => {
                     last_val = self.compile_expr(expr, &vars)?;
                 }
                 Stmt::Return(Some(expr)) => {
+                    self.pop_comp_scope();
                     let val = self.compile_expr(expr, &vars)?;
                     self.builder.build_return(Some(&val)).map_err(|e| format!("return error: {}", e))?;
                     return Ok(());
                 }
                 Stmt::Return(None) => {
+                    self.pop_comp_scope();
                     self.builder.build_return(None).map_err(|e| format!("return error: {}", e))?;
                     return Ok(());
                 }
@@ -975,9 +1117,10 @@ impl<'ctx> CodeGenerator<'ctx> {
                     // Skip MMS blocks in codegen (they're for documentation/contracts)
                 }
                 Stmt::Parasteps(block) => {
-                    // Parasteps: execute statements sequentially (fallback for parallel execution)
-                    // Future: implement true parallel execution with threads
+                    // Parasteps: execute spawn statements in parallel, join at block end
+                    self.enter_parasteps();
                     self.compile_block(block, &mut vars)?;
+                    self.leave_parasteps()?;
                 }
                 Stmt::Drop(expr) => {
                     // Drop: evaluate expression and mark capability as consumed
@@ -992,9 +1135,8 @@ impl<'ctx> CodeGenerator<'ctx> {
                     self.compile_expr(init, &vars)?;
                 }
                 Stmt::OnFailure(block) => {
-                    // OnFailure: execute compensation block code (simplified - no LIFO error handling)
-                    // Note: Full compensation semantics require runtime support
-                    self.compile_block(block, &mut vars)?;
+                    // Register compensation block for LIFO execution on error exit
+                    self.register_comp(block);
                 }
                 Stmt::Arena(block) => {
                     // Arena: execute block sequentially (simplified - no region-based memory in codegen)
@@ -1018,7 +1160,8 @@ impl<'ctx> CodeGenerator<'ctx> {
         // Check for unconsumed capabilities before returning
         self.check_unconsumed_caps()?;
         
-        // Pop capability scope
+        // Pop scopes (discard compensations on normal exit)
+        self.pop_comp_scope();
         self.pop_cap_scope();
 
         self.builder.build_return(Some(&last_val)).map_err(|e| format!("return error: {}", e))?;
@@ -1107,7 +1250,16 @@ impl<'ctx> CodeGenerator<'ctx> {
         block: &Block,
         vars: &mut HashMap<String, VarEntry<'ctx>>,
     ) -> Result<(), String> {
+        self.push_comp_scope();
         for stmt in block {
+            // Run compensations before exit()
+            if let Stmt::Expr(Expr::Call(callee, _)) = stmt {
+                if let Expr::Ident(name) = &**callee {
+                    if name == "exit" {
+                        self.compile_compensations(vars)?;
+                    }
+                }
+            }
             match stmt {
                 Stmt::Expr(expr) => {
                     self.compile_expr(expr, vars)?;
@@ -1183,8 +1335,10 @@ impl<'ctx> CodeGenerator<'ctx> {
                     // Skip MMS blocks in codegen (they're for documentation/contracts)
                 }
                 Stmt::Parasteps(block) => {
-                    // Parasteps: execute statements sequentially (fallback for parallel execution)
+                    // Parasteps: execute spawn statements in parallel, join at block end
+                    self.enter_parasteps();
                     self.compile_block(block, vars)?;
+                    self.leave_parasteps()?;
                 }
                 Stmt::Drop(expr) => {
                     // Drop: evaluate expression and discard result (for linear capabilities)
@@ -1195,9 +1349,8 @@ impl<'ctx> CodeGenerator<'ctx> {
                     self.compile_expr(init, vars)?;
                 }
                 Stmt::OnFailure(block) => {
-                    // OnFailure: execute compensation block code (simplified - no LIFO error handling)
-                    // Note: Full compensation semantics require runtime support
-                    self.compile_block(block, vars)?;
+                    // Register compensation block for LIFO execution on error exit
+                    self.register_comp(block);
                 }
                 Stmt::Arena(block) => {
                     // Arena: execute block sequentially (simplified)
@@ -1217,6 +1370,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                 _ => {}
             }
         }
+        self.pop_comp_scope();
         Ok(())
     }
 
@@ -1681,15 +1835,44 @@ impl<'ctx> CodeGenerator<'ctx> {
                 // Compile the spawn expression (the result is the return value)
                 let result = self.compile_expr(expr, vars)?;
                 
-                // Allocate heap space for the return value and store it
-                let result_storage = self.builder.build_alloca(result.get_type(), "spawn_result")
-                    .map_err(|e| format!("alloca error: {}", e))?;
-                self.builder.build_store(result_storage, result)
+                // Allocate heap space for the return value using malloc (not alloca — 
+                // heap memory survives the wrapper function's return)
+                let i64_ty = self.context.i64_type();
+                let malloc_fn = self.module.get_function("malloc")
+                    .ok_or_else(|| "malloc not declared".to_string())?;
+                let byte_size = i64_ty.const_int(8, false); // 8 bytes for i64
+                let result_storage = self.builder.build_call(malloc_fn, &[
+                    BasicMetadataValueEnum::IntValue(byte_size),
+                ], "malloc_result")
+                    .map_err(|e| format!("malloc error: {}", e))?
+                    .try_as_basic_value()
+                    .left()
+                    .ok_or("malloc returned void")?;
+                let result_storage_ptr = if let BasicValueEnum::PointerValue(pv) = result_storage {
+                    pv
+                } else {
+                    return Err("malloc should return a pointer".into());
+                };
+                // Store the result
+                            // Cast result_storage (i8*) to the correct type pointer for storing
+                let result_llvm_ty = result.get_type();
+                let result_ptr_ty = match result_llvm_ty {
+                    BasicTypeEnum::IntType(t) => t.ptr_type(inkwell::AddressSpace::default()),
+                    BasicTypeEnum::FloatType(t) => t.ptr_type(inkwell::AddressSpace::default()),
+                    BasicTypeEnum::PointerType(t) => t.ptr_type(inkwell::AddressSpace::default()),
+                    BasicTypeEnum::StructType(t) => t.ptr_type(inkwell::AddressSpace::default()),
+                    BasicTypeEnum::ArrayType(t) => t.ptr_type(inkwell::AddressSpace::default()),
+                    BasicTypeEnum::VectorType(t) => t.ptr_type(inkwell::AddressSpace::default()),
+                };
+                let result_typed_ptr = self.builder.build_pointer_cast(
+                    result_storage_ptr,
+                    result_ptr_ty,
+                    "result_typed"
+                ).map_err(|e| format!("bitcast error: {}", e))?;
+                self.builder.build_store(result_typed_ptr, result)
                     .map_err(|e| format!("store error: {}", e))?;
-                // Bitcast storage to i8* and return
-                let ret_ptr = self.builder.build_bit_cast(result_storage, i8_ptr, "ret_as_i8")
-                    .map_err(|e| format!("bitcast error: {}", e))?;
-                self.builder.build_return(Some(&ret_ptr))
+                // Return the i8* pointer
+                self.builder.build_return(Some(&result_storage))
                     .map_err(|e| format!("return error: {}", e))?;
                 
                 // Restore builder position to original block
@@ -1698,7 +1881,6 @@ impl<'ctx> CodeGenerator<'ctx> {
                 }
                 
                 // Create thread: pthread_create(&thread, NULL, wrapper, NULL)
-                let i64_ty = self.context.i64_type();
                 let thread_alloca = self.builder.build_alloca(i64_ty, "thread")
                     .map_err(|e| format!("alloca error: {}", e))?;
                 // Zero-initialize thread
@@ -1720,9 +1902,19 @@ impl<'ctx> CodeGenerator<'ctx> {
                 ], "pthread_create_call")
                     .map_err(|e| format!("pthread_create error: {}", e))?;
                 
-                // Load and return the thread ID as the "future" value
-                self.builder.build_load(BasicTypeEnum::IntType(i64_ty), thread_alloca, "thread_id")
-                    .map_err(|e| format!("load error: {}", e))
+                // Load the thread ID
+                let thread_id_val = self.builder.build_load(BasicTypeEnum::IntType(i64_ty), thread_alloca, "thread_id")
+                    .map_err(|e| format!("load error: {}", e))?;
+                let thread_id = if let BasicValueEnum::IntValue(iv) = thread_id_val {
+                    iv
+                } else {
+                    return Err("expected i64 thread ID".into());
+                };
+                // Track in parasteps mode for joining at block end
+                if self.in_parasteps {
+                    self.parasteps_thread_ids.push(thread_id);
+                }
+                Ok(thread_id_val)
             }
             Expr::Await(expr) => {
                 // Await: join the thread and get the result
@@ -1736,17 +1928,58 @@ impl<'ctx> CodeGenerator<'ctx> {
                     _ => return Err("await requires a thread (i64) value".into()),
                 };
                 
+                // Allocate space to receive the wrapper's return pointer (void**)
+                let i8_ptr = self.context.i8_type().ptr_type(inkwell::AddressSpace::default());
+                let retval_storage = self.builder.build_alloca(i8_ptr, "retval_ptr")
+                    .map_err(|e| format!("alloca error: {}", e))?;
+                self.builder.build_store(retval_storage, i8_ptr.const_null())
+                    .map_err(|e| format!("store error: {}", e))?;
+                
+                // Remove from parasteps tracking (already awaited, avoid double-join at block end)
+                self.parasteps_thread_ids.retain(|&id| id != thread_id);
+                
                 let pthread_join_fn = self.module.get_function("pthread_join")
                     .ok_or("pthread_join not declared")?;
-                let i8_ptr = self.context.i8_type().ptr_type(inkwell::AddressSpace::default());
                 self.builder.build_call(pthread_join_fn, &[
                     BasicMetadataValueEnum::IntValue(thread_id),
-                    BasicMetadataValueEnum::PointerValue(i8_ptr.const_null()),
+                    BasicMetadataValueEnum::PointerValue(retval_storage),
                 ], "pthread_join_call")
                     .map_err(|e| format!("pthread_join error: {}", e))?;
                 
-                // Return 0 as placeholder (real result would need the wrapper's return pointer)
-                Ok(self.context.i64_type().const_int(0, false).into())
+                // Load the returned pointer from the storage (it's the wrapper's malloc'd result)
+                let result_i8_ptr = self.builder.build_load(
+                    BasicTypeEnum::PointerType(i8_ptr),
+                    retval_storage,
+                    "result_ptr"
+                ).map_err(|e| format!("load error: {}", e))?;
+                let result_ptr = if let BasicValueEnum::PointerValue(pv) = result_i8_ptr {
+                    pv
+                } else {
+                    return Err("expected pointer from pthread_join".into());
+                };
+                
+                // Cast from i8* to i64* and load the result value
+                let i64_ty = self.context.i64_type();
+                let result_typed = self.builder.build_pointer_cast(
+                    result_ptr,
+                    i64_ty.ptr_type(inkwell::AddressSpace::default()),
+                    "result_i64_ptr"
+                ).map_err(|e| format!("bitcast error: {}", e))?;
+                let result_val = self.builder.build_load(
+                    BasicTypeEnum::IntType(i64_ty),
+                    result_typed,
+                    "spawn_result_val"
+                ).map_err(|e| format!("load error: {}", e))?;
+                
+                // Free the malloc'd memory
+                let free_fn = self.module.get_function("free")
+                    .ok_or_else(|| "free not declared".to_string())?;
+                self.builder.build_call(free_fn, &[
+                    BasicMetadataValueEnum::PointerValue(result_ptr),
+                ], "free_call")
+                    .map_err(|e| format!("free error: {}", e))?;
+                
+                Ok(result_val)
             }
             _ => Err(format!("unsupported expression in codegen: {:?}", expr)),
         }
