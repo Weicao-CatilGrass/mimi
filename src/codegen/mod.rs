@@ -2554,14 +2554,14 @@ impl<'ctx> CodeGenerator<'ctx> {
                         self.builder.build_conditional_branch(disc, ok_bb, err_bb)
                             .map_err(|e| format!("branch error: {}", e))?;
 
-                        // Err path: exit(1)
+                        // Err path: print error message and exit(1)
                         self.builder.position_at_end(err_bb);
-                        let exit_fn = self.module.get_function("exit")
-                            .ok_or("exit not declared")?;
-                        self.builder.build_call(exit_fn, &[
-                            BasicMetadataValueEnum::IntValue(self.context.i32_type().const_int(1, false)),
+                        let try_exit_fn = self.module.get_function("mimi_try_exit")
+                            .ok_or("mimi_try_exit not declared")?;
+                        self.builder.build_call(try_exit_fn, &[
+                            BasicMetadataValueEnum::IntValue(payload.into_int_value()),
                         ], "try_exit")
-                            .map_err(|e| format!("exit error: {}", e))?;
+                            .map_err(|e| format!("try_exit error: {}", e))?;
                         let unreachable = self.context.append_basic_block(function, "unreachable");
                         self.builder.build_unconditional_branch(unreachable)
                             .map_err(|e| format!("branch error: {}", e))?;
@@ -2580,12 +2580,12 @@ impl<'ctx> CodeGenerator<'ctx> {
                             .map_err(|e| format!("branch error: {}", e))?;
 
                         self.builder.position_at_end(err_bb);
-                        let exit_fn = self.module.get_function("exit")
-                            .ok_or("exit not declared")?;
-                        self.builder.build_call(exit_fn, &[
-                            BasicMetadataValueEnum::IntValue(self.context.i32_type().const_int(1, false)),
+                        let try_exit_fn = self.module.get_function("mimi_try_exit")
+                            .ok_or("mimi_try_exit not declared")?;
+                        self.builder.build_call(try_exit_fn, &[
+                            BasicMetadataValueEnum::IntValue(payload.into_int_value()),
                         ], "try_exit")
-                            .map_err(|e| format!("exit error: {}", e))?;
+                            .map_err(|e| format!("try_exit error: {}", e))?;
                         let unreachable = self.context.append_basic_block(function, "unreachable");
                         self.builder.build_unconditional_branch(unreachable)
                             .map_err(|e| format!("branch error: {}", e))?;
