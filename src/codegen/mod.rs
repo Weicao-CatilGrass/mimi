@@ -22,6 +22,8 @@ pub struct CodeGenerator<'ctx> {
     loop_continue: Option<inkwell::basic_block::BasicBlock<'ctx>>,
     type_defs: HashMap<String, crate::ast::TypeDef>,
     type_llvm: HashMap<String, BasicTypeEnum<'ctx>>,
+    /// Track linear capabilities in scope: name -> (pointer, consumed)
+    cap_vars: Vec<HashMap<String, (inkwell::values::PointerValue<'ctx>, bool)>>,
 }
 
 type VarEntry<'ctx> = (inkwell::values::PointerValue<'ctx>, BasicTypeEnum<'ctx>);
@@ -31,7 +33,63 @@ impl<'ctx> CodeGenerator<'ctx> {
         let module = context.create_module(module_name);
         let builder = context.create_builder();
         builtins::register_runtime(&module, context);
-        Self { context, module, builder, loop_break: None, loop_continue: None, type_defs: HashMap::new(), type_llvm: HashMap::new() }
+        Self { context, module, builder, loop_break: None, loop_continue: None, type_defs: HashMap::new(), type_llvm: HashMap::new(), cap_vars: vec![HashMap::new()] }
+    }
+
+    /// Push a new capability scope
+    fn push_cap_scope(&mut self) {
+        self.cap_vars.push(HashMap::new());
+    }
+
+    /// Pop the current capability scope
+    fn pop_cap_scope(&mut self) {
+        self.cap_vars.pop();
+    }
+
+    /// Register a capability variable in the current scope
+    fn register_cap(&mut self, name: &str, ptr: inkwell::values::PointerValue<'ctx>) {
+        if let Some(scope) = self.cap_vars.last_mut() {
+            scope.insert(name.to_string(), (ptr, false));
+        }
+    }
+
+    /// Mark a capability as consumed
+    fn consume_cap(&mut self, name: &str) -> Result<(), String> {
+        for scope in self.cap_vars.iter_mut().rev() {
+            if let Some((_, consumed)) = scope.get_mut(name) {
+                if *consumed {
+                    return Err(format!("capability '{}' has already been consumed", name));
+                }
+                *consumed = true;
+                return Ok(());
+            }
+        }
+        Ok(()) // Not a capability variable
+    }
+
+    /// Check if a variable is a consumed capability
+    fn is_cap_consumed(&self, name: &str) -> bool {
+        for scope in self.cap_vars.iter().rev() {
+            if let Some((_, consumed)) = scope.get(name) {
+                return *consumed;
+            }
+        }
+        false
+    }
+
+    /// Check for unconsumed capabilities at scope exit
+    fn check_unconsumed_caps(&self) -> Result<(), String> {
+        if let Some(scope) = self.cap_vars.last() {
+            for (name, (_, consumed)) in scope {
+                if !consumed {
+                    return Err(format!(
+                        "linear capability '{}' must be consumed (via drop) before end of scope",
+                        name
+                    ));
+                }
+            }
+        }
+        Ok(())
     }
 
     pub fn compile_file(&mut self, file: &File) -> Result<(), String> {
@@ -252,6 +310,9 @@ impl<'ctx> CodeGenerator<'ctx> {
         let entry = self.context.append_basic_block(function, "entry");
         self.builder.position_at_end(entry);
 
+        // Push capability scope for function body
+        self.push_cap_scope();
+
         let mut vars: HashMap<String, VarEntry<'ctx>> = HashMap::new();
         for (i, param) in func.params.iter().enumerate() {
             if let Some(ty) = types::mimi_type_to_llvm(self.context, &param.ty) {
@@ -260,6 +321,11 @@ impl<'ctx> CodeGenerator<'ctx> {
                 self.builder.build_store(alloca, function.get_nth_param(i as u32).expect("param index matches function signature"))
                     .map_err(|e| format!("store error: {}", e))?;
                 vars.insert(param.name.clone(), (alloca, ty));
+                
+                // Track capability parameters
+                if matches!(&param.ty, Type::Cap(_)) {
+                    self.register_cap(&param.name, alloca);
+                }
             }
         }
 
@@ -278,18 +344,23 @@ impl<'ctx> CodeGenerator<'ctx> {
                     self.builder.build_return(None).map_err(|e| format!("return error: {}", e))?;
                     return Ok(());
                 }
-                Stmt::Let { pat, init: Some(init), .. } => {
+                Stmt::Let { pat, init: Some(init), ty, .. } => {
                     let val = self.compile_expr(init, &vars)?;
                     let name = match pat {
                         Pattern::Variable(n) => n.clone(),
                         _ => continue,
                     };
-                    let ty = val.get_type();
-                    let alloca = self.builder.build_alloca(ty, &name)
+                    let llvm_ty = val.get_type();
+                    let alloca = self.builder.build_alloca(llvm_ty, &name)
                         .map_err(|e| format!("alloca error: {}", e))?;
                     self.builder.build_store(alloca, val)
                         .map_err(|e| format!("store error: {}", e))?;
-                    vars.insert(name, (alloca, ty));
+                    vars.insert(name.clone(), (alloca, llvm_ty));
+                    
+                    // Track capability variables
+                    if let Some(Type::Cap(_)) = &ty {
+                        self.register_cap(&name, alloca);
+                    }
                 }
                 Stmt::Assign { target: Expr::Ident(name), value } => {
                     let val = self.compile_expr(value, &vars)?;
@@ -520,15 +591,21 @@ impl<'ctx> CodeGenerator<'ctx> {
                     self.compile_block(block, &mut vars)?;
                 }
                 Stmt::Drop(expr) => {
-                    // Drop: evaluate expression and discard result (for linear capabilities)
+                    // Drop: evaluate expression and mark capability as consumed
                     self.compile_expr(expr, &vars)?;
+                    // If the expression is a variable, mark it as consumed
+                    if let Expr::Ident(name) = expr {
+                        self.consume_cap(name)?;
+                    }
                 }
                 Stmt::SharedLet { init, .. } => {
                     // SharedLet: evaluate init expression (simplified - no actual shared ownership in codegen)
                     self.compile_expr(init, &vars)?;
                 }
-                Stmt::OnFailure(_) => {
-                    // OnFailure: skip compensation blocks in codegen (runtime-only feature)
+                Stmt::OnFailure(block) => {
+                    // OnFailure: execute compensation block code (simplified - no LIFO error handling)
+                    // Note: Full compensation semantics require runtime support
+                    self.compile_block(block, &mut vars)?;
                 }
                 Stmt::Arena(block) => {
                     // Arena: execute block sequentially (simplified - no region-based memory in codegen)
@@ -544,6 +621,12 @@ impl<'ctx> CodeGenerator<'ctx> {
                 _ => {}
             }
         }
+
+        // Check for unconsumed capabilities before returning
+        self.check_unconsumed_caps()?;
+        
+        // Pop capability scope
+        self.pop_cap_scope();
 
         self.builder.build_return(Some(&last_val)).map_err(|e| format!("return error: {}", e))?;
         Ok(())
@@ -638,8 +721,10 @@ impl<'ctx> CodeGenerator<'ctx> {
                     // SharedLet: evaluate init expression (simplified)
                     self.compile_expr(init, vars)?;
                 }
-                Stmt::OnFailure(_) => {
-                    // OnFailure: skip compensation blocks in codegen (runtime-only feature)
+                Stmt::OnFailure(block) => {
+                    // OnFailure: execute compensation block code (simplified - no LIFO error handling)
+                    // Note: Full compensation semantics require runtime support
+                    self.compile_block(block, vars)?;
                 }
                 Stmt::Arena(block) => {
                     // Arena: execute block sequentially (simplified)
@@ -1664,6 +1749,11 @@ impl<'ctx> CodeGenerator<'ctx> {
                 let call = self.builder.build_call(c_fn, args, &format!("{}_call", fn_name))
                     .map_err(|e| format!("{} error: {}", fn_name, e))?;
                 Ok(call.try_as_basic_value().left().unwrap())
+            }
+            "lexer" | "parse" => {
+                // lexer/parse are runtime-only functions - generate a call to external runtime
+                // These functions are not available in pure LLVM codegen
+                Err(format!("'{}' is a runtime-only function, not available in codegen", name))
             }
             _ => Err(format!("builtin '{}' not yet implemented in codegen", name)),
         }
