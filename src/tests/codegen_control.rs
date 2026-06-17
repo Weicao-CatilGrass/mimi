@@ -1174,3 +1174,83 @@ fn codegen_alloc_block() {
         }
     "#);
 }
+
+// ===================== Phase 1: Cap Linear Capability Codegen Tests =====================
+
+#[test]
+fn codegen_cap_linear_tracking() {
+    // Test that capability variables are tracked
+    assert_compiles(r#"
+        cap FileCap
+        func read_file(file_cap: FileCap) -> i32 {
+            drop(file_cap)
+            42
+        }
+        func main() -> i32 {
+            0
+        }
+    "#);
+    let ir = compile_to_ir(r#"
+        cap FileCap
+        func read_file(file_cap: FileCap) -> i32 {
+            drop(file_cap)
+            42
+        }
+        func main() -> i32 {
+            0
+        }
+    "#);
+    assert!(ir.contains("define"), "IR should contain function definitions");
+}
+
+#[test]
+fn codegen_cap_let_tracking() {
+    // Test that capability variables from let statements are tracked
+    assert_compiles(r#"
+        cap MyCap
+        func main() -> i32 {
+            let c: MyCap = 1
+            drop(c)
+            0
+        }
+    "#);
+}
+
+// ===================== Phase 1: OnFailure Codegen Tests =====================
+
+#[test]
+fn codegen_on_failure_basic() {
+    // Test that OnFailure blocks are compiled
+    assert_compiles(r#"
+        func main() -> i32 {
+            on failure {
+                println("cleanup")
+            }
+            42
+        }
+    "#);
+    let ir = compile_to_ir(r#"
+        func main() -> i32 {
+            on failure {
+                println("cleanup")
+            }
+            42
+        }
+    "#);
+    assert!(ir.contains("define"), "IR should contain function definitions");
+}
+
+#[test]
+fn codegen_on_failure_with_statements() {
+    // Test that OnFailure blocks with multiple statements are compiled
+    assert_compiles(r#"
+        func main() -> i32 {
+            on failure {
+                let x = 1
+                let y = 2
+                println(x + y)
+            }
+            42
+        }
+    "#);
+}
