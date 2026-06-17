@@ -3662,22 +3662,192 @@ impl<'ctx> CodeGenerator<'ctx> {
                 Ok(self.context.i64_type().const_int(0, false).into())
             }
             "push" => {
-                // push(list, elem) - simplified: just return list pointer (no real mutation in codegen yet)
+                // push(list, elem) - resize data array and append element
                 if args.len() != 2 {
                     return Err("push expects 2 arguments".into());
                 }
-                // TODO: real push implementation with realloc
-                match args[0] {
-                    BasicMetadataValueEnum::PointerValue(pv) => Ok(pv.into()),
-                    _ => Err("push requires a list pointer".into()),
-                }
+                let list_ptr = match args[0] {
+                    BasicMetadataValueEnum::PointerValue(pv) => pv,
+                    _ => return Err("push requires a list pointer".into()),
+                };
+                let elem = args[1];
+
+                let i64_ty = self.context.i64_type();
+                let i8_ptr = self.context.i8_type().ptr_type(inkwell::AddressSpace::default());
+                let list_struct_ty = self.context.struct_type(&[
+                    BasicTypeEnum::IntType(i64_ty),
+                    BasicTypeEnum::PointerType(i8_ptr),
+                ], false);
+
+                // Load current len and data
+                let len_gep = self.builder.build_struct_gep(list_struct_ty, list_ptr, 0, "push_len")
+                    .map_err(|e| format!("gep error: {}", e))?;
+                let data_gep = self.builder.build_struct_gep(list_struct_ty, list_ptr, 1, "push_data")
+                    .map_err(|e| format!("gep error: {}", e))?;
+                let old_len = self.builder.build_load(BasicTypeEnum::IntType(i64_ty), len_gep, "old_len")
+                    .map_err(|e| format!("load error: {}", e))?.into_int_value();
+                let old_data = self.builder.build_load(BasicTypeEnum::PointerType(i8_ptr), data_gep, "old_data")
+                    .map_err(|e| format!("load error: {}", e))?.into_pointer_value();
+
+                // new_len = old_len + 1
+                let new_len = self.builder.build_int_add(old_len, i64_ty.const_int(1, false), "new_len")
+                    .map_err(|e| format!("add error: {}", e))?;
+
+                // new_alloc_size = new_len * 8
+                let elem_size = i64_ty.const_int(8, false);
+                let new_alloc_size = self.builder.build_int_mul(new_len, elem_size, "new_alloc_size")
+                    .map_err(|e| format!("mul error: {}", e))?;
+
+                // realloc(old_data, new_alloc_size)
+                let realloc_fn = self.module.get_function("realloc")
+                    .ok_or("realloc not declared")?;
+                let realloc_result = self.builder.build_call(realloc_fn, &[
+                    BasicMetadataValueEnum::PointerValue(old_data),
+                    BasicMetadataValueEnum::IntValue(new_alloc_size),
+                ], "realloc_result")
+                    .map_err(|e| format!("realloc error: {}", e))?
+                    .try_as_basic_value().left()
+                    .ok_or("realloc returned void")?
+                    .into_pointer_value();
+
+                // Store new data pointer
+                self.builder.build_store(data_gep, realloc_result)
+                    .map_err(|e| format!("store error: {}", e))?;
+
+                // Store new element at data[old_len]: *(new_data + old_len*8) = elem
+                let idx_ptr = unsafe {
+                    self.builder.build_gep(
+                        BasicTypeEnum::IntType(i64_ty),
+                        realloc_result,
+                        &[old_len],
+                        "elem_ptr",
+                    ).map_err(|e| format!("gep error: {}", e))?
+                };
+                // Bitcast i8* to i64* for store
+                let idx_ptr_i64 = self.builder.build_bit_cast(
+                    idx_ptr,
+                    i64_ty.ptr_type(inkwell::AddressSpace::default()),
+                    "idx_ptr_i64",
+                ).map_err(|e| format!("bitcast error: {}", e))?.into_pointer_value();
+
+                // Get the element value
+                let elem_val = match elem {
+                    BasicMetadataValueEnum::IntValue(iv) => BasicValueEnum::IntValue(iv),
+                    BasicMetadataValueEnum::FloatValue(fv) => BasicValueEnum::FloatValue(fv),
+                    BasicMetadataValueEnum::PointerValue(pv) => BasicValueEnum::PointerValue(pv),
+                    _ => return Err("push: unsupported element type".into()),
+                };
+                self.builder.build_store(idx_ptr_i64, elem_val)
+                    .map_err(|e| format!("store error: {}", e))?;
+
+                // Store new length
+                self.builder.build_store(len_gep, new_len)
+                    .map_err(|e| format!("store error: {}", e))?;
+
+                // Return the list pointer (unchanged)
+                Ok(BasicValueEnum::PointerValue(list_ptr))
             }
             "pop" => {
-                if args.is_empty() {
+                // pop(list) - remove and return last element
+                if args.len() != 1 {
                     return Err("pop expects 1 argument".into());
                 }
-                // TODO: real pop implementation
-                Ok(self.context.i64_type().const_int(0, false).into())
+                let list_ptr = match args[0] {
+                    BasicMetadataValueEnum::PointerValue(pv) => pv,
+                    _ => return Err("pop requires a list pointer".into()),
+                };
+
+                let i64_ty = self.context.i64_type();
+                let i8_ptr = self.context.i8_type().ptr_type(inkwell::AddressSpace::default());
+                let list_struct_ty = self.context.struct_type(&[
+                    BasicTypeEnum::IntType(i64_ty),
+                    BasicTypeEnum::PointerType(i8_ptr),
+                ], false);
+
+                // Load current len and data
+                let len_gep = self.builder.build_struct_gep(list_struct_ty, list_ptr, 0, "pop_len")
+                    .map_err(|e| format!("gep error: {}", e))?;
+                let data_gep = self.builder.build_struct_gep(list_struct_ty, list_ptr, 1, "pop_data")
+                    .map_err(|e| format!("gep error: {}", e))?;
+                let old_len = self.builder.build_load(BasicTypeEnum::IntType(i64_ty), len_gep, "old_len")
+                    .map_err(|e| format!("load error: {}", e))?.into_int_value();
+                let old_data = self.builder.build_load(BasicTypeEnum::PointerType(i8_ptr), data_gep, "old_data")
+                    .map_err(|e| format!("load error: {}", e))?.into_pointer_value();
+
+                // Check if empty (len == 0)
+                let is_empty = self.builder.build_int_compare(
+                    inkwell::IntPredicate::EQ, old_len,
+                    i64_ty.const_int(0, false), "is_empty")
+                    .map_err(|e| format!("compare error: {}", e))?;
+
+                let function = self.builder.get_insert_block().unwrap().get_parent().unwrap();
+                let nonempty_bb = self.context.append_basic_block(function, "pop_nonempty");
+                let empty_bb = self.context.append_basic_block(function, "pop_empty");
+                let merge_bb = self.context.append_basic_block(function, "pop_merge");
+
+                self.builder.build_conditional_branch(is_empty, empty_bb, nonempty_bb)
+                    .map_err(|e| format!("branch error: {}", e))?;
+
+                // Empty path: return 0
+                self.builder.position_at_end(empty_bb);
+                self.builder.build_unconditional_branch(merge_bb)
+                    .map_err(|e| format!("branch error: {}", e))?;
+
+                // Non-empty path: get last element, decrement len
+                self.builder.position_at_end(nonempty_bb);
+                let last_idx = self.builder.build_int_sub(old_len, i64_ty.const_int(1, false), "last_idx")
+                    .map_err(|e| format!("sub error: {}", e))?;
+                let elem_ptr = unsafe {
+                    self.builder.build_gep(
+                        BasicTypeEnum::IntType(i64_ty),
+                        old_data,
+                        &[last_idx],
+                        "elem_ptr",
+                    ).map_err(|e| format!("gep error: {}", e))?
+                };
+                let elem_ptr_i64 = self.builder.build_bit_cast(
+                    elem_ptr,
+                    i64_ty.ptr_type(inkwell::AddressSpace::default()),
+                    "elem_ptr_i64",
+                ).map_err(|e| format!("bitcast error: {}", e))?.into_pointer_value();
+                let elem_val = self.builder.build_load(BasicTypeEnum::IntType(i64_ty), elem_ptr_i64, "elem_val")
+                    .map_err(|e| format!("load error: {}", e))?;
+
+                // new_len = old_len - 1
+                let new_len = self.builder.build_int_sub(old_len, i64_ty.const_int(1, false), "new_len")
+                    .map_err(|e| format!("sub error: {}", e))?;
+                self.builder.build_store(len_gep, new_len)
+                    .map_err(|e| format!("store error: {}", e))?;
+
+                // realloc to shrink (optional, but good practice)
+                let new_alloc_size = self.builder.build_int_mul(new_len, i64_ty.const_int(8, false), "new_alloc_size")
+                    .map_err(|e| format!("mul error: {}", e))?;
+                let realloc_fn = self.module.get_function("realloc")
+                    .ok_or("realloc not declared")?;
+                let realloc_result = self.builder.build_call(realloc_fn, &[
+                    BasicMetadataValueEnum::PointerValue(old_data),
+                    BasicMetadataValueEnum::IntValue(new_alloc_size),
+                ], "realloc_result")
+                    .map_err(|e| format!("realloc error: {}", e))?
+                    .try_as_basic_value().left()
+                    .ok_or("realloc returned void")?
+                    .into_pointer_value();
+                self.builder.build_store(data_gep, realloc_result)
+                    .map_err(|e| format!("store error: {}", e))?;
+
+                self.builder.build_unconditional_branch(merge_bb)
+                    .map_err(|e| format!("branch error: {}", e))?;
+
+                // Merge: phi node for the returned element
+                self.builder.position_at_end(merge_bb);
+                let phi = self.builder.build_phi(BasicTypeEnum::IntType(i64_ty), "pop_result")
+                    .map_err(|e| format!("phi error: {}", e))?;
+                let zero = i64_ty.const_int(0, false);
+                phi.add_incoming(&[
+                    (&BasicValueEnum::IntValue(zero), empty_bb),
+                    (&elem_val, nonempty_bb),
+                ]);
+                Ok(phi.as_basic_value())
             }
             "floor" | "ceil" | "round" => {
                 if args.len() != 1 {
