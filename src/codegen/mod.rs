@@ -2473,6 +2473,84 @@ impl<'ctx> CodeGenerator<'ctx> {
                 
                 Ok(result_val)
             }
+            Expr::Try(inner) => {
+                // ? operator: compile inner expr as Result<T,E>{i1, T},
+                // check discriminant, extract T on Ok, exit on Err
+                let result_val = self.compile_expr(inner, vars)?;
+
+                // The result should be a struct {i1, T}. Load it if it's a pointer.
+                // Extract discriminant (field 0) via GEP+load if pointer, or extract_value if struct
+                let i1_ty = self.context.bool_type();
+                let i64_ty = self.context.i64_type();
+                let function = self.builder.get_insert_block().unwrap().get_parent().unwrap();
+                let ok_bb = self.context.append_basic_block(function, "try_ok");
+                let err_bb = self.context.append_basic_block(function, "try_err");
+
+                match result_val {
+                    BasicValueEnum::PointerValue(pv) => {
+                        // Access struct fields via GEP
+                        let result_ty = self.context.struct_type(&[
+                            BasicTypeEnum::IntType(i1_ty),
+                            BasicTypeEnum::IntType(i64_ty),
+                        ], false);
+                        let gep0 = self.builder.build_struct_gep(
+                            BasicTypeEnum::StructType(result_ty), pv, 0, "disc_gep"
+                        ).map_err(|e| format!("gep error: {}", e))?;
+                        let disc = self.builder.build_load(
+                            BasicTypeEnum::IntType(i1_ty), gep0, "discriminant"
+                        ).map_err(|e| format!("load error: {}", e))?.into_int_value();
+                        let gep1 = self.builder.build_struct_gep(
+                            BasicTypeEnum::StructType(result_ty), pv, 1, "pay_gep"
+                        ).map_err(|e| format!("gep error: {}", e))?;
+                        let payload = self.builder.build_load(
+                            BasicTypeEnum::IntType(i64_ty), gep1, "payload"
+                        ).map_err(|e| format!("load error: {}", e))?;
+
+                        self.builder.build_conditional_branch(disc, ok_bb, err_bb)
+                            .map_err(|e| format!("branch error: {}", e))?;
+
+                        // Err path: exit(1)
+                        self.builder.position_at_end(err_bb);
+                        let exit_fn = self.module.get_function("exit")
+                            .ok_or("exit not declared")?;
+                        self.builder.build_call(exit_fn, &[
+                            BasicMetadataValueEnum::IntValue(self.context.i32_type().const_int(1, false)),
+                        ], "try_exit")
+                            .map_err(|e| format!("exit error: {}", e))?;
+                        let unreachable = self.context.append_basic_block(function, "unreachable");
+                        self.builder.build_unconditional_branch(unreachable)
+                            .map_err(|e| format!("branch error: {}", e))?;
+
+                        self.builder.position_at_end(ok_bb);
+                        Ok(payload)
+                    }
+                    BasicValueEnum::StructValue(sv) => {
+                        // Extract via extract_value for struct values
+                        let disc = self.builder.build_extract_value(sv, 0, "discriminant")
+                            .map_err(|e| format!("extract_value error: {}", e))?;
+                        let payload = self.builder.build_extract_value(sv, 1, "payload")
+                            .map_err(|e| format!("extract_value error: {}", e))?;
+
+                        self.builder.build_conditional_branch(disc.into_int_value(), ok_bb, err_bb)
+                            .map_err(|e| format!("branch error: {}", e))?;
+
+                        self.builder.position_at_end(err_bb);
+                        let exit_fn = self.module.get_function("exit")
+                            .ok_or("exit not declared")?;
+                        self.builder.build_call(exit_fn, &[
+                            BasicMetadataValueEnum::IntValue(self.context.i32_type().const_int(1, false)),
+                        ], "try_exit")
+                            .map_err(|e| format!("exit error: {}", e))?;
+                        let unreachable = self.context.append_basic_block(function, "unreachable");
+                        self.builder.build_unconditional_branch(unreachable)
+                            .map_err(|e| format!("branch error: {}", e))?;
+
+                        self.builder.position_at_end(ok_bb);
+                        Ok(payload)
+                    }
+                    _ => Err("? operator requires a Result/Option type (struct pointer or value)".into()),
+                }
+            }
             _ => Err(format!("unsupported expression in codegen: {:?}", expr)),
         }
     }
@@ -4976,7 +5054,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     .try_as_basic_value().left()
                     .ok_or("malloc returned void")?
                     .into_pointer_value();
-                let new_data_i64 = self.builder.build_bit_cast(new_data,
+                let _new_data_i64 = self.builder.build_bit_cast(new_data,
                     i64_ty.ptr_type(inkwell::AddressSpace::default()), "sort_new_data_i64")
                     .map_err(|e| format!("bitcast error: {}", e))?
                     .into_pointer_value();
