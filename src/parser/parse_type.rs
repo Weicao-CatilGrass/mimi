@@ -131,6 +131,29 @@ impl Parser {
                 self.advance();
                 Ok(Type::Cap(name))
             }
+            TokenKind::Func => {
+                self.advance();
+                // func(ArgType, ...) -> RetType
+                self.expect(TokenKind::LParen, "`(` for function type parameters")?;
+                let mut param_types = Vec::new();
+                if !self.at(&TokenKind::RParen) {
+                    loop {
+                        param_types.push(self.parse_type()?);
+                        if !self.at(&TokenKind::Comma) {
+                            break;
+                        }
+                        self.advance();
+                    }
+                }
+                self.expect(TokenKind::RParen, "`)`")?;
+                let ret_type = if self.at(&TokenKind::Arrow) {
+                    self.advance();
+                    self.parse_type()?
+                } else {
+                    Type::Name("unit".to_string(), vec![])
+                };
+                Ok(Type::Func(param_types, Box::new(ret_type)))
+            }
             TokenKind::Impl => {
                 self.advance();
                 let mut traits = Vec::new();

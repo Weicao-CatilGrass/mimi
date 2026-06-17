@@ -1,41 +1,17 @@
-module math:
+pub func square(x: i32) -> i32 {
+    x * x
+}
 
-    pub func square(x: i32) -> i32 {
-        x * x
-    }
+pub func cube(x: i32) -> i32 {
+    x * x * x
+}
 
-    pub func cube(x: i32) -> i32 {
-        x * x * x
+pub func clamp(value: i32, min_val: i32, max_val: i32) -> i32 {
+    if value < min_val {
+        min_val
+    } else if value > max_val {
+        max_val
+    } else {
+        value
     }
-
-    pub func clamp(value: i32, min_val: i32, max_val: i32) -> i32 {
-        if value < min_val {
-            min_val
-        } else if value > max_val {
-            max_val
-        } else {
-            value
-        }
-    }
-
-    pub func lerp(a: i32, b: i32, t: i32) -> i32 {
-        a + (b - a) * t
-    }
-
-    pub func factorial(n: i32) -> i32 {
-        if n <= 1 {
-            1
-        } else {
-            n * factorial(n - 1)
-        }
-    }
-
-    pub func fibonacci(n: i32) -> i32 {
-        if n <= 0 {
-            0
-        } else if n == 1 {
-            1
-        } else {
-            fibonacci(n - 1) + fibonacci(n - 2)
-        }
-    }
+}

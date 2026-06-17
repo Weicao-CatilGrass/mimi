@@ -1,0 +1,5 @@
+[package]
+name = "mimi-std"
+version = "0.1.0"
+description = "Mimi standard library"
+entry = "prelude.mimi"

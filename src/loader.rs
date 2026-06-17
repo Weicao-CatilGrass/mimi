@@ -3,6 +3,39 @@ use crate::{core, lexer, parser};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+/// Get the path to the built-in standard library directory.
+/// Resolved relative to the mimi binary (../std/) or overridable via MIMI_STDLIB env var.
+fn stdlib_dir() -> Option<PathBuf> {
+    if let Ok(dir) = std::env::var("MIMI_STDLIB") {
+        let p = PathBuf::from(dir);
+        if p.exists() { return Some(p); }
+    }
+    // Resolve relative to the binary: target/debug/mimi -> mimi/std/
+    // or installed as /usr/bin/mimi -> /usr/lib/mimi/std/
+    if let Ok(exe) = std::env::current_exe() {
+        // Try: <exe_dir>/../std/  (developer layout)
+        if let Some(exe_dir) = exe.parent() {
+            let dev = exe_dir.join("std");
+            if dev.exists() { return Some(dev); }
+            // Try: <exe_dir>/../lib/mimi/std/  (installed layout)
+            let installed = exe_dir.parent()
+                .map(|p| p.join("lib").join("mimi").join("std"));
+            if let Some(ref installed) = installed {
+                if installed.exists() { return Some(installed.clone()); }
+            }
+        }
+    }
+    // Fallback: relative to current directory's parent (project root during development)
+    if let Ok(cwd) = std::env::current_dir() {
+        let fallback = cwd.join("std");
+        if fallback.exists() { return Some(fallback); }
+        // Check one level up (running from mimi/tests/)
+        let parent = cwd.parent().map(|p| p.join("std"));
+        if let Some(ref p) = parent { if p.exists() { return Some(p.clone()); } }
+    }
+    None
+}
+
 /// Loaded module with its parsed AST and file path
 #[derive(Clone, Debug)]
 pub struct LoadedModule {
@@ -100,8 +133,24 @@ impl ModuleLoader {
             return Ok(base_path);
         }
 
+        // Try built-in stdlib (import "std/io.mimi" or @import "std/io.mimi")
+        if path.first().map(|s| s == "std").unwrap_or(false) {
+            if let Some(std_dir) = stdlib_dir() {
+                let std_path = std_dir.join(&relative).with_extension("mimi");
+                if std_path.exists() {
+                    return Ok(std_path);
+                }
+                // Also try without the "std" prefix (since std_dir IS std/)
+                let sub_path: PathBuf = path.iter().skip(1).collect();
+                let std_path2 = std_dir.join(&sub_path).with_extension("mimi");
+                if std_path2.exists() {
+                    return Ok(std_path2);
+                }
+            }
+        }
+
         Err(format!(
-            "cannot find module '{}' (looked in {} and {})",
+            "cannot find module '{}' (looked in {}, {}, and stdlib)",
             path.join("::"),
             base.display(),
             self.base_dir.display()

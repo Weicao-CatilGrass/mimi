@@ -1,73 +1,7 @@
-module collections:
-
-    pub func sum(list: List) -> i32 {
-        let total = 0
-        for x in list {
-            total = total + x
-        }
-        total
+pub func sum(xs: List<i32>) -> i32 {
+    let mut total = 0
+    for x in xs {
+        total = total + x
     }
-
-    pub func product(list: List) -> i32 {
-        let result = 1
-        for x in list {
-            result = result * x
-        }
-        result
-    }
-
-    pub func contains(list: List, target: i32) -> bool {
-        for x in list {
-            if x == target {
-                return true
-            }
-        }
-        false
-    }
-
-    pub func find(list: List, target: i32) -> i32 {
-        let i = 0
-        for x in list {
-            if x == target {
-                return i
-            }
-            i = i + 1
-        }
-        -1
-    }
-
-    pub func reverse(list: List) -> List {
-        let result = []
-        let i = len(list) - 1
-        while i >= 0 {
-            result = push(result, list[i])
-            i = i - 1
-        }
-        result
-    }
-
-    pub func filter(list: List, predicate: func(i32) -> bool) -> List {
-        let result = []
-        for x in list {
-            if predicate(x) {
-                result = push(result, x)
-            }
-        }
-        result
-    }
-
-    pub func map(list: List, f: func(i32) -> i32) -> List {
-        let result = []
-        for x in list {
-            result = push(result, f(x))
-        }
-        result
-    }
-
-    pub func reduce(list: List, f: func(i32, i32) -> i32, initial: i32) -> i32 {
-        let acc = initial
-        for x in list {
-            acc = f(acc, x)
-        }
-        acc
-    }
+    total
+}
