@@ -1,0 +1,43 @@
+func test_for_in_main() {
+    let items = [1, 2, 3, 4, 5]
+    let i = 0
+    for x in items {
+        println("  item:", x)
+    }
+}
+
+func test_for_range() {
+    let count = 0
+    for i in range(0, 5) {
+        println("  range i =", i)
+    }
+}
+
+func test_for_side_effects() -> i32 {
+    let sum = 0
+    let items = [10, 20, 30]
+    for x in items {
+        // use x in a side effect
+        println("  x =", x)
+    }
+    0
+}
+
+func main() -> i32 {
+    println("=== For 循环修复测试 ===")
+
+    println("for 循环在 main 中（直接）:")
+    let items = [1, 2, 3]
+    for x in items {
+        println("  x:", x)
+    }
+
+    println("\nfor 循环在辅助函数中:")
+    test_for_in_main()
+
+    println("\nfor range 循环:")
+    test_for_range()
+
+    println("\n=== For 循环修复测试通过 ===")
+    0
+}

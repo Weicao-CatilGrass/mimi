@@ -1,0 +1,51 @@
+// Task 2: 猜数字游戏
+// 验证: input()、while、match、字符串比较
+// 注: Ok/Err 未在类型检查器中注册，使用自定义类型绕过
+
+type GuessResult {
+    Good(string)
+    Bad(string)
+}
+
+func do_input() -> GuessResult {
+    let result = input()
+    match result {
+        Ok(s) => Good(s)
+        Err(e) => Bad(e)
+    }
+}
+
+func main() {
+    println("=== 猜数字游戏 ===")
+    println("我想了一个数字 (42)，猜猜看！")
+
+    let secret = 42
+    let mut attempts = 0
+    let mut found = false
+
+    while found == false {
+        println("")
+        println("请输入你的猜测:")
+        let guess_result = do_input()
+        attempts = attempts + 1
+
+        println("第", attempts, "次尝试")
+
+        match guess_result {
+            Good(s) => {
+                println("你猜了:", s)
+                if s == "42" {
+                    println("恭喜你猜对了！")
+                    found = true
+                }
+                ()
+            }
+            Bad(e) => {
+                println("输入错误:", e)
+                ()
+            }
+        }
+    }
+
+    println("=== 游戏结束，你用了", attempts, "次 ===")
+}

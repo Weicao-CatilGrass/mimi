@@ -1,0 +1,14 @@
+func main() -> i32 {
+    println("=== 列表元素赋值测试 ===")
+
+    let mut xs = [1, 2, 3, 4, 5]
+    println("  before: xs[2] =", xs[2])
+    xs[2] = 99
+    println("  after:  xs[2] =", xs[2])
+
+    println("  full list:")
+    println("    xs =", xs)
+
+    println("=== 列表元素赋值测试通过 ===")
+    0
+}

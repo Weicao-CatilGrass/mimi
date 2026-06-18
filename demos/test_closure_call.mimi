@@ -1,0 +1,18 @@
+func main() -> i32 {
+    println("=== 闭包调用测试 ===")
+
+    let double = fn(x: i32) -> i32 { x * 2 }
+    let r1 = double(21)
+    println("  double(21) =", r1)
+
+    let add = fn(a: i32, b: i32) -> i32 { a + b }
+    let r2 = add(10, 20)
+    println("  add(10, 20) =", r2)
+
+    let greet = fn(name: string) -> string { "Hello, " + name }
+    let r3 = greet("Mimi")
+    println("  greet:", r3)
+
+    println("=== 闭包调用测试通过 ===")
+    0
+}
