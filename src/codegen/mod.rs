@@ -942,7 +942,55 @@ impl<'ctx> CodeGenerator<'ctx> {
                 Stmt::OnFailure(block) => {
                     self.register_comp(block);
                 }
-                Stmt::Arena(block) | Stmt::Unsafe(block) | Stmt::Alloc { body: block, .. } => {
+                Stmt::Arena(block) => {
+                    let function = self.current_function().ok_or("arena outside function")?;
+                    let arena_body_bb = self.context.append_basic_block(function, "arena_body");
+                    let arena_cont_bb = self.context.append_basic_block(function, "arena_cont");
+                    if !self.block_has_terminator() {
+                        self.builder.build_unconditional_branch(arena_body_bb)
+                            .map_err(|e| format!("branch to arena: {}", e))?;
+                    }
+                    self.builder.position_at_end(arena_body_bb);
+                    let saved = self.build_stacksave()?;
+                    let vars_before: std::collections::HashSet<String> = vars.keys().cloned().collect();
+                    self.compile_block(block, &mut vars)?;
+                    for k in vars.keys().cloned().collect::<Vec<_>>() {
+                        if !vars_before.contains(&k) {
+                            vars.remove(&k);
+                        }
+                    }
+                    self.build_stackrestore(saved)?;
+                    if !self.block_has_terminator() {
+                        self.builder.build_unconditional_branch(arena_cont_bb)
+                            .map_err(|e| format!("branch after arena: {}", e))?;
+                    }
+                    self.builder.position_at_end(arena_cont_bb);
+                }
+                Stmt::Alloc { kind: AllocKind::Arena, body } => {
+                    let function = self.current_function().ok_or("arena outside function")?;
+                    let arena_body_bb = self.context.append_basic_block(function, "arena_body");
+                    let arena_cont_bb = self.context.append_basic_block(function, "arena_cont");
+                    if !self.block_has_terminator() {
+                        self.builder.build_unconditional_branch(arena_body_bb)
+                            .map_err(|e| format!("branch to alloc(Arena): {}", e))?;
+                    }
+                    self.builder.position_at_end(arena_body_bb);
+                    let saved = self.build_stacksave()?;
+                    let vars_before: std::collections::HashSet<String> = vars.keys().cloned().collect();
+                    self.compile_block(body, &mut vars)?;
+                    for k in vars.keys().cloned().collect::<Vec<_>>() {
+                        if !vars_before.contains(&k) {
+                            vars.remove(&k);
+                        }
+                    }
+                    self.build_stackrestore(saved)?;
+                    if !self.block_has_terminator() {
+                        self.builder.build_unconditional_branch(arena_cont_bb)
+                            .map_err(|e| format!("branch after alloc(Arena): {}", e))?;
+                    }
+                    self.builder.position_at_end(arena_cont_bb);
+                }
+                Stmt::Unsafe(block) | Stmt::Alloc { body: block, .. } => {
                     self.compile_block(block, &mut vars)?;
                 }
                 Stmt::SharedLet { init, .. } => {
@@ -1489,12 +1537,56 @@ impl<'ctx> CodeGenerator<'ctx> {
                     self.register_comp(block);
                 }
                 Stmt::Arena(block) => {
-                    // Arena: execute block sequentially (simplified - no region-based memory in codegen)
+                    let function = self.current_function().ok_or("arena outside function")?;
+                    let arena_body_bb = self.context.append_basic_block(function, "arena_body");
+                    let arena_cont_bb = self.context.append_basic_block(function, "arena_cont");
+                    if !self.block_has_terminator() {
+                        self.builder.build_unconditional_branch(arena_body_bb)
+                            .map_err(|e| format!("branch to arena: {}", e))?;
+                    }
+                    self.builder.position_at_end(arena_body_bb);
+                    let saved = self.build_stacksave()?;
+                    let vars_before: std::collections::HashSet<String> = vars.keys().cloned().collect();
                     self.compile_block(block, &mut vars)?;
+                    for k in vars.keys().cloned().collect::<Vec<_>>() {
+                        if !vars_before.contains(&k) {
+                            vars.remove(&k);
+                        }
+                    }
+                    self.build_stackrestore(saved)?;
+                    if !self.block_has_terminator() {
+                        self.builder.build_unconditional_branch(arena_cont_bb)
+                            .map_err(|e| format!("branch after arena: {}", e))?;
+                    }
+                    self.builder.position_at_end(arena_cont_bb);
                 }
                 Stmt::Unsafe(block) => {
                     // Unsafe: execute block (no restrictions in codegen)
                     self.compile_block(block, &mut vars)?;
+                }
+                Stmt::Alloc { kind: AllocKind::Arena, body } => {
+                    let function = self.current_function().ok_or("arena outside function")?;
+                    let arena_body_bb = self.context.append_basic_block(function, "arena_body");
+                    let arena_cont_bb = self.context.append_basic_block(function, "arena_cont");
+                    if !self.block_has_terminator() {
+                        self.builder.build_unconditional_branch(arena_body_bb)
+                            .map_err(|e| format!("branch to alloc(Arena): {}", e))?;
+                    }
+                    self.builder.position_at_end(arena_body_bb);
+                    let saved = self.build_stacksave()?;
+                    let vars_before: std::collections::HashSet<String> = vars.keys().cloned().collect();
+                    self.compile_block(body, &mut vars)?;
+                    for k in vars.keys().cloned().collect::<Vec<_>>() {
+                        if !vars_before.contains(&k) {
+                            vars.remove(&k);
+                        }
+                    }
+                    self.build_stackrestore(saved)?;
+                    if !self.block_has_terminator() {
+                        self.builder.build_unconditional_branch(arena_cont_bb)
+                            .map_err(|e| format!("branch after alloc(Arena): {}", e))?;
+                    }
+                    self.builder.position_at_end(arena_cont_bb);
                 }
                 Stmt::Alloc { body, .. } => {
                     // Alloc: execute body sequentially (simplified - no custom allocator in codegen)
@@ -1703,12 +1795,56 @@ impl<'ctx> CodeGenerator<'ctx> {
                     self.register_comp(block);
                 }
                 Stmt::Arena(block) => {
-                    // Arena: execute block sequentially (simplified)
+                    let function = self.current_function().ok_or("arena outside function")?;
+                    let arena_body_bb = self.context.append_basic_block(function, "arena_body");
+                    let arena_cont_bb = self.context.append_basic_block(function, "arena_cont");
+                    if !self.block_has_terminator() {
+                        self.builder.build_unconditional_branch(arena_body_bb)
+                            .map_err(|e| format!("branch to arena: {}", e))?;
+                    }
+                    self.builder.position_at_end(arena_body_bb);
+                    let saved = self.build_stacksave()?;
+                    let vars_before: std::collections::HashSet<String> = vars.keys().cloned().collect();
                     self.compile_block(block, vars)?;
+                    for k in vars.keys().cloned().collect::<Vec<_>>() {
+                        if !vars_before.contains(&k) {
+                            vars.remove(&k);
+                        }
+                    }
+                    self.build_stackrestore(saved)?;
+                    if !self.block_has_terminator() {
+                        self.builder.build_unconditional_branch(arena_cont_bb)
+                            .map_err(|e| format!("branch after arena: {}", e))?;
+                    }
+                    self.builder.position_at_end(arena_cont_bb);
                 }
                 Stmt::Unsafe(block) => {
                     // Unsafe: execute block (no restrictions in codegen)
                     self.compile_block(block, vars)?;
+                }
+                Stmt::Alloc { kind: AllocKind::Arena, body } => {
+                    let function = self.current_function().ok_or("arena outside function")?;
+                    let arena_body_bb = self.context.append_basic_block(function, "arena_body");
+                    let arena_cont_bb = self.context.append_basic_block(function, "arena_cont");
+                    if !self.block_has_terminator() {
+                        self.builder.build_unconditional_branch(arena_body_bb)
+                            .map_err(|e| format!("branch to alloc(Arena): {}", e))?;
+                    }
+                    self.builder.position_at_end(arena_body_bb);
+                    let saved = self.build_stacksave()?;
+                    let vars_before: std::collections::HashSet<String> = vars.keys().cloned().collect();
+                    self.compile_block(body, vars)?;
+                    for k in vars.keys().cloned().collect::<Vec<_>>() {
+                        if !vars_before.contains(&k) {
+                            vars.remove(&k);
+                        }
+                    }
+                    self.build_stackrestore(saved)?;
+                    if !self.block_has_terminator() {
+                        self.builder.build_unconditional_branch(arena_cont_bb)
+                            .map_err(|e| format!("branch after alloc(Arena): {}", e))?;
+                    }
+                    self.builder.position_at_end(arena_cont_bb);
                 }
                 Stmt::Alloc { body, .. } => {
                     // Alloc: execute body sequentially (simplified)
@@ -1721,6 +1857,43 @@ impl<'ctx> CodeGenerator<'ctx> {
             }
         }
         self.pop_comp_scope();
+        Ok(())
+    }
+
+    /// Call @llvm.stacksave() to capture the current stack pointer for arena region management
+    fn build_stacksave(&self) -> Result<inkwell::values::PointerValue<'ctx>, String> {
+        let i8_ptr = self.context.i8_type().ptr_type(inkwell::AddressSpace::default());
+        let fn_type = i8_ptr.fn_type(&[], false);
+        let fn_val = self.module.get_function("llvm.stacksave")
+            .unwrap_or_else(|| self.module.add_function(
+                "llvm.stacksave",
+                fn_type,
+                Some(inkwell::module::Linkage::External),
+            ));
+        let call = self.builder.build_call(fn_val, &[], "saved_stack")
+            .map_err(|e| format!("stacksave: {}", e))?;
+        let val = call.try_as_basic_value().left()
+            .ok_or("stacksave returned void")?;
+        match val {
+            BasicValueEnum::PointerValue(ptr) => Ok(ptr),
+            _ => Err(format!("stacksave didn't return pointer, got {:?}", val)),
+        }
+    }
+
+    /// Call @llvm.stackrestore(i8*) to restore the stack pointer, freeing arena allocations
+    fn build_stackrestore(&self, saved: inkwell::values::PointerValue<'ctx>) -> Result<(), String> {
+        let i8_ptr_meta = BasicMetadataTypeEnum::PointerType(
+            self.context.i8_type().ptr_type(inkwell::AddressSpace::default()),
+        );
+        let fn_type = self.context.void_type().fn_type(&[i8_ptr_meta], false);
+        let fn_val = self.module.get_function("llvm.stackrestore")
+            .unwrap_or_else(|| self.module.add_function(
+                "llvm.stackrestore",
+                fn_type,
+                Some(inkwell::module::Linkage::External),
+            ));
+        self.builder.build_call(fn_val, &[BasicMetadataValueEnum::PointerValue(saved)], "")
+            .map_err(|e| format!("stackrestore: {}", e))?;
         Ok(())
     }
 
