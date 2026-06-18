@@ -207,3 +207,15 @@ func working() -> i32 {
     assert!(file.items.len() >= 1, "should still parse the working function");
     assert!(file.items.iter().any(|i| matches!(i, crate::ast::Item::Func(f) if f.name == "working")));
 }
+
+#[test]
+fn typecheck_infer_type_underscore() {
+    let src = r#"
+func main() -> i32 {
+    let x: _ = 42;
+    x
+}
+"#;
+    let result = check_source(src);
+    assert!(result.is_ok(), "let x: _ = 42 should type-check: {:?}", result.err());
+}

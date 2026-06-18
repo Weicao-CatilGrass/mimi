@@ -491,6 +491,8 @@ pub enum Type {
     CBorrowMut(Box<Type>),
     /// Raw string ownership transfer: raw string (C must free via mimi_string_free_raw)
     RawString,
+    /// Inferred type: `_` — let the compiler determine the type
+    Infer,
 }
 
 /// Kind of allocator for alloc blocks

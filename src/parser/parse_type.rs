@@ -56,6 +56,10 @@ impl Parser {
                 self.expect(TokenKind::Gt, "`>`")?;
                 Ok(Type::CBuffer(Box::new(inner)))
             }
+            TokenKind::Ident(ref name) if name == "_" => {
+                self.advance();
+                Ok(Type::Infer)
+            }
             TokenKind::Ident(ref name) => {
                 let name = name.clone();
                 self.advance();
