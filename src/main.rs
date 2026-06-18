@@ -123,6 +123,9 @@ enum Command {
         /// Strict mode: only compile $/$$ locked fragments
         #[arg(long)]
         strict: bool,
+        /// no_std mode: compile without libc (freestanding target)
+        #[arg(long)]
+        no_std: bool,
     },
     /// Generate C header file from extern declarations
     EmitCHeaders {
@@ -204,7 +207,7 @@ fn main() {
         Command::List => list(),
         Command::Lsp => lsp(),
         Command::Verify { path } => verify(path.as_deref()),
-        Command::Build { path, output, emit_ir, strict } => build(path.as_deref(), output.as_deref(), emit_ir, strict),
+        Command::Build { path, output, emit_ir, strict, no_std } => build(path.as_deref(), output.as_deref(), emit_ir, strict, no_std),
         Command::EmitCHeaders { path, output } => emit_c_headers(path.as_deref(), output.as_deref()),
         Command::Promote { path, output } => promote(&path, output.as_deref()),
         Command::Doc { path, format } => doc(&path, &format),
@@ -938,7 +941,7 @@ fn verify(path: Option<&Path>) -> Result<(), String> {
     Ok(())
 }
 
-fn build(path: Option<&Path>, output: Option<&Path>, emit_ir: bool, strict: bool) -> Result<(), String> {
+fn build(path: Option<&Path>, output: Option<&Path>, emit_ir: bool, strict: bool, no_std: bool) -> Result<(), String> {
     let path = resolve_path(path)?;
     let source = fs::read_to_string(&path)
         .map_err(|e| format!("failed to read {}: {}", path.display(), e))?;
@@ -976,6 +979,7 @@ fn build(path: Option<&Path>, output: Option<&Path>, emit_ir: bool, strict: bool
     let module_name = path.file_stem().and_then(|s| s.to_str()).unwrap_or("main");
     let mut codegen = codegen::CodeGenerator::new(&context, module_name);
     codegen.strict = strict;
+    codegen.no_std = no_std;
 
     codegen.compile_file(&merged_file)?;
 
@@ -995,8 +999,14 @@ fn build(path: Option<&Path>, output: Option<&Path>, emit_ir: bool, strict: bool
 
     // Link with cc to create executable
     let obj_path = output_path.with_extension("o");
-    let status = std::process::Command::new("cc")
-        .arg("-no-pie")
+    let mut cmd = std::process::Command::new("cc");
+    if no_std {
+        // Freestanding: no libc, no-pie, minimal startup
+        cmd.arg("-nostdlib").arg("-static");
+    } else {
+        cmd.arg("-no-pie");
+    }
+    let status = cmd
         .arg(obj_path.to_str().ok_or("object path is not valid UTF-8")?)
         .arg("-o")
         .arg(output_path.to_str().ok_or("output path is not valid UTF-8")?)
