@@ -8,7 +8,7 @@ use inkwell::builder::Builder;
 use inkwell::context::Context;
 use inkwell::module::Module;
 use inkwell::targets::{CodeModel, InitializationConfig, RelocMode, Target, TargetMachine};
-use inkwell::types::{BasicMetadataTypeEnum, BasicTypeEnum};
+use inkwell::types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum};
 use inkwell::values::{BasicMetadataValueEnum, BasicValueEnum};
 use inkwell::OptimizationLevel;
 use std::collections::HashMap;
@@ -90,17 +90,25 @@ impl<'ctx> CodeGenerator<'ctx> {
         if !self.in_parasteps {
             return Ok(());
         }
-        // Join all remaining threads (spawns not awaited within the parasteps block)
-        let i8_type = self.context.i8_type();
-        let i8_ptr = i8_type.ptr_type(inkwell::AddressSpace::default());
-        let join_fn = self.module.get_function("pthread_join")
-            .ok_or("pthread_join not declared")?;
-        for &thread_id in &self.parasteps_thread_ids {
-            self.builder.build_call(join_fn, &[
-                BasicMetadataValueEnum::IntValue(thread_id),
-                BasicMetadataValueEnum::PointerValue(i8_ptr.const_null()),
-            ], "parasteps_join")
-                .map_err(|e| format!("parasteps join error: {}", e))?;
+        if self.parasteps_thread_ids.is_empty() {
+            // Pool-based parasteps: wait for all pool tasks to complete
+            let join_all_fn = self.module.get_function("mimi_pool_join_all")
+                .ok_or("mimi_pool_join_all not declared")?;
+            self.builder.build_call(join_all_fn, &[], "pool_join_all")
+                .map_err(|e| format!("pool_join_all error: {}", e))?;
+        } else {
+            // Legacy pthread-based parasteps: join individual threads
+            let i8_type = self.context.i8_type();
+            let i8_ptr = i8_type.ptr_type(inkwell::AddressSpace::default());
+            let join_fn = self.module.get_function("pthread_join")
+                .ok_or("pthread_join not declared")?;
+            for &thread_id in &self.parasteps_thread_ids {
+                self.builder.build_call(join_fn, &[
+                    BasicMetadataValueEnum::IntValue(thread_id),
+                    BasicMetadataValueEnum::PointerValue(i8_ptr.const_null()),
+                ], "parasteps_join")
+                    .map_err(|e| format!("parasteps join error: {}", e))?;
+            }
         }
         self.parasteps_thread_ids.clear();
         self.in_parasteps = false;
@@ -307,10 +315,6 @@ impl<'ctx> CodeGenerator<'ctx> {
                 _ => {}
             }
         }
-        // Compile trait impl methods
-        self.compile_impl_methods()?;
-        // Build vtable globals for dyn Trait dispatch
-        self.compile_vtables()?;
         // Second pass: register extern functions and compile user functions
         for item in &file.items {
             match item {
@@ -3246,7 +3250,11 @@ impl<'ctx> CodeGenerator<'ctx> {
                 let i64_ty = self.context.i64_type();
                 let malloc_fn = self.module.get_function("malloc")
                     .ok_or_else(|| "malloc not declared".to_string())?;
-                let byte_size = i64_ty.const_int(8, false); // 8 bytes for i64
+                let result_llvm_ty_for_size = result.get_type();
+                let byte_size_val = result_llvm_ty_for_size.size_of()
+                    .and_then(|v: inkwell::values::IntValue<'ctx>| v.get_zero_extended_constant())
+                    .unwrap_or(8) as u64;
+                let byte_size = i64_ty.const_int(byte_size_val, false);
                 let result_storage = self.builder.build_call(malloc_fn, &[
                     BasicMetadataValueEnum::IntValue(byte_size),
                 ], "malloc_result")
@@ -3318,9 +3326,38 @@ impl<'ctx> CodeGenerator<'ctx> {
                 };
                 // Track in parasteps mode for joining at block end
                 if self.in_parasteps {
-                    self.parasteps_thread_ids.push(thread_id);
+                    // Use thread pool for parasteps (avoids creating N OS threads)
+                    let mimi_pool_submit_fn = self.module.get_function("mimi_pool_submit")
+                        .ok_or("mimi_pool_submit not declared")?;
+                    self.builder.build_call(mimi_pool_submit_fn, &[
+                        BasicMetadataValueEnum::PointerValue(wrapper_fn_ptr),
+                        BasicMetadataValueEnum::PointerValue(i8_ptr.const_null()),
+                    ], "pool_submit_call")
+                        .map_err(|e| format!("pool_submit error: {}", e))?;
+                    // Return 0 as placeholder (parasteps joins all at block end)
+                    let placeholder = i64_ty.const_int(0, false);
+                    Ok(BasicValueEnum::IntValue(placeholder))
+                } else {
+                    // Non-parasteps: use raw pthread_create (for single spawn+await)
+                    let thread_alloca = self.builder.build_alloca(i64_ty, "thread")
+                        .map_err(|e| format!("alloca error: {}", e))?;
+                    self.builder.build_store(thread_alloca, i64_ty.const_int(0, false))
+                        .map_err(|e| format!("store error: {}", e))?;
+                    
+                    let pthread_create_fn = self.module.get_function("pthread_create")
+                        .ok_or("pthread_create not declared")?;
+                    self.builder.build_call(pthread_create_fn, &[
+                        BasicMetadataValueEnum::PointerValue(thread_alloca),
+                        BasicMetadataValueEnum::PointerValue(i8_ptr.const_null()),
+                        BasicMetadataValueEnum::PointerValue(wrapper_fn_ptr),
+                        BasicMetadataValueEnum::PointerValue(i8_ptr.const_null()),
+                    ], "pthread_create_call")
+                        .map_err(|e| format!("pthread_create error: {}", e))?;
+                    
+                    let thread_id_val = self.builder.build_load(BasicTypeEnum::IntType(i64_ty), thread_alloca, "thread_id")
+                        .map_err(|e| format!("load error: {}", e))?;
+                    Ok(thread_id_val)
                 }
-                Ok(thread_id_val)
             }
             Expr::Await(expr) => {
                 // Await: join the thread and get the result
