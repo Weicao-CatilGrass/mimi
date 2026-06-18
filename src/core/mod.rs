@@ -1158,7 +1158,18 @@ impl<'a> Checker<'a> {
         match pat {
             Pattern::Wildcard => {}
             Pattern::Variable(name) => {
-                scopes.last_mut().expect("scope stack non-empty").insert(name.clone(), subject.clone());
+                // If the name matches an enum variant of the subject type,
+                // treat it as a constructor match (no variable binding).
+                let is_constructor = match subject {
+                    Type::Name(tn, _) => self.types.get(tn)
+                        .and_then(|t| match &t.kind { TypeDefKind::Enum(vs) => Some(vs), _ => None })
+                        .map(|vs| vs.iter().any(|v| v.name == *name))
+                        .unwrap_or(false),
+                    _ => false,
+                };
+                if !is_constructor {
+                    scopes.last_mut().expect("scope stack non-empty").insert(name.clone(), subject.clone());
+                }
             }
             Pattern::Literal(l) => {
                 let lit_ty = match l {
@@ -1412,6 +1423,12 @@ impl<'a> Checker<'a> {
             let qualified = format!("{}::{}", module, name);
             if let Some((params, ret)) = self.funcs.get(&qualified) {
                 return Type::Func(params.clone(), Box::new(ret.clone()));
+            }
+        }
+        // Check if it's a zero-argument constructor (enum variant without payload)
+        if let Some((params, ret)) = self.funcs.get(name) {
+            if params.is_empty() {
+                return ret.clone();
             }
         }
         // Check if it's a type name (actor/record or enum)
