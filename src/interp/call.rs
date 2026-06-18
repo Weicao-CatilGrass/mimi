@@ -1321,6 +1321,125 @@ impl<'a> Interpreter<'a> {
                     _ => Err(format!("cannot call method '{}' on record", method)),
                 }
             }
+            Value::String(s) => {
+                match method {
+                    "len" => Ok(Value::Int(s.chars().count() as i64)),
+                    "trim" => Ok(Value::String(s.trim().to_string())),
+                    "to_upper" => Ok(Value::String(s.to_uppercase())),
+                    "to_lower" => Ok(Value::String(s.to_lowercase())),
+                    "parse_int" => {
+                        Ok(Value::Int(s.trim().parse::<i64>().map_err(|e| format!("parse_int: {}", e))?))
+                    }
+                    "parse_float" => {
+                        Ok(Value::Float(s.trim().parse::<f64>().map_err(|e| format!("parse_float: {}", e))?))
+                    }
+                    "contains" => {
+                        let substr = args.into_iter().next().ok_or("contains expects 1 argument")?;
+                        match substr {
+                            Value::String(p) => Ok(Value::Bool(s.contains(&p))),
+                            _ => Err("contains expects a string argument".into()),
+                        }
+                    }
+                    "starts_with" => {
+                        let substr = args.into_iter().next().ok_or("starts_with expects 1 argument")?;
+                        match substr {
+                            Value::String(p) => Ok(Value::Bool(s.starts_with(&p))),
+                            _ => Err("starts_with expects a string argument".into()),
+                        }
+                    }
+                    "ends_with" => {
+                        let substr = args.into_iter().next().ok_or("ends_with expects 1 argument")?;
+                        match substr {
+                            Value::String(p) => Ok(Value::Bool(s.ends_with(&p))),
+                            _ => Err("ends_with expects a string argument".into()),
+                        }
+                    }
+                    "split" => {
+                        let delim = args.into_iter().next().ok_or("split expects 1 argument")?;
+                        match delim {
+                            Value::String(d) => {
+                                let parts: Vec<Value> = s.split(&d).map(|p| Value::String(p.to_string())).collect();
+                                Ok(Value::List(parts))
+                            }
+                            _ => Err("split expects a string argument".into()),
+                        }
+                    }
+                    "replace" => {
+                        if args.len() != 2 {
+                            return Err("replace expects 2 arguments (old, new)".into());
+                        }
+                        let (old, new) = (args[0].clone(), args[1].clone());
+                        match (old, new) {
+                            (Value::String(old_s), Value::String(new_s)) => {
+                                Ok(Value::String(s.replace(&old_s, &new_s)))
+                            }
+                            _ => Err("replace expects string arguments".into()),
+                        }
+                    }
+                    "repeat" => {
+                        let count = args.into_iter().next().ok_or("repeat expects 1 argument")?;
+                        match count {
+                            Value::Int(n) => {
+                                if n < 0 { return Err("repeat: count must be non-negative".into()); }
+                                Ok(Value::String(s.repeat(n as usize)))
+                            }
+                            _ => Err("repeat expects an integer argument".into()),
+                        }
+                    }
+                    "char_at" => {
+                        let idx = args.into_iter().next().ok_or("char_at expects 1 argument")?;
+                        match idx {
+                            Value::Int(i) => {
+                                let ch = s.chars().nth(i as usize)
+                                    .ok_or_else(|| format!("char_at: index {} out of bounds (len {})", i, s.chars().count()))?;
+                                Ok(Value::String(ch.to_string()))
+                            }
+                            _ => Err("char_at expects an integer argument".into()),
+                        }
+                    }
+                    "substring" => {
+                        if args.len() != 2 {
+                            return Err("substring expects 2 arguments (start, end)".into());
+                        }
+                        let (start, end) = (args[0].clone(), args[1].clone());
+                        match (start, end) {
+                            (Value::Int(si), Value::Int(ei)) => {
+                                if si > ei {
+                                    return Err("substring: start > end".into());
+                                }
+                                let chars: Vec<char> = s.chars().collect();
+                                let si = si as usize;
+                                let ei = ei as usize;
+                                if ei > chars.len() {
+                                    return Err(format!("substring: end {} out of bounds (len {})", ei, chars.len()));
+                                }
+                                let sub: String = chars[si..ei].iter().collect();
+                                Ok(Value::String(sub))
+                            }
+                            _ => Err("substring expects integer arguments".into()),
+                        }
+                    }
+                    "index_of" => {
+                        let substr = args.into_iter().next().ok_or("index_of expects 1 argument")?;
+                        match substr {
+                            Value::String(p) => {
+                                match s.find(&p) {
+                                    Some(i) => Ok(Value::Int(i as i64)),
+                                    None => Ok(Value::Int(-1)),
+                                }
+                            }
+                            _ => Err("index_of expects a string argument".into()),
+                        }
+                    }
+                    _ => Err(format!("string has no method '{}'", method)),
+                }
+            }
+            Value::List(list) => {
+                match method {
+                    "len" => Ok(Value::Int(list.len() as i64)),
+                    _ => Err(format!("List has no method '{}'", method)),
+                }
+            }
             Value::Variant(name, vals) => {
                 // Option/Result combinator methods on enum variants
                 match (name.as_str(), method) {

@@ -724,6 +724,99 @@ func main() -> bool {
     assert!(check_source(src).is_ok());
 }
 
+// ===== String method chaining tests =====
+
+#[test]
+fn interp_string_len() {
+    let src = r#"
+func main() -> i32 {
+    "hello".len()
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::Int(5));
+}
+
+#[test]
+fn interp_string_trim() {
+    let src = r#"
+func main() -> string {
+    "  hi  ".trim()
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::String("hi".into()));
+}
+
+#[test]
+fn interp_string_contains() {
+    let src = r#"
+func main() -> bool {
+    "hello world".contains("world")
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::Bool(true));
+}
+
+#[test]
+fn interp_string_split() {
+    let src = r#"
+func main() -> i32 {
+    "a,b,c".split(",").len()
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::Int(3));
+}
+
+#[test]
+fn interp_string_to_upper() {
+    let src = r#"
+func main() -> string {
+    "hello".to_upper()
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::String("HELLO".into()));
+}
+
+#[test]
+fn interp_string_replace() {
+    let src = r#"
+func main() -> string {
+    "hello".replace("l", "x")
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::String("hexxo".into()));
+}
+
+#[test]
+fn interp_string_var_method() {
+    let src = r#"
+func main() -> bool {
+    let s = "Hello World";
+    s.contains("World")
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::Bool(true));
+}
+
+#[test]
+fn interp_string_chain() {
+    let src = r#"
+func main() -> string {
+    "  hello  ".trim().to_upper()
+}
+"#;
+    assert_eq!(run_source(src), interp::Value::String("HELLO".into()));
+}
+
+#[test]
+fn typecheck_string_methods() {
+    let src = r#"
+func main() -> i32 {
+    "hello".len()
+}
+"#;
+    assert!(check_source(src).is_ok());
+}
+
 #[test]
 fn interp_parasteps_await_all() {
     let src = r#"
