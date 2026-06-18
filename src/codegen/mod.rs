@@ -5922,7 +5922,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                 };
                 // Check if NULL (env var not set)
                 let i8_ptr = self.context.i8_type().ptr_type(inkwell::AddressSpace::default());
-                let is_null = self.builder.build_int_compare(
+                let _is_null = self.builder.build_int_compare(
                     inkwell::IntPredicate::EQ,
                     ptr,
                     i8_ptr.const_null(),
@@ -6084,7 +6084,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     .into_pointer_value();
                 // Check for NULL (parse error)
                 let i8_ptr_ty = self.context.i8_type().ptr_type(inkwell::AddressSpace::default());
-                let null_ptr = i8_ptr_ty.const_null();
+                let _null_ptr = i8_ptr_ty.const_null();
                 let is_null = self.builder.build_is_null(result, "json_null")
                     .map_err(|e| format!("is_null error: {}", e))?;
                 let function = self.current_function().unwrap();
