@@ -1372,10 +1372,18 @@ impl<'a> Checker<'a> {
                 let all = self.get_enum_variants(subject_ty);
                 (all, true)
             }
-            Pattern::Variable(_) => {
-                // Variable pattern covers all variants
+            Pattern::Variable(name) => {
+                // Variable pattern: if the name matches an enum variant of the
+                // subject type, treat it as a constructor reference rather than
+                // a catch-all binding.  This makes `match c { Red => … }` on
+                // an enum type `Color { Red, Green, Blue }` count as covering
+                // only the `Red` variant instead of all variants.
                 let all = self.get_enum_variants(subject_ty);
-                (all, true)
+                if all.contains(name) {
+                    (vec![name.clone()], false)
+                } else {
+                    (all, true)
+                }
             }
             Pattern::Literal(_) => {
                 // Literal patterns don't cover enum variants
