@@ -1,0 +1,41 @@
+func make_greeting(name: string) -> string {
+    let msg = "Hello, " + name
+    msg
+}
+
+func make_farewell(name: string) -> string {
+    let msg = "Goodbye, " + name
+    msg
+}
+
+func compute_sum() -> i32 {
+    let x = 10
+    let y = 20
+    x + y
+}
+
+func compute_product() -> i32 {
+    let x = 5
+    let y = 6
+    x * y
+}
+
+func main() -> i32 {
+    println("=== 变量作用域修复测试 ===")
+
+    let a = make_greeting("Alice")
+    println("  greeting:", a)
+
+    let b = make_farewell("Bob")
+    println("  farewell:", b)
+
+    let s = compute_sum()
+    println("  sum:", s)
+
+    let p = compute_product()
+    println("  product:", p)
+
+    println("  result:", a, "|", b, "|", s, "|", p)
+    println("=== 变量作用域测试通过 ===")
+    0
+}

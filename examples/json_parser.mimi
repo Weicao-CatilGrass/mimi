@@ -1,0 +1,40 @@
+// Task 3: JSON 值类型系统 - Debug
+// 验证: ADT 定义、match 穷尽性
+
+type JsonValue {
+    Null
+    Bool(bool)
+    Num(i32)
+    Str(string)
+}
+
+func describe(j: JsonValue) -> string {
+    match j {
+        Null => "null"
+        Bool(true) => "true"
+        Bool(false) => "false"
+        Num(n) => "number"
+        Str(s) => s
+    }
+}
+
+func test_val(v: JsonValue, expected: string) {
+    let result = describe(v)
+    if result == expected {
+        println("PASS:", expected)
+    } else {
+        println("FAIL:", result, "!=", expected)
+    }
+}
+
+func main() {
+    println("=== JSON 值类型 ===")
+
+    test_val(Null(), "null")
+    test_val(Bool(true), "true")
+    test_val(Bool(false), "false")
+    test_val(Num(42), "number")
+    test_val(Str("hello"), "hello")
+
+    println("=== 完成 ===")
+}

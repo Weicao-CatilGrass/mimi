@@ -1,0 +1,24 @@
+// Mimi 文件字数统计 CLI (wc) — 简化调试版
+
+func main() -> i32 {
+    println("=== 文件字数统计 ===");
+
+    let result = read_file("/etc/hostname");
+    match result {
+        Ok(content) => {
+            println("File content:");
+            println(content);
+            let trimmed = str_trim(content);
+            let lines = str_split(trimmed, "\n");
+            let words = str_split(trimmed, " ");
+            println("lines:", len(lines));
+            println("words:", len(words));
+            println("chars:", len(trimmed));
+            0
+        }
+        Err(msg) => {
+            println("Error:", msg);
+            1
+        }
+    }
+}

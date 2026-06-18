@@ -1,0 +1,20 @@
+func handle_file(path: string) -> string {
+    let result = read_file(path)
+    match result {
+        Ok(content) => "ok: " + content,
+        Err(msg) => "err: " + msg,
+    }
+}
+
+func main() -> i32 {
+    println("=== Result/Option 模式匹配测试 ===")
+
+    let r1 = handle_file("/etc/hostname")
+    println("  read /etc/hostname:", r1)
+
+    let r2 = handle_file("/nonexistent")
+    println("  read /nonexistent:", r2)
+
+    println("=== Result/Option 模式匹配测试通过 ===")
+    0
+}

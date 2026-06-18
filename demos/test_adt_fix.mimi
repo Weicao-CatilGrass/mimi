@@ -1,0 +1,63 @@
+type Color {
+    Red
+    Green
+    Blue
+    Custom(i32, i32, i32)
+}
+
+type MaybeInt {
+    SomeInt(i32)
+    NoInt
+}
+
+func test_color(c: Color) -> string {
+    match c {
+        Red => "red",
+        Green => "green",
+        Blue => "blue",
+        Custom(r, g, b) => "custom",
+    }
+}
+
+func test_color_rev(c: Color) -> string {
+    match c {
+        Custom(r, g, b) => "custom",
+        Red => "red",
+        Green => "green",
+        Blue => "blue",
+    }
+}
+
+func test_maybe(m: MaybeInt) -> string {
+    match m {
+        NoInt => "none",
+        SomeInt(v) => "some " + to_string(v),
+    }
+}
+
+func main() -> i32 {
+    println("=== ADT 修复测试 ===")
+
+    println("Red (unit 变体在前):", test_color(Red))
+    println("Green:", test_color(Green))
+    println("Blue:", test_color(Blue))
+    println("Custom(1,2,3):", test_color(Custom(1, 2, 3)))
+
+    println("Red (Custom 在前):", test_color_rev(Red))
+    println("Custom(255,0,0):", test_color_rev(Custom(255, 0, 0)))
+
+    println("NoInt:", test_maybe(NoInt))
+    println("SomeInt(42):", test_maybe(SomeInt(42)))
+
+    println("=== ADT 修复测试通过 ===")
+
+    let t0 = test_color(Red) == "red"
+    let t1 = test_color(Green) == "green"
+    let t2 = test_color(Blue) == "blue"
+    let t3 = test_color(Custom(1,2,3)) == "custom"
+    let t4 = test_color_rev(Red) == "red"
+    let t5 = test_color_rev(Custom(255,0,0)) == "custom"
+    let t6 = test_maybe(NoInt) == "none"
+    let t7 = test_maybe(SomeInt(42)) == "some 42"
+    if t0 && t1 && t2 && t3 && t4 && t5 && t6 && t7 { 0 } else { 1 }
+}

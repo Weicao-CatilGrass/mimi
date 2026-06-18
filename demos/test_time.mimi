@@ -1,0 +1,5 @@
+func main() -> i32 {
+    println("now:", now())
+    println("now_ms:", now_ms())
+    0
+}
