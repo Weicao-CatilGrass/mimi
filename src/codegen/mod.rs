@@ -1063,6 +1063,9 @@ impl<'ctx> CodeGenerator<'ctx> {
                 if let Type::DynTrait(_) = &param.ty {
                     self.var_type_names.insert(param.name.clone(), crate::core::fmt_type(&param.ty));
                 }
+                if let Type::ImplTrait(_) = &param.ty {
+                    self.var_type_names.insert(param.name.clone(), crate::core::fmt_type(&param.ty));
+                }
                 
                 // Track capability parameters
                 if matches!(&param.ty, Type::Cap(_)) {
@@ -2417,6 +2420,42 @@ impl<'ctx> CodeGenerator<'ctx> {
                                                 }).collect();
                                                 let call = self.builder.build_call(function, &metadata_args, "dyn_trait_call")
                                                     .map_err(|e| format!("dyn trait call error: {}", e))?;
+                                                return Ok(call.try_as_basic_value().left().unwrap_or(
+                                                    self.context.i64_type().const_int(0, false).into()
+                                                ));
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            return Err(format!("cannot dispatch method '{}' on {}", method_name, obj_type));
+                        }
+
+                        // 3b. Try impl Trait dispatch (same logic as dyn Trait)
+                        if obj_type.starts_with("impl ") {
+                            let trait_name = obj_type.strip_prefix("impl ").unwrap_or("");
+                            if !trait_name.is_empty() && !trait_name.contains(' ') {
+                                for (type_name, trait_impls) in &self.type_impls {
+                                    if let Some(methods) = trait_impls.get(trait_name) {
+                                        if methods.iter().any(|m| m.name == *method_name) {
+                                            let mangled = format!("{}__{}__{}", type_name, trait_name, method_name);
+                                            if let Some(function) = self.module.get_function(&mangled) {
+                                                let obj_val = self.compile_expr(obj, vars)?;
+                                                let mut compiled_args = Vec::new();
+                                                compiled_args.push(obj_val);
+                                                for arg in args {
+                                                    compiled_args.push(self.compile_expr(arg, vars)?);
+                                                }
+                                                let metadata_args: Vec<_> = compiled_args.iter().map(|v| match v {
+                                                    BasicValueEnum::IntValue(iv) => BasicMetadataValueEnum::IntValue(*iv),
+                                                    BasicValueEnum::FloatValue(fv) => BasicMetadataValueEnum::FloatValue(*fv),
+                                                    BasicValueEnum::PointerValue(pv) => BasicMetadataValueEnum::PointerValue(*pv),
+                                                    BasicValueEnum::StructValue(sv) => BasicMetadataValueEnum::StructValue(*sv),
+                                                    BasicValueEnum::ArrayValue(av) => BasicMetadataValueEnum::ArrayValue(*av),
+                                                    BasicValueEnum::VectorValue(vv) => BasicMetadataValueEnum::VectorValue(*vv),
+                                                }).collect();
+                                                let call = self.builder.build_call(function, &metadata_args, "impl_trait_call")
+                                                    .map_err(|e| format!("impl trait call error: {}", e))?;
                                                 return Ok(call.try_as_basic_value().left().unwrap_or(
                                                     self.context.i64_type().const_int(0, false).into()
                                                 ));
