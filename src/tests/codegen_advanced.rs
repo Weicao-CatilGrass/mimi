@@ -287,3 +287,79 @@ fn adv_nested_block_deep() {
 fn can_link() -> bool {
     std::process::Command::new("cc").arg("--version").output().is_ok()
 }
+
+// ===================== Previously Missing Codegen: Tuple/If-Expr/Range/Slice/Lambda/Comprehension =====================
+
+#[test]
+fn adv_tuple_literal() {
+    assert_compiles(r#"
+        func main() -> i64 {
+            let t = (1, 2, 3)
+            0
+        }
+    "#);
+}
+
+#[test]
+fn adv_if_expression() {
+    assert_compiles(r#"
+        func main() -> i64 {
+            let x = 10
+            let result = if x > 5 { 1 } else { 0 }
+            result
+        }
+    "#);
+}
+
+#[test]
+fn adv_if_expression_no_else() {
+    assert_compiles(r#"
+        func main() -> i64 {
+            let x = 10
+            let result = if x > 5 { 1 } else { 0 }
+            result
+        }
+    "#);
+}
+
+#[test]
+fn adv_range_expression() {
+    assert_compiles(r#"
+        func main() -> i64 {
+            let r = 0..10
+            0
+        }
+    "#);
+}
+
+#[test]
+fn adv_slice_expression() {
+    assert_compiles(r#"
+        func main() -> i64 {
+            let arr = [1, 2, 3, 4, 5]
+            let sliced = arr[1..4]
+            0
+        }
+    "#);
+}
+
+#[test]
+fn adv_lambda_expression() {
+    assert_compiles(r#"
+        func main() -> i64 {
+            let add = fn(a: i64, b: i64) -> i64 { a + b }
+            0
+        }
+    "#);
+}
+
+#[test]
+fn adv_comprehension() {
+    assert_compiles(r#"
+        func main() -> i64 {
+            let xs = [1, 2, 3, 4, 5]
+            let evens = [x for x in xs if x > 2]
+            0
+        }
+    "#);
+}

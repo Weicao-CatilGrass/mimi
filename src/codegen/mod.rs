@@ -1624,6 +1624,72 @@ impl<'ctx> CodeGenerator<'ctx> {
         Ok(())
     }
 
+    /// Compile a block and return the value of its last expression (for if-expressions)
+    fn compile_block_last_val(
+        &mut self,
+        block: &Block,
+        vars: &mut HashMap<String, VarEntry<'ctx>>,
+    ) -> Result<BasicValueEnum<'ctx>, String> {
+        let mut last_val = self.context.i64_type().const_int(0, false).into();
+        for stmt in block {
+            match stmt {
+                Stmt::Expr(e) => {
+                    last_val = self.compile_expr(e, vars)?;
+                }
+                Stmt::Return(Some(e)) => {
+                    return self.compile_expr(e, vars);
+                }
+                Stmt::Return(None) => {
+                    return Ok(self.context.i64_type().const_int(0, false).into());
+                }
+                Stmt::Let { pat, init: Some(init), .. } => {
+                    let val = self.compile_expr(init, vars)?;
+                    let name = match pat {
+                        Pattern::Variable(n) => n.clone(),
+                        _ => continue,
+                    };
+                    let llvm_ty = val.get_type();
+                    let alloca = self.builder.build_alloca(llvm_ty, &name)
+                        .map_err(|e| format!("alloca error: {}", e))?;
+                    self.builder.build_store(alloca, val)
+                        .map_err(|e| format!("store error: {}", e))?;
+                    vars.insert(name, (alloca, llvm_ty));
+                }
+                Stmt::If { cond, then_, else_ } => {
+                    let cond_val = self.compile_expr(cond, vars)?;
+                    let cond_bool = if let BasicValueEnum::IntValue(iv) = cond_val {
+                        iv
+                    } else {
+                        return Err("if condition must be boolean".into());
+                    };
+                    let function = self.current_function().unwrap();
+                    let then_bb = self.context.append_basic_block(function, "blt_then");
+                    let else_bb = self.context.append_basic_block(function, "blt_else");
+                    let merge_bb = self.context.append_basic_block(function, "blt_merge");
+                    self.builder.build_conditional_branch(cond_bool, then_bb, else_bb)
+                        .map_err(|e| format!("branch error: {}", e))?;
+                    self.builder.position_at_end(then_bb);
+                    self.compile_block(then_, vars)?;
+                    if !self.block_has_terminator() {
+                        self.builder.build_unconditional_branch(merge_bb)
+                            .map_err(|e| format!("branch error: {}", e))?;
+                    }
+                    self.builder.position_at_end(else_bb);
+                    if let Some(eb) = else_ {
+                        self.compile_block(eb, vars)?;
+                    }
+                    if !self.block_has_terminator() {
+                        self.builder.build_unconditional_branch(merge_bb)
+                            .map_err(|e| format!("branch error: {}", e))?;
+                    }
+                    self.builder.position_at_end(merge_bb);
+                }
+                _ => {}
+            }
+        }
+        Ok(last_val)
+    }
+
     fn compile_expr(
         &mut self,
         expr: &Expr,
@@ -2795,6 +2861,382 @@ impl<'ctx> CodeGenerator<'ctx> {
                 // For codegen, old() is transparent — just compile the inner expression
                 self.compile_expr(inner, vars)
             }
+            Expr::Tuple(elems) => {
+                let mut field_vals = Vec::new();
+                for e in elems {
+                    field_vals.push(self.compile_expr(e, vars)?);
+                }
+                let field_tys: Vec<BasicTypeEnum<'ctx>> = field_vals.iter().map(|v| v.get_type()).collect();
+                let struct_ty = self.context.struct_type(&field_tys, false);
+                let alloca = self.builder.build_alloca(struct_ty, "tuple")
+                    .map_err(|e| format!("alloca error: {}", e))?;
+                for (i, val) in field_vals.iter().enumerate() {
+                    let gep = self.builder.build_struct_gep(struct_ty, alloca, i as u32, &format!("tuple_{}", i))
+                        .map_err(|e| format!("gep error: {}", e))?;
+                    self.builder.build_store(gep, *val)
+                        .map_err(|e| format!("store error: {}", e))?;
+                }
+                Ok(alloca.into())
+            }
+            Expr::If { cond, then_, else_ } => {
+                let cond_val = self.compile_expr(cond, vars)?;
+                let cond_bool = if let BasicValueEnum::IntValue(iv) = cond_val {
+                    iv
+                } else {
+                    return Err("if expression condition must be boolean".into());
+                };
+                let function = self.current_function().unwrap();
+                let then_bb = self.context.append_basic_block(function, "ifexpr_then");
+                let else_bb = self.context.append_basic_block(function, "ifexpr_else");
+                let merge_bb = self.context.append_basic_block(function, "ifexpr_merge");
+                self.builder.build_conditional_branch(cond_bool, then_bb, else_bb)
+                    .map_err(|e| format!("branch error: {}", e))?;
+                // Then branch
+                self.builder.position_at_end(then_bb);
+                let mut then_vars = vars.clone();
+                let then_val = self.compile_block_last_val(then_, &mut then_vars)?;
+                if !self.block_has_terminator() {
+                    self.builder.build_unconditional_branch(merge_bb)
+                        .map_err(|e| format!("branch error: {}", e))?;
+                }
+                let then_bb_end = self.builder.get_insert_block().unwrap();
+                // Else branch
+                self.builder.position_at_end(else_bb);
+                let else_val = if let Some(eb) = else_ {
+                    let mut else_vars = vars.clone();
+                    let v = self.compile_block_last_val(eb, &mut else_vars)?;
+                    if !self.block_has_terminator() {
+                        self.builder.build_unconditional_branch(merge_bb)
+                            .map_err(|e| format!("branch error: {}", e))?;
+                    }
+                    Some(v)
+                } else {
+                    if !self.block_has_terminator() {
+                        self.builder.build_unconditional_branch(merge_bb)
+                            .map_err(|e| format!("branch error: {}", e))?;
+                    }
+                    None
+                };
+                let else_bb_end = self.builder.get_insert_block().unwrap();
+                // Merge with phi
+                self.builder.position_at_end(merge_bb);
+                let ty = then_val.get_type();
+                let phi = self.builder.build_phi(ty, "ifexpr_result")
+                    .map_err(|e| format!("phi error: {}", e))?;
+                let else_v = else_val.unwrap_or(self.context.i64_type().const_int(0, false).into());
+                phi.add_incoming(&[
+                    (&then_val as &dyn inkwell::values::BasicValue, then_bb_end),
+                    (&else_v as &dyn inkwell::values::BasicValue, else_bb_end),
+                ]);
+                Ok(phi.as_basic_value())
+            }
+            Expr::Range { start, end } => {
+                let start_val = self.compile_expr(start, vars)?;
+                let end_val = self.compile_expr(end, vars)?;
+                let start_iv = match start_val {
+                    BasicValueEnum::IntValue(iv) => iv,
+                    _ => return Err("range start must be i64".into()),
+                };
+                let end_iv = match end_val {
+                    BasicValueEnum::IntValue(iv) => iv,
+                    _ => return Err("range end must be i64".into()),
+                };
+                // Create a range struct { start: i64, end: i64 }
+                let range_ty = self.context.struct_type(&[
+                    BasicTypeEnum::IntType(self.context.i64_type()),
+                    BasicTypeEnum::IntType(self.context.i64_type()),
+                ], false);
+                let alloca = self.builder.build_alloca(range_ty, "range")
+                    .map_err(|e| format!("alloca error: {}", e))?;
+                let start_gep = self.builder.build_struct_gep(range_ty, alloca, 0, "range_start")
+                    .map_err(|e| format!("gep error: {}", e))?;
+                self.builder.build_store(start_gep, start_iv)
+                    .map_err(|e| format!("store error: {}", e))?;
+                let end_gep = self.builder.build_struct_gep(range_ty, alloca, 1, "range_end")
+                    .map_err(|e| format!("gep error: {}", e))?;
+                self.builder.build_store(end_gep, end_iv)
+                    .map_err(|e| format!("store error: {}", e))?;
+                Ok(alloca.into())
+            }
+            Expr::SliceExpr { target, start, end } => {
+                // Slice: arr[start..end] — compile target, compute slice offset and length
+                let target_val = self.compile_expr(target, vars)?;
+                let target_ptr = match target_val {
+                    BasicValueEnum::PointerValue(pv) => pv,
+                    _ => return Err("slice target must be a list/array pointer".into()),
+                };
+                // Get list length from struct field 0
+                let list_ty = self.context.struct_type(&[
+                    BasicTypeEnum::IntType(self.context.i64_type()),
+                    BasicTypeEnum::PointerType(self.context.ptr_type(inkwell::AddressSpace::default())),
+                ], false);
+                let len_gep = self.builder.build_struct_gep(list_ty, target_ptr, 0, "slice_len")
+                    .map_err(|e| format!("gep error: {}", e))?;
+                let list_len = self.builder.build_load(BasicTypeEnum::IntType(self.context.i64_type()), len_gep, "len")
+                    .map_err(|e| format!("load error: {}", e))?.into_int_value();
+                let data_gep = self.builder.build_struct_gep(list_ty, target_ptr, 1, "slice_data")
+                    .map_err(|e| format!("gep error: {}", e))?;
+                let data_ptr = self.builder.build_load(
+                    BasicTypeEnum::PointerType(self.context.ptr_type(inkwell::AddressSpace::default())),
+                    data_gep, "data").map_err(|e| format!("load error: {}", e))?.into_pointer_value();
+                // Compute start index (default 0)
+                let start_idx = match start {
+                    Some(e) => self.compile_expr(e, vars)?.into_int_value(),
+                    None => self.context.i64_type().const_int(0, false),
+                };
+                // Compute end index (default: list length)
+                let end_idx = match end {
+                    Some(e) => self.compile_expr(e, vars)?.into_int_value(),
+                    None => list_len,
+                };
+                // Compute new length = end - start
+                let new_len = self.builder.build_int_sub(end_idx, start_idx, "slice_len")
+                    .map_err(|e| format!("sub error: {}", e))?;
+                // Compute new data pointer: data + start * sizeof(i64)
+                let i64_ty = self.context.i64_type();
+                let elem_size = i64_ty.const_int(8, false);
+                let byte_offset = self.builder.build_int_mul(start_idx, elem_size, "slice_offset")
+                    .map_err(|e| format!("mul error: {}", e))?;
+                let i8_ptr = self.context.i8_type().ptr_type(inkwell::AddressSpace::default());
+                let data_i8 = self.builder.build_pointer_cast(data_ptr, i8_ptr, "data_as_i8")
+                    .map_err(|e| format!("bitcast error: {}", e))?;
+                let new_data_i8 = unsafe {
+                    self.builder.build_gep(self.context.i8_type(), data_i8, &[byte_offset], "new_data")
+                }.map_err(|e| format!("gep error: {}", e))?;
+                let new_data_ptr = self.builder.build_pointer_cast(new_data_i8,
+                    self.context.ptr_type(inkwell::AddressSpace::default()), "new_data_void")
+                    .map_err(|e| format!("bitcast error: {}", e))?;
+                // Build new list struct { new_len, new_data_ptr }
+                let result_alloca = self.builder.build_alloca(list_ty, "slice_result")
+                    .map_err(|e| format!("alloca error: {}", e))?;
+                let rlen_gep = self.builder.build_struct_gep(list_ty, result_alloca, 0, "rlen")
+                    .map_err(|e| format!("gep error: {}", e))?;
+                self.builder.build_store(rlen_gep, new_len)
+                    .map_err(|e| format!("store error: {}", e))?;
+                let rdata_gep = self.builder.build_struct_gep(list_ty, result_alloca, 1, "rdata")
+                    .map_err(|e| format!("gep error: {}", e))?;
+                self.builder.build_store(rdata_gep, new_data_ptr)
+                    .map_err(|e| format!("store error: {}", e))?;
+                Ok(result_alloca.into())
+            }
+            Expr::Lambda { params, ret, body } => {
+                // Generate anonymous function: capture nothing (naive codegen), return fn pointer
+                let ret_type = match ret {
+                    Some(ty) => types::mimi_type_to_llvm(self.context, ty)
+                        .unwrap_or(BasicTypeEnum::IntType(self.context.i64_type())),
+                    None => BasicTypeEnum::IntType(self.context.i64_type()),
+                };
+                let mut param_types = Vec::new();
+                for p in params {
+                    let ty = types::mimi_type_to_llvm(self.context, &p.ty)
+                        .unwrap_or(BasicTypeEnum::IntType(self.context.i64_type()));
+                    param_types.push(ty);
+                }
+                let metadata_params: Vec<_> = param_types.iter().map(|t| types::basic_to_metadata(self.context, *t)).collect();
+                let fn_type = match ret_type {
+                    BasicTypeEnum::IntType(t) => t.fn_type(&metadata_params, false),
+                    BasicTypeEnum::FloatType(t) => t.fn_type(&metadata_params, false),
+                    BasicTypeEnum::PointerType(t) => t.fn_type(&metadata_params, false),
+                    BasicTypeEnum::StructType(t) => t.fn_type(&metadata_params, false),
+                    BasicTypeEnum::ArrayType(t) => t.fn_type(&metadata_params, false),
+                    _ => self.context.i64_type().fn_type(&metadata_params, false),
+                };
+                // Generate a unique name for the lambda
+                let lambda_name = format!("__lambda_{}_{}", self.spawn_counter, body.len());
+                self.spawn_counter += 1;
+                let lambda_fn = self.module.add_function(&lambda_name, fn_type, None);
+                let entry = self.context.append_basic_block(lambda_fn, "entry");
+                let saved_block = self.builder.get_insert_block();
+                self.builder.position_at_end(entry);
+                let mut lambda_vars = vars.clone();
+                for (i, p) in params.iter().enumerate() {
+                    let ty = types::mimi_type_to_llvm(self.context, &p.ty)
+                        .unwrap_or(BasicTypeEnum::IntType(self.context.i64_type()));
+                    let alloca = self.builder.build_alloca(ty, &p.name)
+                        .map_err(|e| format!("alloca error: {}", e))?;
+                    self.builder.build_store(alloca, lambda_fn.get_nth_param(i as u32).unwrap())
+                        .map_err(|e| format!("store error: {}", e))?;
+                    lambda_vars.insert(p.name.clone(), (alloca, ty));
+                }
+                let mut last_val = self.context.i64_type().const_int(0, false).into();
+                for stmt in body {
+                    match stmt {
+                        Stmt::Expr(e) => { last_val = self.compile_expr(e, &lambda_vars)?; }
+                        Stmt::Return(Some(e)) => {
+                            let v = self.compile_expr(e, &lambda_vars)?;
+                            self.builder.build_return(Some(&v)).map_err(|e| format!("return error: {}", e))?;
+                            break;
+                        }
+                        Stmt::Return(None) => {
+                            self.builder.build_return(None).map_err(|e| format!("return error: {}", e))?;
+                            break;
+                        }
+                        Stmt::Let { pat, init: Some(init), .. } => {
+                            let val = self.compile_expr(init, &lambda_vars)?;
+                            let name = match pat { Pattern::Variable(n) => n.clone(), _ => continue };
+                            let llvm_ty = val.get_type();
+                            let alloca = self.builder.build_alloca(llvm_ty, &name).map_err(|e| format!("alloca error: {}", e))?;
+                            self.builder.build_store(alloca, val).map_err(|e| format!("store error: {}", e))?;
+                            lambda_vars.insert(name, (alloca, llvm_ty));
+                        }
+                        _ => {}
+                    }
+                }
+                if !self.block_has_terminator() {
+                    self.builder.build_return(Some(&last_val)).map_err(|e| format!("return error: {}", e))?;
+                }
+                if let Some(bb) = saved_block {
+                    self.builder.position_at_end(bb);
+                }
+                // Return the function pointer
+                Ok(lambda_fn.as_global_value().as_pointer_value().into())
+            }
+            Expr::Comprehension { expr, var, iter, guard } => {
+                // List comprehension: [expr for x in iter if guard]
+                // Compile iter to get list pointer
+                let iter_val = self.compile_expr(iter, vars)?;
+                let list_ptr = match iter_val {
+                    BasicValueEnum::PointerValue(pv) => pv,
+                    _ => return Err("comprehension iter must be a list pointer".into()),
+                };
+                let i8_ptr = self.context.i8_type().ptr_type(inkwell::AddressSpace::default());
+                let i64_ty = self.context.i64_type();
+                let list_struct_ty = BasicTypeEnum::StructType(self.context.struct_type(&[
+                    BasicTypeEnum::IntType(i64_ty),
+                    BasicTypeEnum::PointerType(self.context.ptr_type(inkwell::AddressSpace::default())),
+                ], false));
+                // Read list length and data
+                let len_gep = self.builder.build_struct_gep(list_struct_ty, list_ptr, 0, "comp_len")
+                    .map_err(|e| format!("gep error: {}", e))?;
+                let list_len = self.builder.build_load(BasicTypeEnum::IntType(i64_ty), len_gep, "len")
+                    .map_err(|e| format!("load error: {}", e))?.into_int_value();
+                let data_gep = self.builder.build_struct_gep(list_struct_ty, list_ptr, 1, "comp_data")
+                    .map_err(|e| format!("gep error: {}", e))?;
+                let data_i8 = self.builder.build_load(BasicTypeEnum::PointerType(i8_ptr), data_gep, "data")
+                    .map_err(|e| format!("load error: {}", e))?.into_pointer_value();
+                let data_ptr = self.builder.build_bit_cast(data_i8,
+                    i64_ty.ptr_type(inkwell::AddressSpace::default()), "data_i64")
+                    .map_err(|e| format!("bitcast error: {}", e))?.into_pointer_value();
+                // Allocate output array (same max size as input)
+                let elem_size = i64_ty.const_int(8, false);
+                let alloc_size = self.builder.build_int_mul(list_len, elem_size, "comp_alloc")
+                    .map_err(|e| format!("mul error: {}", e))?;
+                let malloc_fn = self.module.get_function("malloc")
+                    .ok_or_else(|| "malloc not declared".to_string())?;
+                let out_ptr = self.builder.build_call(malloc_fn, &[
+                    BasicMetadataValueEnum::IntValue(alloc_size),
+                ], "comp_malloc")
+                    .map_err(|e| format!("malloc error: {}", e))?
+                    .try_as_basic_value().left()
+                    .ok_or("malloc returned void")?.into_pointer_value();
+                let out_i64 = self.builder.build_bit_cast(out_ptr,
+                    i64_ty.ptr_type(inkwell::AddressSpace::default()), "out_i64")
+                    .map_err(|e| format!("bitcast error: {}", e))?.into_pointer_value();
+                // Loop: for i in 0..len
+                let function = self.current_function().unwrap();
+                let loop_bb = self.context.append_basic_block(function, "comp_loop");
+                let body_bb = self.context.append_basic_block(function, "comp_body");
+                let done_bb = self.context.append_basic_block(function, "comp_done");
+                let idx_alloca = self.builder.build_alloca(i64_ty, "ci")
+                    .map_err(|e| format!("alloca error: {}", e))?;
+                let wi_alloca = self.builder.build_alloca(i64_ty, "cw")
+                    .map_err(|e| format!("alloca error: {}", e))?;
+                self.builder.build_store(idx_alloca, i64_ty.const_int(0, false))
+                    .map_err(|e| format!("store error: {}", e))?;
+                self.builder.build_store(wi_alloca, i64_ty.const_int(0, false))
+                    .map_err(|e| format!("store error: {}", e))?;
+                self.builder.build_unconditional_branch(loop_bb)
+                    .map_err(|e| format!("branch error: {}", e))?;
+                self.builder.position_at_end(loop_bb);
+                let idx = self.builder.build_load(BasicTypeEnum::IntType(i64_ty), idx_alloca, "idx")
+                    .map_err(|e| format!("load error: {}", e))?.into_int_value();
+                let cmp = self.builder.build_int_compare(inkwell::IntPredicate::SLT, idx, list_len, "cmp")
+                    .map_err(|e| format!("cmp error: {}", e))?;
+                self.builder.build_conditional_branch(cmp, body_bb, done_bb)
+                    .map_err(|e| format!("branch error: {}", e))?;
+                self.builder.position_at_end(body_bb);
+                // Load element
+                let elem_ptr = unsafe {
+                    self.builder.build_gep(i64_ty, data_ptr, &[idx], "elem")
+                }.map_err(|e| format!("gep error: {}", e))?;
+                let elem = self.builder.build_load(BasicTypeEnum::IntType(i64_ty), elem_ptr, "elem_val")
+                    .map_err(|e| format!("load error: {}", e))?;
+                // Bind var
+                let mut comp_vars = vars.clone();
+                let elem_alloca = self.builder.build_alloca(i64_ty, var)
+                    .map_err(|e| format!("alloca error: {}", e))?;
+                self.builder.build_store(elem_alloca, elem)
+                    .map_err(|e| format!("store error: {}", e))?;
+                comp_vars.insert(var.clone(), (elem_alloca, BasicTypeEnum::IntType(i64_ty)));
+                // Check guard
+                let include = if let Some(g) = guard {
+                    let g_val = self.compile_expr(g, &comp_vars)?;
+                    let g_bool = match g_val {
+                        BasicValueEnum::IntValue(iv) => self.builder.build_int_z_extend(iv, i64_ty, "g_ext")
+                            .map_err(|e| format!("zext error: {}", e))?,
+                        _ => return Err("guard must be boolean".into()),
+                    };
+                    self.builder.build_int_compare(inkwell::IntPredicate::NE, g_bool, i64_ty.const_int(0, false), "g_truthy")
+                        .map_err(|e| format!("cmp error: {}", e))?
+                } else {
+                    self.context.bool_type().const_int(1, false)
+                };
+                let store_bb = self.context.append_basic_block(function, "comp_store");
+                let next_bb = self.context.append_basic_block(function, "comp_next");
+                self.builder.build_conditional_branch(include, store_bb, next_bb)
+                    .map_err(|e| format!("branch error: {}", e))?;
+                self.builder.position_at_end(store_bb);
+                // Evaluate expression
+                let result = self.compile_expr(expr, &comp_vars)?;
+                let wi = self.builder.build_load(BasicTypeEnum::IntType(i64_ty), wi_alloca, "wi")
+                    .map_err(|e| format!("load error: {}", e))?.into_int_value();
+                let out_elem_ptr = unsafe {
+                    self.builder.build_gep(i64_ty, out_i64, &[wi], "out_elem")
+                }.map_err(|e| format!("gep error: {}", e))?;
+                let result_i64 = match result {
+                    BasicValueEnum::IntValue(iv) => iv,
+                    BasicValueEnum::FloatValue(fv) => self.builder.build_float_to_signed_int(fv, i64_ty, "f_to_i")
+                        .map_err(|e| format!("fptosi error: {}", e))?,
+                    BasicValueEnum::PointerValue(pv) => self.builder.build_ptr_to_int(pv, i64_ty, "p_to_i")
+                        .map_err(|e| format!("ptrtoint error: {}", e))?,
+                    _ => return Err("comprehension expression must produce i64-compatible value".into()),
+                };
+                self.builder.build_store(out_elem_ptr, result_i64)
+                    .map_err(|e| format!("store error: {}", e))?;
+                let next_wi = self.builder.build_int_add(wi, i64_ty.const_int(1, false), "next_wi")
+                    .map_err(|e| format!("add error: {}", e))?;
+                self.builder.build_store(wi_alloca, next_wi)
+                    .map_err(|e| format!("store error: {}", e))?;
+                self.builder.build_unconditional_branch(next_bb)
+                    .map_err(|e| format!("branch error: {}", e))?;
+                self.builder.position_at_end(next_bb);
+                let next = self.builder.build_int_add(idx, i64_ty.const_int(1, false), "next")
+                    .map_err(|e| format!("add error: {}", e))?;
+                self.builder.build_store(idx_alloca, next)
+                    .map_err(|e| format!("store error: {}", e))?;
+                self.builder.build_unconditional_branch(loop_bb)
+                    .map_err(|e| format!("branch error: {}", e))?;
+                self.builder.position_at_end(done_bb);
+                // Build result list
+                let result_len = self.builder.build_load(BasicTypeEnum::IntType(i64_ty), wi_alloca, "result_len")
+                    .map_err(|e| format!("load error: {}", e))?;
+                let result_alloca = self.builder.build_alloca(list_struct_ty, "comp_result")
+                    .map_err(|e| format!("alloca error: {}", e))?;
+                let rlen_gep = self.builder.build_struct_gep(list_struct_ty, result_alloca, 0, "rlen")
+                    .map_err(|e| format!("gep error: {}", e))?;
+                self.builder.build_store(rlen_gep, result_len)
+                    .map_err(|e| format!("store error: {}", e))?;
+                let rdata_gep = self.builder.build_struct_gep(list_struct_ty, result_alloca, 1, "rdata")
+                    .map_err(|e| format!("gep error: {}", e))?;
+                let out_void = self.builder.build_pointer_cast(out_i64, i8_ptr, "out_void")
+                    .map_err(|e| format!("bitcast error: {}", e))?;
+                self.builder.build_store(rdata_gep, out_void)
+                    .map_err(|e| format!("store error: {}", e))?;
+                Ok(result_alloca.into())
+            }
+            Expr::Quote(_) | Expr::QuoteInterpolate(_) | Expr::Comptime(_) => {
+                Err("quote/comptime expressions must be resolved before codegen".into())
+            }
             _ => Err(format!("unsupported expression in codegen: {:?}", expr)),
         }
     }
@@ -3116,9 +3558,31 @@ impl<'ctx> CodeGenerator<'ctx> {
                 _ => Err("or requires boolean types".into()),
             },
             BinOp::Range => {
-                // Range is primarily used in for loops, which handle it specially
-                // For standalone range expressions, we return an error for now
-                Err("range expression not supported in codegen, use in for loop".into())
+                let start_iv = match lhs {
+                    BasicValueEnum::IntValue(iv) => iv,
+                    _ => return Err("range start must be i64".into()),
+                };
+                let end_iv = match rhs {
+                    BasicValueEnum::IntValue(iv) => iv,
+                    _ => return Err("range end must be i64".into()),
+                };
+                // Create a range struct { start: i64, end: i64 }
+                let i64_ty = self.context.i64_type();
+                let range_ty = self.context.struct_type(&[
+                    BasicTypeEnum::IntType(i64_ty),
+                    BasicTypeEnum::IntType(i64_ty),
+                ], false);
+                let alloca = self.builder.build_alloca(range_ty, "range")
+                    .map_err(|e| format!("alloca error: {}", e))?;
+                let start_gep = self.builder.build_struct_gep(range_ty, alloca, 0, "range_start")
+                    .map_err(|e| format!("gep error: {}", e))?;
+                self.builder.build_store(start_gep, start_iv)
+                    .map_err(|e| format!("store error: {}", e))?;
+                let end_gep = self.builder.build_struct_gep(range_ty, alloca, 1, "range_end")
+                    .map_err(|e| format!("gep error: {}", e))?;
+                self.builder.build_store(end_gep, end_iv)
+                    .map_err(|e| format!("store error: {}", e))?;
+                Ok(alloca.into())
             }
             _ => Err(format!("unsupported binary operator {:?}", op)),
         }
