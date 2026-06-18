@@ -33,16 +33,14 @@ impl CHeaderGenerator {
         writeln!(header, "#include <stdbool.h>")?;
         writeln!(header)?;
 
-        // Forward declarations for opaque types
-        writeln!(header, "// Opaque types")?;
-        writeln!(header, "typedef struct MimiShared MimiShared;")?;
+        // Opaque handle type (all cross-boundary references use int64_t)
+        writeln!(header, "typedef int64_t MimiHandle;")?;
         writeln!(header)?;
 
-        // MimiShared API
-        writeln!(header, "// Shared handle API")?;
-        writeln!(header, "MimiShared* mimi_shared_retain(MimiShared* handle);")?;
-        writeln!(header, "void mimi_shared_release(MimiShared* handle);")?;
-        writeln!(header, "void* mimi_shared_get_ptr(MimiShared* handle);")?;
+        // Shared handle API (opaque integer handle IDs)
+        writeln!(header, "MimiHandle mimi_shared_retain(MimiHandle handle);")?;
+        writeln!(header, "void mimi_shared_release(MimiHandle handle);")?;
+        writeln!(header, "void* mimi_shared_get_ptr(MimiHandle handle);")?;
         writeln!(header)?;
 
         // Cap API
@@ -184,14 +182,14 @@ impl CHeaderGenerator {
                 format!("{}*", inner_type)
             }
             Type::CShared(_) | Type::CBorrow(_) | Type::CBorrowMut(_) => {
-                "MimiShared*".to_string()
+                "MimiHandle".to_string()
             }
             Type::Cap(_) => "MimiCap".to_string(),
             Type::RawString => "char*".to_string(),
             Type::Infer => "void".to_string(),
             Type::Shared(inner) | Type::LocalShared(inner) => {
                 let inner_type = self.mimi_type_to_c_type(inner);
-                format!("MimiShared* /* shared {} */", inner_type)
+                format!("MimiHandle /* shared {} */", inner_type)
             }
             Type::Ref(_, inner) | Type::RefMut(_, inner) => {
                 let inner_type = self.mimi_type_to_c_type(inner);
@@ -212,12 +210,12 @@ impl CHeaderGenerator {
             FfiArgContract::Float => "double".to_string(),
             FfiArgContract::StringBorrow => "const char*".to_string(),
             FfiArgContract::StringTransfer => "char*".to_string(),
-            FfiArgContract::Cap => "MimiCap".to_string(),
+            FfiArgContract::Cap(_) => "MimiCap".to_string(),
             FfiArgContract::RawPtr(inner) | FfiArgContract::RawPtrMut(inner) => {
                 format!("{}*", self.mimi_type_to_c_type(inner))
             }
             FfiArgContract::CShared(inner) | FfiArgContract::CBorrow(inner) | FfiArgContract::CBorrowMut(inner) => {
-                format!("MimiShared* /* {} */", self.mimi_type_to_c_type(inner))
+                format!("MimiHandle /* {} */", self.mimi_type_to_c_type(inner))
             }
             FfiArgContract::Unsupported(_) => "void*".to_string(),
         }
@@ -234,7 +232,7 @@ impl CHeaderGenerator {
                 format!("{}*", self.mimi_type_to_c_type(inner))
             }
             crate::ffi::contract::FfiRetContract::CShared(inner) | crate::ffi::contract::FfiRetContract::CBorrow(inner) | crate::ffi::contract::FfiRetContract::CBorrowMut(inner) => {
-                format!("MimiShared* /* {} */", self.mimi_type_to_c_type(inner))
+                format!("MimiHandle /* {} */", self.mimi_type_to_c_type(inner))
             }
             crate::ffi::contract::FfiRetContract::Unsupported(_) => "void*".to_string(),
         }

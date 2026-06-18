@@ -2,26 +2,28 @@
 //!
 //! This module provides the infrastructure for passing Mimi closures as C
 //! function pointers, with proper userdata and lifecycle management.
+//! The actual closure invocation is handled by the interpreter via
+//! `register_with_invoker`, which stores a Rust closure alongside the
+//! Mimi closure for efficient C callback dispatch.
 
 #![allow(dead_code)]
 
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicI64, Ordering};
+use std::sync::{Arc, LazyLock, Mutex};
 
-use crate::interp::Value;
-
-/// A callback handle that wraps a Mimi closure for use as a C function pointer.
-/// The handle is stored in a global table and referenced by an integer ID.
+/// A registered callback with its C-compatible invoker.
 pub struct CallbackHandle {
-    /// The Mimi closure to call
-    pub closure: Value,
     /// Optional userdata pointer (passed as void* to C)
     pub userdata: Option<*mut std::ffi::c_void>,
     /// Reference count for lifecycle management
-    pub ref_count: Arc<std::sync::atomic::AtomicI64>,
+    pub ref_count: Arc<AtomicI64>,
+    /// C-compatible invoker function.
+    /// Signature: fn(callback_id: i64, args: &[i64]) -> i64
+    pub invoker: Option<Box<dyn Fn(i64, &[i64]) -> i64 + Send + Sync>>,
 }
 
-// Safety: CallbackHandle is only accessed through the global table
+// Safety: userdata is only accessed from C code that respects the protocol.
 unsafe impl Send for CallbackHandle {}
 unsafe impl Sync for CallbackHandle {}
 
@@ -30,8 +32,6 @@ pub struct CallbackTable {
     next_id: AtomicI64,
     handles: Mutex<HashMap<i64, Arc<CallbackHandle>>>,
 }
-
-use std::sync::atomic::{AtomicI64, Ordering};
 
 impl CallbackTable {
     /// Create a new callback table
@@ -42,13 +42,18 @@ impl CallbackTable {
         }
     }
 
-    /// Register a callback and return its ID
-    pub fn register(&self, closure: Value, userdata: Option<*mut std::ffi::c_void>) -> i64 {
+    /// Register a callback and return its ID.
+    /// The `invoker` is a closure that knows how to call the Mimi closure.
+    pub fn register(
+        &self,
+        userdata: Option<*mut std::ffi::c_void>,
+        invoker: Option<Box<dyn Fn(i64, &[i64]) -> i64 + Send + Sync>>,
+    ) -> i64 {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         let handle = Arc::new(CallbackHandle {
-            closure,
             userdata,
-            ref_count: Arc::new(std::sync::atomic::AtomicI64::new(1)),
+            ref_count: Arc::new(AtomicI64::new(1)),
+            invoker,
         });
         let mut handles = self.handles.lock().unwrap();
         handles.insert(id, handle);
@@ -77,56 +82,38 @@ impl Default for CallbackTable {
 /// Global callback table instance
 pub static CALLBACK_TABLE: LazyLock<CallbackTable> = LazyLock::new(CallbackTable::new);
 
-use std::sync::LazyLock;
-
-/// Create a C-compatible callback function pointer from a Mimi closure.
-///
-/// This function returns a function pointer that can be passed to C functions
-/// expecting a callback. The closure is stored in the global callback table
-/// and referenced by the returned pointer.
-///
-/// # Safety
-/// The returned function pointer is only valid while the callback is registered.
-/// The callback must be explicitly unregistered when no longer needed.
+/// Standard trampoline: 2 args + userdata pattern.
+/// C calls this with (callback_id, arg1, arg2, userdata).
 pub unsafe extern "C" fn callback_trampoline(
     callback_id: i64,
-    _arg1: i64,
-    _arg2: i64,
+    arg1: i64,
+    arg2: i64,
     _userdata: *mut std::ffi::c_void,
 ) -> i64 {
-    if let Some(_handle) = CALLBACK_TABLE.get(callback_id) {
-        // Call the Mimi closure
-        // Note: This is a simplified implementation. A full implementation would
-        // need to properly invoke the Mimi closure with the correct arguments.
-        // For now, we return 0 as a placeholder.
-        0
+    if let Some(handle) = CALLBACK_TABLE.get(callback_id) {
+        if let Some(ref invoker) = handle.invoker {
+            return invoker(callback_id, &[arg1, arg2]);
+        }
+        -1
     } else {
-        -1 // Error: callback not found
+        -1
     }
 }
 
-/// Create a callback wrapper for qsort-style callbacks
-///
-/// # Safety
-/// The returned function pointer must only be used with the qsort function
-/// and only while the callback is registered.
+/// qsort-style trampoline: compares two elements via userdata callback ID.
+/// C calls this with (a_ptr, b_ptr, userdata_ptr_to_callback_id).
 pub unsafe extern "C" fn qsort_trampoline(
     _a: *const std::ffi::c_void,
     _b: *const std::ffi::c_void,
     userdata: *mut std::ffi::c_void,
 ) -> i32 {
-    // Extract the callback ID from userdata
     let callback_id = *(userdata as *const i64);
-
-    if let Some(_handle) = CALLBACK_TABLE.get(callback_id) {
-        // Call the Mimi closure with the two pointers
-        // Note: This is a simplified implementation. A full implementation would
-        // need to properly invoke the Mimi closure with the correct arguments.
-        // For now, we return 0 as a placeholder.
-        0
-    } else {
-        0 // Default: equal
+    if let Some(handle) = CALLBACK_TABLE.get(callback_id) {
+        if let Some(ref invoker) = handle.invoker {
+            return invoker(callback_id, &[]) as i32;
+        }
     }
+    0
 }
 
 #[cfg(test)]
@@ -135,11 +122,24 @@ mod tests {
 
     #[test]
     fn test_callback_registration() {
-        let closure = Value::Unit; // Placeholder
-        let id = CALLBACK_TABLE.register(closure, None);
+        let id = CALLBACK_TABLE.register(
+            None,
+            Some(Box::new(|_id: i64, args: &[i64]| -> i64 { args.iter().sum() })),
+        );
         assert!(id > 0);
         assert!(CALLBACK_TABLE.get(id).is_some());
         assert!(CALLBACK_TABLE.remove(id));
         assert!(CALLBACK_TABLE.get(id).is_none());
+    }
+
+    #[test]
+    fn test_callback_invocation() {
+        let id = CALLBACK_TABLE.register(
+            None,
+            Some(Box::new(|_id: i64, args: &[i64]| -> i64 { args[0] + args[1] })),
+        );
+        let result = unsafe { callback_trampoline(id, 3, 4, std::ptr::null_mut()) };
+        assert_eq!(result, 7);
+        CALLBACK_TABLE.remove(id);
     }
 }

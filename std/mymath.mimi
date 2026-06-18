@@ -215,10 +215,12 @@ pub func lcm(a: i32, b: i32) -> i32 {
     if a == 0 || b == 0 { 0 } else { a * b / gcd(a, b) }
 }
 
+// Duplicate of prelude::is_even — kept for compatibility
 pub func is_even_number(n: i32) -> bool {
     n % 2 == 0
 }
 
+// Duplicate of prelude::is_odd — kept for compatibility
 pub func is_odd_number(n: i32) -> bool {
     n % 2 != 0
 }

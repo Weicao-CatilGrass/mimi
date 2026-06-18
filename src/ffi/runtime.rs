@@ -117,25 +117,18 @@ impl SharedHandle {
         }
     }
 
-    /// Get a read-only pointer to the inner value.  The caller must ensure
-    /// that the pointer is only used while the handle is alive (i.e. before
-    /// `release` is called).
-    pub fn as_ptr(&self) -> *const Value {
+    /// Execute a closure with a read-only reference to the inner value.
+    /// Safe, scoped access — prefer this over raw pointer APIs.
+    pub fn with_value<R>(&self, f: impl FnOnce(&Value) -> R) -> R {
         let guard = self.inner.read().unwrap();
-        let ptr: *const Value = &*guard;
-        // Leak the guard to keep the pointer valid.  The caller is responsible
-        // for calling `release` which will drop the guard.
-        // NOTE: This is safe only because we track the guard in the handle.
-        std::mem::forget(guard);
-        ptr
+        f(&*guard)
     }
 
-    /// Get a mutable pointer to the inner value (exclusive borrow).
-    pub fn as_mut_ptr(&self) -> *mut Value {
-        let guard = self.inner.write().unwrap();
-        let ptr: *mut Value = &*guard as *const Value as *mut Value;
-        std::mem::forget(guard);
-        ptr
+    /// Execute a closure with a mutable reference to the inner value.
+    /// Safe, scoped access — prefer this over raw pointer APIs.
+    pub fn with_value_mut<R>(&self, f: impl FnOnce(&mut Value) -> R) -> R {
+        let mut guard = self.inner.write().unwrap();
+        f(&mut *guard)
     }
 
     /// Get a read guard for the inner value.
@@ -146,6 +139,29 @@ impl SharedHandle {
     /// Get a write guard for the inner value.
     pub fn borrow_mut(&self) -> RwLockWriteGuard<'_, Value> {
         self.inner.write().unwrap()
+    }
+
+    /// Get a read-only pointer to the inner value.
+    /// DEPRECATED: Prefer `with_value()` which provides safe scoped access.
+    /// This method leaks the read guard, preventing any write access to the
+    /// value while the pointer is outstanding. The guard is only cleaned up
+    /// when the handle is dropped.
+    pub fn as_ptr(&self) -> *const Value {
+        let guard = self.inner.read().unwrap();
+        let ptr: *const Value = &*guard;
+        std::mem::forget(guard);
+        ptr
+    }
+
+    /// Get a mutable pointer to the inner value.
+    /// DEPRECATED: Prefer `with_value_mut()` which provides safe scoped access.
+    /// This method leaks the write guard, preventing any read/write access to
+    /// the value while the pointer is outstanding.
+    pub fn as_mut_ptr(&self) -> *mut Value {
+        let guard = self.inner.write().unwrap();
+        let ptr: *mut Value = &*guard as *const Value as *mut Value;
+        std::mem::forget(guard);
+        ptr
     }
 
     /// Retain: increment the C-side strong reference count.
@@ -261,13 +277,29 @@ pub extern "C" fn mimi_shared_release(handle: i64) {
     SHARED_TABLE.release(handle);
 }
 
-/// Get a raw pointer to the inner value of a shared handle.
+/// Read the inner value of a shared handle and return a heap-allocated copy.
+/// The caller takes ownership of the returned Value* and must free it with
+/// `mimi_value_free` when done.
 /// Returns null if the handle is invalid.
 #[no_mangle]
 pub extern "C" fn mimi_shared_get_ptr(handle: i64) -> *const Value {
-    match SHARED_TABLE.get(handle) {
-        Some(h) => h.as_ptr(),
-        None => std::ptr::null(),
+    let h = match SHARED_TABLE.get(handle) {
+        Some(h) => h,
+        None => return std::ptr::null(),
+    };
+    // Return a heap copy so the pointer is valid regardless of handle lifetime.
+    h.with_value(|v| {
+        let boxed = Box::new(v.clone());
+        Box::into_raw(boxed) as *const Value
+    })
+}
+
+/// Free a Value that was obtained via `mimi_shared_get_ptr`.
+/// This must be called for every non-null pointer returned by `mimi_shared_get_ptr`.
+#[no_mangle]
+pub extern "C" fn mimi_value_free(ptr: *mut Value) {
+    if !ptr.is_null() {
+        unsafe { drop(Box::from_raw(ptr)); }
     }
 }
 
@@ -306,8 +338,9 @@ pub extern "C" fn mimi_string_free_raw(c_str: *mut std::ffi::c_char) {
 }
 
 /// Get a C string pointer from a Mimi string value.
-/// The caller must NOT free the returned pointer - Mimi retains ownership.
-/// Returns null if the pointer is invalid.
+/// The caller must NOT free the returned pointer — use `mimi_string_as_c_str_free`
+/// to release it when done. Each call allocates a new CString that the caller
+/// must eventually free. Returns null if the pointer is invalid or not a string.
 #[no_mangle]
 pub extern "C" fn mimi_string_as_c_str(mimi_string: *const Value) -> *const std::ffi::c_char {
     if mimi_string.is_null() {
@@ -316,11 +349,10 @@ pub extern "C" fn mimi_string_as_c_str(mimi_string: *const Value) -> *const std:
     unsafe {
         match &*mimi_string {
             Value::String(s) => {
-                // Create a CString and leak it to get a static pointer
-                // This is safe because Mimi retains ownership and will clean up
                 let c_str = std::ffi::CString::new(s.as_str()).unwrap_or_default();
                 let ptr = c_str.as_ptr();
-                std::mem::forget(c_str);
+                // Register for cleanup — caller must call mimi_string_as_c_str_free
+                PENDING_C_STRINGS.lock().unwrap().push(c_str);
                 ptr
             }
             _ => std::ptr::null(),
@@ -328,9 +360,27 @@ pub extern "C" fn mimi_string_as_c_str(mimi_string: *const Value) -> *const std:
     }
 }
 
+/// Free the C string pointer obtained from `mimi_string_as_c_str`.
+/// Call this when the C string is no longer needed.
+#[no_mangle]
+pub extern "C" fn mimi_string_as_c_str_free(c_str: *const std::ffi::c_char) {
+    if c_str.is_null() {
+        return;
+    }
+    let mut pending = PENDING_C_STRINGS.lock().unwrap();
+    pending.retain(|cs| cs.as_ptr() != c_str);
+}
+
+/// Global registry of CStrings allocated by `mimi_string_as_c_str`.
+/// Prevents leaks when callers don't explicitly free.
+static PENDING_C_STRINGS: std::sync::LazyLock<Mutex<Vec<std::ffi::CString>>> =
+    std::sync::LazyLock::new(|| Mutex::new(Vec::new()));
+
 /// Convert a Mimi string to a raw C string (transfer ownership to C).
 /// The caller is responsible for calling `mimi_string_free_raw` on the result.
-/// Returns null if the pointer is invalid.
+/// Returns null if the pointer is invalid or the string contains interior null bytes.
+/// On success, the original Mimi string is cleared (ownership transferred).
+/// On failure (null return), the original Mimi string is NOT modified.
 #[no_mangle]
 pub extern "C" fn mimi_string_into_raw(mimi_string: *mut Value) -> *mut std::ffi::c_char {
     if mimi_string.is_null() {
@@ -339,12 +389,19 @@ pub extern "C" fn mimi_string_into_raw(mimi_string: *mut Value) -> *mut std::ffi
     unsafe {
         match &mut *mimi_string {
             Value::String(s) => {
-                // Take the string and convert to CString
-                let c_str = std::ffi::CString::new(s.as_str()).unwrap_or_default();
-                let ptr = c_str.into_raw();
-                // Clear the Mimi string since ownership is transferred
-                s.clear();
-                ptr
+                match std::ffi::CString::new(s.as_str()) {
+                    Ok(c_str) => {
+                        let ptr = c_str.into_raw();
+                        s.clear();
+                        ptr
+                    }
+                    Err(_) => {
+                        // Interior null bytes: don't modify the original string,
+                        // return null to signal the error.
+                        eprintln!("mimi_string_into_raw: string contains interior null bytes, returning null");
+                        std::ptr::null_mut()
+                    }
+                }
             }
             _ => std::ptr::null_mut(),
         }
@@ -379,11 +436,18 @@ use std::thread;
 pub struct MimiThreadPool {
     workers: Vec<thread::JoinHandle<()>>,
     sender: std_mpsc::Sender<RawTask>,
+    /// Tracks pending task count for `join_all`.
+    pending: Arc<Mutex<i32>>,
+    /// Signaled when `pending` reaches zero.
+    completion: Arc<std::sync::Condvar>,
 }
 
 struct RawTask {
     func: extern "C" fn(*mut u8) -> *mut u8,
     arg: *mut u8,
+    /// Shared pending counter — decremented after task completes.
+    pending: Arc<Mutex<i32>>,
+    completion: Arc<std::sync::Condvar>,
 }
 unsafe impl Send for RawTask {}
 
@@ -391,6 +455,8 @@ impl MimiThreadPool {
     pub fn new(size: usize) -> Self {
         let (sender, receiver) = std_mpsc::channel::<RawTask>();
         let receiver = std::sync::Arc::new(std::sync::Mutex::new(receiver));
+        let pending = Arc::new(Mutex::new(0i32));
+        let completion = Arc::new(std::sync::Condvar::new());
         let mut workers = Vec::with_capacity(size);
 
         for _ in 0..size {
@@ -398,18 +464,33 @@ impl MimiThreadPool {
             let worker = thread::spawn(move || loop {
                 let task = receiver.lock().unwrap().recv();
                 match task {
-                    Ok(task) => { let _ = (task.func)(task.arg); }
+                    Ok(task) => {
+                        let _ = (task.func)(task.arg);
+                        // Decrement pending count and notify waiters
+                        let mut count = task.pending.lock().unwrap();
+                        *count -= 1;
+                        if *count == 0 {
+                            task.completion.notify_all();
+                        }
+                    }
                     Err(_) => break,
                 }
             });
             workers.push(worker);
         }
 
-        MimiThreadPool { workers, sender }
+        MimiThreadPool { workers, sender, pending, completion }
     }
 
     pub fn submit_raw(&self, func: extern "C" fn(*mut u8) -> *mut u8, arg: *mut u8) {
-        let _ = self.sender.send(RawTask { func, arg });
+        let mut count = self.pending.lock().unwrap();
+        *count += 1;
+        let _ = self.sender.send(RawTask {
+            func,
+            arg,
+            pending: Arc::clone(&self.pending),
+            completion: Arc::clone(&self.completion),
+        });
     }
 
     pub fn submit<F: FnOnce() + Send + 'static>(&self, job: F) {
@@ -435,10 +516,22 @@ impl MimiThreadPool {
             (data.func)(data.arg);
             std::ptr::null_mut()
         }
+        let mut count = self.pending.lock().unwrap();
+        *count += 1;
         let _ = self.sender.send(RawTask {
             func: data_trampoline,
             arg: data as *mut u8,
+            pending: Arc::clone(&self.pending),
+            completion: Arc::clone(&self.completion),
         });
+    }
+
+    /// Wait until all submitted tasks have completed.
+    pub fn join_all(&self) {
+        let mut count = self.pending.lock().unwrap();
+        while *count > 0 {
+            count = self.completion.wait(count).unwrap();
+        }
     }
 }
 
@@ -472,13 +565,10 @@ pub unsafe extern "C" fn mimi_pool_submit(fn_ptr: *const u8, arg: *mut u8) {
 }
 
 /// Block until all submitted pool tasks complete.
-/// In the current implementation, this is a no-op because the pool
-/// uses a channel-based approach where tasks run immediately.
-/// For proper implementation, we'd need a barrier or counter.
+/// Uses a pending task counter and Condvar to properly synchronize.
 #[no_mangle]
 pub extern "C" fn mimi_pool_join_all() {
-    // The pool workers process tasks as they arrive.
-    // Since we don't track individual task completion,
-    // this function currently just returns.
-    // A proper implementation would use a WaitGroup or counter.
+    if let Some(pool) = MIMI_POOL.as_ref() {
+        pool.join_all();
+    }
 }
