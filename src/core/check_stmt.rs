@@ -187,11 +187,13 @@ impl<'a> Checker<'a> {
             Stmt::Return(Some(e)) => {
                 let t = self.infer_expr(e, scopes);
                 if !same_type(ret, &t) {
-                    self.emit_code(crate::diagnostic::codes::E0207, format!(
-                        "return type mismatch: expected {}, found {}",
-                        fmt_type(ret),
-                        fmt_type(&t)
-                    ));
+                    self.errors.push(
+                        Diagnostic::error_code(
+                            crate::diagnostic::codes::E0207,
+                            format!("return type mismatch: expected {}, found {}", fmt_type(ret), fmt_type(&t)),
+                            Span::single(0, 0),
+                        ).with_help("check the function's declared return type and the type of the returned expression")
+                    );
                 }
             }
             Stmt::Break(_) => {

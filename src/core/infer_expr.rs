@@ -297,11 +297,13 @@ impl<'a> Checker<'a> {
                 if !all_variants.is_empty() && !has_catchall && !has_guard {
                     for variant in &all_variants {
                             if !covered_variants.contains(variant) {
-                            self.emit_code(crate::diagnostic::codes::E0215, format!(
-                                "match expression is not exhaustive: missing variant '{}' of '{}'",
-                                variant,
-                                fmt_type(&subject_ty)
-                            ));
+                            self.errors.push(
+                                Diagnostic::error_code(
+                                    crate::diagnostic::codes::E0215,
+                                    format!("match expression is not exhaustive: missing variant '{}' of '{}'", variant, fmt_type(&subject_ty)),
+                                    Span::single(0, 0),
+                                ).with_help(format!("add an arm for '{}' or a wildcard '_ => ...' arm", variant))
+                            );
                         }
                     }
                 }

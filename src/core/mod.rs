@@ -834,7 +834,13 @@ impl<'a> Checker<'a> {
                 }
                 // Check that the type exists
                 if !self.types.contains_key(&impl_def.type_name) && !Self::is_builtin_type(&impl_def.type_name) {
-                    self.emit_code(crate::diagnostic::codes::E0407, format!("undefined type '{}'", impl_def.type_name));
+                    self.errors.push(
+                        Diagnostic::error_code(
+                            crate::diagnostic::codes::E0407,
+                            format!("undefined type '{}'", impl_def.type_name),
+                            Span::single(0, 0),
+                        ).with_help("types must be defined before use — check the type name spelling or add a 'type' declaration")
+                    );
                 }
                 // Check that all required trait methods are implemented
                 if let Some(required_methods) = self.traits.get(&impl_def.trait_name).cloned() {
