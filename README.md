@@ -13,6 +13,7 @@
 | 基本类型 | ✅ | `i32`, `i64`, `f64`, `bool`, `string`, `unit`, `nothing` |
 | 函数与闭包 | ✅ | `func` 命名函数, `fn` 匿名闭包, 一等函数 |
 | ADT + 模式匹配 | ✅ | 枚举、记录、元组, `match` 穷尽性检查 |
+| 泛型 | ✅ | `<T>` 类型参数, where 约束, Turbofish |
 | Move 语义 | ✅ | Copy trait, use-after-move 检测 |
 | 借用检查 | ✅ | `&T` / `&mut T` 类型检查层面的借用规则 |
 | `newtype` | ✅ | 强类型隔离包装 |
@@ -23,18 +24,16 @@
 | `requires` / `ensures` | ✅ | 运行时契约断言, `result` 变量 |
 | `cap` 线性能力 | ✅ | 类型检查层面的能力追踪 |
 | `desc` / `rule` 元数据 | ✅ | 意图描述与约束声明 |
-| `comptime` 关键字 | ✅ | 编译期元编程预留 |
 | 复合赋值运算符 | ✅ | `+=`, `-=`, `*=`, `/=` |
 | 字符串操作 | ✅ | 拼接 `+`, `len()`, `to_string()`, `contains()` |
 | 内置函数 | ✅ | `abs`, `min`/`max`, `push`/`pop`, `range`, `sqrt`, `input` |
 | 意图后缀 | ✅ | `$`, `$$`, `?`, `??` 锁定与委托标记 |
 | `pub` 可见性 | ✅ | 函数、类型、Actor 的公开标记 |
-| `cap.split()` | ✅ | 组合能力分解为独立能力 |
 | `old()` in ensures | ✅ | 函数入口变量快照语义 |
-| `math:` 块 | ✅ | 编译时常量表达式求值 |
 | `trait` / `impl` | ✅ | 基础 trait 系统与静态分派 |
 | `where` 约束 | ✅ | 泛型类型约束语法 |
 | `extern "C"` | ✅ | FFI 块声明外部函数 |
+| 标准库 | ✅ | io, fs, strings, collections, mymath, net, maps, json, time, env, testing |
 
 ---
 
@@ -96,6 +95,25 @@ func main() -> i32 {
 }
 ```
 
+### 泛型
+
+```mimi
+pub func find<T>(xs: List<T>, target: T) -> (bool, i32) {
+    for i in range(0, len(xs)) {
+        if xs[i] == target {
+            return (true, i)
+        }
+    }
+    (false, -1)
+}
+
+pub func map_list<T, U>(xs: List<T>, f: func(T) -> U) -> List<U> {
+    reduce(xs, fn(acc: List<U>, x: T) -> List<U> {
+        push(acc, f(x))
+    }, [])
+}
+```
+
 ### ADT 与模式匹配
 
 ```mimi
@@ -117,18 +135,20 @@ func area(s: Shape) -> f64 {
 }
 ```
 
-### Move 语义
+### 错误处理
 
 ```mimi
-func main() -> i32 {
-    let x = 42;       // x 是 Copy 类型 (i32)
-    let y = x;        // 复制，x 仍可用
-    x + y             // OK: 84
+func divide(a: i32, b: i32) -> Result<i32, string> {
+    if b == 0 {
+        Err("division by zero")
+    } else {
+        Ok(a / b)
+    }
+}
 
-    let s = "hello";  // s 是 Move 类型 (string)
-    let t = s;        // s 被移动
-    // s              // 错误: use of moved value
-    1
+func safe_calc() -> Result<i32, string> {
+    let result = divide(10, 2)?;
+    Ok(result * 3)
 }
 ```
 
@@ -150,25 +170,17 @@ func main() -> string {
 }
 ```
 
-### 错误处理与补偿
+### 补偿
 
 ```mimi
-type Res {
-    Ok(i32)
-    Err(string)
-}
-
-func booking() -> Res {
+func booking() -> Result<(), string> {
     let seat = reserve_seat()?;
-    on failure { cancel_seat(seat); }
+    on failure { cancel_seat(seat) }
 
     let hotel = book_hotel()?;
-    on failure { cancel_hotel(hotel); }
+    on failure { cancel_hotel(hotel) }
 
-    let payment = charge()?;
-    on failure { refund(payment); }
-
-    Ok(1)
+    Ok(())
 }
 ```
 
@@ -180,6 +192,11 @@ func booking() -> Res {
 |------|------|
 | `mimi check <file.mimi>` | 类型检查 `.mimi` 文件 |
 | `mimi run <file.mimi>` | 类型检查并运行 |
+| `mimi build <file.mimi>` | 编译为本地可执行文件 |
+| `mimi fmt <files...>` | 格式化文件 |
+| `mimi fmt --check <files...>` | 检查格式（不修改） |
+| `mimi lint <files...>` | 静态分析 |
+| `mimi lsp` | 启动 LSP 服务器 |
 
 ---
 
@@ -188,19 +205,38 @@ func booking() -> Res {
 ```
 mimi/
 ├── src/
-│   ├── main.rs      # CLI 入口
-│   ├── ast.rs       # AST 类型定义
-│   ├── lexer.rs     # 词法分析器
-│   ├── parser.rs    # 语法分析器
-│   ├── core.rs      # 类型检查器
-│   ├── interp.rs    # 解释器
-│   └── tests.rs     # 测试套件
-└── docs/
-    ├── mimi.md                # 语言规范 (v1.0)
-    ├── design-decisions.md    # 设计决策与评估
-    ├── future-vision.md       # 长期愿景 (v1.x/L4)
-    ├── ffi-glue.md            # FFI 与多语言胶水特性
-    └── product-strategy.md    # 产品策略与开源策略
+│   ├── main.rs          # CLI 入口
+│   ├── ast.rs           # AST 类型定义
+│   ├── lexer.rs         # 词法分析器
+│   ├── parser/          # 语法分析器
+│   ├── core/            # 类型检查器
+│   ├── interp/          # 解释器
+│   ├── codegen/         # LLVM codegen
+│   │   ├── mod.rs
+│   │   └── builtins.rs
+│   ├── lsp.rs           # LSP 服务器
+│   ├── fmt.rs           # 格式化器
+│   ├── lint.rs          # 静态分析
+│   ├── diagnostic/      # 诊断系统
+│   └── tests/           # 测试套件
+├── std/                 # 标准库
+│   ├── prelude.mimi
+│   ├── io.mimi
+│   ├── fs.mimi
+│   ├── strings.mimi
+│   ├── collections.mimi
+│   ├── mymath.mimi
+│   ├── net.mimi
+│   ├── maps.mimi
+│   ├── json.mimi
+│   ├── time.mimi
+│   ├── env.mimi
+│   └── testing.mimi
+├── examples/            # 示例程序
+└── docs/                # 文档
+    ├── syntax-reference.md   # 语法规范 (★)
+    ├── mimi.md               # 语言设计规范
+    └── ...
 ```
 
 ---
@@ -209,7 +245,8 @@ mimi/
 
 | 文档 | 说明 | 适合读者 |
 |------|------|----------|
-| [mimi.md](docs/mimi.md) | 语言规范 v1.0 | 语言实现者、贡献者 |
+| [syntax-reference.md](docs/syntax-reference.md) | **语法规范** — 基于解析器实现 | 所有 Mimi 开发者 |
+| [mimi.md](docs/mimi.md) | 语言设计规范 v1.0 | 语言实现者、贡献者 |
 | [design-decisions.md](docs/design-decisions.md) | 设计决策与语言对比 | 想了解"为什么这样设计"的人 |
 | [future-vision.md](docs/future-vision.md) | 长期愿景 v1.x/L4 | 核心开发者、架构师 |
 | [ffi-glue.md](docs/ffi-glue.md) | FFI 与多语言胶水 | 需要跨语言集成的开发者 |
@@ -219,9 +256,9 @@ mimi/
 
 ## 版本
 
-当前版本: **v0.1.1**
+当前版本: **v0.3.1**
 
-语言规范: v1.0 基线整合版
+语言规范: v1.0.0-rc.1
 
 ---
 

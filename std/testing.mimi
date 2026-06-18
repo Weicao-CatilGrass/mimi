@@ -1,0 +1,21 @@
+// Testing utilities - wraps compiler builtins
+
+pub func assert_eq(a: i32, b: i32) {
+    assert_eq(a, b)
+}
+
+pub func assert_ne(a: i32, b: i32) {
+    assert_ne(a, b)
+}
+
+pub func assert_approx_eq(a: f64, b: f64) {
+    assert_approx_eq(a, b)
+}
+
+pub func assert_true(cond: bool) {
+    assert(cond)
+}
+
+pub func assert_false(cond: bool) {
+    assert(!cond)
+}

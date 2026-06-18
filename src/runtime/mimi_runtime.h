@@ -116,4 +116,7 @@ char* mimi_http_get(const char* url);
    Returns NULL on error. */
 char* mimi_http_post(const char* url, const char* body);
 
+/* Contract violation: print message and abort */
+void mimi_runtime_abort(const char* msg);
+
 #endif

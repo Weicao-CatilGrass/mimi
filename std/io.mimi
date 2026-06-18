@@ -31,3 +31,22 @@ pub func print_float(f: f64) {
 pub func print_list<T>(xs: List<T>) {
     println(to_string(xs))
 }
+
+pub func input_line() -> string {
+    let result = input()
+    if result.0 {
+        result.1
+    } else {
+        ""
+    }
+}
+
+pub func input_int() -> i32 {
+    let line = input_line()
+    let parsed = str_parse_int(line)
+    if parsed.0 {
+        parsed.1
+    } else {
+        0
+    }
+}

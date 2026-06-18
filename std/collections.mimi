@@ -1,16 +1,16 @@
-pub func is_empty_list(xs: List<i32>) -> bool {
+pub func is_empty_list<T>(xs: List<T>) -> bool {
     len(xs) == 0
 }
 
-pub func first(xs: List<i32>) -> i32 {
+pub func first<T>(xs: List<T>) -> T {
     xs[0]
 }
 
-pub func last(xs: List<i32>) -> i32 {
+pub func last<T>(xs: List<T>) -> T {
     xs[len(xs) - 1]
 }
 
-pub func take(xs: List<i32>, n: i32) -> List<i32> {
+pub func take<T>(xs: List<T>, n: i32) -> List<T> {
     if n < len(xs) {
         xs[0..n]
     } else {
@@ -18,7 +18,7 @@ pub func take(xs: List<i32>, n: i32) -> List<i32> {
     }
 }
 
-pub func drop_n(xs: List<i32>, n: i32) -> List<i32> {
+pub func drop_n<T>(xs: List<T>, n: i32) -> List<T> {
     if n < len(xs) {
         xs[n..len(xs)]
     } else {
@@ -26,7 +26,7 @@ pub func drop_n(xs: List<i32>, n: i32) -> List<i32> {
     }
 }
 
-pub func find(xs: List<i32>, target: i32) -> (bool, i32) {
+pub func find<T>(xs: List<T>, target: T) -> (bool, i32) {
     for fi_i in range(0, len(xs)) {
         if xs[fi_i] == target {
             return (true, fi_i)
@@ -35,42 +35,42 @@ pub func find(xs: List<i32>, target: i32) -> (bool, i32) {
     (false, -1)
 }
 
-pub func count_val(xs: List<i32>, target: i32) -> i32 {
-    reduce(xs, fn(cv_acc: i32, cv_x: i32) -> i32 {
+pub func count_val<T>(xs: List<T>, target: T) -> i32 {
+    reduce(xs, fn(cv_acc: i32, cv_x: T) -> i32 {
         if cv_x == target { cv_acc + 1 } else { cv_acc }
     }, 0)
 }
 
-pub func dedup(xs: List<i32>) -> List<i32> {
-    reduce(xs, fn(dd_acc: List<i32>, dd_x: i32) -> List<i32> {
+pub func dedup<T>(xs: List<T>) -> List<T> {
+    reduce(xs, fn(dd_acc: List<T>, dd_x: T) -> List<T> {
         if contains(dd_acc, dd_x) { dd_acc } else { push(dd_acc, dd_x) }
     }, [])
 }
 
-pub func concat(xs: List<i32>, ys: List<i32>) -> List<i32> {
-    reduce(ys, fn(ct_acc: List<i32>, ct_x: i32) -> List<i32> {
+pub func concat<T>(xs: List<T>, ys: List<T>) -> List<T> {
+    reduce(ys, fn(ct_acc: List<T>, ct_x: T) -> List<T> {
         push(ct_acc, ct_x)
     }, xs)
 }
 
-pub func reverse_list(xs: List<i32>) -> List<i32> {
+pub func reverse_list<T>(xs: List<T>) -> List<T> {
     reverse(xs)
 }
 
-pub func remove_at(xs: List<i32>, index: i32) -> List<i32> {
-    reduce(range(0, len(xs)), fn(ra_acc: List<i32>, ra_i: i32) -> List<i32> {
+pub func remove_at<T>(xs: List<T>, index: i32) -> List<T> {
+    reduce(range(0, len(xs)), fn(ra_acc: List<T>, ra_i: i32) -> List<T> {
         if ra_i != index { push(ra_acc, xs[ra_i]) } else { ra_acc }
     }, [])
 }
 
-pub func remove_value(xs: List<i32>, value: i32) -> List<i32> {
-    reduce(xs, fn(rv_acc: List<i32>, rv_x: i32) -> List<i32> {
+pub func remove_value<T>(xs: List<T>, value: T) -> List<T> {
+    reduce(xs, fn(rv_acc: List<T>, rv_x: T) -> List<T> {
         if rv_x != value { push(rv_acc, rv_x) } else { rv_acc }
     }, [])
 }
 
-pub func fill_list(n: i32, value: i32) -> List<i32> {
-    reduce(range(0, n), fn(fl_acc: List<i32>, _: i32) -> List<i32> {
+pub func fill_list<T>(n: i32, value: T) -> List<T> {
+    reduce(range(0, n), fn(fl_acc: List<T>, _: i32) -> List<T> {
         push(fl_acc, value)
     }, [])
 }
@@ -89,10 +89,26 @@ pub func range_step(start: i32, end: i32, step: i32) -> List<i32> {
     }
 }
 
+pub func sum(xs: List<i32>) -> i32 {
+    reduce(xs, fn(s_acc: i32, s_x: i32) -> i32 {
+        s_acc + s_x
+    }, 0)
+}
+
 pub func sum_float(xs: List<f64>) -> f64 {
     reduce(xs, fn(sf_acc: f64, sf_x: f64) -> f64 {
         sf_acc + sf_x
     }, 0.0)
+}
+
+// flatten requires nested generics List<List<T>> which is not yet supported.
+// Use concat in a loop instead:
+//   let result = []
+//   for xs in xss { result = concat(result, xs) }
+//   result
+
+pub func sort_list(xs: List<i32>) -> List<i32> {
+    sort(xs)
 }
 
 pub func filter_positives(xs: List<i32>) -> List<i32> {
@@ -109,4 +125,14 @@ pub func filter_evens(xs: List<i32>) -> List<i32> {
 
 pub func filter_odds(xs: List<i32>) -> List<i32> {
     filter(xs, fn(fo_x: i32) -> bool { is_odd(fo_x) })
+}
+
+pub func map_list<T, U>(xs: List<T>, f: func(T) -> U) -> List<U> {
+    reduce(xs, fn(ml_acc: List<U>, ml_x: T) -> List<U> {
+        push(ml_acc, f(ml_x))
+    }, [])
+}
+
+pub func unique<T>(xs: List<T>) -> List<T> {
+    dedup(xs)
 }

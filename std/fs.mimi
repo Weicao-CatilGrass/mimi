@@ -14,6 +14,8 @@ pub func read_lines(path: string) -> List<string> {
     str_split(read_file(path), "\n")
 }
 
+// Note: file_size reads the entire file to measure length.
+// A dedicated stat() call is not yet available in the C runtime.
 pub func file_size(path: string) -> i32 {
     len(read_file(path))
 }

@@ -193,3 +193,62 @@ pub(crate) fn compile_and_run(src: &str) -> Result<String, String> {
 
     Ok(stdout)
 }
+
+/// End-to-end codegen test with contract verification enabled.
+/// Same as compile_and_run but sets verify_contracts = true.
+pub(crate) fn compile_and_verify_contracts(src: &str) -> Result<String, String> {
+    use std::process::Command;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static E2E_COUNTER: AtomicU64 = AtomicU64::new(0);
+    let counter = E2E_COUNTER.fetch_add(1, Ordering::Relaxed);
+
+    let tokens = crate::lexer::Lexer::new(src).tokenize().map_err(|e| format!("lexer: {}", e))?;
+    let file = crate::parser::Parser::new(tokens).parse_file().map_err(|e| format!("parser: {}", e))?;
+
+    let context = inkwell::context::Context::create();
+    let mut codegen = crate::codegen::CodeGenerator::new(&context, "e2e_test");
+    codegen.verify_contracts = true;
+    codegen.compile_file(&file)?;
+
+    let tmp_dir = std::env::temp_dir().join(format!("mimi_e2e_{}_{}", std::process::id(), counter));
+    std::fs::create_dir_all(&tmp_dir).map_err(|e| format!("mkdir: {}", e))?;
+    let obj_path = tmp_dir.join("test.o");
+    let bin_path = if cfg!(target_os = "windows") { tmp_dir.join("test.exe") } else { tmp_dir.join("test") };
+
+    codegen.compile_to_object(&obj_path)?;
+
+    let runtime_c = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/runtime/mimi_runtime.c");
+    let runtime_o = tmp_dir.join("mimi_runtime.o");
+    let rt_status = Command::new("cc")
+        .arg("-c").arg(&runtime_c).arg("-o").arg(&runtime_o)
+        .status()
+        .map_err(|e| format!("runtime compile: {}", e))?;
+    if !rt_status.success() {
+        let _ = std::fs::remove_dir_all(&tmp_dir);
+        return Err(format!("runtime compile failed with exit code {:?}", rt_status.code()));
+    }
+
+    let status = Command::new("cc")
+        .arg("-no-pie").arg(&obj_path).arg(&runtime_o).arg("-o").arg(&bin_path)
+        .status()
+        .map_err(|e| format!("linker: {}", e))?;
+    if !status.success() {
+        let _ = std::fs::remove_dir_all(&tmp_dir);
+        return Err(format!("linker failed with exit code {:?}", status.code()));
+    }
+
+    let output = Command::new(&bin_path)
+        .output()
+        .map_err(|e| format!("run: {}", e))?;
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+
+    let _ = std::fs::remove_dir_all(&tmp_dir);
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("exit code {:?}, stderr: {}", output.status.code(), stderr));
+    }
+
+    Ok(stdout)
+}

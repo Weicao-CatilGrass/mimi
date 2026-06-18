@@ -1,0 +1,18 @@
+// JSON operations - wraps compiler builtins
+
+pub func get_string(json: string, key: string) -> string {
+    json_get_string(json, key)
+}
+
+pub func get_int(json: string, key: string) -> i64 {
+    json_get_int(json, key)
+}
+
+pub func get_element(json: string, index: i32) -> string {
+    json_get_element(json, index)
+}
+
+pub func to_string_pretty(json: string) -> string {
+    // JSON is already a string; this is an identity wrapper for API symmetry
+    json
+}

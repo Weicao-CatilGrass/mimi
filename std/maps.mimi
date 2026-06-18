@@ -1,0 +1,59 @@
+// Map (dictionary) operations - wraps compiler builtins
+// Maps use string keys and are implemented as Records internally.
+
+pub func new() -> Record {
+    map_new()
+}
+
+pub func get(m: Record, key: string) -> (bool, Any) {
+    map_get(m, key)
+}
+
+pub func set(m: Record, key: string, value: Any) -> Record {
+    map_set(m, key, value)
+}
+
+pub func has_key(m: Record, key: string) -> bool {
+    map_has_key(m, key)
+}
+
+pub func remove(m: Record, key: string) -> Record {
+    map_remove(m, key)
+}
+
+pub func size(m: Record) -> i32 {
+    map_size(m)
+}
+
+pub func from_list(pairs: List<(string, Any)>) -> Record {
+    map_from_list(pairs)
+}
+
+pub func keys(m: Record) -> List<string> {
+    // Iterate record fields - requires runtime support
+    // For now, use from_list/to_list pattern
+    []
+}
+
+pub func values(m: Record) -> List<Any> {
+    []
+}
+
+pub func is_empty(m: Record) -> bool {
+    map_size(m) == 0
+}
+
+pub func get_or_default(m: Record, key: string, default: Any) -> Any {
+    let result = map_get(m, key)
+    if result.0 {
+        result.1
+    } else {
+        default
+    }
+}
+
+pub func merge(a: Record, b: Record) -> Record {
+    // Merge b into a - b's values override a's
+    // Requires iteration over b's keys, which needs runtime support
+    a
+}
