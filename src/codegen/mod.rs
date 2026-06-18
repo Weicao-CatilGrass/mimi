@@ -3018,8 +3018,10 @@ impl<'ctx> CodeGenerator<'ctx> {
                         self.builder.build_conditional_branch(disc, ok_bb, err_bb)
                             .map_err(|e| format!("branch error: {}", e))?;
 
-                        // Err path: print error message and exit(1)
+                        // Err path: run compensations, print error message, exit(1)
                         self.builder.position_at_end(err_bb);
+                        let mut comp_vars = vars.clone();
+                        self.compile_compensations(&mut comp_vars)?;
                         let try_exit_fn = self.module.get_function("mimi_try_exit")
                             .ok_or("mimi_try_exit not declared")?;
                         self.builder.build_call(try_exit_fn, &[
@@ -3044,6 +3046,8 @@ impl<'ctx> CodeGenerator<'ctx> {
                             .map_err(|e| format!("branch error: {}", e))?;
 
                         self.builder.position_at_end(err_bb);
+                        let mut comp_vars = vars.clone();
+                        self.compile_compensations(&mut comp_vars)?;
                         let try_exit_fn = self.module.get_function("mimi_try_exit")
                             .ok_or("mimi_try_exit not declared")?;
                         self.builder.build_call(try_exit_fn, &[
