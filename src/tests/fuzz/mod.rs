@@ -102,22 +102,20 @@ func main() -> i32 {
 }
 
 #[test]
-fn test_exhaustive_bool_incomplete_gap() {
+fn test_exhaustive_bool_incomplete() {
     let src = r#"
 func main() -> i32 {
     let b = true;
     match b { true => 1 }
 }
 "#;
-    let result = check_source(src);
-    if result.is_err() {
-        let all_msg: String = result.unwrap_err().iter()
-            .map(|d| d.message.clone()).collect::<Vec<_>>().join(" ");
-        assert!(
-            all_msg.contains("exhaustive"),
-            "expected 'exhaustive' error"
-        );
-    }
+    let errs = check_source(src).unwrap_err();
+    let all_msg: String = errs.iter().map(|d| d.message.clone()).collect::<Vec<_>>().join(" ");
+    assert!(
+        all_msg.contains("exhaustive"),
+        "expected 'exhaustive' error, got: {:?}",
+        errs.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
 }
 
 // ==============================
