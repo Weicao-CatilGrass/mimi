@@ -131,11 +131,12 @@ for ((i=0; i<ROUNDS; i++)); do
     interp_value=$(echo "$interp_output" | sed -n 's/^-> *//p' | xargs)
 
     if $interp_ok && $compiled_ok; then
-        # 注意: Unix exit code 只有 8 位 (0-255), 所以需要 % 256
-        interp_mod=$((interp_value % 256))
+        # Unix exit code is unsigned 8-bit.  Handle negative interp values
+        # (e.g. -1 → 255) by wrapping through signed 8-bit.
+        interp_mod=$(( (interp_value & 0xFF) ))
         if [ "$interp_mod" != "$compiled_exit_code" ]; then
             log_fail "MISMATCH at round $i!"
-            log_fail "  Interpreter: '$interp_value' (mod 256 = $interp_mod)"
+            log_fail "  Interpreter: '$interp_value' (wrapped = $interp_mod)"
             log_fail "  Compiled:    exit code $compiled_exit_code"
             crash_file="$CRASH_DIR/mismatch_${i}_$(date +%s).mimi"
             cp "$f" "$crash_file"
