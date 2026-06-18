@@ -41,6 +41,7 @@ void* realloc(void* ptr, size_t new_size) {
 }
 
 void* calloc(size_t count, size_t size) {
+    if (size != 0 && count > SIZE_MAX / size) return (void*)0;
     size_t total = count * size;
     void* ptr = malloc(total);
     if (ptr) {
@@ -71,6 +72,8 @@ int strncmp(const char* a, const char* b, size_t n) {
 }
 
 char* strcpy(char* dst, const char* src) {
+    /* SAFETY: Callers must ensure dst is large enough for src (including NUL).
+     * All callers in this file allocate via malloc/strdup with correct sizes. */
     char* p = dst;
     while ((*p++ = *src++));
     return dst;
@@ -85,6 +88,8 @@ char* strncpy(char* dst, const char* src, size_t n) {
 }
 
 char* strcat(char* dst, const char* src) {
+    /* SAFETY: Callers must ensure dst has room for strlen(dst)+strlen(src)+1.
+     * All callers in this file allocate via malloc/strdup with correct sizes. */
     char* p = dst + strlen(dst);
     while ((*p++ = *src++));
     return dst;
@@ -203,6 +208,7 @@ void mimi_try_exit(int64_t payload) {
 #include <string.h>
 #include <unistd.h>
 #include <time.h>
+#include <pthread.h>
 
 #define INITIAL_CAPACITY 16
 #define LOAD_FACTOR 0.75
@@ -527,9 +533,11 @@ typedef struct {
 static CapEntry cap_table[MAX_CAPS];
 static int64_t cap_next_id = 1;
 static int cap_count = 0;
+static pthread_mutex_t cap_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 int64_t mimi_cap_register(const char* name) {
-    if (cap_count >= MAX_CAPS) return -1;
+    pthread_mutex_lock(&cap_mutex);
+    if (cap_count >= MAX_CAPS) { pthread_mutex_unlock(&cap_mutex); return -1; }
     int64_t id = cap_next_id++;
     cap_table[cap_count].id = id;
     cap_table[cap_count].consumed = 0;
@@ -540,30 +548,38 @@ int64_t mimi_cap_register(const char* name) {
         cap_table[cap_count].name[0] = '\0';
     }
     cap_count++;
+    pthread_mutex_unlock(&cap_mutex);
     return id;
 }
 
 int mimi_cap_check(int64_t cap, const char* name) {
+    pthread_mutex_lock(&cap_mutex);
     for (int i = 0; i < cap_count; i++) {
         if (cap_table[i].id == cap && !cap_table[i].consumed) {
-            if (!name || !name[0]) return 1;
-            if (strcmp(cap_table[i].name, name) == 0) return 1;
+            if (!name || !name[0]) { pthread_mutex_unlock(&cap_mutex); return 1; }
+            if (strcmp(cap_table[i].name, name) == 0) { pthread_mutex_unlock(&cap_mutex); return 1; }
+            pthread_mutex_unlock(&cap_mutex);
             return 0;
         }
     }
+    pthread_mutex_unlock(&cap_mutex);
     return 0;
 }
 
 int mimi_cap_consume(int64_t cap, const char* name) {
+    pthread_mutex_lock(&cap_mutex);
     for (int i = 0; i < cap_count; i++) {
         if (cap_table[i].id == cap && !cap_table[i].consumed) {
             if (!name || !name[0] || strcmp(cap_table[i].name, name) == 0) {
                 cap_table[i].consumed = 1;
+                pthread_mutex_unlock(&cap_mutex);
                 return 1;
             }
+            pthread_mutex_unlock(&cap_mutex);
             return 0;
         }
     }
+    pthread_mutex_unlock(&cap_mutex);
     return 0;
 }
 
@@ -608,8 +624,6 @@ const char* mimi_str_replace(const char* s, const char* from, const char* to) {
 }
 
 /* ========== Thread pool for parasteps ========== */
-
-#include <pthread.h>
 
 #define POOL_MAX_THREADS 64
 #define POOL_MAX_TASKS 1024
@@ -1154,6 +1168,7 @@ static char* http_request(const char* host, int port, const char* request, int* 
     if (!response) { mimi_close(fd); return NULL; }
     while (1) {
         if (total + 4096 > capacity) {
+            if (capacity > SIZE_MAX / 2) { free(response); mimi_close(fd); return NULL; }
             capacity *= 2;
             char* new_buf = (char*)realloc(response, capacity);
             if (!new_buf) { free(response); mimi_close(fd); return NULL; }
