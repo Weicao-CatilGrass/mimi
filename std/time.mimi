@@ -1,17 +1,30 @@
 // Time operations - wraps compiler builtins
+// Note: function names differ from builtins to avoid shadowing:
 
-pub func now() -> i64 {
+pub func timestamp() -> i64 {
     now()
 }
 
-pub func now_ms() -> i64 {
+pub func timestamp_ms() -> i64 {
     now_ms()
 }
 
-pub func sleep(ms: i32) {
+pub func sleep_ms(ms: i32) {
     sleep(ms)
 }
 
 pub func elapsed(start: i64) -> i64 {
     now_ms() - start
+}
+
+pub func seconds_since(start_secs: i64) -> i64 {
+    now() - start_secs
+}
+
+pub func millis_since(start_ms: i64) -> i64 {
+    now_ms() - start_ms
+}
+
+pub func duration(start_ms: i64, end_ms: i64) -> i64 {
+    end_ms - start_ms
 }

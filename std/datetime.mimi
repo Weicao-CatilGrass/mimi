@@ -1,0 +1,98 @@
+// Datetime operations based on Unix timestamps
+// Uses now()/now_ms() builtins which return i64 (seconds/milliseconds since epoch)
+
+pub func now_secs() -> i64 {
+    now()
+}
+
+pub func now_millis() -> i64 {
+    now_ms()
+}
+
+pub func timestamp_secs() -> i64 {
+    now()
+}
+
+pub func timestamp_millis() -> i64 {
+    now_ms()
+}
+
+// Time constants
+pub const SECONDS_PER_MINUTE: i64 = 60
+pub const SECONDS_PER_HOUR: i64 = 3600
+pub const SECONDS_PER_DAY: i64 = 86400
+pub const MILLIS_PER_SECOND: i64 = 1000
+pub const MILLIS_PER_MINUTE: i64 = 60000
+pub const MILLIS_PER_HOUR: i64 = 3600000
+pub const MILLIS_PER_DAY: i64 = 86400000
+
+pub func seconds_to_millis(secs: i64) -> i64 {
+    secs * MILLIS_PER_SECOND
+}
+
+pub func millis_to_seconds(ms: i64) -> i64 {
+    ms / MILLIS_PER_SECOND
+}
+
+pub func format_duration_secs(total_secs: i64) -> string {
+    let ds_days = total_secs / SECONDS_PER_DAY
+    let ds_rem = total_secs % SECONDS_PER_DAY
+    let ds_hours = ds_rem / SECONDS_PER_HOUR
+    let ds_rem2 = ds_rem % SECONDS_PER_HOUR
+    let ds_minutes = ds_rem2 / SECONDS_PER_MINUTE
+    let ds_seconds = ds_rem2 % SECONDS_PER_MINUTE
+    to_string(ds_days) + "d " + to_string(ds_hours) + "h " + to_string(ds_minutes) + "m " + to_string(ds_seconds) + "s"
+}
+
+pub func format_duration_ms(ms: i64) -> string {
+    let total_secs = ms / MILLIS_PER_SECOND
+    let rem_ms = ms % MILLIS_PER_SECOND
+    format_duration_secs(total_secs) + "." + to_string(rem_ms) + "ms"
+}
+
+pub func days_from_now(days: i64) -> i64 {
+    now() + days * SECONDS_PER_DAY
+}
+
+pub func hours_from_now(hours: i64) -> i64 {
+    now() + hours * SECONDS_PER_HOUR
+}
+
+pub func minutes_from_now(mins: i64) -> i64 {
+    now() + mins * SECONDS_PER_MINUTE
+}
+
+pub func is_future(timestamp_secs: i64) -> bool {
+    timestamp_secs > now()
+}
+
+pub func is_past(timestamp_secs: i64) -> bool {
+    timestamp_secs < now()
+}
+
+pub func time_since(timestamp_secs: i64) -> i64 {
+    now() - timestamp_secs
+}
+
+pub func time_until(timestamp_secs: i64) -> i64 {
+    timestamp_secs - now()
+}
+
+pub func elapsed_since(start_ms: i64) -> i64 {
+    now_ms() - start_ms
+}
+
+pub func sleep_secs(secs: i32) {
+    sleep(secs * 1000)
+}
+
+pub func sleep_ms(ms: i32) {
+    sleep(ms)
+}
+
+pub func sleep_until(timestamp_secs: i64) {
+    let diff = timestamp_secs - now()
+    if diff > 0 {
+        sleep(to_int(diff * MILLIS_PER_SECOND))
+    }
+}

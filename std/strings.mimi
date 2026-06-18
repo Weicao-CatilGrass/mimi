@@ -119,3 +119,113 @@ pub func lines(s: string) -> List<string> {
 pub func words(s: string) -> List<string> {
     str_split(trim(s), " ")
 }
+
+pub func contains(s: string, sub: string) -> bool {
+    str_contains(s, sub)
+}
+
+pub func capitalize(s: string) -> string {
+    if len(s) == 0 { return s }
+    str_to_upper(str_char_at(s, 0)) + str_substring(s, 1, len(s))
+}
+
+pub func title(s: string) -> string {
+    let words_list = words(s)
+    let mut result: List<string> = []
+    for tw in words_list {
+        push(result, capitalize(tw))
+    }
+    str_join(result, " ")
+}
+
+pub func reverse_string(s: string) -> string {
+    let n = len(s)
+    let mut rev_chars: List<string> = []
+    for ri in range(0, n) {
+        push(rev_chars, str_char_at(s, n - 1 - ri))
+    }
+    str_join(rev_chars, "")
+}
+
+pub func truncate(s: string, max_len: i32) -> string {
+    if len(s) <= max_len {
+        s
+    } else {
+        str_substring(s, 0, max_len) + "..."
+    }
+}
+
+pub func remove_prefix(s: string, prefix: string) -> string {
+    if str_starts_with(s, prefix) {
+        str_substring(s, len(prefix), len(s))
+    } else {
+        s
+    }
+}
+
+pub func remove_suffix(s: string, suffix: string) -> string {
+    if str_ends_with(s, suffix) {
+        str_substring(s, 0, len(s) - len(suffix))
+    } else {
+        s
+    }
+}
+
+pub func count_lines(s: string) -> i32 {
+    len(lines(s))
+}
+
+pub func count_words(s: string) -> i32 {
+    len(words(s))
+}
+
+pub func first_char(s: string) -> string {
+    if len(s) == 0 { "" } else { str_char_at(s, 0) }
+}
+
+pub func last_char(s: string) -> string {
+    let n = len(s)
+    if n == 0 { "" } else { str_char_at(s, n - 1) }
+}
+
+pub func without_last(s: string) -> string {
+    let n = len(s)
+    if n <= 1 { "" } else { str_substring(s, 0, n - 1) }
+}
+
+pub func without_first(s: string) -> string {
+    if len(s) <= 1 { "" } else { str_substring(s, 1, len(s)) }
+}
+
+pub func surround(s: string, left: string, right: string) -> string {
+    left + s + right
+}
+
+pub func quote(s: string) -> string {
+    surround(s, "\"", "\"")
+}
+
+pub func paren(s: string) -> string {
+    surround(s, "(", ")")
+}
+
+pub func bracket(s: string) -> string {
+    surround(s, "[", "]")
+}
+
+pub func brace(s: string) -> string {
+    surround(s, "{", "}")
+}
+
+pub func indent(s: string, n: i32) -> string {
+    let prefix = str_repeat(" ", n)
+    let mut indented: List<string> = []
+    for line in lines(s) {
+        push(indented, prefix + line)
+    }
+    str_join(indented, "\n")
+}
+
+pub func ellipsis(s: string, max_len: i32) -> string {
+    truncate(s, max_len)
+}

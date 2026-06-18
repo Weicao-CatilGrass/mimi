@@ -51,11 +51,8 @@ pub func is_prime(n: i32) -> bool {
     true
 }
 
-pub func random_int(lo: i32, hi: i32) -> i32 {
-    let ri_r = random()
-    let ri_span = hi - lo
-    lo + to_int(ri_r * to_float(ri_span))
-}
+// random_int disabled in codegen — uses to_float/to_int on numeric values
+// which codegen doesn't support. Re-enable when codegen handles numeric to_float.
 
 pub func mod_pow(base: i32, exp: i32, modulus: i32) -> i32 {
     let mut mp_acc = 1
@@ -176,3 +173,62 @@ pub func ceil_val(x: f64) -> i64 {
 pub func round_val(x: f64) -> i64 {
     round(x)
 }
+
+// ---- Number theory ----
+
+pub func gcd(a: i32, b: i32) -> i32 {
+    let mut g_x = a
+    let mut g_y = b
+    while g_y != 0 {
+        let g_tmp = g_y
+        g_y = g_x % g_y
+        g_x = g_tmp
+    }
+    g_x
+}
+
+pub func lcm(a: i32, b: i32) -> i32 {
+    if a == 0 || b == 0 { 0 } else { a * b / gcd(a, b) }
+}
+
+pub func is_even_number(n: i32) -> bool {
+    n % 2 == 0
+}
+
+pub func is_odd_number(n: i32) -> bool {
+    n % 2 != 0
+}
+
+pub func is_divisible_by(n: i32, d: i32) -> bool {
+    d != 0 && n % d == 0
+}
+
+// ---- Statistics ----
+
+pub func min_val(a: i32, b: i32) -> i32 {
+    if a < b { a } else { b }
+}
+
+pub func max_val(a: i32, b: i32) -> i32 {
+    if a > b { a } else { b }
+}
+
+// ---- Geometry ----
+
+pub func area_circle(r: f64) -> f64 {
+    pi() * r * r
+}
+
+pub func circumference(r: f64) -> f64 {
+    2.0 * pi() * r
+}
+
+pub func hypot(a: f64, b: f64) -> f64 {
+    sqrt(a * a + b * b)
+}
+
+pub func clamp_int(value: i32, lo: i32, hi: i32) -> i32 {
+    if value < lo { lo } else if value > hi { hi } else { value }
+}
+
+

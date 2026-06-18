@@ -73,3 +73,112 @@ pub func clamp_float(value: f64, min_val: f64, max_val: f64) -> f64 {
 pub func lerp(a: f64, b: f64, t: f64) -> f64 {
     a + (b - a) * t
 }
+
+pub func compose<T, U, V>(f: func(U) -> V, g: func(T) -> U) -> func(T) -> V {
+    fn(x: T) -> V { f(g(x)) }
+}
+
+pub func pipe<T, U>(x: T, f: func(T) -> U) -> U {
+    f(x)
+}
+
+pub func tap<T>(x: T, f: func(T) -> ()) -> T {
+    f(x)
+    x
+}
+
+pub func flip<T, U, V>(f: func(T, U) -> V) -> func(U, T) -> V {
+    fn(a: U, b: T) -> V { f(b, a) }
+}
+
+pub func apply<T, U>(f: func(T) -> U, x: T) -> U {
+    f(x)
+}
+
+pub func konst<T, U>(x: T) -> func(U) -> T {
+    fn(_: U) -> T { x }
+}
+
+pub func fail(msg: string) -> unit {
+    println("ERROR:", msg)
+    exit(1)
+}
+
+pub func unreachable() -> unit {
+    println("ERROR: reached unreachable code")
+    exit(1)
+}
+
+pub func todo() -> unit {
+    println("TODO: unimplemented")
+    exit(1)
+}
+
+pub func type_of<T>(x: T) -> string {
+    type_name(x)
+}
+
+pub func assert_non_null<T>(x: T, name: string) -> T {
+    if x == unknown {
+        println("ERROR:", name, "is null")
+        exit(1)
+    }
+    x
+}
+
+pub func default_i32() -> i32 { 0 }
+
+pub func default_f64() -> f64 { 0.0 }
+
+pub func default_bool() -> bool { false }
+
+pub func default_string() -> string { "" }
+
+pub func increment(x: i32) -> i32 { x + 1 }
+
+pub func decrement(x: i32) -> i32 { x - 1 }
+
+pub func double(x: i32) -> i32 { x * 2 }
+
+pub func triple(x: i32) -> i32 { x * 3 }
+
+pub func half(x: i32) -> i32 { x / 2 }
+
+pub func sqr(x: i32) -> i32 { x * x }
+
+pub func cube_int(x: i32) -> i32 { x * x * x }
+
+pub func eq<T>(a: T, b: T) -> bool where T: Eq {
+    a == b
+}
+
+pub func not_eq<T>(a: T, b: T) -> bool where T: Eq {
+    a != b
+}
+
+pub func not(b: bool) -> bool {
+    !b
+}
+
+pub func assert_msg(cond: bool, msg: string) {
+    if !cond {
+        println("ASSERTION FAILED:", msg)
+        exit(1)
+    }
+}
+
+pub func repeat_action(n: i32, f: func(i32) -> ()) {
+    let mut ra_i = 0
+    while ra_i < n {
+        f(ra_i)
+        ra_i += 1
+    }
+}
+
+pub func times(n: i32, f: func() -> ()) {
+    let mut t_i = 0
+    while t_i < n {
+        f()
+        t_i += 1
+    }
+}

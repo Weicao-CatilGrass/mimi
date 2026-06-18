@@ -1,5 +1,13 @@
 // JSON operations - wraps compiler builtins
 
+pub func to_json(value: Any) -> string {
+    to_json(value)
+}
+
+pub func from_json(s: string) -> string {
+    from_json(s)
+}
+
 pub func get_string(json: string, key: string) -> string {
     json_get_string(json, key)
 }
@@ -12,7 +20,48 @@ pub func get_element(json: string, index: i32) -> string {
     json_get_element(json, index)
 }
 
+pub func get_bool(json: string, key: string) -> bool {
+    let v = json_get_string(json, key)
+    v == "true"
+}
+
+pub func get_float(json: string, key: string) -> f64 {
+    let v = json_get_string(json, key)
+    let parsed = str_parse_float(v)
+    if parsed.0 { parsed.1 } else { 0.0 }
+}
+
+pub func has_key(json: string, key: string) -> bool {
+    json_get_string(json, key) != ""
+}
+
+pub func is_valid_json(s: string) -> bool {
+    let result = from_json(s)
+    result != ""
+}
+
 pub func to_string_pretty(json: string) -> string {
-    // JSON is already a string; this is an identity wrapper for API symmetry
     json
+}
+
+pub func get_object(json: string, key: string) -> string {
+    json_get_string(json, key)
+}
+
+pub func get_array(json: string, key: string) -> string {
+    json_get_string(json, key)
+}
+
+pub func array_length(json: string) -> i32 {
+    let mut al_i = 0
+    let mut al_found = true
+    while al_found {
+        let elem = json_get_element(json, al_i)
+        if elem == "" {
+            al_found = false
+        } else {
+            al_i += 1
+        }
+    }
+    al_i
 }
