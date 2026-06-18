@@ -1,0 +1,38 @@
+// Mimi 验证程序集 3: 共享所有权与并发
+// 测试: actor, cap, arena, on failure
+
+cap FileReadCap;
+cap FileWriteCap;
+
+actor Counter {
+    mut count: i32 = 0;
+
+    func increment() {
+        self.count = self.count + 1;
+    }
+
+    func get_count() -> i32 {
+        return self.count;
+    }
+}
+
+func main() -> i32 {
+    println("=== Actor ===");
+    let c = Counter.spawn();
+    c.increment();
+    c.increment();
+    println("count =", c.get_count());
+
+    println("=== cap 声明 ===");
+    println("cap types: FileReadCap, FileWriteCap");
+
+    println("=== arena ===");
+    arena {
+        let x = 10;
+        let y = 20;
+        println("arena result =", x + y);
+    }
+
+    println("=== 所有测试通过 ===");
+    return 0;
+}

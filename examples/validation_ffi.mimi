@@ -1,0 +1,23 @@
+// Mimi 验证程序集 4: FFI extern 调用
+// 测试: extern "C" 函数声明与调用
+// 运行: MIMI_FFI_LIB=/lib/x86_64-linux-gnu/libc.so.6 mimi run examples/validation_ffi.mimi
+
+extern "C" {
+    func strlen(s: string) -> i64;
+}
+
+extern "C" {
+    func puts(s: string) -> i32;
+}
+
+func main() -> i32 {
+    println("=== FFI: strlen ===");
+    let len = strlen("hello world");
+    println("strlen('hello world') =", len);
+
+    println("=== FFI: puts ===");
+    puts("Hello from Mimi FFI!");
+
+    println("=== 所有测试通过 ===");
+    return 0;
+}

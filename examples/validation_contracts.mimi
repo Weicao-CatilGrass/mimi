@@ -1,0 +1,49 @@
+// Mimi 验证程序集 5: 契约(requires/ensures)与验证
+// 测试: requires/ensures 前置后置条件
+
+func fib(n: i32) -> i32 {
+    requires: n >= 0
+    ensures: result >= 0
+
+    if n <= 1 {
+        return n;
+    } else {
+        return fib(n - 1) + fib(n - 2);
+    }
+}
+
+func factorial(n: i32) -> i32 {
+    requires: n >= 0
+    ensures: result > 0
+
+    if n <= 1 {
+        return 1;
+    } else {
+        return n * factorial(n - 1);
+    }
+}
+
+func divide(a: i32, b: i32) -> i32 {
+    requires: b != 0
+
+    return a / b;
+}
+
+func withdraw(balance: i32, amount: i32) -> i32 {
+    requires: amount > 0
+    requires: balance >= amount
+    ensures: result == balance - amount
+
+    return balance - amount;
+}
+
+func main() -> i32 {
+    println("=== 契约验证 ===");
+    println("fib(10) =", fib(10));
+    println("factorial(5) =", factorial(5));
+    println("divide(10, 3) =", divide(10, 3));
+    println("withdraw(100, 30) =", withdraw(100, 30));
+
+    println("=== 所有测试通过 ===");
+    return 0;
+}
