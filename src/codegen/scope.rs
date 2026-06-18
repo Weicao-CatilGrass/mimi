@@ -88,7 +88,8 @@ impl<'ctx> CodeGenerator<'ctx> {
             return Err(format!("contract condition must be boolean, got {:?}", cond_val.get_type()));
         };
 
-        let function = self.current_function().unwrap();
+        let function = self.current_function()
+            .ok_or_else(|| "codegen: no current function for contract assert".to_string())?;
         let pass_bb = self.context.append_basic_block(function, "contract_pass");
         let fail_bb = self.context.append_basic_block(function, "contract_fail");
 
@@ -100,13 +101,13 @@ impl<'ctx> CodeGenerator<'ctx> {
         let msg_ptr = self.builder.build_global_string_ptr(msg, "contract_msg")
             .map_err(|e| format!("string error: {}", e))?;
         let abort_fn = self.module.get_function("mimi_runtime_abort")
-            .or_else(|| {
+            .unwrap_or_else(|| {
                 let i8_ptr = self.context.i8_type().ptr_type(inkwell::AddressSpace::default());
                 let ty = self.context.void_type().fn_type(&[
                     BasicMetadataTypeEnum::PointerType(i8_ptr),
                 ], false);
-                Some(self.module.add_function("mimi_runtime_abort", ty, Some(inkwell::module::Linkage::External)))
-            }).unwrap();
+                self.module.add_function("mimi_runtime_abort", ty, Some(inkwell::module::Linkage::External))
+            });
         self.builder.build_call(abort_fn, &[
             BasicMetadataValueEnum::PointerValue(msg_ptr.as_pointer_value()),
         ], "abort_call")

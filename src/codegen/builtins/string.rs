@@ -169,7 +169,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                             BasicMetadataTypeEnum::PointerType(i8_ptr),
                         ], false);
                         Some(self.module.add_function("strstr", ty, Some(inkwell::module::Linkage::External)))
-                    }).unwrap();
+                    }).ok_or_else(|| "failed to get or create strstr function".to_string())?;
                 let result = self.builder.build_call(strstr_fn, &[
                     BasicMetadataValueEnum::PointerValue(s_ptr),
                     BasicMetadataValueEnum::PointerValue(sub_ptr),
@@ -218,7 +218,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                             BasicMetadataTypeEnum::IntType(self.context.i64_type()),
                         ], false);
                         Some(self.module.add_function("strncmp", ty, Some(inkwell::module::Linkage::External)))
-                    }).unwrap();
+                    }).ok_or_else(|| "failed to get or create strncmp function".to_string())?;
                 let cmp_result = self.builder.build_call(strncmp_fn, &[
                     BasicMetadataValueEnum::PointerValue(s_ptr),
                     BasicMetadataValueEnum::PointerValue(prefix_ptr),
@@ -272,7 +272,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                 // If suffix_len > s_len, return false
                 let gt = self.builder.build_int_compare(inkwell::IntPredicate::SGT, suffix_len, s_len, "gt")
                     .map_err(|e| format!("cmp error: {}", e))?;
-                let function = self.current_function().unwrap();
+                let function = self.current_function().ok_or_else(|| "codegen: no current function for str_ends_with".to_string())?;
                 let check_bb = self.context.append_basic_block(function, "check_suffix");
                 let false_bb = self.context.append_basic_block(function, "suffix_false");
                 let merge_bb = self.context.append_basic_block(function, "suffix_done");
@@ -293,7 +293,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                             BasicMetadataTypeEnum::IntType(i64_ty),
                         ], false);
                         Some(self.module.add_function("strncmp", ty, Some(inkwell::module::Linkage::External)))
-                    }).unwrap();
+                    }).ok_or_else(|| "failed to get or create strncmp function".to_string())?;
                 let cmp_result = self.builder.build_call(strncmp_fn, &[
                     BasicMetadataValueEnum::PointerValue(s_suffix_ptr),
                     BasicMetadataValueEnum::PointerValue(suffix_ptr),
@@ -357,7 +357,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                             BasicMetadataTypeEnum::IntType(self.context.i32_type()),
                         ], false);
                         Some(self.module.add_function("strtol", ty, Some(inkwell::module::Linkage::External)))
-                    }).unwrap();
+                    }).ok_or_else(|| "failed to get or create strtol function".to_string())?;
                 let null_ptr = i8_ptr.const_null();
                 let call = self.builder.build_call(strtol_fn, &[
                     BasicMetadataValueEnum::PointerValue(s_ptr),
@@ -400,7 +400,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                             BasicMetadataTypeEnum::PointerType(i8_ptr.ptr_type(inkwell::AddressSpace::default())),
                         ], false);
                         Some(self.module.add_function("strtod", ty, Some(inkwell::module::Linkage::External)))
-                    }).unwrap();
+                    }).ok_or_else(|| "failed to get or create strtod function".to_string())?;
                 let null_ptr = i8_ptr.const_null();
                 let call = self.builder.build_call(strtod_fn, &[
                     BasicMetadataValueEnum::PointerValue(s_ptr),
@@ -434,7 +434,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                             BasicMetadataTypeEnum::PointerType(i8_ptr),
                         ], false);
                         Some(self.module.add_function("strstr", ty, Some(inkwell::module::Linkage::External)))
-                    }).unwrap();
+                    }).ok_or_else(|| "failed to get or create strstr function".to_string())?;
                 let found = self.builder.build_call(strstr_fn, &[
                     BasicMetadataValueEnum::PointerValue(s_ptr),
                     BasicMetadataValueEnum::PointerValue(sub_ptr),
@@ -507,7 +507,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                 ], "memcpy_first")
                     .map_err(|e| format!("memcpy error: {}", e))?;
                 // For remaining repeats, copy from buf to buf+(i*s_len)
-                let function = self.current_function().unwrap();
+                let function = self.current_function().ok_or_else(|| "codegen: no current function for str_repeat loop".to_string())?;
                 let loop_bb = self.context.append_basic_block(function, "repeat_loop");
                 let body_bb = self.context.append_basic_block(function, "repeat_body");
                 let done_bb = self.context.append_basic_block(function, "repeat_done");
@@ -595,7 +595,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     .into_int_value();
                 let zero = i64_ty.const_int(0, false);
                 // Scan forward for first non-space
-                let function = self.current_function().unwrap();
+                let function = self.current_function().ok_or_else(|| "codegen: no current function for str_trim".to_string())?;
                 let fwd_loop = self.context.append_basic_block(function, "trim_fwd");
                 let fwd_body = self.context.append_basic_block(function, "trim_fwd_body");
                 let fwd_done = self.context.append_basic_block(function, "trim_fwd_done");
@@ -782,7 +782,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                 ], "memcpy_call")
                     .map_err(|e| format!("memcpy error: {}", e))?;
                 // Loop: for i = 0..s_len: if buf[i] in 'a'..'z', buf[i] -= 32
-                let function = self.current_function().unwrap();
+                let function = self.current_function().ok_or_else(|| "codegen: no current function for str_to_upper loop".to_string())?;
                 let loop_bb = self.context.append_basic_block(function, "upper_loop");
                 let body_bb = self.context.append_basic_block(function, "upper_body");
                 let done_bb = self.context.append_basic_block(function, "upper_done");
@@ -886,7 +886,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     BasicMetadataValueEnum::IntValue(alloc_size),
                 ], "memcpy_call")
                     .map_err(|e| format!("memcpy error: {}", e))?;
-                let function = self.current_function().unwrap();
+                let function = self.current_function().ok_or_else(|| "codegen: no current function for str_to_lower loop".to_string())?;
                 let loop_bb = self.context.append_basic_block(function, "lower_loop");
                 let body_bb = self.context.append_basic_block(function, "lower_body");
                 let done_bb = self.context.append_basic_block(function, "lower_done");

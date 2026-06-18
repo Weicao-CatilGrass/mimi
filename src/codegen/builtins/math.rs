@@ -26,12 +26,11 @@ impl<'ctx> CodeGenerator<'ctx> {
                     BasicMetadataValueEnum::FloatValue(_fv) => {
                         // Use fabs
                         let fabs_fn = self.module.get_function("fabs")
-                            .or_else(|| {
-                                // Declare fabs if not present
+                            .unwrap_or_else(|| {
                                 let fabs_ty = self.context.f64_type().fn_type(
                                     &[inkwell::types::BasicMetadataTypeEnum::FloatType(self.context.f64_type())], false);
-                                Some(self.module.add_function("fabs", fabs_ty, Some(inkwell::module::Linkage::External)))
-                            }).unwrap();
+                                self.module.add_function("fabs", fabs_ty, Some(inkwell::module::Linkage::External))
+                            });
                         let call = self.builder.build_call(fabs_fn, args, "fabs_call")
                             .map_err(|e| format!("fabs error: {}", e))?;
                         Ok(self.expect_basic_value(&call, "fabs")?)
@@ -49,11 +48,11 @@ impl<'ctx> CodeGenerator<'ctx> {
                     return Err("sqrt expects 1 argument".into());
                 }
                 let sqrt_fn = self.module.get_function("sqrt")
-                    .or_else(|| {
+                    .unwrap_or_else(|| {
                         let sqrt_ty = self.context.f64_type().fn_type(
                             &[inkwell::types::BasicMetadataTypeEnum::FloatType(self.context.f64_type())], false);
-                        Some(self.module.add_function("sqrt", sqrt_ty, Some(inkwell::module::Linkage::External)))
-                    }).unwrap();
+                        self.module.add_function("sqrt", sqrt_ty, Some(inkwell::module::Linkage::External))
+                    });
                 let call = self.builder.build_call(sqrt_fn, args, "sqrt_call")
                     .map_err(|e| format!("sqrt error: {}", e))?;
                 Ok(self.expect_basic_value(&call, "sqrt")?)
@@ -103,11 +102,11 @@ impl<'ctx> CodeGenerator<'ctx> {
                     _ => "round",
                 };
                 let c_fn = self.module.get_function(fn_name)
-                    .or_else(|| {
+                    .unwrap_or_else(|| {
                         let ty = self.context.f64_type().fn_type(
                             &[inkwell::types::BasicMetadataTypeEnum::FloatType(self.context.f64_type())], false);
-                        Some(self.module.add_function(fn_name, ty, Some(inkwell::module::Linkage::External)))
-                    }).unwrap();
+                        self.module.add_function(fn_name, ty, Some(inkwell::module::Linkage::External))
+                    });
                 let call = self.builder.build_call(c_fn, args, &format!("{}_call", fn_name))
                     .map_err(|e| format!("{} error: {}", fn_name, e))?;
                 Ok(self.expect_basic_value(&call, fn_name)?)
@@ -137,13 +136,13 @@ impl<'ctx> CodeGenerator<'ctx> {
                     _ => return Err("[E0712] pow requires numeric arguments".into()),
                 };
                 let pow_fn = self.module.get_function("pow")
-                    .or_else(|| {
+                    .unwrap_or_else(|| {
                         let ty = f64_ty.fn_type(&[
                             BasicMetadataTypeEnum::FloatType(f64_ty),
                             BasicMetadataTypeEnum::FloatType(f64_ty),
                         ], false);
-                        Some(self.module.add_function("pow", ty, Some(inkwell::module::Linkage::External)))
-                    }).unwrap();
+                        self.module.add_function("pow", ty, Some(inkwell::module::Linkage::External))
+                    });
                 let call = self.builder.build_call(pow_fn, &[
                     BasicMetadataValueEnum::FloatValue(a),
                     BasicMetadataValueEnum::FloatValue(b),
@@ -161,10 +160,10 @@ impl<'ctx> CodeGenerator<'ctx> {
                 let f64_ty = self.context.f64_type();
                 let i64_ty = self.context.i64_type();
                 let random_fn = self.module.get_function("random")
-                    .or_else(|| {
+                    .unwrap_or_else(|| {
                         let ty = i64_ty.fn_type(&[], false);
-                        Some(self.module.add_function("random", ty, Some(inkwell::module::Linkage::External)))
-                    }).unwrap();
+                        self.module.add_function("random", ty, Some(inkwell::module::Linkage::External))
+                    });
                 let call = self.builder.build_call(random_fn, &[], "random_call")
                     .map_err(|e| format!("random error: {}", e))?;
                 let raw = self.expect_basic_value(&call, "random")?.into_int_value();

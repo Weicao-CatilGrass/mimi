@@ -115,7 +115,8 @@ impl<'ctx> CodeGenerator<'ctx> {
         // Bind self: allocate space for actor struct and store pointer
         let self_alloca = self.builder.build_alloca(actor_ptr_ty, "self")
             .map_err(|e| format!("alloca error: {}", e))?;
-        self.builder.build_store(self_alloca, function.get_nth_param(0).unwrap())
+        self.builder.build_store(self_alloca, function.get_nth_param(0)
+            .ok_or_else(|| "codegen: missing self param in actor method".to_string())?)
             .map_err(|e| format!("store error: {}", e))?;
         vars.insert("self".to_string(), (self_alloca, actor_ptr_ty));
         
@@ -126,7 +127,8 @@ impl<'ctx> CodeGenerator<'ctx> {
                 .unwrap_or(BasicTypeEnum::IntType(self.context.i64_type()));
             let alloca = self.builder.build_alloca(ty, &param.name)
                 .map_err(|e| format!("alloca error: {}", e))?;
-            self.builder.build_store(alloca, function.get_nth_param((i + param_offset) as u32).unwrap())
+            self.builder.build_store(alloca, function.get_nth_param((i + param_offset) as u32)
+                .ok_or_else(|| format!("codegen: missing param {} in actor method", i + param_offset))?)
                 .map_err(|e| format!("store error: {}", e))?;
             vars.insert(param.name.clone(), (alloca, ty));
         }
@@ -187,7 +189,8 @@ impl<'ctx> CodeGenerator<'ctx> {
                     } else {
                         return Err("[E0712] if condition must be boolean".into());
                     };
-                    let function = self.current_function().unwrap();
+                    let function = self.current_function()
+                        .ok_or_else(|| "codegen: no current function for if in actor method".to_string())?;
                     let then_bb = self.context.append_basic_block(function, "then");
                     let else_bb = self.context.append_basic_block(function, "else");
                     let merge_bb = self.context.append_basic_block(function, "ifcont");
@@ -210,7 +213,8 @@ impl<'ctx> CodeGenerator<'ctx> {
                     self.builder.position_at_end(merge_bb);
                 }
                 Stmt::For { var, iterable, body } => {
-                    let function = self.current_function().unwrap();
+                    let function = self.current_function()
+                        .ok_or_else(|| "codegen: no current function for for loop in actor method".to_string())?;
                     if let Expr::Binary(BinOp::Range, start_expr, end_expr) = iterable {
                         let start_val = self.compile_expr(start_expr, &vars)?;
                         let end_val = self.compile_expr(end_expr, &vars)?;
@@ -261,7 +265,8 @@ impl<'ctx> CodeGenerator<'ctx> {
                     }
                 }
                 Stmt::While { cond, body } => {
-                    let function = self.current_function().unwrap();
+                    let function = self.current_function()
+                        .ok_or_else(|| "codegen: no current function for while loop in actor method".to_string())?;
                     let loop_bb = self.context.append_basic_block(function, "loop");
                     let body_bb = self.context.append_basic_block(function, "loopbody");
                     let merge_bb = self.context.append_basic_block(function, "loopcont");

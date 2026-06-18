@@ -47,7 +47,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     .map_err(|e| format!("alloca error: {}", e))?;
                 self.builder.build_store(idx_alloca, i64_ty.const_int(0, false))
                     .map_err(|e| format!("store error: {}", e))?;
-                let function = self.current_function().unwrap();
+                let function = self.current_function().ok_or_else(|| "codegen: no current function for range loop".to_string())?;
                 let loop_bb = self.context.append_basic_block(function, "range_loop");
                 let body_bb = self.context.append_basic_block(function, "range_body");
                 let exit_bb = self.context.append_basic_block(function, "range_exit");
@@ -252,7 +252,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     i64_ty.const_int(0, false), "is_empty")
                     .map_err(|e| format!("compare error: {}", e))?;
 
-                let function = self.current_function().unwrap();
+                let function = self.current_function().ok_or_else(|| "codegen: no current function for pop".to_string())?;
                 let nonempty_bb = self.context.append_basic_block(function, "pop_nonempty");
                 let empty_bb = self.context.append_basic_block(function, "pop_empty");
                 let merge_bb = self.context.append_basic_block(function, "pop_merge");
@@ -354,7 +354,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     .map_err(|e| format!("bitcast error: {}", e))?
                     .into_pointer_value();
                 // Loop through list elements
-                let function = self.current_function().unwrap();
+                let function = self.current_function().ok_or_else(|| "codegen: no current function for contains loop".to_string())?;
                 let loop_bb = self.context.append_basic_block(function, "contains_loop");
                 let body_bb = self.context.append_basic_block(function, "contains_body");
                 let found_bb = self.context.append_basic_block(function, "contains_found");
@@ -439,7 +439,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     .map_err(|e| format!("bitcast error: {}", e))?
                     .into_pointer_value();
                 // Loop through list elements and sum
-                let function = self.current_function().unwrap();
+                let function = self.current_function().ok_or_else(|| "codegen: no current function for sum loop".to_string())?;
                 let loop_bb = self.context.append_basic_block(function, "sum_loop");
                 let body_bb = self.context.append_basic_block(function, "sum_body");
                 let done_bb = self.context.append_basic_block(function, "sum_done");
@@ -531,7 +531,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     .map_err(|e| format!("bitcast error: {}", e))?
                     .into_pointer_value();
                 // Copy elements in reverse order
-                let function = self.current_function().unwrap();
+                let function = self.current_function().ok_or_else(|| "codegen: no current function for reverse loop".to_string())?;
                 let loop_bb = self.context.append_basic_block(function, "reverse_loop");
                 let body_bb = self.context.append_basic_block(function, "reverse_body");
                 let done_bb = self.context.append_basic_block(function, "reverse_done");
@@ -621,7 +621,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     .map_err(|e| format!("bitcast error: {}", e))?
                     .into_pointer_value();
                 // First pass: count total elements
-                let function = self.current_function().unwrap();
+                let function = self.current_function().ok_or_else(|| "codegen: no current function for flatten loop".to_string())?;
                 let count_loop_bb = self.context.append_basic_block(function, "flatten_count_loop");
                 let count_body_bb = self.context.append_basic_block(function, "flatten_count_body");
                 let count_done_bb = self.context.append_basic_block(function, "flatten_count_done");
@@ -830,7 +830,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     i64_ty.ptr_type(inkwell::AddressSpace::default()), "sort_new_data_i64")
                     .map_err(|e| format!("bitcast error: {}", e))?
                     .into_pointer_value();
-                let function = self.current_function().unwrap();
+                let function = self.current_function().ok_or_else(|| "codegen: no current function for sort loop".to_string())?;
                 let outer_loop_bb = self.context.append_basic_block(function, "sort_outer_loop");
                 let outer_body_bb = self.context.append_basic_block(function, "sort_outer_body");
                 let inner_loop_bb = self.context.append_basic_block(function, "sort_inner_loop");
@@ -980,7 +980,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     i64_ty.ptr_type(inkwell::AddressSpace::default()), "enum_result_i64")
                     .map_err(|e| format!("bitcast error: {}", e))?
                     .into_pointer_value();
-                let function = self.current_function().unwrap();
+                let function = self.current_function().ok_or_else(|| "codegen: no current function for enumerate loop".to_string())?;
                 let loop_bb = self.context.append_basic_block(function, "enum_loop");
                 let body_bb = self.context.append_basic_block(function, "enum_body");
                 let done_bb = self.context.append_basic_block(function, "enum_done");
@@ -1100,7 +1100,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     i64_ty.ptr_type(inkwell::AddressSpace::default()), "zip_result_i64")
                     .map_err(|e| format!("bitcast error: {}", e))?
                     .into_pointer_value();
-                let function = self.current_function().unwrap();
+                let function = self.current_function().ok_or_else(|| "codegen: no current function for zip loop".to_string())?;
                 let loop_bb = self.context.append_basic_block(function, "zip_loop");
                 let body_bb = self.context.append_basic_block(function, "zip_body");
                 let done_bb = self.context.append_basic_block(function, "zip_done");
