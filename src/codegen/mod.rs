@@ -1071,25 +1071,51 @@ impl<'ctx> CodeGenerator<'ctx> {
                         .map_err(|e| format!("branch error: {}", e))?;
 
                     // Then block
-                    self.builder.position_at_end(then_bb);
-                    self.compile_block(then_, &mut vars)?;
-                    if !self.block_has_terminator() {
-                        self.builder.build_unconditional_branch(merge_bb)
-                            .map_err(|e| format!("branch error: {}", e))?;
-                    }
+                    let then_val = {
+                        self.builder.position_at_end(then_bb);
+                        let mut then_vars = vars.clone();
+                        let v = self.compile_block_last_val(then_, &mut then_vars)?;
+                        if !self.block_has_terminator() {
+                            self.builder.build_unconditional_branch(merge_bb)
+                                .map_err(|e| format!("branch error: {}", e))?;
+                        }
+                        v
+                    };
+                    let then_bb_end = self.builder.get_insert_block().unwrap();
 
                     // Else block
-                    self.builder.position_at_end(else_bb);
-                    if let Some(else_block) = else_ {
-                        self.compile_block(else_block, &mut vars)?;
-                    }
+                    let else_val = {
+                        self.builder.position_at_end(else_bb);
+                        if let Some(else_block) = else_ {
+                            let mut else_vars = vars.clone();
+                            let v = self.compile_block_last_val(else_block, &mut else_vars)?;
+                            if !self.block_has_terminator() {
+                                self.builder.build_unconditional_branch(merge_bb)
+                                    .map_err(|e| format!("branch error: {}", e))?;
+                            }
+                            v
+                        } else {
+                            self.context.i64_type().const_int(0, false).into()
+                        }
+                    };
+                    let else_bb_end = self.builder.get_insert_block().unwrap();
+                    // No-else case: else_bb has no terminator yet — supply one
                     if !self.block_has_terminator() {
                         self.builder.build_unconditional_branch(merge_bb)
                             .map_err(|e| format!("branch error: {}", e))?;
                     }
 
-                    // Continue at merge
+                    // Continue at merge, produce phi if both branches have values
                     self.builder.position_at_end(merge_bb);
+                    if then_val.get_type() == else_val.get_type() {
+                        let phi = self.builder.build_phi(then_val.get_type(), "if_result")
+                            .map_err(|e| format!("phi error: {}", e))?;
+                        phi.add_incoming(&[
+                            (&then_val as &dyn inkwell::values::BasicValue, then_bb_end),
+                            (&else_val as &dyn inkwell::values::BasicValue, else_bb_end),
+                        ]);
+                        last_val = phi.as_basic_value();
+                    }
                 }
                 Stmt::While { cond, body } => {
                     let function = self.current_function().unwrap();
@@ -1653,6 +1679,14 @@ impl<'ctx> CodeGenerator<'ctx> {
                         .map_err(|e| format!("store error: {}", e))?;
                     vars.insert(name, (alloca, llvm_ty));
                 }
+                Stmt::Assign { target: Expr::Ident(name), value } => {
+                    let val = self.compile_expr(value, vars)?;
+                    if let Some(&(alloca, _)) = vars.get(name) {
+                        self.builder.build_store(alloca, val)
+                            .map_err(|e| format!("store error: {}", e))?;
+                        last_val = val;
+                    }
+                }
                 Stmt::If { cond, then_, else_ } => {
                     let cond_val = self.compile_expr(cond, vars)?;
                     let cond_bool = if let BasicValueEnum::IntValue(iv) = cond_val {
@@ -1666,21 +1700,50 @@ impl<'ctx> CodeGenerator<'ctx> {
                     let merge_bb = self.context.append_basic_block(function, "blt_merge");
                     self.builder.build_conditional_branch(cond_bool, then_bb, else_bb)
                         .map_err(|e| format!("branch error: {}", e))?;
-                    self.builder.position_at_end(then_bb);
-                    self.compile_block(then_, vars)?;
-                    if !self.block_has_terminator() {
-                        self.builder.build_unconditional_branch(merge_bb)
-                            .map_err(|e| format!("branch error: {}", e))?;
-                    }
-                    self.builder.position_at_end(else_bb);
-                    if let Some(eb) = else_ {
-                        self.compile_block(eb, vars)?;
-                    }
+                    let then_val = {
+                        self.builder.position_at_end(then_bb);
+                        let mut then_vars = vars.clone();
+                        let v = self.compile_block_last_val(then_, &mut then_vars)?;
+                        if !self.block_has_terminator() {
+                            self.builder.build_unconditional_branch(merge_bb)
+                                .map_err(|e| format!("branch error: {}", e))?;
+                        }
+                        v
+                    };
+                    let then_bb_end = self.builder.get_insert_block().unwrap();
+                    let else_val = {
+                        self.builder.position_at_end(else_bb);
+                        if let Some(eb) = else_ {
+                            let mut else_vars = vars.clone();
+                            let v = self.compile_block_last_val(eb, &mut else_vars)?;
+                            if !self.block_has_terminator() {
+                                self.builder.build_unconditional_branch(merge_bb)
+                                    .map_err(|e| format!("branch error: {}", e))?;
+                            }
+                            v
+                        } else {
+                            self.context.i64_type().const_int(0, false).into()
+                        }
+                    };
+                    let else_bb_end = self.builder.get_insert_block().unwrap();
+                    // Ensure else_bb has a terminator (it's empty for no-else case)
                     if !self.block_has_terminator() {
                         self.builder.build_unconditional_branch(merge_bb)
                             .map_err(|e| format!("branch error: {}", e))?;
                     }
                     self.builder.position_at_end(merge_bb);
+                    // Create phi if both branches produce a value of the same type
+                    if then_val.get_type() == else_val.get_type() {
+                        let phi = self.builder.build_phi(then_val.get_type(), "if_lastval")
+                            .map_err(|e| format!("phi error: {}", e))?;
+                        phi.add_incoming(&[
+                            (&then_val as &dyn inkwell::values::BasicValue, then_bb_end),
+                            (&else_val as &dyn inkwell::values::BasicValue, else_bb_end),
+                        ]);
+                        last_val = phi.as_basic_value();
+                    } else {
+                        last_val = then_val;
+                    }
                 }
                 _ => {}
             }
@@ -2297,6 +2360,11 @@ impl<'ctx> CodeGenerator<'ctx> {
                 let merge_bb = self.context.append_basic_block(function, "matchcont");
                 let mut else_bb = self.context.append_basic_block(function, "matchelse");
 
+                // Branch from current block to the dispatch (matchelse)
+                self.builder.build_unconditional_branch(else_bb)
+                    .map_err(|e| format!("branch error: {}", e))?;
+                self.builder.position_at_end(else_bb);
+
                 let mut incoming_vals = Vec::new();
                 let mut incoming_bbs = Vec::new();
 
@@ -2310,6 +2378,9 @@ impl<'ctx> CodeGenerator<'ctx> {
                             self.builder.position_at_end(else_bb);
                             self.builder.build_unconditional_branch(arm_bb)
                                 .map_err(|e| format!("branch error: {}", e))?;
+                            // Create a fresh else_bb so the after-loop code doesn't
+                            // double-terminate the block we just wrote to.
+                            else_bb = self.context.append_basic_block(function, &format!("wccont{}", i));
                         }
                         Pattern::Literal(lit) => {
                             self.builder.position_at_end(else_bb);
@@ -2325,11 +2396,10 @@ impl<'ctx> CodeGenerator<'ctx> {
                                 lit_val,
                                 "cmp",
                             ).map_err(|e| format!("cmp error: {}", e))?;
-                            let next_bb = if i < arms.len() - 1 {
-                                self.context.append_basic_block(function, &format!("next{}", i))
-                            } else {
-                                merge_bb
-                            };
+                            // Always create an intermediate next block so the else chain
+                            // never points directly at merge_bb.  This keeps the phi's
+                            // predecessor set clean and avoids corrupting merge_bb.
+                            let next_bb = self.context.append_basic_block(function, &format!("next{}", i));
                             self.builder.build_conditional_branch(cmp, arm_bb, next_bb)
                                 .map_err(|e| format!("branch error: {}", e))?;
                             else_bb = next_bb;
@@ -2347,11 +2417,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                                 tag_val,
                                 "cmp",
                             ).map_err(|e| format!("cmp error: {}", e))?;
-                            let next_bb = if i < arms.len() - 1 {
-                                self.context.append_basic_block(function, &format!("next{}", i))
-                            } else {
-                                merge_bb
-                            };
+                            let next_bb = self.context.append_basic_block(function, &format!("next{}", i));
                             self.builder.build_conditional_branch(cmp, arm_bb, next_bb)
                                 .map_err(|e| format!("branch error: {}", e))?;
                             else_bb = next_bb;
@@ -2361,11 +2427,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                             // Treat as always-matching for now (full element-wise comparison is complex)
                             // but bind inner variables by loading from the struct
                             self.builder.position_at_end(else_bb);
-                            let next_bb = if i < arms.len() - 1 {
-                                self.context.append_basic_block(function, &format!("next{}", i))
-                            } else {
-                                merge_bb
-                            };
+                            let next_bb = self.context.append_basic_block(function, &format!("next{}", i));
                             self.builder.build_unconditional_branch(arm_bb)
                                 .map_err(|e| format!("branch error: {}", e))?;
                             else_bb = next_bb;
@@ -2374,11 +2436,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                             // Array pattern: match each element of the list
                             // Treat as always-matching for now, bind inner variables
                             self.builder.position_at_end(else_bb);
-                            let next_bb = if i < arms.len() - 1 {
-                                self.context.append_basic_block(function, &format!("next{}", i))
-                            } else {
-                                merge_bb
-                            };
+                            let next_bb = self.context.append_basic_block(function, &format!("next{}", i));
                             self.builder.build_unconditional_branch(arm_bb)
                                 .map_err(|e| format!("branch error: {}", e))?;
                             else_bb = next_bb;
@@ -2386,11 +2444,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                         Pattern::Slice(_inner_pats, _rest) => {
                             // Slice pattern: match prefix elements, bind rest
                             self.builder.position_at_end(else_bb);
-                            let next_bb = if i < arms.len() - 1 {
-                                self.context.append_basic_block(function, &format!("next{}", i))
-                            } else {
-                                merge_bb
-                            };
+                            let next_bb = self.context.append_basic_block(function, &format!("next{}", i));
                             self.builder.build_unconditional_branch(arm_bb)
                                 .map_err(|e| format!("branch error: {}", e))?;
                             else_bb = next_bb;
@@ -2552,7 +2606,9 @@ impl<'ctx> CodeGenerator<'ctx> {
                         .map_err(|e| format!("branch error: {}", e))?;
                 }
 
-                // Unreachable else block (should not be reached if match is exhaustive)
+                // Unreachable else block (should not be reached if match is exhaustive).
+                // else_bb is a fresh next_N block (never merge_bb) thanks to the
+                // unconditional intermediate-block creation above.
                 self.builder.position_at_end(else_bb);
                 self.builder.build_unconditional_branch(merge_bb)
                     .map_err(|e| format!("branch error: {}", e))?;
@@ -2565,10 +2621,14 @@ impl<'ctx> CodeGenerator<'ctx> {
                 let ty = incoming_vals[0].get_type();
                 let phi = self.builder.build_phi(ty, "match.result")
                     .map_err(|e| format!("phi error: {}", e))?;
-                let phi_refs: Vec<_> = incoming_vals.iter().zip(incoming_bbs.iter())
+                let mut phi_incoming: Vec<_> = incoming_vals.iter().zip(incoming_bbs.iter())
                     .map(|(v, bb)| (v as &dyn inkwell::values::BasicValue, *bb))
                     .collect();
-                phi.add_incoming(&phi_refs);
+                // Add the unreachable else block with a dummy value so every
+                // predecessor of merge_bb has a phi entry.
+                let dummy_val = self.context.i64_type().const_int(0, false);
+                phi_incoming.push((&dummy_val as &dyn inkwell::values::BasicValue, else_bb));
+                phi.add_incoming(&phi_incoming);
                 Ok(phi.as_basic_value())
             }
             Expr::Record { ty, fields } => {
