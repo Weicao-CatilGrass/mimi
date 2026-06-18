@@ -265,6 +265,73 @@ pub fn register_runtime<'ctx>(module: &Module<'ctx>, ctx: &'ctx Context) {
     module.add_function("mimi_from_json",
         i8_ptr.fn_type(&[BasicMetadataTypeEnum::PointerType(i8_ptr)], false),
         Some(inkwell::module::Linkage::External));
+
+    // ========== Network / Socket functions ==========
+    // mimi_socket(domain: i64, type: i64, protocol: i64) -> i64
+    module.add_function("mimi_socket",
+        i64.fn_type(&[
+            BasicMetadataTypeEnum::IntType(i64),
+            BasicMetadataTypeEnum::IntType(i64),
+            BasicMetadataTypeEnum::IntType(i64),
+        ], false),
+        Some(inkwell::module::Linkage::External));
+    // mimi_connect(fd: i64, host: i8*, port: i64) -> i64
+    module.add_function("mimi_connect",
+        i64.fn_type(&[
+            BasicMetadataTypeEnum::IntType(i64),
+            BasicMetadataTypeEnum::PointerType(i8_ptr),
+            BasicMetadataTypeEnum::IntType(i64),
+        ], false),
+        Some(inkwell::module::Linkage::External));
+    // mimi_bind(fd: i64, port: i64) -> i64
+    module.add_function("mimi_bind",
+        i64.fn_type(&[
+            BasicMetadataTypeEnum::IntType(i64),
+            BasicMetadataTypeEnum::IntType(i64),
+        ], false),
+        Some(inkwell::module::Linkage::External));
+    // mimi_listen(fd: i64, backlog: i64) -> i64
+    module.add_function("mimi_listen",
+        i64.fn_type(&[
+            BasicMetadataTypeEnum::IntType(i64),
+            BasicMetadataTypeEnum::IntType(i64),
+        ], false),
+        Some(inkwell::module::Linkage::External));
+    // mimi_accept(fd: i64) -> i64
+    module.add_function("mimi_accept",
+        i64.fn_type(&[BasicMetadataTypeEnum::IntType(i64)], false),
+        Some(inkwell::module::Linkage::External));
+    // mimi_send(fd: i64, data: i8*, len: i64) -> i64
+    module.add_function("mimi_send",
+        i64.fn_type(&[
+            BasicMetadataTypeEnum::IntType(i64),
+            BasicMetadataTypeEnum::PointerType(i8_ptr),
+            BasicMetadataTypeEnum::IntType(i64),
+        ], false),
+        Some(inkwell::module::Linkage::External));
+    // mimi_recv(fd: i64, buf_size: i64, out_len: i64*) -> i8*
+    module.add_function("mimi_recv",
+        i8_ptr.fn_type(&[
+            BasicMetadataTypeEnum::IntType(i64),
+            BasicMetadataTypeEnum::IntType(i64),
+            BasicMetadataTypeEnum::PointerType(i8_ptr.ptr_type(AddressSpace::default())),
+        ], false),
+        Some(inkwell::module::Linkage::External));
+    // mimi_close(fd: i64) -> i64
+    module.add_function("mimi_close",
+        i64.fn_type(&[BasicMetadataTypeEnum::IntType(i64)], false),
+        Some(inkwell::module::Linkage::External));
+    // mimi_http_get(url: i8*) -> i8*
+    module.add_function("mimi_http_get",
+        i8_ptr.fn_type(&[BasicMetadataTypeEnum::PointerType(i8_ptr)], false),
+        Some(inkwell::module::Linkage::External));
+    // mimi_http_post(url: i8*, body: i8*) -> i8*
+    module.add_function("mimi_http_post",
+        i8_ptr.fn_type(&[
+            BasicMetadataTypeEnum::PointerType(i8_ptr),
+            BasicMetadataTypeEnum::PointerType(i8_ptr),
+        ], false),
+        Some(inkwell::module::Linkage::External));
 }
 
 pub fn is_builtin(name: &str) -> bool {
@@ -288,5 +355,9 @@ pub fn is_builtin(name: &str) -> bool {
         | "now" | "timestamp" | "now_ms" | "timestamp_ms" | "sleep"
         | "getenv" | "args"
         | "to_json" | "from_json"
+        // Network builtins
+        | "socket" | "connect" | "bind" | "listen" | "accept"
+        | "send" | "recv" | "close_fd"
+        | "http_get" | "http_post"
     )
 }

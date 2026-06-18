@@ -36,6 +36,8 @@ pub struct CodeGenerator<'ctx> {
     spawn_counter: u64,
     /// Strict mode: skip non-locked ($/$$) fragments during compilation
     pub strict: bool,
+    /// no_std mode: compile without libc (freestanding target)
+    pub no_std: bool,
     /// True when inside a parasteps block (enables thread-ID tracking for final join)
     in_parasteps: bool,
     /// Thread IDs created during parasteps that need joining at block end
@@ -61,7 +63,7 @@ impl<'ctx> CodeGenerator<'ctx> {
         let module = context.create_module(module_name);
         let builder = context.create_builder();
         builtins::register_runtime(&module, context);
-        Self { context, module, builder, loop_break: None, loop_continue: None, type_defs: HashMap::new(), type_llvm: HashMap::new(), cap_vars: vec![HashMap::new()], cap_type_names: std::collections::HashSet::new(), type_map: HashMap::new(), func_defs: HashMap::new(), var_type_names: HashMap::new(), spawn_counter: 0, strict: false, compensation_blocks: Vec::new(), comp_scope_stack: Vec::new(), in_parasteps: false, parasteps_thread_ids: Vec::new(), trait_defs: HashMap::new(), type_impls: HashMap::new(), vtable_globals: HashMap::new(), vtable_types: HashMap::new() }
+        Self { context, module, builder, loop_break: None, loop_continue: None, type_defs: HashMap::new(), type_llvm: HashMap::new(), cap_vars: vec![HashMap::new()], cap_type_names: std::collections::HashSet::new(), type_map: HashMap::new(), func_defs: HashMap::new(), var_type_names: HashMap::new(), spawn_counter: 0, strict: false, no_std: false, compensation_blocks: Vec::new(), comp_scope_stack: Vec::new(), in_parasteps: false, parasteps_thread_ids: Vec::new(), trait_defs: HashMap::new(), type_impls: HashMap::new(), vtable_globals: HashMap::new(), vtable_types: HashMap::new() }
     }
 
     /// Get the current LLVM function, or None if no insert block.
@@ -4449,11 +4451,52 @@ impl<'ctx> CodeGenerator<'ctx> {
             .ok_or_else(|| format!("function '{}' definition not available for monomorphization", name))
     }
 
+    /// Extract a raw C string pointer (i8*) from a Mimi string argument.
+    /// Mimi strings are represented as either:
+    ///   - An i8* raw C string (from string literals)
+    ///   - A {i8*, i64} struct (from string variables)
+    fn extract_raw_str_ptr(&self, arg: &BasicMetadataValueEnum<'ctx>) -> Result<inkwell::values::PointerValue<'ctx>, String> {
+        match arg {
+            BasicMetadataValueEnum::PointerValue(pv) => Ok(*pv),
+            BasicMetadataValueEnum::StructValue(sv) => {
+                let extracted = self.builder.build_extract_value(*sv, 0, "str_ptr")
+                    .map_err(|e| format!("extract str ptr error: {}", e))?;
+                match extracted {
+                    BasicValueEnum::PointerValue(pv) => Ok(pv),
+                    _ => Err("[E0712] string struct field 0 is not a pointer".into()),
+                }
+            }
+            _ => Err("[E0712] expected a string argument".into()),
+        }
+    }
+
+    /// Return an error if running in no_std mode for a builtin that depends on libc.
+    fn require_std(&self, builtin: &str) -> Result<(), String> {
+        if self.no_std {
+            Err(format!("[E0750] '{}' requires libc (not available in no_std mode)", builtin))
+        } else {
+            Ok(())
+        }
+    }
+
     fn compile_builtin_call(
         &self,
         name: &str,
         args: &[BasicMetadataValueEnum<'ctx>],
     ) -> Result<BasicValueEnum<'ctx>, String> {
+        // Reject libc-dependent builtins in no_std mode
+        let libc_builtins: &[&str] = &[
+            "println", "print", "eprintln",
+            "assert", "assert_eq", "assert_ne", "assert_approx_eq",
+            "input", "file_exists", "read_file", "write_file",
+            "to_string", "int_to_string", "float_to_string",
+            "pow", "random", "pi", "sqrt", "floor", "ceil", "round",
+            "now", "timestamp", "now_ms", "timestamp_ms", "sleep",
+            "getenv", "args",
+        ];
+        if self.no_std && libc_builtins.contains(&name) {
+            self.require_std(name)?;
+        }
         match name {
             "println" => {
                 if args.is_empty() {
@@ -7600,6 +7643,234 @@ impl<'ctx> CodeGenerator<'ctx> {
                 // These functions are not available in pure LLVM codegen
                 Err(format!("'{}' is a runtime-only function, not available in codegen", name))
             }
+            // ========== Network builtins ==========
+            "socket" => {
+                if args.len() != 3 { return Err("[E0711] socket expects 3 arguments".into()); }
+                let domain = match args[0] { BasicMetadataValueEnum::IntValue(iv) => iv, _ => return Err("[E0712] socket: domain must be i32".into()) };
+                let type_ = match args[1] { BasicMetadataValueEnum::IntValue(iv) => iv, _ => return Err("[E0712] socket: type must be i32".into()) };
+                let protocol = match args[2] { BasicMetadataValueEnum::IntValue(iv) => iv, _ => return Err("[E0712] socket: protocol must be i32".into()) };
+                let func = self.module.get_function("mimi_socket")
+                    .ok_or("mimi_socket not declared")?;
+                let result = self.builder.build_call(func, &[
+                    BasicMetadataValueEnum::IntValue(domain),
+                    BasicMetadataValueEnum::IntValue(type_),
+                    BasicMetadataValueEnum::IntValue(protocol),
+                ], "socket_call")
+                    .map_err(|e| format!("socket error: {}", e))?;
+                result.try_as_basic_value().left()
+                    .ok_or("mimi_socket returned void".to_string())
+            }
+            "connect" => {
+                if args.len() != 3 { return Err("[E0711] connect expects 3 arguments (fd, host, port)".into()); }
+                let fd = match args[0] { BasicMetadataValueEnum::IntValue(iv) => iv, _ => return Err("[E0712] connect: fd must be i32".into()) };
+                let host_ptr = self.extract_raw_str_ptr(&args[1])?;
+                let port = match args[2] { BasicMetadataValueEnum::IntValue(iv) => iv, _ => return Err("[E0712] connect: port must be i32".into()) };
+                let func = self.module.get_function("mimi_connect")
+                    .ok_or("mimi_connect not declared")?;
+                let result = self.builder.build_call(func, &[
+                    BasicMetadataValueEnum::IntValue(fd),
+                    BasicMetadataValueEnum::PointerValue(host_ptr),
+                    BasicMetadataValueEnum::IntValue(port),
+                ], "connect_call")
+                    .map_err(|e| format!("connect error: {}", e))?;
+                result.try_as_basic_value().left()
+                    .ok_or("mimi_connect returned void".to_string())
+            }
+            "bind" => {
+                if args.len() != 2 { return Err("[E0711] bind expects 2 arguments (fd, port)".into()); }
+                let fd = match args[0] { BasicMetadataValueEnum::IntValue(iv) => iv, _ => return Err("[E0712] bind: fd must be i32".into()) };
+                let port = match args[1] { BasicMetadataValueEnum::IntValue(iv) => iv, _ => return Err("[E0712] bind: port must be i32".into()) };
+                let func = self.module.get_function("mimi_bind")
+                    .ok_or("mimi_bind not declared")?;
+                let result = self.builder.build_call(func, &[
+                    BasicMetadataValueEnum::IntValue(fd),
+                    BasicMetadataValueEnum::IntValue(port),
+                ], "bind_call")
+                    .map_err(|e| format!("bind error: {}", e))?;
+                result.try_as_basic_value().left()
+                    .ok_or("mimi_bind returned void".to_string())
+            }
+            "listen" => {
+                if args.len() != 2 { return Err("[E0711] listen expects 2 arguments (fd, backlog)".into()); }
+                let fd = match args[0] { BasicMetadataValueEnum::IntValue(iv) => iv, _ => return Err("[E0712] listen: fd must be i32".into()) };
+                let backlog = match args[1] { BasicMetadataValueEnum::IntValue(iv) => iv, _ => return Err("[E0712] listen: backlog must be i32".into()) };
+                let func = self.module.get_function("mimi_listen")
+                    .ok_or("mimi_listen not declared")?;
+                let result = self.builder.build_call(func, &[
+                    BasicMetadataValueEnum::IntValue(fd),
+                    BasicMetadataValueEnum::IntValue(backlog),
+                ], "listen_call")
+                    .map_err(|e| format!("listen error: {}", e))?;
+                result.try_as_basic_value().left()
+                    .ok_or("mimi_listen returned void".to_string())
+            }
+            "accept" => {
+                if args.len() != 1 { return Err("[E0711] accept expects 1 argument (fd)".into()); }
+                let fd = match args[0] { BasicMetadataValueEnum::IntValue(iv) => iv, _ => return Err("[E0712] accept: fd must be i32".into()) };
+                let func = self.module.get_function("mimi_accept")
+                    .ok_or("mimi_accept not declared")?;
+                let result = self.builder.build_call(func, &[
+                    BasicMetadataValueEnum::IntValue(fd),
+                ], "accept_call")
+                    .map_err(|e| format!("accept error: {}", e))?;
+                result.try_as_basic_value().left()
+                    .ok_or("mimi_accept returned void".to_string())
+            }
+            "send" => {
+                if args.len() != 2 { return Err("[E0711] send expects 2 arguments (fd, data)".into()); }
+                let fd = match args[0] { BasicMetadataValueEnum::IntValue(iv) => iv, _ => return Err("[E0712] send: fd must be i32".into()) };
+                let data_ptr = self.extract_raw_str_ptr(&args[1])?;
+                // Get string length via strlen
+                let strlen_fn = self.module.get_function("strlen")
+                    .ok_or_else(|| "strlen not declared".to_string())?;
+                let data_len = self.builder.build_call(strlen_fn, &[
+                    BasicMetadataValueEnum::PointerValue(data_ptr),
+                ], "send_strlen")
+                    .map_err(|e| format!("strlen error: {}", e))?
+                    .try_as_basic_value().left()
+                    .ok_or("strlen returned void")?
+                    .into_int_value();
+                let func = self.module.get_function("mimi_send")
+                    .ok_or("mimi_send not declared")?;
+                let result = self.builder.build_call(func, &[
+                    BasicMetadataValueEnum::IntValue(fd),
+                    BasicMetadataValueEnum::PointerValue(data_ptr),
+                    BasicMetadataValueEnum::IntValue(data_len),
+                ], "send_call")
+                    .map_err(|e| format!("send error: {}", e))?;
+                result.try_as_basic_value().left()
+                    .ok_or("mimi_send returned void".to_string())
+            }
+            "recv" => {
+                if args.len() != 2 { return Err("[E0711] recv expects 2 arguments (fd, buf_size)".into()); }
+                let fd = match args[0] { BasicMetadataValueEnum::IntValue(iv) => iv, _ => return Err("[E0712] recv: fd must be i32".into()) };
+                let buf_size = match args[1] { BasicMetadataValueEnum::IntValue(iv) => iv, _ => return Err("[E0712] recv: buf_size must be i32".into()) };
+                let i8_ptr_ty = self.context.i8_type().ptr_type(inkwell::AddressSpace::default());
+                // Allocate an i64 on stack to receive out_len
+                let out_len_alloca = self.builder.build_alloca(self.context.i64_type(), "recv_out_len")
+                    .map_err(|e| format!("alloca error: {}", e))?;
+                let func = self.module.get_function("mimi_recv")
+                    .ok_or("mimi_recv not declared")?;
+                let result = self.builder.build_call(func, &[
+                    BasicMetadataValueEnum::IntValue(fd),
+                    BasicMetadataValueEnum::IntValue(buf_size),
+                    BasicMetadataValueEnum::PointerValue(out_len_alloca),
+                ], "recv_call")
+                    .map_err(|e| format!("recv error: {}", e))?
+                    .try_as_basic_value().left()
+                    .ok_or("mimi_recv returned void")?
+                    .into_pointer_value();
+                // Build Mimi string struct {i8*, i64}
+                let string_ty = self.context.struct_type(&[
+                    BasicTypeEnum::PointerType(i8_ptr_ty),
+                    BasicTypeEnum::IntType(self.context.i64_type()),
+                ], false);
+                let str_alloca = self.builder.build_alloca(string_ty, "recv_str")
+                    .map_err(|e| format!("alloca error: {}", e))?;
+                let ptr_gep = self.builder.build_struct_gep(string_ty, str_alloca, 0, "str_ptr")
+                    .map_err(|e| format!("gep error: {}", e))?;
+                self.builder.build_store(ptr_gep, result)
+                    .map_err(|e| format!("store error: {}", e))?;
+                let len_gep = self.builder.build_struct_gep(string_ty, str_alloca, 1, "str_len")
+                    .map_err(|e| format!("gep error: {}", e))?;
+                let out_len = self.builder.build_load(
+                    BasicTypeEnum::IntType(self.context.i64_type()),
+                    out_len_alloca, "recv_len"
+                ).map_err(|e| format!("load error: {}", e))?;
+                self.builder.build_store(len_gep, out_len)
+                    .map_err(|e| format!("store error: {}", e))?;
+                Ok(str_alloca.into())
+            }
+            "close_fd" => {
+                if args.len() != 1 { return Err("[E0711] close_fd expects 1 argument (fd)".into()); }
+                let fd = match args[0] { BasicMetadataValueEnum::IntValue(iv) => iv, _ => return Err("[E0712] close_fd: fd must be i32".into()) };
+                let func = self.module.get_function("mimi_close")
+                    .ok_or("mimi_close not declared")?;
+                let result = self.builder.build_call(func, &[
+                    BasicMetadataValueEnum::IntValue(fd),
+                ], "close_call")
+                    .map_err(|e| format!("close error: {}", e))?;
+                result.try_as_basic_value().left()
+                    .ok_or("mimi_close returned void".to_string())
+            }
+            "http_get" => {
+                if args.len() != 1 { return Err("[E0711] http_get expects 1 argument (url)".into()); }
+                let url_ptr = self.extract_raw_str_ptr(&args[0])?;
+                let func = self.module.get_function("mimi_http_get")
+                    .ok_or("mimi_http_get not declared")?;
+                let result = self.builder.build_call(func, &[
+                    BasicMetadataValueEnum::PointerValue(url_ptr),
+                ], "http_get_call")
+                    .map_err(|e| format!("http_get error: {}", e))?
+                    .try_as_basic_value().left()
+                    .ok_or("mimi_http_get returned void")?
+                    .into_pointer_value();
+                // Build Mimi string struct {i8*, i64}
+                let i8_ptr_ty = self.context.i8_type().ptr_type(inkwell::AddressSpace::default());
+                let string_ty = self.context.struct_type(&[
+                    BasicTypeEnum::PointerType(i8_ptr_ty),
+                    BasicTypeEnum::IntType(self.context.i64_type()),
+                ], false);
+                let str_alloca = self.builder.build_alloca(string_ty, "http_str")
+                    .map_err(|e| format!("alloca error: {}", e))?;
+                let ptr_gep = self.builder.build_struct_gep(string_ty, str_alloca, 0, "str_ptr")
+                    .map_err(|e| format!("gep error: {}", e))?;
+                self.builder.build_store(ptr_gep, result)
+                    .map_err(|e| format!("store error: {}", e))?;
+                let len_gep = self.builder.build_struct_gep(string_ty, str_alloca, 1, "str_len")
+                    .map_err(|e| format!("gep error: {}", e))?;
+                let strlen_fn = self.module.get_function("strlen")
+                    .ok_or_else(|| "strlen not declared".to_string())?;
+                let str_len = self.builder.build_call(strlen_fn, &[
+                    BasicMetadataValueEnum::PointerValue(result),
+                ], "http_strlen")
+                    .map_err(|e| format!("strlen error: {}", e))?
+                    .try_as_basic_value().left()
+                    .ok_or("strlen returned void")?;
+                self.builder.build_store(len_gep, str_len)
+                    .map_err(|e| format!("store error: {}", e))?;
+                Ok(str_alloca.into())
+            }
+            "http_post" => {
+                if args.len() != 2 { return Err("[E0711] http_post expects 2 arguments (url, body)".into()); }
+                let url_ptr = self.extract_raw_str_ptr(&args[0])?;
+                let body_ptr = self.extract_raw_str_ptr(&args[1])?;
+                let func = self.module.get_function("mimi_http_post")
+                    .ok_or("mimi_http_post not declared")?;
+                let result = self.builder.build_call(func, &[
+                    BasicMetadataValueEnum::PointerValue(url_ptr),
+                    BasicMetadataValueEnum::PointerValue(body_ptr),
+                ], "http_post_call")
+                    .map_err(|e| format!("http_post error: {}", e))?
+                    .try_as_basic_value().left()
+                    .ok_or("mimi_http_post returned void")?
+                    .into_pointer_value();
+                // Build Mimi string struct {i8*, i64}
+                let i8_ptr_ty = self.context.i8_type().ptr_type(inkwell::AddressSpace::default());
+                let string_ty = self.context.struct_type(&[
+                    BasicTypeEnum::PointerType(i8_ptr_ty),
+                    BasicTypeEnum::IntType(self.context.i64_type()),
+                ], false);
+                let str_alloca = self.builder.build_alloca(string_ty, "http_str")
+                    .map_err(|e| format!("alloca error: {}", e))?;
+                let ptr_gep = self.builder.build_struct_gep(string_ty, str_alloca, 0, "str_ptr")
+                    .map_err(|e| format!("gep error: {}", e))?;
+                self.builder.build_store(ptr_gep, result)
+                    .map_err(|e| format!("store error: {}", e))?;
+                let len_gep = self.builder.build_struct_gep(string_ty, str_alloca, 1, "str_len")
+                    .map_err(|e| format!("gep error: {}", e))?;
+                let strlen_fn = self.module.get_function("strlen")
+                    .ok_or_else(|| "strlen not declared".to_string())?;
+                let str_len = self.builder.build_call(strlen_fn, &[
+                    BasicMetadataValueEnum::PointerValue(result),
+                ], "http_strlen")
+                    .map_err(|e| format!("strlen error: {}", e))?
+                    .try_as_basic_value().left()
+                    .ok_or("strlen returned void")?;
+                self.builder.build_store(len_gep, str_len)
+                    .map_err(|e| format!("store error: {}", e))?;
+                Ok(str_alloca.into())
+            }
             _ => Err(format!("builtin '{}' not yet implemented in codegen", name)),
         }
     }
@@ -7612,18 +7883,29 @@ impl<'ctx> CodeGenerator<'ctx> {
         Target::initialize_native(&InitializationConfig::default())
             .map_err(|e| format!("failed to initialize target: {}", e))?;
         let triple = TargetMachine::get_default_triple();
-        let target = Target::from_triple(&triple)
-            .map_err(|e| format!("failed to find target for triple '{}': {}", triple, e))?;
+        let triple_str = triple.as_str().to_string_lossy().to_string();
+        let triple_ref = if self.no_std {
+            // Use freestanding target triple
+            // e.g., "x86_64-unknown-linux-gnu" → "x86_64-unknown-none"
+            let parts: Vec<&str> = triple_str.split('-').collect();
+            let freestanding = if parts.len() >= 3 {
+                format!("{}-{}-none", parts[0], parts[1])
+            } else {
+                format!("{}-none", parts[0])
+            };
+            inkwell::targets::TargetTriple::create(&freestanding)
+        } else {
+            triple
+        };
+        let target = Target::from_triple(&triple_ref)
+            .map_err(|e| format!("failed to find target for triple '{}': {}", triple_ref, e))?;
         let cpu = TargetMachine::get_host_cpu_name().to_string();
         let features = TargetMachine::get_host_cpu_features().to_string();
         let tm = target.create_target_machine(
-            &triple,
-            &cpu,
-            &features,
+            &triple_ref, &cpu, &features,
             OptimizationLevel::Aggressive,
-            RelocMode::Default,
-            CodeModel::Default,
-        ).ok_or_else(|| format!("failed to create target machine for triple '{}'", triple))?;
+            RelocMode::Default, CodeModel::Default,
+        ).ok_or_else(|| format!("failed to create target machine for triple '{}'", triple_ref))?;
 
         tm.write_to_file(&self.module, inkwell::targets::FileType::Object, output_path)
             .map_err(|e| format!("failed to write object file: {}", e))

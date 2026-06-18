@@ -68,9 +68,46 @@ int64_t mimi_args_count(void);
 const char* mimi_args_get(int64_t i);
 
 /* JSON functions (stubs for codegen linking; actual impl in Rust runtime).
-   mimi_to_json(value_ptr) -> heap-allocated JSON string.
-   mimi_from_json(json_str) -> heap-allocated Value pointer (or NULL on error). */
+    mimi_to_json(value_ptr) -> heap-allocated JSON string.
+    mimi_from_json(json_str) -> heap-allocated Value pointer (or NULL on error). */
 const char* mimi_to_json(void* value_ptr);
 void* mimi_from_json(const char* json_str);
+
+/* ========== Network / Socket functions ========== */
+
+/* Create a socket: domain=AF_INET(2), type=SOCK_STREAM(1), protocol=0 -> fd or -1 */
+int64_t mimi_socket(int64_t domain, int64_t type, int64_t protocol);
+
+/* Connect socket to host:port -> 0 on success, -1 on error.
+   host is a C string; port is in host byte order. */
+int64_t mimi_connect(int64_t fd, const char* host, int64_t port);
+
+/* Bind socket to local port (INADDR_ANY) -> 0 on success, -1 on error */
+int64_t mimi_bind(int64_t fd, int64_t port);
+
+/* Listen on socket with given backlog -> 0 on success, -1 on error */
+int64_t mimi_listen(int64_t fd, int64_t backlog);
+
+/* Accept a connection -> client fd, or -1 on error */
+int64_t mimi_accept(int64_t fd);
+
+/* Send data on socket -> bytes sent, or -1 on error.
+   data is a raw C string (NOT a Mimi {ptr,len} struct). */
+int64_t mimi_send(int64_t fd, const char* data, int64_t len);
+
+/* Receive data from socket -> heap-allocated buffer (caller frees via free()),
+   or NULL on error. *out_len receives the number of bytes read. */
+char* mimi_recv(int64_t fd, int64_t buf_size, int64_t* out_len);
+
+/* Close a file descriptor -> 0 on success, -1 on error */
+int64_t mimi_close(int64_t fd);
+
+/* HTTP convenience: GET a URL and return the response body as a heap-allocated string.
+   Returns NULL on error. */
+char* mimi_http_get(const char* url);
+
+/* HTTP convenience: POST to a URL with a body and return the response body.
+   Returns NULL on error. */
+char* mimi_http_post(const char* url, const char* body);
 
 #endif

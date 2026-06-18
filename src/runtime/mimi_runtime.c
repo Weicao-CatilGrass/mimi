@@ -1,10 +1,205 @@
+#include <stdint.h>
+#include <stddef.h>
+#include "mimi_runtime.h"
+
+/* ====================================================================
+ * MIMI_NO_STD (freestanding) support
+ *
+ * When MIMI_NO_STD is defined, the runtime provides minimal inline
+ * implementations of essential libc functions so the resulting binary
+ * can run in freestanding environments (no libc, no OS syscalls).
+ *
+ * Features that unconditionally require OS support (sockets, threads,
+ * file I/O, signals) are either stub-returned or omitted.
+ * ==================================================================== */
+
+#ifdef MIMI_NO_STD
+
+/* Minimal memory: simple bump allocator over a static 128KB pool */
+#define BUMP_POOL_SIZE (128 * 1024)
+static char bump_pool[BUMP_POOL_SIZE];
+static size_t bump_offset = 0;
+
+void* malloc(size_t size) {
+    /* Align to 8 bytes */
+    size = (size + 7) & ~7;
+    if (bump_offset + size > BUMP_POOL_SIZE) return (void*)0;
+    void* ptr = (void*)&bump_pool[bump_offset];
+    bump_offset += size;
+    return ptr;
+}
+
+void free(void* ptr) {
+    (void)ptr;
+    /* Bump allocator: free is a no-op (memory persists for process lifetime) */
+}
+
+void* realloc(void* ptr, size_t new_size) {
+    (void)ptr;
+    /* Simplified realloc: just allocate new block (old data discarded) */
+    return malloc(new_size);
+}
+
+void* calloc(size_t count, size_t size) {
+    size_t total = count * size;
+    void* ptr = malloc(total);
+    if (ptr) {
+        char* cp = (char*)ptr;
+        for (size_t i = 0; i < total; i++) cp[i] = 0;
+    }
+    return ptr;
+}
+
+/* String helpers */
+size_t strlen(const char* s) {
+    const char* p = s;
+    while (*p) p++;
+    return (size_t)(p - s);
+}
+
+int strcmp(const char* a, const char* b) {
+    while (*a && *a == *b) { a++; b++; }
+    return (unsigned char)*a - (unsigned char)*b;
+}
+
+int strncmp(const char* a, const char* b, size_t n) {
+    for (size_t i = 0; i < n; i++) {
+        if (a[i] != b[i]) return (unsigned char)a[i] - (unsigned char)b[i];
+        if (!a[i]) break;
+    }
+    return 0;
+}
+
+char* strcpy(char* dst, const char* src) {
+    char* p = dst;
+    while ((*p++ = *src++));
+    return dst;
+}
+
+char* strncpy(char* dst, const char* src, size_t n) {
+    for (size_t i = 0; i < n; i++) {
+        dst[i] = src[i];
+        if (!src[i]) break;
+    }
+    return dst;
+}
+
+char* strcat(char* dst, const char* src) {
+    char* p = dst + strlen(dst);
+    while ((*p++ = *src++));
+    return dst;
+}
+
+char* strdup(const char* s) {
+    size_t len = strlen(s) + 1;
+    char* c = (char*)malloc(len);
+    if (c) strcpy(c, s);
+    return c;
+}
+
+char* strstr(const char* haystack, const char* needle) {
+    if (!*needle) return (char*)haystack;
+    size_t nlen = strlen(needle);
+    while (*haystack) {
+        if (strncmp(haystack, needle, nlen) == 0) return (char*)haystack;
+        haystack++;
+    }
+    return (char*)0;
+}
+
+void* memset(void* ptr, int value, size_t num) {
+    unsigned char* p = (unsigned char*)ptr;
+    for (size_t i = 0; i < num; i++) p[i] = (unsigned char)value;
+    return ptr;
+}
+
+void* memcpy(void* dst, const void* src, size_t num) {
+    unsigned char* d = (unsigned char*)dst;
+    const unsigned char* s = (const unsigned char*)src;
+    for (size_t i = 0; i < num; i++) d[i] = s[i];
+    return dst;
+}
+
+void* memmove(void* dst, const void* src, size_t num) {
+    unsigned char* d = (unsigned char*)dst;
+    const unsigned char* s = (const unsigned char*)src;
+    if (d < s) {
+        for (size_t i = 0; i < num; i++) d[i] = s[i];
+    } else if (d > s) {
+        for (size_t i = num; i > 0; i--) d[i-1] = s[i-1];
+    }
+    return dst;
+}
+
+/* No-op stubs for OS-dependent functions */
+void exit(int code) { (void)code; while (1) {} }
+int printf(const char* fmt, ...) { (void)fmt; return 0; }
+int fprintf(void* stream, const char* fmt, ...) { (void)stream; (void)fmt; return 0; }
+int puts(const char* s) { (void)s; return 0; }
+int sprintf(char* buf, const char* fmt, ...) { (void)buf; (void)fmt; return 0; }
+int snprintf(char* buf, size_t n, const char* fmt, ...) { (void)buf; (void)n; (void)fmt; return 0; }
+int fgets(char* buf, int n, void* stream) { (void)buf; (void)n; (void)stream; return 0; }
+int fputs(const char* s, void* stream) { (void)s; (void)stream; return 0; }
+int fflush(void* stream) { (void)stream; return 0; }
+
+/* Use an opaque type alias for FILE* to avoid stdio.h */
+typedef struct { int dummy; } MimiFile;
+MimiFile* fopen(const char* path, const char* mode) { (void)path; (void)mode; return (MimiFile*)0; }
+int fclose(MimiFile* f) { (void)f; return -1; }
+size_t fread(void* buf, size_t sz, size_t count, MimiFile* f) { (void)buf; (void)sz; (void)count; (void)f; return 0; }
+size_t fwrite(const void* buf, size_t sz, size_t count, MimiFile* f) { (void)buf; (void)sz; (void)count; (void)f; return 0; }
+int access(const char* path, int mode) { (void)path; (void)mode; return -1; }
+
+/* Stubs for networking (return errors) */
+int64_t mimi_socket(int64_t d, int64_t t, int64_t p) { (void)d; (void)t; (void)p; return -1; }
+int64_t mimi_connect(int64_t fd, const char* h, int64_t p) { (void)fd; (void)h; (void)p; return -1; }
+int64_t mimi_bind(int64_t fd, int64_t p) { (void)fd; (void)p; return -1; }
+int64_t mimi_listen(int64_t fd, int64_t b) { (void)fd; (void)b; return -1; }
+int64_t mimi_accept(int64_t fd) { (void)fd; return -1; }
+int64_t mimi_send(int64_t fd, const char* d, int64_t l) { (void)fd; (void)d; (void)l; return -1; }
+char* mimi_recv(int64_t fd, int64_t bs, int64_t* ol) { (void)fd; (void)bs; (void)ol; return (char*)0; }
+int64_t mimi_close(int64_t fd) { (void)fd; return -1; }
+char* mimi_http_get(const char* u) { (void)u; return (char*)0; }
+char* mimi_http_post(const char* u, const char* b) { (void)u; (void)b; return (char*)0; }
+
+/* Stubs for pthread (parasteps won't work in freestanding) */
+int pthread_create(void* tid, void* attr, void* (*fn)(void*), void* arg) {
+    (void)tid; (void)attr; (void)fn; (void)arg; return -1;
+}
+int pthread_join(void* tid, void** retval) { (void)tid; (void)retval; return -1; }
+int pthread_mutex_lock(void* m) { (void)m; return 0; }
+int pthread_mutex_unlock(void* m) { (void)m; return 0; }
+int pthread_cond_wait(void* c, void* m) { (void)c; (void)m; return 0; }
+int pthread_cond_signal(void* c) { (void)c; return 0; }
+int pthread_cond_broadcast(void* c) { (void)c; return 0; }
+
+/* Stubs for time functions */
+int64_t mimi_now(void) { return 0; }
+int64_t mimi_now_ms(void) { return 0; }
+void mimi_sleep(int64_t ms) { (void)ms; }
+
+/* Stubs for environment */
+const char* mimi_getenv(const char* name) { (void)name; return (const char*)0; }
+int64_t mimi_args_count(void) { return 0; }
+const char* mimi_args_get(int64_t i) { (void)i; return (const char*)0; }
+
+/* Thread pool stubs */
+void mimi_pool_submit(void* fn, void* arg) { (void)fn; (void)arg; }
+void mimi_pool_join_all(void) {}
+
+/* mimi_try_exit without stdio */
+void mimi_try_exit(int64_t payload) {
+    (void)payload;
+    while (1) {}
+}
+
+#else /* !MIMI_NO_STD — normal libc build */
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include <stdint.h>
 #include <unistd.h>
 #include <time.h>
-#include "mimi_runtime.h"
 
 #define INITIAL_CAPACITY 16
 #define LOAD_FACTOR 0.75
@@ -558,3 +753,236 @@ void* mimi_from_json(const char* json_str) {
     /* Stub: returns NULL (error) */
     return NULL;
 }
+
+/* ========== Network / Socket functions (POSIX only) ========== */
+
+#ifndef MIMI_NO_STD
+
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <netdb.h>
+#include <arpa/inet.h>
+#include <unistd.h>
+#include <fcntl.h>
+
+int64_t mimi_socket(int64_t domain, int64_t type, int64_t protocol) {
+    int fd = socket((int)domain, (int)type, (int)protocol);
+    return (int64_t)fd;
+}
+
+int64_t mimi_connect(int64_t fd, const char* host, int64_t port) {
+    if (!host || fd < 0) return -1;
+    struct addrinfo hints, *res;
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+    char port_str[16];
+    snprintf(port_str, sizeof(port_str), "%ld", (long)port);
+    int err = getaddrinfo(host, port_str, &hints, &res);
+    if (err != 0 || !res) return -1;
+    int ret = connect((int)fd, res->ai_addr, res->ai_addrlen);
+    freeaddrinfo(res);
+    return (int64_t)ret;
+}
+
+int64_t mimi_bind(int64_t fd, int64_t port) {
+    if (fd < 0) return -1;
+    struct sockaddr_in addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons((uint16_t)port);
+    addr.sin_addr.s_addr = INADDR_ANY;
+    int ret = bind((int)fd, (struct sockaddr*)&addr, sizeof(addr));
+    return (int64_t)ret;
+}
+
+int64_t mimi_listen(int64_t fd, int64_t backlog) {
+    if (fd < 0) return -1;
+    int ret = listen((int)fd, (int)backlog);
+    return (int64_t)ret;
+}
+
+int64_t mimi_accept(int64_t fd) {
+    if (fd < 0) return -1;
+    struct sockaddr_in client_addr;
+    socklen_t addr_len = sizeof(client_addr);
+    int client_fd = accept((int)fd, (struct sockaddr*)&client_addr, &addr_len);
+    return (int64_t)client_fd;
+}
+
+int64_t mimi_send(int64_t fd, const char* data, int64_t len) {
+    if (fd < 0 || !data) return -1;
+    ssize_t sent = send((int)fd, data, (size_t)len, 0);
+    return (int64_t)sent;
+}
+
+char* mimi_recv(int64_t fd, int64_t buf_size, int64_t* out_len) {
+    if (fd < 0 || buf_size <= 0) return NULL;
+    char* buf = (char*)malloc((size_t)buf_size + 1);
+    if (!buf) return NULL;
+    ssize_t n = recv((int)fd, buf, (size_t)buf_size, 0);
+    if (n <= 0) {
+        free(buf);
+        if (out_len) *out_len = 0;
+        return NULL;
+    }
+    buf[n] = '\0';
+    if (out_len) *out_len = (int64_t)n;
+    return buf;
+}
+
+int64_t mimi_close(int64_t fd) {
+    if (fd < 0) return -1;
+    int ret = close((int)fd);
+    return (int64_t)ret;
+}
+
+/* ---- Simple HTTP client (non-chunked, no SSL) ---- */
+
+/* Parse URL into host, port, path. Returns 0 on success.
+   Format: http://host[:port][/path] */
+static int parse_http_url(const char* url, char* host, int hostlen,
+                          int* port, char* path, int pathlen) {
+    if (!url) return -1;
+    const char* p = url;
+    /* Skip http:// */
+    if (strncmp(p, "http://", 7) == 0) {
+        p += 7;
+    } else if (strncmp(p, "https://", 8) == 0) {
+        /* We don't support TLS, but parse for error message */
+        return -1;
+    }
+    /* Extract host */
+    const char* colon = strchr(p, ':');
+    const char* slash = strchr(p, '/');
+    const char* host_end;
+    if (colon && (!slash || colon < slash)) {
+        /* host:port */
+        size_t hlen = (size_t)(colon - p);
+        if (hlen >= (size_t)hostlen) hlen = (size_t)hostlen - 1;
+        memcpy(host, p, hlen);
+        host[hlen] = '\0';
+        p = colon + 1;
+        *port = atoi(p);
+        /* Skip to path */
+        p = strchr(p, '/');
+        if (!p) p = "/";
+    } else if (slash) {
+        size_t hlen = (size_t)(slash - p);
+        if (hlen >= (size_t)hostlen) hlen = (size_t)hostlen - 1;
+        memcpy(host, p, hlen);
+        host[hlen] = '\0';
+        *port = 80;
+        p = slash;
+    } else {
+        /* Just host, no path */
+        size_t hlen = strlen(p);
+        if (hlen >= (size_t)hostlen) hlen = (size_t)hostlen - 1;
+        memcpy(host, p, hlen);
+        host[hlen] = '\0';
+        *port = 80;
+        p = "/";
+    }
+    strncpy(path, p, (size_t)pathlen - 1);
+    path[pathlen - 1] = '\0';
+    return 0;
+}
+
+/* Build and send an HTTP request, return response body */
+static char* http_request(const char* host, int port, const char* request, int* out_len) {
+    /* Create socket and connect */
+    int64_t fd = mimi_socket(2, 1, 0);  /* AF_INET, SOCK_STREAM */
+    if (fd < 0) return NULL;
+    if (mimi_connect(fd, host, (int64_t)port) < 0) {
+        mimi_close(fd);
+        return NULL;
+    }
+    /* Send request */
+    int64_t req_len = (int64_t)strlen(request);
+    int64_t sent = mimi_send(fd, request, req_len);
+    if (sent != req_len) {
+        mimi_close(fd);
+        return NULL;
+    }
+    /* Read response in chunks */
+    size_t capacity = 4096;
+    size_t total = 0;
+    char* response = (char*)malloc(capacity);
+    if (!response) { mimi_close(fd); return NULL; }
+    while (1) {
+        if (total + 4096 > capacity) {
+            capacity *= 2;
+            char* new_buf = (char*)realloc(response, capacity);
+            if (!new_buf) { free(response); mimi_close(fd); return NULL; }
+            response = new_buf;
+        }
+        int64_t chunk_len = 0;
+        char* chunk = mimi_recv(fd, 4096, &chunk_len);
+        if (!chunk || chunk_len <= 0) {
+            if (chunk) free(chunk);
+            break;
+        }
+        memcpy(response + total, chunk, (size_t)chunk_len);
+        total += (size_t)chunk_len;
+        free(chunk);
+    }
+    mimi_close(fd);
+    if (total == 0) { free(response); return NULL; }
+    response[total] = '\0';
+
+    /* Strip HTTP headers: find \r\n\r\n or \n\n */
+    char* body = strstr(response, "\r\n\r\n");
+    if (body) {
+        body += 4;
+        size_t body_len = total - (size_t)(body - response);
+        memmove(response, body, body_len);
+        response[body_len] = '\0';
+        if (out_len) *out_len = (int)body_len;
+    } else {
+        body = strstr(response, "\n\n");
+        if (body) {
+            body += 2;
+            size_t body_len = total - (size_t)(body - response);
+            memmove(response, body, body_len);
+            response[body_len] = '\0';
+            if (out_len) *out_len = (int)body_len;
+        } else if (out_len) {
+            *out_len = (int)total;
+        }
+    }
+    return response;
+}
+
+char* mimi_http_get(const char* url) {
+    char host[256];
+    char path[1024];
+    int port = 80;
+    if (parse_http_url(url, host, sizeof(host), &port, path, sizeof(path)) != 0)
+        return NULL;
+    /* Build GET request */
+    char request[2048];
+    int n = snprintf(request, sizeof(request),
+        "GET %s HTTP/1.0\r\nHost: %s\r\nConnection: close\r\n\r\n",
+        path, host);
+    if (n < 0 || (size_t)n >= sizeof(request)) return NULL;
+    return http_request(host, port, request, NULL);
+}
+
+char* mimi_http_post(const char* url, const char* body) {
+    if (!body) body = "";
+    char host[256];
+    char path[1024];
+    int port = 80;
+    if (parse_http_url(url, host, sizeof(host), &port, path, sizeof(path)) != 0)
+        return NULL;
+    size_t body_len = strlen(body);
+    char request[4096];
+    int n = snprintf(request, sizeof(request),
+        "POST %s HTTP/1.0\r\nHost: %s\r\nContent-Type: application/octet-stream\r\nContent-Length: %zu\r\nConnection: close\r\n\r\n%s",
+        path, host, body_len, body);
+    if (n < 0 || (size_t)n >= sizeof(request)) return NULL;
+    return http_request(host, port, request, NULL);
+}
+
+#endif /* MIMI_NO_STD (inner: network code) */
+#endif /* MIMI_NO_STD (outer: freestanding vs libc build) */
