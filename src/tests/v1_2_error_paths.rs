@@ -168,3 +168,42 @@ func main() -> i32 {
     let result = run_source_result(src);
     assert!(result.is_err(), "mutating immutable should error at runtime");
 }
+
+#[test]
+fn error_path_parse_recovery_continues_after_bad_stmt() {
+    let src = r#"
+func main() -> i32 {
+    let x = ;
+    let y = 42;
+    y
+}
+"#;
+    let tokens = crate::lexer::Lexer::new(src).tokenize().unwrap();
+    let (file, _errors) = crate::parser::Parser::new(tokens).parse_file_with_recovery();
+    // Recovery should produce a partial AST with the function
+    assert!(file.items.len() == 1, "should still parse the function");
+    if let crate::ast::Item::Func(f) = &file.items[0] {
+        // The function body should contain at least the valid statement
+        assert!(f.body.len() >= 1, "should have at least one statement");
+    } else {
+        panic!("expected a function item");
+    }
+}
+
+#[test]
+fn error_path_parse_recovery_continues_after_bad_func() {
+    let src = r#"
+func broken( {
+    return 1;
+}
+
+func working() -> i32 {
+    42
+}
+"#;
+    let tokens = crate::lexer::Lexer::new(src).tokenize().unwrap();
+    let (file, errors) = crate::parser::Parser::new(tokens).parse_file_with_recovery();
+    assert!(!errors.is_empty(), "should have parse errors");
+    assert!(file.items.len() >= 1, "should still parse the working function");
+    assert!(file.items.iter().any(|i| matches!(i, crate::ast::Item::Func(f) if f.name == "working")));
+}
