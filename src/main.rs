@@ -4,8 +4,10 @@ mod contracts;
 pub mod core;
 pub mod diagnostic;
 mod ffi;
+mod fmt;
 mod interp;
 mod lexer;
+mod lint;
 mod loader;
 mod lockfile;
 mod lsp;
@@ -105,8 +107,23 @@ enum Command {
     },
     /// List dependencies
     List,
+    /// Show dependency tree
+    Tree,
     /// Start LSP server (stdin/stdout)
     Lsp,
+    /// Format .mimi files
+    Fmt {
+        /// File(s) to format; use - for stdin
+        files: Vec<PathBuf>,
+        /// Check mode: exit with non-zero if formatting changes needed
+        #[arg(long)]
+        check: bool,
+    },
+    /// Lint .mimi files for common issues
+    Lint {
+        /// File(s) to lint
+        files: Vec<PathBuf>,
+    },
     /// Verify contracts using Z3 SMT solver
     Verify {
         path: Option<PathBuf>,
@@ -126,6 +143,9 @@ enum Command {
         /// no_std mode: compile without libc (freestanding target)
         #[arg(long)]
         no_std: bool,
+        /// Verify contracts: compile requires/ensures as runtime asserts
+        #[arg(long)]
+        verify_contracts: bool,
     },
     /// Generate C header file from extern declarations
     EmitCHeaders {
@@ -205,9 +225,12 @@ fn main() {
         Command::Add { name, version, path } => add(&name, version.as_deref(), path.as_deref()),
         Command::Remove { name } => remove(&name),
         Command::List => list(),
+        Command::Tree => tree(),
         Command::Lsp => lsp(),
+        Command::Fmt { files, check } => fmt_files(&files, check),
+        Command::Lint { files } => lint_files(&files),
         Command::Verify { path } => verify(path.as_deref()),
-        Command::Build { path, output, emit_ir, strict, no_std } => build(path.as_deref(), output.as_deref(), emit_ir, strict, no_std),
+        Command::Build { path, output, emit_ir, strict, no_std, verify_contracts } => build(path.as_deref(), output.as_deref(), emit_ir, strict, no_std, verify_contracts),
         Command::EmitCHeaders { path, output } => emit_c_headers(path.as_deref(), output.as_deref()),
         Command::Promote { path, output } => promote(&path, output.as_deref()),
         Command::Doc { path, format } => doc(&path, &format),
@@ -884,9 +907,110 @@ fn list() -> Result<(), String> {
     Ok(())
 }
 
+fn tree() -> Result<(), String> {
+    let cwd = std::env::current_dir().map_err(|e| format!("cannot get cwd: {}", e))?;
+    let (_dir, manifest) = match manifest::Manifest::find(&cwd)? {
+        Some((d, m)) => (d, m),
+        None => return Err("no mimi.toml found".into()),
+    };
+
+    let pkg_name = manifest.package.as_ref()
+        .map(|p| p.name.as_str())
+        .unwrap_or("root");
+    let pkg_version = manifest.package.as_ref()
+        .and_then(|p| p.version.as_deref())
+        .unwrap_or("0.0.0");
+    println!("{} v{}", pkg_name, pkg_version);
+
+    if let Some(deps) = &manifest.dependencies {
+        for (i, dep) in deps.iter().enumerate() {
+            let is_last = i == deps.len() - 1;
+            let prefix = if is_last { "└── " } else { "├── " };
+            let version = dep.version.as_deref().unwrap_or("*");
+            let source = if let Some(path) = &dep.path {
+                format!("(path: {})", path)
+            } else if let Some(git) = &dep.git {
+                format!("(git: {})", git)
+            } else {
+                "(registry)".to_string()
+            };
+            println!("{}{} {} {}", prefix, dep.name, version, source);
+        }
+    }
+    Ok(())
+}
+
 fn lsp() -> Result<(), String> {
     let mut server = lsp::LspServer::new();
     server.run()
+}
+
+fn fmt_files(files: &[PathBuf], check: bool) -> Result<(), String> {
+    let formatter = fmt::Formatter::new();
+    let mut had_changes = false;
+
+    if files.is_empty() {
+        return Err("no files specified".into());
+    }
+
+    for path in files {
+        let source = fs::read_to_string(path)
+            .map_err(|e| format!("failed to read {}: {}", path.display(), e))?;
+        let mut formatted = source.clone();
+        let changed = formatter.format_in_place(&mut formatted);
+
+        if check && changed {
+            eprintln!("would format: {}", path.display());
+            had_changes = true;
+        } else if !check && changed {
+            fs::write(path, &formatted)
+                .map_err(|e| format!("failed to write {}: {}", path.display(), e))?;
+            println!("formatted: {}", path.display());
+        } else if !check {
+            println!("already formatted: {}", path.display());
+        }
+    }
+
+    if check && had_changes {
+        std::process::exit(1);
+    }
+    Ok(())
+}
+
+fn lint_files(files: &[PathBuf]) -> Result<(), String> {
+    use crate::diagnostic::Severity;
+    let linter = lint::Linter::new();
+    let mut has_warnings = false;
+
+    if files.is_empty() {
+        return Err("no files specified".into());
+    }
+
+    for path in files {
+        let source = fs::read_to_string(path)
+            .map_err(|e| format!("failed to read {}: {}", path.display(), e))?;
+        let tokens = lexer::Lexer::new(&source).tokenize()
+            .map_err(|e| format!("lexer error in {}: {}", path.display(), e))?;
+        let (file, _parse_errors) = parser::Parser::new(tokens).parse_file_with_recovery();
+        let result = linter.lint(&file, &source);
+
+        for diag in &result.diagnostics {
+            let severity = match diag.severity {
+                Severity::Error => "error",
+                Severity::Warning => "warning",
+                Severity::Note => "note",
+                Severity::Help => "help",
+            };
+            eprintln!("{}: [{}] {}", path.display(), severity, diag.message);
+            has_warnings = true;
+        }
+    }
+
+    if has_warnings {
+        std::process::exit(1);
+    }
+    println!("no issues found");
+    Ok(())
 }
 
 fn verify(path: Option<&Path>) -> Result<(), String> {
@@ -941,7 +1065,7 @@ fn verify(path: Option<&Path>) -> Result<(), String> {
     Ok(())
 }
 
-fn build(path: Option<&Path>, output: Option<&Path>, emit_ir: bool, strict: bool, no_std: bool) -> Result<(), String> {
+fn build(path: Option<&Path>, output: Option<&Path>, emit_ir: bool, strict: bool, no_std: bool, verify_contracts: bool) -> Result<(), String> {
     let path = resolve_path(path)?;
     let source = fs::read_to_string(&path)
         .map_err(|e| format!("failed to read {}: {}", path.display(), e))?;
@@ -980,6 +1104,7 @@ fn build(path: Option<&Path>, output: Option<&Path>, emit_ir: bool, strict: bool
     let mut codegen = codegen::CodeGenerator::new(&context, module_name);
     codegen.strict = strict;
     codegen.no_std = no_std;
+    codegen.verify_contracts = verify_contracts;
 
     codegen.compile_file(&merged_file)?;
 
@@ -1183,6 +1308,14 @@ fn install(_all: bool) -> Result<(), String> {
         None => return Err("no mimi.toml found; run 'mimi init' first".into()),
     };
 
+    // Check for dependency conflicts
+    let conflicts = manifest.check_conflicts();
+    if !conflicts.is_empty() {
+        for c in &conflicts {
+            eprintln!("warning: {}", c);
+        }
+    }
+
     let deps = match &manifest.dependencies {
         Some(d) if !d.is_empty() => d.clone(),
         _ => {
@@ -1198,9 +1331,26 @@ fn install(_all: bool) -> Result<(), String> {
 
     let mut installed = 0;
     for dep in &deps {
-        let source = dep.path.as_deref().unwrap_or("registry");
+        if let Some(git_url) = &dep.git {
+            // Git dependency: clone
+            let clone_dir = deps_dir.join(&dep.name);
+            let tag_arg = dep.tag.as_deref().unwrap_or("main");
+            let status = std::process::Command::new("git")
+                .arg("clone").arg("--branch").arg(tag_arg)
+                .arg("--depth").arg("1")
+                .arg(git_url).arg(&clone_dir)
+                .status()
+                .map_err(|e| format!("git clone failed: {}", e))?;
+            if !status.success() {
+                println!("  ⚠ git clone failed for {}", dep.name);
+                continue;
+            }
+            println!("  ✓ {} (git: {} @ {})", dep.name, git_url, tag_arg);
+            installed += 1;
+        } else {
+            let source = dep.path.as_deref().unwrap_or("registry");
 
-        if source == "registry" {
+            if source == "registry" {
             let pkg_dir = reg.join(&dep.name);
             if !pkg_dir.exists() {
                 println!("  ⚠ Package '{}' not found in local registry (use 'mimi publish' first)", dep.name);
@@ -1250,6 +1400,7 @@ fn install(_all: bool) -> Result<(), String> {
                 .map_err(|e| format!("failed to copy {}: {}", dep.name, e))?;
             println!("  ✓ {} (path: {})", dep.name, source);
             installed += 1;
+        }
         }
     }
 

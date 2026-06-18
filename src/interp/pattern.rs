@@ -14,8 +14,18 @@ impl<'a> Interpreter<'a> {
         match pat {
             Pattern::Wildcard => true,
             Pattern::Variable(name) => {
-                bindings.push((name.clone(), value.clone()));
-                true
+                // Check if this is a zero-arity constructor (enum variant without payload).
+                // The parser produces Pattern::Variable for bare identifiers like `Red`,
+                // but we must treat them as constructor patterns at runtime.
+                if self.constructors.contains_key(name) {
+                    match value {
+                        Value::Variant(vname, _) if vname == name => true,
+                        _ => false,
+                    }
+                } else {
+                    bindings.push((name.clone(), value.clone()));
+                    true
+                }
             }
             Pattern::Literal(l) => {
                 let expected = match l {

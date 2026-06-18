@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 pub struct Manifest {
     pub package: Option<Package>,
     pub dependencies: Option<Vec<Dependency>>,
+    pub registry: Option<Registry>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -21,6 +22,14 @@ pub struct Dependency {
     pub name: String,
     pub version: Option<String>,
     pub path: Option<String>,
+    pub git: Option<String>,
+    pub tag: Option<String>,
+}
+
+/// Registry configuration for remote package downloads
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct Registry {
+    pub url: String,
 }
 
 impl Manifest {
@@ -70,6 +79,8 @@ impl Manifest {
             name: name.to_string(),
             version: version.map(|v| v.to_string()),
             path: path.map(|p| p.to_string()),
+            git: None,
+            tag: None,
         });
     }
 
@@ -104,6 +115,72 @@ impl Manifest {
                 entry: Some("main.mimi".to_string()),
             }),
             dependencies: None,
+            registry: None,
         }
+    }
+
+    /// Get the default registry URL
+    pub fn registry_url(&self) -> &str {
+        self.registry.as_ref()
+            .map(|r| r.url.as_str())
+            .unwrap_or("https://registry.mimi-lang.org")
+    }
+
+    /// Check for dependency conflicts: two deps requiring different versions of the same package
+    pub fn check_conflicts(&self) -> Vec<String> {
+        let mut conflicts = Vec::new();
+        if let Some(deps) = &self.dependencies {
+            let mut seen: std::collections::HashMap<String, Vec<&str>> = std::collections::HashMap::new();
+            for dep in deps {
+                let ver = dep.version.as_deref().unwrap_or("*");
+                seen.entry(dep.name.clone()).or_default().push(ver);
+            }
+            for (name, versions) in &seen {
+                if versions.len() > 1 {
+                    conflicts.push(format!(
+                        "dependency '{}' has conflicting version requirements: {:?}",
+                        name, versions
+                    ));
+                }
+            }
+        }
+        conflicts
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn manifest_conflict_detection() {
+        let mut manifest = Manifest::new("test");
+        // Manually add duplicate deps to simulate conflict
+        manifest.dependencies = Some(vec![
+            Dependency { name: "foo".into(), version: Some("^1.0".into()), path: None, git: None, tag: None },
+            Dependency { name: "foo".into(), version: Some("^2.0".into()), path: None, git: None, tag: None },
+        ]);
+        let conflicts = manifest.check_conflicts();
+        assert_eq!(conflicts.len(), 1);
+        assert!(conflicts[0].contains("foo"));
+    }
+
+    #[test]
+    fn manifest_no_conflicts() {
+        let mut manifest = Manifest::new("test");
+        manifest.add_dependency("foo", Some("^1.0"), None);
+        manifest.add_dependency("bar", Some("^2.0"), None);
+        let conflicts = manifest.check_conflicts();
+        assert!(conflicts.is_empty());
+    }
+
+    #[test]
+    fn manifest_registry_url() {
+        let manifest = Manifest::new("test");
+        assert_eq!(manifest.registry_url(), "https://registry.mimi-lang.org");
+
+        let mut manifest = Manifest::new("test");
+        manifest.registry = Some(Registry { url: "https://custom.registry.com".into() });
+        assert_eq!(manifest.registry_url(), "https://custom.registry.com");
     }
 }

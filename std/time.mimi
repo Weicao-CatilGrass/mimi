@@ -1,0 +1,17 @@
+// Time operations - wraps compiler builtins
+
+pub func now() -> i64 {
+    now()
+}
+
+pub func now_ms() -> i64 {
+    now_ms()
+}
+
+pub func sleep(ms: i32) {
+    sleep(ms)
+}
+
+pub func elapsed(start: i64) -> i64 {
+    now_ms() - start
+}

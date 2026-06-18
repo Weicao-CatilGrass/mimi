@@ -156,3 +156,23 @@ pub func collatz_steps(n: i32) -> i32 {
     }
     cs_cnt
 }
+
+pub func power(base: f64, exp: f64) -> f64 {
+    pow(base, exp)
+}
+
+pub func sqrt_val(x: f64) -> f64 {
+    sqrt(x)
+}
+
+pub func floor_val(x: f64) -> i64 {
+    floor(x)
+}
+
+pub func ceil_val(x: f64) -> i64 {
+    ceil(x)
+}
+
+pub func round_val(x: f64) -> i64 {
+    round(x)
+}

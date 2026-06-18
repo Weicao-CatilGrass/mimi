@@ -93,7 +93,8 @@ impl LspServer {
                         "diagnosticProvider": {
                             "interFileDependencies": false,
                             "workspaceDiagnostics": false
-                        }
+                        },
+                        "foldingRangeProvider": true
                     }
                 });
                 Some(serde_json::json!({
@@ -283,6 +284,19 @@ impl LspServer {
                     }
                 }))
             }
+            "textDocument/foldingRange" => {
+                let uri = msg.get("params")?
+                    .get("textDocument")?
+                    .get("uri")?
+                    .as_str()?;
+                let text = self.documents.get(uri)?;
+                let ranges = self.compute_folding_ranges(text);
+                Some(serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "result": ranges
+                }))
+            }
             "shutdown" => {
                 Some(serde_json::json!({
                     "jsonrpc": "2.0",
@@ -333,12 +347,18 @@ impl LspServer {
         // Type check the partial AST (even if parse had errors)
         if let Err(errs) = core::check(&file) {
             for err in errs {
+                let severity = match err.severity {
+                    crate::diagnostic::Severity::Error => 1,
+                    crate::diagnostic::Severity::Warning => 2,
+                    crate::diagnostic::Severity::Note => 3,
+                    crate::diagnostic::Severity::Help => 4,
+                };
                 diagnostics.push(serde_json::json!({
                     "range": {
                         "start": { "line": err.span.start_line.saturating_sub(1), "character": err.span.start_col.saturating_sub(1) },
                         "end": { "line": err.span.end_line.saturating_sub(1), "character": err.span.end_col.saturating_sub(1) }
                     },
-                    "severity": 1,
+                    "severity": severity,
                     "source": "mimi",
                     "message": err.message
                 }));
@@ -353,6 +373,35 @@ impl LspServer {
         let tokens = lexer::Lexer::new(text).tokenize().ok()?;
         let (file, _errors) = parser::Parser::new(tokens).parse_file_with_recovery();
         Some(file)
+    }
+
+    /// Compute folding ranges based on brace matching and indentation
+    pub fn compute_folding_ranges(&self, text: &str) -> Vec<serde_json::Value> {
+        let mut ranges = Vec::new();
+        let mut brace_stack: Vec<usize> = Vec::new();
+
+        for (line_idx, line) in text.lines().enumerate() {
+            for (_ch_idx, ch) in line.char_indices() {
+                match ch {
+                    '{' | '(' | '[' => {
+                        brace_stack.push(line_idx);
+                    }
+                    '}' | ')' | ']' => {
+                        if let Some(start_line) = brace_stack.pop() {
+                            if start_line < line_idx {
+                                ranges.push(serde_json::json!({
+                                    "startLine": start_line,
+                                    "endLine": line_idx
+                                }));
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        ranges
     }
 
     pub fn compute_document_symbols(&self, text: &str) -> Vec<serde_json::Value> {

@@ -38,6 +38,8 @@ pub struct CodeGenerator<'ctx> {
     pub strict: bool,
     /// no_std mode: compile without libc (freestanding target)
     pub no_std: bool,
+    /// Verify contracts: compile requires/ensures as runtime asserts
+    pub verify_contracts: bool,
     /// True when inside a parasteps block (enables thread-ID tracking for final join)
     in_parasteps: bool,
     /// Thread IDs created during parasteps that need joining at block end
@@ -63,7 +65,7 @@ impl<'ctx> CodeGenerator<'ctx> {
         let module = context.create_module(module_name);
         let builder = context.create_builder();
         builtins::register_runtime(&module, context);
-        Self { context, module, builder, loop_break: None, loop_continue: None, type_defs: HashMap::new(), type_llvm: HashMap::new(), cap_vars: vec![HashMap::new()], cap_type_names: std::collections::HashSet::new(), type_map: HashMap::new(), func_defs: HashMap::new(), var_type_names: HashMap::new(), spawn_counter: 0, strict: false, no_std: false, compensation_blocks: Vec::new(), comp_scope_stack: Vec::new(), in_parasteps: false, parasteps_thread_ids: Vec::new(), trait_defs: HashMap::new(), type_impls: HashMap::new(), vtable_globals: HashMap::new(), vtable_types: HashMap::new() }
+        Self { context, module, builder, loop_break: None, loop_continue: None, type_defs: HashMap::new(), type_llvm: HashMap::new(), cap_vars: vec![HashMap::new()], cap_type_names: std::collections::HashSet::new(), type_map: HashMap::new(), func_defs: HashMap::new(), var_type_names: HashMap::new(), spawn_counter: 0, strict: false, no_std: false, verify_contracts: false, compensation_blocks: Vec::new(), comp_scope_stack: Vec::new(), in_parasteps: false, parasteps_thread_ids: Vec::new(), trait_defs: HashMap::new(), type_impls: HashMap::new(), vtable_globals: HashMap::new(), vtable_types: HashMap::new() }
     }
 
     /// Get the current LLVM function, or None if no insert block.
@@ -153,6 +155,51 @@ impl<'ctx> CodeGenerator<'ctx> {
         for stmts in &blocks {
             self.compile_block(stmts, vars)?;
         }
+        Ok(())
+    }
+
+    /// Compile a contract condition as a runtime assert (for --verify-contracts)
+    fn compile_contract_assert(
+        &mut self,
+        expr: &Expr,
+        vars: &HashMap<String, VarEntry<'ctx>>,
+        msg: &str,
+    ) -> Result<(), String> {
+        let cond_val = self.compile_expr(expr, vars)?;
+        let cond_bool = if let BasicValueEnum::IntValue(iv) = cond_val {
+            iv
+        } else {
+            return Err(format!("contract condition must be boolean, got {:?}", cond_val.get_type()));
+        };
+
+        let function = self.current_function().unwrap();
+        let pass_bb = self.context.append_basic_block(function, "contract_pass");
+        let fail_bb = self.context.append_basic_block(function, "contract_fail");
+
+        self.builder.build_conditional_branch(cond_bool, pass_bb, fail_bb)
+            .map_err(|e| format!("branch error: {}", e))?;
+
+        // Fail block: call abort/panic
+        self.builder.position_at_end(fail_bb);
+        let msg_ptr = self.builder.build_global_string_ptr(msg, "contract_msg")
+            .map_err(|e| format!("string error: {}", e))?;
+        let abort_fn = self.module.get_function("mimi_runtime_abort")
+            .or_else(|| {
+                let i8_ptr = self.context.i8_type().ptr_type(inkwell::AddressSpace::default());
+                let ty = self.context.void_type().fn_type(&[
+                    BasicMetadataTypeEnum::PointerType(i8_ptr),
+                ], false);
+                Some(self.module.add_function("mimi_runtime_abort", ty, Some(inkwell::module::Linkage::External)))
+            }).unwrap();
+        self.builder.build_call(abort_fn, &[
+            BasicMetadataValueEnum::PointerValue(msg_ptr.as_pointer_value()),
+        ], "abort_call")
+            .map_err(|e| format!("abort call error: {}", e))?;
+        self.builder.build_unconditional_branch(pass_bb)
+            .map_err(|e| format!("branch error: {}", e))?;
+
+        // Continue at pass block
+        self.builder.position_at_end(pass_bb);
         Ok(())
     }
 
@@ -1144,6 +1191,15 @@ impl<'ctx> CodeGenerator<'ctx> {
             }
         }
 
+        // Compile requires contracts as runtime asserts when verify_contracts is enabled
+        if self.verify_contracts {
+            for stmt in &func.body {
+                if let Stmt::Requires(expr, _) = stmt {
+                    self.compile_contract_assert(expr, &vars, &format!("requires violation in '{}'", func.name))?;
+                }
+            }
+        }
+
         let mut last_val: BasicValueEnum = self.context.i64_type().const_int(0, false).into();
         for stmt in &func.body {
             // Run compensations before exit()
@@ -1221,7 +1277,8 @@ impl<'ctx> CodeGenerator<'ctx> {
                         self.builder.position_at_end(then_bb);
                         let mut then_vars = vars.clone();
                         let v = self.compile_block_last_val(then_, &mut then_vars)?;
-                        if !self.block_has_terminator() {
+                        let current = self.builder.get_insert_block().unwrap();
+                        if current.get_terminator().is_none() {
                             self.builder.build_unconditional_branch(merge_bb)
                                 .map_err(|e| format!("branch error: {}", e))?;
                         }
@@ -1235,7 +1292,8 @@ impl<'ctx> CodeGenerator<'ctx> {
                         if let Some(else_block) = else_ {
                             let mut else_vars = vars.clone();
                             let v = self.compile_block_last_val(else_block, &mut else_vars)?;
-                            if !self.block_has_terminator() {
+                            let current = self.builder.get_insert_block().unwrap();
+                            if current.get_terminator().is_none() {
                                 self.builder.build_unconditional_branch(merge_bb)
                                     .map_err(|e| format!("branch error: {}", e))?;
                             }
@@ -1246,7 +1304,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     };
                     let else_bb_end = self.builder.get_insert_block().unwrap();
                     // No-else case: else_bb has no terminator yet — supply one
-                    if !self.block_has_terminator() {
+                    if else_bb_end.get_terminator().is_none() {
                         self.builder.build_unconditional_branch(merge_bb)
                             .map_err(|e| format!("branch error: {}", e))?;
                     }
@@ -4312,22 +4370,30 @@ impl<'ctx> CodeGenerator<'ctx> {
             BinOp::Lt => match (lhs, rhs) {
                 (BasicValueEnum::IntValue(l), BasicValueEnum::IntValue(r)) =>
                     Ok(self.builder.build_int_compare(inkwell::IntPredicate::SLT, l, r, "lt").map_err(|e| format!("cmp error: {}", e))?.into()),
-                _ => Err("lt requires integer types".into()),
+                (BasicValueEnum::FloatValue(l), BasicValueEnum::FloatValue(r)) =>
+                    Ok(self.builder.build_float_compare(inkwell::FloatPredicate::OLT, l, r, "flt").map_err(|e| format!("cmp error: {}", e))?.into()),
+                _ => Err("lt requires same numeric types".into()),
             },
             BinOp::Gt => match (lhs, rhs) {
                 (BasicValueEnum::IntValue(l), BasicValueEnum::IntValue(r)) =>
                     Ok(self.builder.build_int_compare(inkwell::IntPredicate::SGT, l, r, "gt").map_err(|e| format!("cmp error: {}", e))?.into()),
-                _ => Err("gt requires integer types".into()),
+                (BasicValueEnum::FloatValue(l), BasicValueEnum::FloatValue(r)) =>
+                    Ok(self.builder.build_float_compare(inkwell::FloatPredicate::OGT, l, r, "fgt").map_err(|e| format!("cmp error: {}", e))?.into()),
+                _ => Err("gt requires same numeric types".into()),
             },
             BinOp::Le => match (lhs, rhs) {
                 (BasicValueEnum::IntValue(l), BasicValueEnum::IntValue(r)) =>
                     Ok(self.builder.build_int_compare(inkwell::IntPredicate::SLE, l, r, "le").map_err(|e| format!("cmp error: {}", e))?.into()),
-                _ => Err("le requires integer types".into()),
+                (BasicValueEnum::FloatValue(l), BasicValueEnum::FloatValue(r)) =>
+                    Ok(self.builder.build_float_compare(inkwell::FloatPredicate::OLE, l, r, "fle").map_err(|e| format!("cmp error: {}", e))?.into()),
+                _ => Err("le requires same numeric types".into()),
             },
             BinOp::Ge => match (lhs, rhs) {
                 (BasicValueEnum::IntValue(l), BasicValueEnum::IntValue(r)) =>
                     Ok(self.builder.build_int_compare(inkwell::IntPredicate::SGE, l, r, "ge").map_err(|e| format!("cmp error: {}", e))?.into()),
-                _ => Err("ge requires integer types".into()),
+                (BasicValueEnum::FloatValue(l), BasicValueEnum::FloatValue(r)) =>
+                    Ok(self.builder.build_float_compare(inkwell::FloatPredicate::OGE, l, r, "fge").map_err(|e| format!("cmp error: {}", e))?.into()),
+                _ => Err("ge requires same numeric types".into()),
             },
             BinOp::And => match (lhs, rhs) {
                 (BasicValueEnum::IntValue(l), BasicValueEnum::IntValue(r)) =>

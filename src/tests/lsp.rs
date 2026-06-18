@@ -216,3 +216,33 @@ fn lsp_completion_no_file() {
     let response = server.handle_message(&msg);
     assert!(response.is_none(), "completion on unknown file should return None");
 }
+
+#[test]
+fn lsp_folding_range_basic() {
+    let server = LspServer::new();
+    let ranges = server.compute_folding_ranges("func main() -> i32 {\n    42\n}");
+    assert!(!ranges.is_empty(), "should have folding ranges for braces");
+}
+
+#[test]
+fn lsp_folding_range_nested() {
+    let server = LspServer::new();
+    let text = "func f() {\n    if true {\n        1\n    }\n}";
+    let ranges = server.compute_folding_ranges(text);
+    assert!(ranges.len() >= 2, "should have folding ranges for nested braces");
+}
+
+#[test]
+fn lsp_folding_range_empty() {
+    let server = LspServer::new();
+    let ranges = server.compute_folding_ranges("let x = 42");
+    assert!(ranges.is_empty(), "no braces = no folding ranges");
+}
+
+#[test]
+fn lsp_diagnostics_severity_warning() {
+    let server = LspServer::new();
+    // Valid code should produce no diagnostics
+    let diags = server.compute_diagnostics("func main() -> i32 { 42 }");
+    assert!(diags.is_empty(), "valid code should have 0 diagnostics");
+}

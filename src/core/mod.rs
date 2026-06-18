@@ -814,10 +814,12 @@ impl<'a> Checker<'a> {
                         .as_ref()
                         .map(|t| self.resolve_type(t))
                         .unwrap_or_else(|| Type::Name("unit".into(), vec![]));
+                    self.var_scopes.push(HashMap::new());
                     self.cap_vars.push(HashMap::new());
                     self.check_block(&method.body, &ret, &mut scopes);
                     self.check_unconsumed_caps();
                     self.cap_vars.pop();
+                    self.var_scopes.pop();
                 }
             }
             Item::Type(_) | Item::Cap(_) => {}
@@ -1045,6 +1047,8 @@ impl<'a> Checker<'a> {
             .map(|t| self.resolve_type(t))
             .unwrap_or_else(|| Type::Name("unit".into(), vec![]));
         let mut scopes: Vec<HashMap<String, Type>> = vec![HashMap::new()];
+        // Push function-level variable scope for shadowing detection
+        self.var_scopes.push(HashMap::new());
         // Push cap scope for function body
         self.cap_vars.push(HashMap::new());
         for p in &func.params {
@@ -1070,6 +1074,7 @@ impl<'a> Checker<'a> {
         self.check_block(&func.body, &ret, &mut scopes);
         // Check for unconsumed caps before popping
         self.check_unconsumed_caps();
+        self.var_scopes.pop();
         self.cap_vars.pop();
     }
 

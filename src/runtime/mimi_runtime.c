@@ -1227,5 +1227,12 @@ char* mimi_http_post(const char* url, const char* body) {
     return http_request(host, port, request, NULL);
 }
 
+void mimi_runtime_abort(const char* msg) {
+    if (msg) {
+        fprintf(stderr, "Contract violation: %s\n", msg);
+    }
+    abort();
+}
+
 #endif /* MIMI_NO_STD (inner: network code) */
 #endif /* MIMI_NO_STD (outer: freestanding vs libc build) */
