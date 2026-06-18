@@ -9,3 +9,15 @@ pub func read(path: string) -> string {
 pub func write(path: string, content: string) {
     write_file(path, content)
 }
+
+pub func read_lines(path: string) -> List<string> {
+    str_split(read_file(path), "\n")
+}
+
+pub func file_size(path: string) -> i32 {
+    len(read_file(path))
+}
+
+pub func write_lines(path: string, xs: List<string>) {
+    write_file(path, str_join(xs, "\n"))
+}

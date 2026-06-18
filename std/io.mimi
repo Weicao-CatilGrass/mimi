@@ -1,8 +1,33 @@
-pub func input(prompt: string) -> string {
-    print(prompt)
-    input()
-}
-
 pub func print_line(s: string) {
     println(s)
+}
+
+pub func print_err(s: string) {
+    eprintln(s)
+}
+
+pub func print_lines(xs: List<string>) {
+    for pl_x in xs {
+        println(pl_x)
+    }
+}
+
+pub func print_bool(b: bool) {
+    if b {
+        println("true")
+    } else {
+        println("false")
+    }
+}
+
+pub func print_int(n: i32) {
+    println(to_string(n))
+}
+
+pub func print_float(f: f64) {
+    println(to_string(f))
+}
+
+pub func print_list<T>(xs: List<T>) {
+    println(to_string(xs))
 }
