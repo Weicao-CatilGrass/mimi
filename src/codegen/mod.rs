@@ -60,6 +60,21 @@ impl<'ctx> CodeGenerator<'ctx> {
         Self { context, module, builder, loop_break: None, loop_continue: None, type_defs: HashMap::new(), type_llvm: HashMap::new(), cap_vars: vec![HashMap::new()], cap_type_names: std::collections::HashSet::new(), type_map: HashMap::new(), func_defs: HashMap::new(), var_type_names: HashMap::new(), spawn_counter: 0, strict: false, compensation_blocks: Vec::new(), comp_scope_stack: Vec::new(), in_parasteps: false, parasteps_thread_ids: Vec::new(), trait_defs: HashMap::new(), type_impls: HashMap::new() }
     }
 
+    /// Get the current LLVM function, or None if no insert block.
+    fn current_function(&self) -> Option<inkwell::values::FunctionValue<'ctx>> {
+        self.builder.get_insert_block()?.get_parent()
+    }
+
+    /// Check if the current insert block has a terminator.
+    fn block_has_terminator(&self) -> bool {
+        self.builder.get_insert_block().and_then(|b| b.get_terminator()).is_some()
+    }
+
+    /// Extract a basic value from a call result, or return an error.
+    fn expect_basic_value(&self, call: &inkwell::values::CallSiteValue<'ctx>, name: &str) -> Result<BasicValueEnum<'ctx>, String> {
+        call.try_as_basic_value().left().ok_or_else(|| format!("codegen: expected basic value from {}", name))
+    }
+
     /// Enter parallel parasteps mode: track thread IDs for joining at block end
     fn enter_parasteps(&mut self) {
         self.in_parasteps = true;
@@ -443,7 +458,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                             self.context.bool_type().const_int(0, false),
                             "cap_valid")
                             .map_err(|e| format!("compare error: {}", e))?;
-                        let function = self.builder.get_insert_block().unwrap().get_parent().unwrap();
+                        let function = self.current_function().unwrap();
                         let ok_bb = self.context.append_basic_block(function, &format!("cap_ok_{}", i));
                         let fail_bb = self.context.append_basic_block(function, &format!("cap_fail_{}", i));
                         self.builder.build_conditional_branch(is_valid, ok_bb, fail_bb)
@@ -754,7 +769,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     } else {
                         return Err("if condition must be boolean".into());
                     };
-                    let function = self.builder.get_insert_block().unwrap().get_parent().unwrap();
+                    let function = self.current_function().unwrap();
                     let then_bb = self.context.append_basic_block(function, "then");
                     let else_bb = self.context.append_basic_block(function, "else");
                     let merge_bb = self.context.append_basic_block(function, "ifcont");
@@ -762,7 +777,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                         .map_err(|e| format!("branch error: {}", e))?;
                     self.builder.position_at_end(then_bb);
                     self.compile_block(then_, &mut vars)?;
-                    if self.builder.get_insert_block().unwrap().get_terminator().is_none() {
+                    if !self.block_has_terminator() {
                         self.builder.build_unconditional_branch(merge_bb)
                             .map_err(|e| format!("branch error: {}", e))?;
                     }
@@ -770,14 +785,14 @@ impl<'ctx> CodeGenerator<'ctx> {
                     if let Some(else_block) = else_ {
                         self.compile_block(else_block, &mut vars)?;
                     }
-                    if self.builder.get_insert_block().unwrap().get_terminator().is_none() {
+                    if !self.block_has_terminator() {
                         self.builder.build_unconditional_branch(merge_bb)
                             .map_err(|e| format!("branch error: {}", e))?;
                     }
                     self.builder.position_at_end(merge_bb);
                 }
                 Stmt::For { var, iterable, body } => {
-                    let function = self.builder.get_insert_block().unwrap().get_parent().unwrap();
+                    let function = self.current_function().unwrap();
                     if let Expr::Binary(BinOp::Range, start_expr, end_expr) = iterable {
                         let start_val = self.compile_expr(start_expr, &vars)?;
                         let end_val = self.compile_expr(end_expr, &vars)?;
@@ -828,7 +843,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     }
                 }
                 Stmt::While { cond, body } => {
-                    let function = self.builder.get_insert_block().unwrap().get_parent().unwrap();
+                    let function = self.current_function().unwrap();
                     let loop_bb = self.context.append_basic_block(function, "loop");
                     let body_bb = self.context.append_basic_block(function, "loopbody");
                     let merge_bb = self.context.append_basic_block(function, "loopcont");
@@ -843,7 +858,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     let old_break = self.loop_break.replace(merge_bb);
                     let old_continue = self.loop_continue.replace(loop_bb);
                     self.compile_block(body, &mut vars)?;
-                    if self.builder.get_insert_block().unwrap().get_terminator().is_none() {
+                    if !self.block_has_terminator() {
                         self.builder.build_unconditional_branch(loop_bb)
                             .map_err(|e| format!("branch error: {}", e))?;
                     }
@@ -879,7 +894,7 @@ impl<'ctx> CodeGenerator<'ctx> {
         self.pop_comp_scope();
         self.pop_cap_scope();
         
-        if self.builder.get_insert_block().unwrap().get_terminator().is_none() {
+        if !self.block_has_terminator() {
             self.builder.build_return(Some(&last_val)).map_err(|e| format!("return error: {}", e))?;
         }
         Ok(())
@@ -1049,7 +1064,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                         return Err("if condition must be boolean".into());
                     };
 
-                    let function = self.builder.get_insert_block().unwrap().get_parent().unwrap();
+                    let function = self.current_function().unwrap();
                     let then_bb = self.context.append_basic_block(function, "then");
                     let else_bb = self.context.append_basic_block(function, "else");
                     let merge_bb = self.context.append_basic_block(function, "ifcont");
@@ -1060,7 +1075,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     // Then block
                     self.builder.position_at_end(then_bb);
                     self.compile_block(then_, &mut vars)?;
-                    if self.builder.get_insert_block().unwrap().get_terminator().is_none() {
+                    if !self.block_has_terminator() {
                         self.builder.build_unconditional_branch(merge_bb)
                             .map_err(|e| format!("branch error: {}", e))?;
                     }
@@ -1070,7 +1085,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     if let Some(else_block) = else_ {
                         self.compile_block(else_block, &mut vars)?;
                     }
-                    if self.builder.get_insert_block().unwrap().get_terminator().is_none() {
+                    if !self.block_has_terminator() {
                         self.builder.build_unconditional_branch(merge_bb)
                             .map_err(|e| format!("branch error: {}", e))?;
                     }
@@ -1079,7 +1094,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     self.builder.position_at_end(merge_bb);
                 }
                 Stmt::While { cond, body } => {
-                    let function = self.builder.get_insert_block().unwrap().get_parent().unwrap();
+                    let function = self.current_function().unwrap();
                     let loop_bb = self.context.append_basic_block(function, "loop");
                     let body_bb = self.context.append_basic_block(function, "loopbody");
                     let merge_bb = self.context.append_basic_block(function, "loopcont");
@@ -1106,7 +1121,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     self.loop_break = Some(merge_bb);
                     self.loop_continue = Some(loop_bb);
                     self.compile_block(body, &mut vars)?;
-                    if self.builder.get_insert_block().unwrap().get_terminator().is_none() {
+                    if !self.block_has_terminator() {
                         self.builder.build_unconditional_branch(loop_bb)
                             .map_err(|e| format!("branch error: {}", e))?;
                     }
@@ -1117,7 +1132,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     self.builder.position_at_end(merge_bb);
                 }
                 Stmt::For { var, iterable, body } => {
-                    let function = self.builder.get_insert_block().unwrap().get_parent().unwrap();
+                    let function = self.current_function().unwrap();
                     let iterable_val = self.compile_expr(iterable, &vars)?;
 
                     if let Expr::Binary(BinOp::Range, start_expr, end_expr) = iterable {
@@ -1310,7 +1325,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                         self.builder.build_unconditional_branch(target)
                             .map_err(|e| format!("break error: {}", e))?;
                         // Create unreachable block for subsequent statements
-                        let function = self.builder.get_insert_block().unwrap().get_parent().unwrap();
+                        let function = self.current_function().unwrap();
                         let unreachable = self.context.append_basic_block(function, "unreachable");
                         self.builder.position_at_end(unreachable);
                     } else {
@@ -1321,7 +1336,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     if let Some(target) = self.loop_continue {
                         self.builder.build_unconditional_branch(target)
                             .map_err(|e| format!("continue error: {}", e))?;
-                        let function = self.builder.get_insert_block().unwrap().get_parent().unwrap();
+                        let function = self.current_function().unwrap();
                         let unreachable = self.context.append_basic_block(function, "unreachable");
                         self.builder.position_at_end(unreachable);
                     } else {
@@ -1473,7 +1488,7 @@ impl<'ctx> CodeGenerator<'ctx> {
         self.check_unconsumed_caps()?;
         self.pop_cap_scope();
 
-        if self.builder.get_insert_block().unwrap().get_terminator().is_none() {
+        if !self.block_has_terminator() {
             self.builder.build_return(Some(&last_val)).map_err(|e| format!("return error: {}", e))?;
         }
         self.type_map = prev_type_map;
@@ -1539,7 +1554,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                         return Err("if condition must be boolean".into());
                     };
 
-                    let function = self.builder.get_insert_block().unwrap().get_parent().unwrap();
+                    let function = self.current_function().unwrap();
                     let then_bb = self.context.append_basic_block(function, "then");
                     let else_bb = self.context.append_basic_block(function, "else");
                     let merge_bb = self.context.append_basic_block(function, "ifcont");
@@ -1549,7 +1564,7 @@ impl<'ctx> CodeGenerator<'ctx> {
 
                     self.builder.position_at_end(then_bb);
                     self.compile_block(then_, vars)?;
-                    if self.builder.get_insert_block().unwrap().get_terminator().is_none() {
+                    if !self.block_has_terminator() {
                         self.builder.build_unconditional_branch(merge_bb)
                             .map_err(|e| format!("branch error: {}", e))?;
                     }
@@ -1558,7 +1573,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     if let Some(else_block) = else_ {
                         self.compile_block(else_block, vars)?;
                     }
-                    if self.builder.get_insert_block().unwrap().get_terminator().is_none() {
+                    if !self.block_has_terminator() {
                         self.builder.build_unconditional_branch(merge_bb)
                             .map_err(|e| format!("branch error: {}", e))?;
                     }
@@ -1934,7 +1949,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                                     .map_err(|e| format!("bitcast error: {}", e))?
                                     .into_pointer_value();
                                 // Loop: for i in 0..len
-                                let function = self.builder.get_insert_block().unwrap().get_parent().unwrap();
+                                let function = self.current_function().unwrap();
                                 let loop_bb = self.context.append_basic_block(function, "hof_loop");
                                 let body_bb = self.context.append_basic_block(function, "hof_body");
                                 let done_bb = self.context.append_basic_block(function, "hof_done");
@@ -2067,7 +2082,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                                     .map_err(|e| format!("alloca error: {}", e))?;
                                 self.builder.build_store(acc_alloca, init_val)
                                     .map_err(|e| format!("store error: {}", e))?;
-                                let function = self.builder.get_insert_block().unwrap().get_parent().unwrap();
+                                let function = self.current_function().unwrap();
                                 let loop_bb = self.context.append_basic_block(function, "reduce_loop");
                                 let body_bb = self.context.append_basic_block(function, "reduce_body");
                                 let done_bb = self.context.append_basic_block(function, "reduce_done");
@@ -2214,7 +2229,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     return Err("match scrutinee must be integer (enum tag)".into());
                 };
 
-                let function = self.builder.get_insert_block().unwrap().get_parent().unwrap();
+                let function = self.current_function().unwrap();
                 let merge_bb = self.context.append_basic_block(function, "matchcont");
                 let mut else_bb = self.context.append_basic_block(function, "matchelse");
 
@@ -2497,7 +2512,7 @@ impl<'ctx> CodeGenerator<'ctx> {
             }
             Expr::Spawn(expr) => {
                 // Spawn: create a thread to execute the expression
-                let parent_fn = self.builder.get_insert_block().unwrap().get_parent().unwrap();
+                let parent_fn = self.current_function().unwrap();
                 let parent_name = parent_fn.get_name().to_str().unwrap_or("unknown").to_string();
                 let wrapper_name = format!("{}{}__spawn_wrapper", parent_name, self.spawn_counter).to_string();
                 self.spawn_counter += 1;
@@ -2673,7 +2688,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                 // Extract discriminant (field 0) via GEP+load if pointer, or extract_value if struct
                 let i1_ty = self.context.bool_type();
                 let i64_ty = self.context.i64_type();
-                let function = self.builder.get_insert_block().unwrap().get_parent().unwrap();
+                let function = self.current_function().unwrap();
                 let ok_bb = self.context.append_basic_block(function, "try_ok");
                 let err_bb = self.context.append_basic_block(function, "try_err");
 
@@ -3295,7 +3310,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     BasicMetadataValueEnum::IntValue(iv) => iv,
                     _ => return Err("assert requires boolean/i64 argument".into()),
                 };
-                let function = self.builder.get_insert_block().unwrap().get_parent().unwrap();
+                let function = self.current_function().unwrap();
                 let ok_bb = self.context.append_basic_block(function, "assert_ok");
                 let fail_bb = self.context.append_basic_block(function, "assert_fail");
                 self.builder.build_conditional_branch(cond, ok_bb, fail_bb)
@@ -3339,7 +3354,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     }
                     _ => return Err("assert_eq requires same types".into()),
                 };
-                let function = self.builder.get_insert_block().unwrap().get_parent().unwrap();
+                let function = self.current_function().unwrap();
                 let ok_bb = self.context.append_basic_block(function, "aeq_ok");
                 let fail_bb = self.context.append_basic_block(function, "aeq_fail");
                 self.builder.build_conditional_branch(eq, ok_bb, fail_bb)
@@ -3383,7 +3398,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     }
                     _ => return Err("assert_ne requires same types".into()),
                 };
-                let function = self.builder.get_insert_block().unwrap().get_parent().unwrap();
+                let function = self.current_function().unwrap();
                 let ok_bb = self.context.append_basic_block(function, "ane_ok");
                 let fail_bb = self.context.append_basic_block(function, "ane_fail");
                 self.builder.build_conditional_branch(ne, ok_bb, fail_bb)
@@ -3450,7 +3465,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     .map_err(|e| format!("alloca error: {}", e))?;
                 self.builder.build_store(idx_alloca, i64_ty.const_int(0, false))
                     .map_err(|e| format!("store error: {}", e))?;
-                let function = self.builder.get_insert_block().unwrap().get_parent().unwrap();
+                let function = self.current_function().unwrap();
                 let loop_bb = self.context.append_basic_block(function, "range_loop");
                 let body_bb = self.context.append_basic_block(function, "range_body");
                 let exit_bb = self.context.append_basic_block(function, "range_exit");
@@ -3603,7 +3618,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                             }).unwrap();
                         let call = self.builder.build_call(fabs_fn, args, "fabs_call")
                             .map_err(|e| format!("fabs error: {}", e))?;
-                        Ok(call.try_as_basic_value().left().unwrap())
+                        Ok(self.expect_basic_value(&call, "fabs")?)
                     }
                     _ => Err("abs requires numeric type".into()),
                 }
@@ -3620,7 +3635,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     }).unwrap();
                 let call = self.builder.build_call(sqrt_fn, args, "sqrt_call")
                     .map_err(|e| format!("sqrt error: {}", e))?;
-                Ok(call.try_as_basic_value().left().unwrap())
+                Ok(self.expect_basic_value(&call, "sqrt")?)
             }
             "min" | "max" => {
                 if args.len() != 2 {
@@ -3780,7 +3795,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     i64_ty.const_int(0, false), "is_empty")
                     .map_err(|e| format!("compare error: {}", e))?;
 
-                let function = self.builder.get_insert_block().unwrap().get_parent().unwrap();
+                let function = self.current_function().unwrap();
                 let nonempty_bb = self.context.append_basic_block(function, "pop_nonempty");
                 let empty_bb = self.context.append_basic_block(function, "pop_empty");
                 let merge_bb = self.context.append_basic_block(function, "pop_merge");
@@ -3866,7 +3881,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     }).unwrap();
                 let call = self.builder.build_call(c_fn, args, &format!("{}_call", fn_name))
                     .map_err(|e| format!("{} error: {}", fn_name, e))?;
-                Ok(call.try_as_basic_value().left().unwrap())
+                Ok(self.expect_basic_value(&call, fn_name)?)
             }
             // ========== P0 gap fixes: I/O and file builtins via FFI ==========
             "input" => {
@@ -4381,7 +4396,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                 // If suffix_len > s_len, return false
                 let gt = self.builder.build_int_compare(inkwell::IntPredicate::SGT, suffix_len, s_len, "gt")
                     .map_err(|e| format!("cmp error: {}", e))?;
-                let function = self.builder.get_insert_block().unwrap().get_parent().unwrap();
+                let function = self.current_function().unwrap();
                 let check_bb = self.context.append_basic_block(function, "check_suffix");
                 let false_bb = self.context.append_basic_block(function, "suffix_false");
                 let merge_bb = self.context.append_basic_block(function, "suffix_done");
@@ -4465,7 +4480,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     BasicMetadataValueEnum::FloatValue(b),
                 ], "pow_call")
                     .map_err(|e| format!("pow error: {}", e))?;
-                Ok(call.try_as_basic_value().left().unwrap())
+                Ok(self.expect_basic_value(&call, "pow")?)
             }
             "random" => {
                 // Use random() from libc (returns long, we use i64)
@@ -4476,7 +4491,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     }).unwrap();
                 let call = self.builder.build_call(random_fn, &[], "random_call")
                     .map_err(|e| format!("random error: {}", e))?;
-                Ok(call.try_as_basic_value().left().unwrap())
+                Ok(self.expect_basic_value(&call, "random")?)
             }
             "pi" => {
                 // Return constant pi as f64
@@ -4507,7 +4522,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     BasicMetadataValueEnum::IntValue(self.context.i32_type().const_int(10, false)),
                 ], "strtol_call")
                     .map_err(|e| format!("strtol error: {}", e))?;
-                Ok(call.try_as_basic_value().left().unwrap())
+                Ok(self.expect_basic_value(&call, "strtol")?)
             }
             "str_parse_float" | "to_float" => {
                 if args.len() != 1 { return Err("str_parse_float/to_float expects 1 argument".into()); }
@@ -4531,7 +4546,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     BasicMetadataValueEnum::PointerValue(null_ptr),
                 ], "strtod_call")
                     .map_err(|e| format!("strtod error: {}", e))?;
-                Ok(call.try_as_basic_value().left().unwrap())
+                Ok(self.expect_basic_value(&call, "strtod")?)
             }
             "str_index_of" => {
                 if args.len() != 2 { return Err("str_index_of expects 2 arguments".into()); }
@@ -4621,7 +4636,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                 ], "memcpy_first")
                     .map_err(|e| format!("memcpy error: {}", e))?;
                 // For remaining repeats, copy from buf to buf+(i*s_len)
-                let function = self.builder.get_insert_block().unwrap().get_parent().unwrap();
+                let function = self.current_function().unwrap();
                 let loop_bb = self.context.append_basic_block(function, "repeat_loop");
                 let body_bb = self.context.append_basic_block(function, "repeat_body");
                 let done_bb = self.context.append_basic_block(function, "repeat_done");
@@ -4705,7 +4720,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     .into_int_value();
                 let zero = i64_ty.const_int(0, false);
                 // Scan forward for first non-space
-                let function = self.builder.get_insert_block().unwrap().get_parent().unwrap();
+                let function = self.current_function().unwrap();
                 let fwd_loop = self.context.append_basic_block(function, "trim_fwd");
                 let fwd_body = self.context.append_basic_block(function, "trim_fwd_body");
                 let fwd_done = self.context.append_basic_block(function, "trim_fwd_done");
@@ -4887,7 +4902,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                 ], "memcpy_call")
                     .map_err(|e| format!("memcpy error: {}", e))?;
                 // Loop: for i = 0..s_len: if buf[i] in 'a'..'z', buf[i] -= 32
-                let function = self.builder.get_insert_block().unwrap().get_parent().unwrap();
+                let function = self.current_function().unwrap();
                 let loop_bb = self.context.append_basic_block(function, "upper_loop");
                 let body_bb = self.context.append_basic_block(function, "upper_body");
                 let done_bb = self.context.append_basic_block(function, "upper_done");
@@ -4986,7 +5001,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     BasicMetadataValueEnum::IntValue(alloc_size),
                 ], "memcpy_call")
                     .map_err(|e| format!("memcpy error: {}", e))?;
-                let function = self.builder.get_insert_block().unwrap().get_parent().unwrap();
+                let function = self.current_function().unwrap();
                 let loop_bb = self.context.append_basic_block(function, "lower_loop");
                 let body_bb = self.context.append_basic_block(function, "lower_body");
                 let done_bb = self.context.append_basic_block(function, "lower_done");
@@ -5141,7 +5156,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     .map_err(|e| format!("bitcast error: {}", e))?
                     .into_pointer_value();
                 // Loop through list elements
-                let function = self.builder.get_insert_block().unwrap().get_parent().unwrap();
+                let function = self.current_function().unwrap();
                 let loop_bb = self.context.append_basic_block(function, "contains_loop");
                 let body_bb = self.context.append_basic_block(function, "contains_body");
                 let found_bb = self.context.append_basic_block(function, "contains_found");
@@ -5221,7 +5236,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     .map_err(|e| format!("bitcast error: {}", e))?
                     .into_pointer_value();
                 // Loop through list elements and sum
-                let function = self.builder.get_insert_block().unwrap().get_parent().unwrap();
+                let function = self.current_function().unwrap();
                 let loop_bb = self.context.append_basic_block(function, "sum_loop");
                 let body_bb = self.context.append_basic_block(function, "sum_body");
                 let done_bb = self.context.append_basic_block(function, "sum_done");
@@ -5308,7 +5323,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     .map_err(|e| format!("bitcast error: {}", e))?
                     .into_pointer_value();
                 // Copy elements in reverse order
-                let function = self.builder.get_insert_block().unwrap().get_parent().unwrap();
+                let function = self.current_function().unwrap();
                 let loop_bb = self.context.append_basic_block(function, "reverse_loop");
                 let body_bb = self.context.append_basic_block(function, "reverse_body");
                 let done_bb = self.context.append_basic_block(function, "reverse_done");
@@ -5393,7 +5408,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     .map_err(|e| format!("bitcast error: {}", e))?
                     .into_pointer_value();
                 // First pass: count total elements
-                let function = self.builder.get_insert_block().unwrap().get_parent().unwrap();
+                let function = self.current_function().unwrap();
                 let count_loop_bb = self.context.append_basic_block(function, "flatten_count_loop");
                 let count_body_bb = self.context.append_basic_block(function, "flatten_count_body");
                 let count_done_bb = self.context.append_basic_block(function, "flatten_count_done");
@@ -5597,7 +5612,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     i64_ty.ptr_type(inkwell::AddressSpace::default()), "sort_new_data_i64")
                     .map_err(|e| format!("bitcast error: {}", e))?
                     .into_pointer_value();
-                let function = self.builder.get_insert_block().unwrap().get_parent().unwrap();
+                let function = self.current_function().unwrap();
                 let outer_loop_bb = self.context.append_basic_block(function, "sort_outer_loop");
                 let outer_body_bb = self.context.append_basic_block(function, "sort_outer_body");
                 let inner_loop_bb = self.context.append_basic_block(function, "sort_inner_loop");
@@ -5742,7 +5757,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     i64_ty.ptr_type(inkwell::AddressSpace::default()), "enum_result_i64")
                     .map_err(|e| format!("bitcast error: {}", e))?
                     .into_pointer_value();
-                let function = self.builder.get_insert_block().unwrap().get_parent().unwrap();
+                let function = self.current_function().unwrap();
                 let loop_bb = self.context.append_basic_block(function, "enum_loop");
                 let body_bb = self.context.append_basic_block(function, "enum_body");
                 let done_bb = self.context.append_basic_block(function, "enum_done");
@@ -5857,7 +5872,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     i64_ty.ptr_type(inkwell::AddressSpace::default()), "zip_result_i64")
                     .map_err(|e| format!("bitcast error: {}", e))?
                     .into_pointer_value();
-                let function = self.builder.get_insert_block().unwrap().get_parent().unwrap();
+                let function = self.current_function().unwrap();
                 let loop_bb = self.context.append_basic_block(function, "zip_loop");
                 let body_bb = self.context.append_basic_block(function, "zip_body");
                 let done_bb = self.context.append_basic_block(function, "zip_done");
@@ -6220,7 +6235,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     i64_ty.ptr_type(inkwell::AddressSpace::default()), "values_ptr_i64")
                     .map_err(|e| format!("bitcast error: {}", e))?
                     .into_pointer_value();
-                let function = self.builder.get_insert_block().unwrap().get_parent().unwrap();
+                let function = self.current_function().unwrap();
                 let loop_bb = self.context.append_basic_block(function, "map_from_list_loop");
                 let body_bb = self.context.append_basic_block(function, "map_from_list_body");
                 let done_bb = self.context.append_basic_block(function, "map_from_list_done");
