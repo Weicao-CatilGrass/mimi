@@ -345,35 +345,61 @@ Mimi 提供以下标准库模块：
 ### 9.2 std 模块
 
 ```mimi
+// 基础工具
+use std::prelude
+let doubled = prelude::double(5)        // 10
+let msg = prelude::type_of(42)          // "i32"
+
 // 数学函数
 use std::mymath
-let x = mymath::square(5)      // 25
-let y = mymath::factorial(5)   // 120
+let x = mymath::square(5)               // 25
+let y = mymath::factorial(5)            // 120
+let a = mymath::abs(-3)                 // 3
 
 // 集合操作
 use std::collections
-let total = collections::sum([1, 2, 3])
-let evens = collections::filter(nums, fn(x: i32) -> bool { x % 2 == 0 })
+let total = collections::sum([1, 2, 3]) // 6
+let evens = collections::filter_list(nums, fn(x: i32) -> bool { x % 2 == 0 })
 
 // 字符串操作
-use std::string
-let upper = string::to_upper("hello")
-let parts = string::split("a,b,c", ",")
+use std::strings
+let upper = strings::to_upper("hello")
+let parts = strings::split("a,b,c", ",")
 
 // 文件系统
 use std::fs
-let content = fs::read_file("data.txt")
-fs::write_file("output.txt", "content")
-let exists = fs::file_exists("config.toml")
+let content = fs::read("data.txt")
+fs::write("output.txt", "content")
+let exists = fs::exists("config.toml")
+
+// 随机数
+use std::random
+let r = random::random_int(1, 100)
+let pick = random::random_choice(items)
+
+// 文本处理
+use std::text
+let slug = text::slugify("Hello World") // "hello-world"
 ```
 
 ### 9.3 可用模块
 
 | 模块 | 说明 | 关键函数 |
 |------|------|----------|
-| `std::io` | 文件 I/O | `read_line`, `read_lines`, `write_lines` |
-| `std::mymath` | 数学函数 | `square`, `cube`, `clamp`, `factorial`, `fibonacci` |
-| `std::collections` | 集合操作 | `sum`, `product`, `contains`, `find`, `reverse`, `filter`, `map`, `reduce` |
-| `std::string` | 字符串处理 | `contains`, `split`, `join`, `replace`, `trim`, `repeat` |
-| `std::fs` | 文件系统 | `read_file`, `write_file`, `file_exists`, `is_file`, `is_dir` |
+| `std::prelude` | 基础工具 | `identity`, `compose`, `pipe`, `tap`, `fail`, `clamp`, `lerp`, `type_of`, `repeat_action` |
+| `std::io` | I/O 操作 | `print_line`, `print_raw`, `print_err`, `input_line`, `input_int`, `input_float` |
+| `std::mymath` | 数学函数 | `square`, `cube`, `abs`, `factorial`, `fibonacci`, `gcd`, `lcm`, `random_int` |
+| `std::collections` | 集合操作 | `sum`, `map_list`, `filter_list`, `reduce_list`, `find`, `dedup`, `any`, `all`, `partition`, `group_by` |
+| `std::strings` | 字符串处理 | `contains`, `split`, `join`, `replace`, `trim`, `repeat`, `to_upper`, `to_lower`, `capitalize`, `title` |
+| `std::text` | 文本处理 | `slugify`, `wrap_text`, `camel_to_snake`, `is_blank`, `is_numeric` |
+| `std::random` | 随机数 | `random_int`, `random_float`, `random_choice`, `random_sample`, `shuffle` |
+| `std::result` | Result 组合子 | `is_ok_result`, `unwrap_or`, `map_result`, `map_err_result` |
+| `std::fs` | 文件系统 | `read`, `write`, `exists`, `read_lines`, `write_lines`, `file_size` |
+| `std::json` | JSON 操作 | `to_json`, `from_json`, `get_string`, `get_int`, `get_bool`, `array_length` |
+| `std::maps` | Map 操作 | `new`, `get`, `set`, `has_key`, `remove`, `merge`, `to_list`, `filter_keys`, `map_values` |
+| `std::time` | 时间操作 | `timestamp`, `timestamp_ms`, `sleep_ms`, `elapsed`, `duration` |
+| `std::datetime` | 日期时间 | `format_duration_secs`, `days_from_now`, `is_future`, `is_past`, `sleep_until` |
+| `std::net` | 网络操作 | `tcp_connect`, `tcp_listen`, `tcp_send`, `tcp_recv`, `fetch`, `fetch_post` |
+| `std::env` | 环境变量 | `get_var`, `cli_args`, `get_var_or`, `has_var`, `arg_count` |
+| `std::testing` | 测试工具 | `assert_eq_int`, `assert_true`, `assert_false`, `assert_eq_string`, `assert_eq_bool` |
 ```

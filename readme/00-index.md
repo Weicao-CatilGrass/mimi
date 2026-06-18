@@ -136,5 +136,5 @@ func? maybe_change() { ... }      // 不确定：AI 可审视
 | `pub` 可见性 | ✅ | 函数、类型、Actor |
 | 列表推导 | ✅ | `[expr for x in list]` |
 | 分配器 | ✅ | `alloc(Arena)`, `alloc(Bump)`, `alloc(System)` |
-| 标准库 | ✅ | `std::io`, `std::math`, `std::collections`, `std::string`, `std::fs` |
+| 标准库 | ✅ | `std::prelude`, `std::io`, `std::mymath`, `std::collections`, `std::strings`, `std::fs`, `std::random`, `std::text`, `std::result`, `std::maps`, `std::json`, `std::time`, `std::datetime`, `std::net`, `std::env`, `std::testing` |
 | LSP 支持 | ✅ | 诊断、补全、悬停、跳转、引用、重命名、签名帮助、语义 token |

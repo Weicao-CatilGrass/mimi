@@ -33,7 +33,7 @@
 | `trait` / `impl` | ✅ | 基础 trait 系统与静态分派 |
 | `where` 约束 | ✅ | 泛型类型约束语法 |
 | `extern "C"` | ✅ | FFI 块声明外部函数 |
-| 标准库 | ✅ | io, fs, strings, collections, mymath, net, maps, json, time, env, testing |
+| 标准库 | ✅ | prelude, io, fs, strings, collections, mymath, net, maps, json, time, datetime, env, testing, random, text, result |
 
 ---
 
