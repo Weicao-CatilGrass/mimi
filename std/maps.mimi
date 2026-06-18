@@ -29,15 +29,8 @@ pub func from_list(pairs: List<(string, Any)>) -> Record {
     map_from_list(pairs)
 }
 
-pub func keys(m: Record) -> List<string> {
-    // Iterate record fields - requires runtime support
-    // For now, use from_list/to_list pattern
-    []
-}
-
-pub func values(m: Record) -> List<Any> {
-    []
-}
+// keys() and values() are available as builtins directly.
+// Use them without the std::maps:: prefix to avoid shadowing.
 
 pub func is_empty(m: Record) -> bool {
     map_size(m) == 0
@@ -53,7 +46,70 @@ pub func get_or_default(m: Record, key: string, default: Any) -> Any {
 }
 
 pub func merge(a: Record, b: Record) -> Record {
-    // Merge b into a - b's values override a's
-    // Requires iteration over b's keys, which needs runtime support
-    a
+    let b_keys = keys(b)
+    let mut result = a
+    for bk in b_keys {
+        let bv = map_get(b, bk)
+        result = map_set(result, bk, bv.1)
+    }
+    result
+}
+
+pub func to_list(m: Record) -> List<(string, Any)> {
+    let ks = keys(m)
+    let vs = values(m)
+    zip(ks, vs)
+}
+
+pub func filter_keys(m: Record, pred: func(string) -> bool) -> Record {
+    let ks = keys(m)
+    let mut result = map_new()
+    for fk_k in ks {
+        if pred(fk_k) {
+            let fk_v = map_get(m, fk_k)
+            result = map_set(result, fk_k, fk_v.1)
+        }
+    }
+    result
+}
+
+pub func map_values(m: Record, f: func(Any) -> Any) -> Record {
+    let ks = keys(m)
+    let mut result = map_new()
+    for mv_k in ks {
+        let mv_v = map_get(m, mv_k)
+        result = map_set(result, mv_k, f(mv_v.1))
+    }
+    result
+}
+
+pub func update(m: Record, key: string, f: func(Any) -> Any) -> Record {
+    let uv = map_get(m, key)
+    if uv.0 {
+        map_set(m, key, f(uv.1))
+    } else {
+        m
+    }
+}
+
+pub func pick(m: Record, ks: List<string>) -> Record {
+    let mut result = map_new()
+    for pk in ks {
+        let pv = map_get(m, pk)
+        if pv.0 {
+            result = map_set(result, pk, pv.1)
+        }
+    }
+    result
+}
+
+pub func omit(m: Record, ks: List<string>) -> Record {
+    let all_keys = keys(m)
+    let mut result = m
+    for ok in all_keys {
+        if contains(ks, ok) {
+            result = map_remove(result, ok)
+        }
+    }
+    result
 }

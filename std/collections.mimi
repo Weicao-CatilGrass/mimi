@@ -136,3 +136,124 @@ pub func map_list<T, U>(xs: List<T>, f: func(T) -> U) -> List<U> {
 pub func unique<T>(xs: List<T>) -> List<T> {
     dedup(xs)
 }
+
+pub func any<T>(xs: List<T>, pred: func(T) -> bool) -> bool {
+    for a_x in xs {
+        if pred(a_x) { return true }
+    }
+    false
+}
+
+pub func all<T>(xs: List<T>, pred: func(T) -> bool) -> bool {
+    for al_x in xs {
+        if !pred(al_x) { return false }
+    }
+    true
+}
+
+pub func find_map<T, U>(xs: List<T>, f: func(T) -> (bool, U)) -> (bool, U) {
+    for fm_x in xs {
+        let fm_result = f(fm_x)
+        if fm_result.0 { return fm_result }
+    }
+    (false, unknown)
+}
+
+pub func partition<T>(xs: List<T>, pred: func(T) -> bool) -> (List<T>, List<T>) {
+    let mut pt_yes: List<T> = []
+    let mut pt_no: List<T> = []
+    for pt_x in xs {
+        if pred(pt_x) {
+            push(pt_yes, pt_x)
+        } else {
+            push(pt_no, pt_x)
+        }
+    }
+    (pt_yes, pt_no)
+}
+
+pub func group_by<T, K>(xs: List<T>, key_fn: func(T) -> K) -> Record {
+    let mut result = map_new()
+    for gb_x in xs {
+        let gb_k = key_fn(gb_x)
+        if map_has_key(result, to_string(gb_k)) {
+            let gb_old = map_get(result, to_string(gb_k))
+            let mut gb_list: List<T> = gb_old.1
+            push(gb_list, gb_x)
+            result = map_set(result, to_string(gb_k), gb_list)
+        } else {
+            result = map_set(result, to_string(gb_k), [gb_x])
+        }
+    }
+    result
+}
+
+pub func chunks<T>(xs: List<T>, size: i32) -> List<List<T> > {
+    let mut ch_result: List<List<T> > = []
+    let mut ch_i = 0
+    let n = len(xs)
+    while ch_i < n {
+        let ch_end = ch_i + size
+        if ch_end > n {
+            push(ch_result, xs[ch_i..n])
+        } else {
+            push(ch_result, xs[ch_i..ch_end])
+        }
+        ch_i = ch_end
+    }
+    ch_result
+}
+
+pub func intersperse<T>(xs: List<T>, sep: T) -> List<T> {
+    if len(xs) <= 1 { return xs }
+    let mut is_result: List<T> = [xs[0]]
+    let mut is_i = 1
+    while is_i < len(xs) {
+        push(is_result, sep)
+        push(is_result, xs[is_i])
+        is_i += 1
+    }
+    is_result
+}
+
+pub func min_list(xs: List<i32>) -> i32 {
+    let mut ml_min = xs[0]
+    for ml_x in xs {
+        if ml_x < ml_min { ml_min = ml_x }
+    }
+    ml_min
+}
+
+pub func max_list(xs: List<i32>) -> i32 {
+    let mut ml_max = xs[0]
+    for ml_x in xs {
+        if ml_x > ml_max { ml_max = ml_x }
+    }
+    ml_max
+}
+
+pub func min_index<T>(xs: List<T>) -> i32 {
+    if len(xs) == 0 { return -1 }
+    let mut mi_idx = 0
+    let mut mi_min = xs[0]
+    for mi_k in range(1, len(xs)) {
+        if xs[mi_k] < mi_min {
+            mi_min = xs[mi_k]
+            mi_idx = mi_k
+        }
+    }
+    mi_idx
+}
+
+pub func max_index<T>(xs: List<T>) -> i32 {
+    if len(xs) == 0 { return -1 }
+    let mut mi_idx = 0
+    let mut mi_max = xs[0]
+    for mi_k in range(1, len(xs)) {
+        if xs[mi_k] > mi_max {
+            mi_max = xs[mi_k]
+            mi_idx = mi_k
+        }
+    }
+    mi_idx
+}
