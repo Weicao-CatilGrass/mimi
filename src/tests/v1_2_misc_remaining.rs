@@ -42,9 +42,7 @@ func main() -> i32 {
     t.1
 }
 "#;
-    let result = run_source_result(src);
-    // numeric tuple indexing (t.1) not yet supported — parser expects identifier
-    assert!(result.is_err(), "numeric tuple indexing should fail gracefully: {:?}", result.ok());
+    assert_eq!(run_source(src), interp::Value::Int(2));
 }
 
 

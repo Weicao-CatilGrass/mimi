@@ -247,6 +247,23 @@ impl<'a> Checker<'a> {
             Expr::Tuple(elems) => {
                 Type::Tuple(elems.iter().map(|e| self.infer_expr(e, scopes)).collect())
             }
+            Expr::TupleIndex(obj, idx) => {
+                let obj_ty = self.infer_expr(obj, scopes);
+                match &obj_ty {
+                    Type::Tuple(elems) => {
+                        if *idx < elems.len() {
+                            elems[*idx].clone()
+                        } else {
+                            self.emit(format!("tuple index {} out of bounds (len {})", idx, elems.len()));
+                            Type::Name("unknown".into(), vec![])
+                        }
+                    }
+                    _ => {
+                        self.emit(format!("cannot index non-tuple type {} with .{}", fmt_type(&obj_ty), idx));
+                        Type::Name("unknown".into(), vec![])
+                    }
+                }
+            }
             Expr::List(elems) => {
                 let mut elem_ty = Type::Name("unknown".into(), vec![]);
                 for (i, e) in elems.iter().enumerate() {

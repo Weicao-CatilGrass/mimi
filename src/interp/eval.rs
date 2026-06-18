@@ -674,6 +674,19 @@ impl<'a> Interpreter<'a> {
                 }
                 Ok(Value::Tuple(vals))
             }
+            Expr::TupleIndex(obj, idx) => {
+                let obj_val = self.eval_expr(obj)?;
+                match obj_val {
+                    Value::Tuple(items) => {
+                        if *idx < items.len() {
+                            Ok(items[*idx].clone())
+                        } else {
+                            Err(format!("tuple index {} out of bounds (len {})", idx, items.len()))
+                        }
+                    }
+                    _ => Err(format!("cannot index non-tuple value with .{}", idx)),
+                }
+            }
             Expr::List(elems) => {
                 let mut vals = Vec::new();
                 for e in elems {

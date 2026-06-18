@@ -5934,10 +5934,133 @@ impl<'ctx> CodeGenerator<'ctx> {
             // ========== JSON functions ==========
             "to_json" => {
                 if args.len() != 1 { return Err("[E0711] to_json expects 1 argument".into()); }
-                let to_json_fn = self.module.get_function("mimi_to_json").unwrap();
-                let call = self.builder.build_call(to_json_fn, &args, "to_json_call")
-                    .map_err(|e| format!("to_json error: {}", e))?;
-                Ok(self.expect_basic_value(&call, "to_json")?)
+                let i8_ptr_ty = self.context.i8_type().ptr_type(inkwell::AddressSpace::default());
+                let i64_ty = self.context.i64_type();
+                let malloc_fn = self.module.get_function("malloc")
+                    .ok_or_else(|| "malloc not declared".to_string())?;
+                let sprintf_fn = self.module.get_function("sprintf")
+                    .ok_or_else(|| "sprintf not declared".to_string())?;
+                let strlen_fn = self.module.get_function("strlen")
+                    .ok_or_else(|| "strlen not declared".to_string())?;
+                let alloc_size = i64_ty.const_int(64, false);
+                match args[0] {
+                    BasicMetadataValueEnum::IntValue(iv) => {
+                        let buf = self.builder.build_call(malloc_fn, &[
+                            BasicMetadataValueEnum::IntValue(alloc_size),
+                        ], "json_malloc")
+                            .map_err(|e| format!("malloc error: {}", e))?
+                            .try_as_basic_value().left()
+                            .ok_or("malloc returned void")?
+                            .into_pointer_value();
+                        let fmt = self.builder.build_global_string_ptr("%ld", "json_int_fmt")
+                            .map_err(|e| format!("fmt error: {}", e))?;
+                        self.builder.build_call(sprintf_fn, &[
+                            BasicMetadataValueEnum::PointerValue(buf),
+                            BasicMetadataValueEnum::PointerValue(fmt.as_pointer_value()),
+                            BasicMetadataValueEnum::IntValue(iv),
+                        ], "json_sprintf")
+                            .map_err(|e| format!("sprintf error: {}", e))?;
+                        let str_len = self.builder.build_call(strlen_fn, &[
+                            BasicMetadataValueEnum::PointerValue(buf),
+                        ], "json_strlen")
+                            .map_err(|e| format!("strlen error: {}", e))?
+                            .try_as_basic_value().left()
+                            .ok_or("strlen returned void")?;
+                        let string_ty = self.context.struct_type(&[
+                            BasicTypeEnum::PointerType(i8_ptr_ty),
+                            BasicTypeEnum::IntType(i64_ty),
+                        ], false);
+                        let str_alloca = self.builder.build_alloca(string_ty, "json_str")
+                            .map_err(|e| format!("alloca error: {}", e))?;
+                        let ptr_gep = self.builder.build_struct_gep(string_ty, str_alloca, 0, "str_ptr")
+                            .map_err(|e| format!("gep error: {}", e))?;
+                        self.builder.build_store(ptr_gep, buf)
+                            .map_err(|e| format!("store error: {}", e))?;
+                        let len_gep = self.builder.build_struct_gep(string_ty, str_alloca, 1, "str_len")
+                            .map_err(|e| format!("gep error: {}", e))?;
+                        self.builder.build_store(len_gep, str_len)
+                            .map_err(|e| format!("store error: {}", e))?;
+                        Ok(str_alloca.into())
+                    }
+                    BasicMetadataValueEnum::FloatValue(fv) => {
+                        let buf = self.builder.build_call(malloc_fn, &[
+                            BasicMetadataValueEnum::IntValue(alloc_size),
+                        ], "json_malloc")
+                            .map_err(|e| format!("malloc error: {}", e))?
+                            .try_as_basic_value().left()
+                            .ok_or("malloc returned void")?
+                            .into_pointer_value();
+                        let fmt = self.builder.build_global_string_ptr("%f", "json_float_fmt")
+                            .map_err(|e| format!("fmt error: {}", e))?;
+                        self.builder.build_call(sprintf_fn, &[
+                            BasicMetadataValueEnum::PointerValue(buf),
+                            BasicMetadataValueEnum::PointerValue(fmt.as_pointer_value()),
+                            BasicMetadataValueEnum::FloatValue(fv),
+                        ], "json_sprintf")
+                            .map_err(|e| format!("sprintf error: {}", e))?;
+                        let str_len = self.builder.build_call(strlen_fn, &[
+                            BasicMetadataValueEnum::PointerValue(buf),
+                        ], "json_strlen")
+                            .map_err(|e| format!("strlen error: {}", e))?
+                            .try_as_basic_value().left()
+                            .ok_or("strlen returned void")?;
+                        let string_ty = self.context.struct_type(&[
+                            BasicTypeEnum::PointerType(i8_ptr_ty),
+                            BasicTypeEnum::IntType(i64_ty),
+                        ], false);
+                        let str_alloca = self.builder.build_alloca(string_ty, "json_str")
+                            .map_err(|e| format!("alloca error: {}", e))?;
+                        let ptr_gep = self.builder.build_struct_gep(string_ty, str_alloca, 0, "str_ptr")
+                            .map_err(|e| format!("gep error: {}", e))?;
+                        self.builder.build_store(ptr_gep, buf)
+                            .map_err(|e| format!("store error: {}", e))?;
+                        let len_gep = self.builder.build_struct_gep(string_ty, str_alloca, 1, "str_len")
+                            .map_err(|e| format!("gep error: {}", e))?;
+                        self.builder.build_store(len_gep, str_len)
+                            .map_err(|e| format!("store error: {}", e))?;
+                        Ok(str_alloca.into())
+                    }
+                    _ => {
+                        // Try to extract a C string pointer (from both raw i8* and Mimi string struct)
+                        let raw_ptr = self.extract_raw_str_ptr(&args[0])?;
+                        let buf = self.builder.build_call(malloc_fn, &[
+                            BasicMetadataValueEnum::IntValue(alloc_size),
+                        ], "json_malloc")
+                            .map_err(|e| format!("malloc error: {}", e))?
+                            .try_as_basic_value().left()
+                            .ok_or("malloc returned void")?
+                            .into_pointer_value();
+                        let fmt = self.builder.build_global_string_ptr("\"%s\"", "json_str_fmt")
+                            .map_err(|e| format!("fmt error: {}", e))?;
+                        self.builder.build_call(sprintf_fn, &[
+                            BasicMetadataValueEnum::PointerValue(buf),
+                            BasicMetadataValueEnum::PointerValue(fmt.as_pointer_value()),
+                            BasicMetadataValueEnum::PointerValue(raw_ptr),
+                        ], "json_sprintf")
+                            .map_err(|e| format!("sprintf error: {}", e))?;
+                        let str_len = self.builder.build_call(strlen_fn, &[
+                            BasicMetadataValueEnum::PointerValue(buf),
+                        ], "json_strlen")
+                            .map_err(|e| format!("strlen error: {}", e))?
+                            .try_as_basic_value().left()
+                            .ok_or("strlen returned void")?;
+                        let string_ty = self.context.struct_type(&[
+                            BasicTypeEnum::PointerType(i8_ptr_ty),
+                            BasicTypeEnum::IntType(i64_ty),
+                        ], false);
+                        let str_alloca = self.builder.build_alloca(string_ty, "json_str")
+                            .map_err(|e| format!("alloca error: {}", e))?;
+                        let ptr_gep = self.builder.build_struct_gep(string_ty, str_alloca, 0, "str_ptr")
+                            .map_err(|e| format!("gep error: {}", e))?;
+                        self.builder.build_store(ptr_gep, buf)
+                            .map_err(|e| format!("store error: {}", e))?;
+                        let len_gep = self.builder.build_struct_gep(string_ty, str_alloca, 1, "str_len")
+                            .map_err(|e| format!("gep error: {}", e))?;
+                        self.builder.build_store(len_gep, str_len)
+                            .map_err(|e| format!("store error: {}", e))?;
+                        Ok(str_alloca.into())
+                    }
+                }
             }
             "from_json" => {
                 if args.len() != 1 { return Err("from_json expects 1 argument".into()); }
