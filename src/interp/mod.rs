@@ -77,6 +77,10 @@ pub struct Interpreter<'a> {
     loop_action: Option<LoopAction>,
     /// Call stack for error context (function names being executed)
     call_stack: Vec<String>,
+    /// O(1) function lookup index: name -> FuncDef
+    func_index: HashMap<String, FuncDef>,
+    /// O(1) actor lookup index: name -> ActorDef
+    actor_index: HashMap<String, ActorDef>,
 }
 
 impl<'a> Interpreter<'a> {
@@ -110,6 +114,11 @@ impl<'a> Interpreter<'a> {
         }
         // Expand built-in derive macros
         Self::expand_derives(&type_defs, &mut trait_defs, &mut type_impls);
+        // Build O(1) function and actor lookup indices
+        let mut func_index = HashMap::new();
+        let mut actor_index = HashMap::new();
+        Self::build_func_index(&file.items, &mut func_index);
+        Self::build_actor_index(&file.items, &mut actor_index);
         Self {
             file,
             env: vec![HashMap::new()],
@@ -135,6 +144,47 @@ impl<'a> Interpreter<'a> {
             default_allocator: AllocatorKind::System,
             loop_action: None,
             call_stack: Vec::new(),
+            func_index,
+            actor_index,
+        }
+    }
+
+    fn build_func_index(items: &[Item], index: &mut HashMap<String, FuncDef>) {
+        Self::build_func_index_rec(items, "", index);
+    }
+
+    fn build_func_index_rec(items: &[Item], prefix: &str, index: &mut HashMap<String, FuncDef>) {
+        for item in items {
+            match item {
+                Item::Func(f) => {
+                    // Store by unqualified name (first wins)
+                    index.entry(f.name.clone()).or_insert_with(|| f.clone());
+                    // Store by qualified name
+                    if !prefix.is_empty() {
+                        let qualified = format!("{}::{}", prefix, f.name);
+                        index.entry(qualified).or_insert_with(|| f.clone());
+                    }
+                }
+                Item::Module(m) => {
+                    let new_prefix = if prefix.is_empty() {
+                        m.name.clone()
+                    } else {
+                        format!("{}::{}", prefix, m.name)
+                    };
+                    Self::build_func_index_rec(&m.items, &new_prefix, index);
+                }
+                _ => {}
+            }
+        }
+    }
+
+    fn build_actor_index(items: &[Item], index: &mut HashMap<String, ActorDef>) {
+        for item in items {
+            match item {
+                Item::Actor(a) => { index.insert(a.name.clone(), a.clone()); }
+                Item::Module(m) => Self::build_actor_index(&m.items, index),
+                _ => {}
+            }
         }
     }
 
@@ -505,18 +555,11 @@ impl<'a> Interpreter<'a> {
     }
 
     fn find_function(&self, name: &str) -> Option<FuncDef> {
-        for item in &self.file.items {
-            match item {
-                Item::Func(f) if f.name == name => return Some(f.clone()),
-                Item::Module(m) => {
-                    if let Some(f) = Self::find_function_in_module(m, "", name) {
-                        return Some(f);
-                    }
-                }
-                _ => {}
-            }
-        }
-        None
+        // O(1) lookup via pre-built index — try both qualified and unqualified
+        self.func_index.get(name).cloned()
+            .or_else(|| self.func_index.values()
+                .find(|f| f.name == name)
+                .cloned())
     }
 
     /// Build a qualified path from nested Field(Ident(...), ...) expressions
@@ -556,22 +599,8 @@ impl<'a> Interpreter<'a> {
     }
 
     fn find_actor(&self, name: &str) -> Option<ActorDef> {
-        for item in &self.file.items {
-            match item {
-                Item::Actor(a) if a.name == name => return Some(a.clone()),
-                Item::Module(m) => {
-                    for inner in &m.items {
-                        if let Item::Actor(a) = inner {
-                            if a.name == name {
-                                return Some(a.clone());
-                            }
-                        }
-                    }
-                }
-                _ => {}
-            }
-        }
-        None
+        // O(1) lookup via pre-built index
+        self.actor_index.get(name).cloned()
     }
 
     fn push_scope(&mut self) {

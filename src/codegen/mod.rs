@@ -84,6 +84,11 @@ impl<'ctx> CodeGenerator<'ctx> {
         format!("[{}] {}", code, msg)
     }
 
+    /// Shorthand: return Err with codegen error code E07xx.
+    fn cg_err<T>(&self, code: &str, msg: impl Into<String>) -> Result<T, String> {
+        Err(self.codegen_err(code, msg.into()))
+    }
+
     /// Enter parallel parasteps mode: track thread IDs for joining at block end
     fn enter_parasteps(&mut self) {
         self.in_parasteps = true;
@@ -171,7 +176,7 @@ impl<'ctx> CodeGenerator<'ctx> {
         for scope in self.cap_vars.iter_mut().rev() {
             if let Some((_, consumed)) = scope.get_mut(name) {
                 if *consumed {
-                    return Err(format!("capability '{}' has already been consumed", name));
+                    return Err(format!("[E0718] capability '{}' has already been consumed", name));
                 }
                 *consumed = true;
                 return Ok(());
@@ -497,7 +502,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                                     .map_err(|e| format!("bitcast error: {}", e))?
                                     .into_int_value()
                             }
-                            _ => return Err(format!("c_shared param {} must be pointer or int", i)),
+                            _ => return Err(format!("[E0712] c_shared param {} must be pointer or int", i)),
                         };
                         self.builder.build_call(retain_fn, &[
                             BasicMetadataValueEnum::IntValue(param_i64),
@@ -580,7 +585,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                                 .map_err(|e| format!("bitcast error: {}", e))?
                                 .into_int_value()
                         }
-                        _ => return Err(format!("c_shared param {} must be pointer or int", i)),
+                        _ => return Err(format!("[E0712] c_shared param {} must be pointer or int", i)),
                     };
                     self.builder.build_call(release_fn, &[
                         BasicMetadataValueEnum::IntValue(param_i64),
@@ -681,7 +686,7 @@ impl<'ctx> CodeGenerator<'ctx> {
         
         let fn_type = match actor_ty {
             BasicTypeEnum::StructType(sty) => sty.fn_type(&metadata_params, false),
-            _ => return Err(format!("actor '{}' type is not a struct", actor.name)),
+            _ => return Err(format!("[E0703] actor '{}' type is not a struct", actor.name)),
         };
         
         let constructor_name = format!("{}_new", actor.name);
@@ -730,7 +735,7 @@ impl<'ctx> CodeGenerator<'ctx> {
         // Build function type: self (ptr to actor struct) + params -> ret
         let actor_ptr_ty = match actor_ty {
             BasicTypeEnum::StructType(sty) => BasicTypeEnum::PointerType(sty.ptr_type(inkwell::AddressSpace::default())),
-            _ => return Err(format!("actor '{}' type is not a struct", actor.name)),
+            _ => return Err(format!("[E0703] actor '{}' type is not a struct", actor.name)),
         };
         
         let mut param_metadata = vec![types::basic_to_metadata(self.context, actor_ptr_ty)];
@@ -839,7 +844,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     let cond_bool = if let BasicValueEnum::IntValue(iv) = cond_val {
                         iv
                     } else {
-                        return Err("if condition must be boolean".into());
+                        return Err("[E0712] if condition must be boolean".into());
                     };
                     let function = self.current_function().unwrap();
                     let then_bb = self.context.append_basic_block(function, "then");
@@ -868,8 +873,8 @@ impl<'ctx> CodeGenerator<'ctx> {
                     if let Expr::Binary(BinOp::Range, start_expr, end_expr) = iterable {
                         let start_val = self.compile_expr(start_expr, &vars)?;
                         let end_val = self.compile_expr(end_expr, &vars)?;
-                        let start_iv = if let BasicValueEnum::IntValue(iv) = start_val { iv } else { return Err("range start must be i64".into()); };
-                        let end_iv = if let BasicValueEnum::IntValue(iv) = end_val { iv } else { return Err("range end must be i64".into()); };
+                        let start_iv = if let BasicValueEnum::IntValue(iv) = start_val { iv } else { return Err("[E0712] range start must be i64".into()); };
+                        let end_iv = if let BasicValueEnum::IntValue(iv) = end_val { iv } else { return Err("[E0712] range end must be i64".into()); };
                         let idx_alloca = self.builder.build_alloca(self.context.i64_type(), "idx")
                             .map_err(|e| format!("alloca error: {}", e))?;
                         self.builder.build_store(idx_alloca, start_iv)
@@ -882,7 +887,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                         self.builder.position_at_end(loop_bb);
                         let idx_val = self.builder.build_load(BasicTypeEnum::IntType(self.context.i64_type()), idx_alloca, "idx")
                             .map_err(|e| format!("load error: {}", e))?;
-                        let idx_iv = if let BasicValueEnum::IntValue(iv) = idx_val { iv } else { return Err("idx must be i64".into()); };
+                        let idx_iv = if let BasicValueEnum::IntValue(iv) = idx_val { iv } else { return Err("[E0712] idx must be i64".into()); };
                         let cmp = self.builder.build_int_compare(inkwell::IntPredicate::SLT, idx_iv, end_iv, "cmp")
                             .map_err(|e| format!("cmp error: {}", e))?;
                         self.builder.build_conditional_branch(cmp, body_bb, merge_bb)
@@ -901,7 +906,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                         self.loop_continue = old_continue;
                         let idx_val = self.builder.build_load(BasicTypeEnum::IntType(self.context.i64_type()), idx_alloca, "idx")
                             .map_err(|e| format!("load error: {}", e))?;
-                        let idx_iv = if let BasicValueEnum::IntValue(iv) = idx_val { iv } else { return Err("idx must be i64".into()); };
+                        let idx_iv = if let BasicValueEnum::IntValue(iv) = idx_val { iv } else { return Err("[E0712] idx must be i64".into()); };
                         let one = self.context.i64_type().const_int(1, false);
                         let next_idx = self.builder.build_int_add(idx_iv, one, "next_idx")
                             .map_err(|e| format!("add error: {}", e))?;
@@ -923,7 +928,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                         .map_err(|e| format!("branch error: {}", e))?;
                     self.builder.position_at_end(loop_bb);
                     let cond_val = self.compile_expr(cond, &vars)?;
-                    let cond_bool = if let BasicValueEnum::IntValue(iv) = cond_val { iv } else { return Err("while condition must be boolean".into()); };
+                    let cond_bool = if let BasicValueEnum::IntValue(iv) = cond_val { iv } else { return Err("[E0712] while condition must be boolean".into()); };
                     self.builder.build_conditional_branch(cond_bool, body_bb, merge_bb)
                         .map_err(|e| format!("branch error: {}", e))?;
                     self.builder.position_at_end(body_bb);
@@ -1198,7 +1203,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     let cond_bool = if let BasicValueEnum::IntValue(iv) = cond_val {
                         iv
                     } else {
-                        return Err("if condition must be boolean".into());
+                        return Err("[E0712] if condition must be boolean".into());
                     };
 
                     let function = self.current_function().unwrap();
@@ -1272,7 +1277,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     let cond_bool = if let BasicValueEnum::IntValue(iv) = cond_val {
                         iv
                     } else {
-                        return Err("while condition must be boolean".into());
+                        return Err("[E0712] while condition must be boolean".into());
                     };
                     self.builder.build_conditional_branch(cond_bool, body_bb, merge_bb)
                         .map_err(|e| format!("branch error: {}", e))?;
@@ -1301,8 +1306,8 @@ impl<'ctx> CodeGenerator<'ctx> {
                     if let Expr::Binary(BinOp::Range, start_expr, end_expr) = iterable {
                         let start_val = self.compile_expr(start_expr, &vars)?;
                         let end_val = self.compile_expr(end_expr, &vars)?;
-                        let start_iv = if let BasicValueEnum::IntValue(iv) = start_val { iv } else { return Err("range start must be i64".into()); };
-                        let end_iv = if let BasicValueEnum::IntValue(iv) = end_val { iv } else { return Err("range end must be i64".into()); };
+                        let start_iv = if let BasicValueEnum::IntValue(iv) = start_val { iv } else { return Err("[E0712] range start must be i64".into()); };
+                        let end_iv = if let BasicValueEnum::IntValue(iv) = end_val { iv } else { return Err("[E0712] range end must be i64".into()); };
 
                         let idx_alloca = self.builder.build_alloca(self.context.i64_type(), "idx")
                             .map_err(|e| format!("alloca error: {}", e))?;
@@ -1322,7 +1327,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                             idx_alloca,
                             "idx"
                         ).map_err(|e| format!("load error: {}", e))?;
-                        let idx_iv = if let BasicValueEnum::IntValue(iv) = idx_val { iv } else { return Err("index must be i64".into()); };
+                        let idx_iv = if let BasicValueEnum::IntValue(iv) = idx_val { iv } else { return Err("[E0712] index must be i64".into()); };
                         let cmp = self.builder.build_int_compare(inkwell::IntPredicate::SLT, idx_iv, end_iv, "cmp")
                             .map_err(|e| format!("cmp error: {}", e))?;
                         self.builder.build_conditional_branch(cmp, body_bb, merge_bb)
@@ -1351,7 +1356,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                             idx_alloca,
                             "idx"
                         ).map_err(|e| format!("load error: {}", e))?;
-                        let idx_iv = if let BasicValueEnum::IntValue(iv) = idx_val { iv } else { return Err("index must be i64".into()); };
+                        let idx_iv = if let BasicValueEnum::IntValue(iv) = idx_val { iv } else { return Err("[E0712] index must be i64".into()); };
                         let one = self.context.i64_type().const_int(1, false);
                         let next_idx = self.builder.build_int_add(idx_iv, one, "next_idx")
                             .map_err(|e| format!("add error: {}", e))?;
@@ -1413,7 +1418,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                             idx_alloca,
                             "idx"
                         ).map_err(|e| format!("load error: {}", e))?;
-                        let idx_iv = if let BasicValueEnum::IntValue(iv) = idx_val { iv } else { return Err("index must be i64".into()); };
+                        let idx_iv = if let BasicValueEnum::IntValue(iv) = idx_val { iv } else { return Err("[E0712] index must be i64".into()); };
                         let len_iv = if let BasicValueEnum::IntValue(iv) = list_len { iv } else { return Err("length must be i64".into()); };
                         let cmp = self.builder.build_int_compare(inkwell::IntPredicate::SLT, idx_iv, len_iv, "cmp")
                             .map_err(|e| format!("cmp error: {}", e))?;
@@ -1470,7 +1475,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                             idx_alloca,
                             "idx"
                         ).map_err(|e| format!("load error: {}", e))?;
-                        let idx_iv = if let BasicValueEnum::IntValue(iv) = idx_val { iv } else { return Err("index must be i64".into()); };
+                        let idx_iv = if let BasicValueEnum::IntValue(iv) = idx_val { iv } else { return Err("[E0712] index must be i64".into()); };
                         let one = self.context.i64_type().const_int(1, false);
                         let next_idx = self.builder.build_int_add(idx_iv, one, "next_idx")
                             .map_err(|e| format!("add error: {}", e))?;
@@ -1763,7 +1768,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     let cond_bool = if let BasicValueEnum::IntValue(iv) = cond_val {
                         iv
                     } else {
-                        return Err("if condition must be boolean".into());
+                        return Err("[E0712] if condition must be boolean".into());
                     };
 
                     let function = self.current_function().unwrap();
@@ -1966,7 +1971,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     let cond_bool = if let BasicValueEnum::IntValue(iv) = cond_val {
                         iv
                     } else {
-                        return Err("if condition must be boolean".into());
+                        return Err("[E0712] if condition must be boolean".into());
                     };
                     let function = self.current_function().unwrap();
                     let then_bb = self.context.append_basic_block(function, "blt_then");
@@ -2164,7 +2169,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                                     Expr::Literal(Lit::String(s)) => s.clone(),
                                     Expr::Ident(var) => self.var_type_names.get(var)
                                         .cloned().unwrap_or_else(|| "unknown".to_string()),
-                                    _ => return Err("type_fields: argument must be a type name string".into()),
+                                    _ => return Err("[E0712] type_fields: argument must be a type name string".into()),
                                 };
                                 let field_names: Vec<String> = self.type_defs.get(&type_name_str)
                                     .map(|td| match &td.kind {
@@ -2185,7 +2190,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                                     Expr::Literal(Lit::String(s)) => s.clone(),
                                     Expr::Ident(var) => self.var_type_names.get(var)
                                         .cloned().unwrap_or_else(|| "unknown".to_string()),
-                                    _ => return Err("type_variants: argument must be a type name string".into()),
+                                    _ => return Err("[E0712] type_variants: argument must be a type name string".into()),
                                 };
                                 let variant_names: Vec<String> = self.type_defs.get(&type_name_str)
                                     .map(|td| match &td.kind {
@@ -2240,7 +2245,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                                             .into_pointer_value();
                                         let record_ptr = match self.compile_expr(&args[0], vars)? {
                                             BasicValueEnum::PointerValue(pv) => pv,
-                                            _ => return Err("values: expected record pointer".into()),
+                                            _ => return Err("[E0712] values: expected record pointer".into()),
                                         };
                                         let td = self.type_defs.get(&type_name);
                                         if let Some(TypeDefKind::Record(fields)) = td.map(|t| &t.kind) {
@@ -2257,7 +2262,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                                                         .map_err(|e| format!("fptosi error: {}", e))?,
                                                     BasicValueEnum::PointerValue(pv) => self.builder.build_ptr_to_int(pv, i64_ty, "ptr_to_i64")
                                                         .map_err(|e| format!("ptrtoint error: {}", e))?,
-                                                    _ => return Err("values: unsupported field type".into()),
+                                                    _ => return Err("[E0701] values: unsupported field type".into()),
                                                 };
                                                 let elem_ptr = unsafe { self.builder.build_gep(i64_ty, values_data_i64, &[i64_ty.const_int(i as u64, false)], "values_elem") }
                                                     .map_err(|e| format!("gep error: {}", e))?;
@@ -2691,7 +2696,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                                         }
                                 }
                             }
-                            return Err(format!("cannot dispatch method '{}' on {}", method_name, obj_type));
+                            return Err(format!("[E0708] cannot dispatch method '{}' on {}", method_name, obj_type));
                         }
 
                         // 3b. Try impl Trait dispatch (same logic as dyn Trait)
@@ -2727,7 +2732,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                                     }
                                 }
                             }
-                            return Err(format!("cannot dispatch method '{}' on {}", method_name, obj_type));
+                            return Err(format!("[E0708] cannot dispatch method '{}' on {}", method_name, obj_type));
                         }
 
                         // 4. Fallback: field access or error
@@ -2745,7 +2750,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                 // Build type_map from explicit type args
                 let func = self.find_func_def(name)?;
                 if func.generics.len() != type_args.len() {
-                    return Err(format!("turbofish for '{}' expects {} type args, got {}", name, func.generics.len(), type_args.len()));
+                    return Err(format!("[E0720] turbofish for '{}' expects {} type args, got {}", name, func.generics.len(), type_args.len()));
                 }
                 let mut turbo_map: HashMap<String, crate::ast::Type> = HashMap::new();
                 for (gp, ta) in func.generics.iter().zip(type_args.iter()) {
@@ -2802,7 +2807,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                                 Lit::Int(n) => self.context.i64_type().const_int(*n as u64, true),
                                 Lit::Bool(b) => self.context.bool_type().const_int(*b as u64, false),
                                 Lit::Unit => self.context.i64_type().const_int(0, false),
-                                _ => return Err("unsupported match literal type".into()),
+                                _ => return Err("[E0709] unsupported match literal type".into()),
                             };
                             let cmp = self.builder.build_int_compare(
                                 inkwell::IntPredicate::EQ,
@@ -3080,7 +3085,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                                 .map_err(|e| format!("store error: {}", e))?;
                             alloca
                         } else {
-                            return Err(format!("cannot access field on type '{}'", obj_type));
+                            return Err(format!("[E0707] cannot access field on type '{}'", obj_type));
                         }
                     }
                     _ => return Err(format!("field access requires struct/actor type, got {:?}", obj_val.get_type())),
@@ -3174,7 +3179,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     BasicValueEnum::PointerValue(pv) => {
                         let idx_iv = match idx_val {
                             BasicValueEnum::IntValue(iv) => iv,
-                            _ => return Err("index must be i64".into()),
+                            _ => return Err("[E0712] index must be i64".into()),
                         };
                         // Try list struct first: { i64 len, i8* data }
                         let list_ty = self.context.struct_type(&[
@@ -3213,7 +3218,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                         // Direct LLVM array value: extract element by index
                         let _idx = match idx_val {
                             BasicValueEnum::IntValue(iv) => iv,
-                            _ => return Err("index must be i64".into()),
+                            _ => return Err("[E0712] index must be i64".into()),
                         };
                         // Store array to alloca, then extract element
                         let arr_ty = obj_val.get_type();
@@ -3598,11 +3603,11 @@ impl<'ctx> CodeGenerator<'ctx> {
                 let end_val = self.compile_expr(end, vars)?;
                 let start_iv = match start_val {
                     BasicValueEnum::IntValue(iv) => iv,
-                    _ => return Err("range start must be i64".into()),
+                    _ => return Err("[E0712] range start must be i64".into()),
                 };
                 let end_iv = match end_val {
                     BasicValueEnum::IntValue(iv) => iv,
-                    _ => return Err("range end must be i64".into()),
+                    _ => return Err("[E0712] range end must be i64".into()),
                 };
                 // Create a range struct { start: i64, end: i64 }
                 let range_ty = self.context.struct_type(&[
@@ -4327,11 +4332,11 @@ impl<'ctx> CodeGenerator<'ctx> {
             BinOp::Range => {
                 let start_iv = match lhs {
                     BasicValueEnum::IntValue(iv) => iv,
-                    _ => return Err("range start must be i64".into()),
+                    _ => return Err("[E0712] range start must be i64".into()),
                 };
                 let end_iv = match rhs {
                     BasicValueEnum::IntValue(iv) => iv,
-                    _ => return Err("range end must be i64".into()),
+                    _ => return Err("[E0712] range end must be i64".into()),
                 };
                 // Create a range struct { start: i64, end: i64 }
                 let i64_ty = self.context.i64_type();
@@ -4662,11 +4667,11 @@ impl<'ctx> CodeGenerator<'ctx> {
                 }
                 let start = match args[0] {
                     BasicMetadataValueEnum::IntValue(iv) => iv,
-                    _ => return Err("range start must be i64".into()),
+                    _ => return Err("[E0712] range start must be i64".into()),
                 };
                 let end = match args[1] {
                     BasicMetadataValueEnum::IntValue(iv) => iv,
-                    _ => return Err("range end must be i64".into()),
+                    _ => return Err("[E0712] range end must be i64".into()),
                 };
                 // Create a list struct: { i64 len, i64* data }
                 // For simplicity in codegen, we use a runtime-allocated array
@@ -4769,7 +4774,7 @@ impl<'ctx> CodeGenerator<'ctx> {
             }
             "to_string" | "int_to_string" => {
                 if args.len() != 1 {
-                    return Err("to_string expects 1 argument".into());
+                    return Err("[E0711] to_string expects 1 argument".into());
                 }
                 match args[0] {
                     BasicMetadataValueEnum::IntValue(iv) => {
@@ -4874,11 +4879,11 @@ impl<'ctx> CodeGenerator<'ctx> {
                 }
                 let a = match args[0] {
                     BasicMetadataValueEnum::IntValue(iv) => iv,
-                    _ => return Err("min/max requires integer types".into()),
+                    _ => return Err("[E0712] min/max requires integer types".into()),
                 };
                 let b = match args[1] {
                     BasicMetadataValueEnum::IntValue(iv) => iv,
-                    _ => return Err("min/max requires integer types".into()),
+                    _ => return Err("[E0712] min/max requires integer types".into()),
                 };
                 let pred = if name == "min" {
                     inkwell::IntPredicate::SLT
@@ -5364,14 +5369,14 @@ impl<'ctx> CodeGenerator<'ctx> {
                 Ok(str_alloca.into())
             }
             "write_file" => {
-                if args.len() != 2 { return Err("write_file expects 2 arguments".into()); }
+                if args.len() != 2 { return Err("[E0711] write_file expects 2 arguments".into()); }
                 let path_ptr = match args[0] {
                     BasicMetadataValueEnum::PointerValue(pv) => pv,
-                    _ => return Err("write_file: first arg must be string path".into()),
+                    _ => return Err("[E0712] write_file: first arg must be string path".into()),
                 };
                 let content_ptr = match args[1] {
                     BasicMetadataValueEnum::PointerValue(pv) => pv,
-                    _ => return Err("write_file: second arg must be string content".into()),
+                    _ => return Err("[E0712] write_file: second arg must be string content".into()),
                 };
                 // fopen(path, "w")
                 let mode_str = self.builder.build_global_string_ptr("w", "write_mode")
@@ -5438,10 +5443,10 @@ impl<'ctx> CodeGenerator<'ctx> {
                 Ok(self.context.i64_type().const_int(0, false).into())
             }
             "str_char_at" => {
-                if args.len() != 2 { return Err("str_char_at expects 2 arguments".into()); }
+                if args.len() != 2 { return Err("[E0711] str_char_at expects 2 arguments".into()); }
                 let str_ptr = match args[0] {
                     BasicMetadataValueEnum::PointerValue(pv) => pv,
-                    _ => return Err("str_char_at: first arg must be string".into()),
+                    _ => return Err("[E0712] str_char_at: first arg must be string".into()),
                 };
                 let index = match args[1] {
                     BasicMetadataValueEnum::IntValue(iv) => iv,
@@ -5516,10 +5521,10 @@ impl<'ctx> CodeGenerator<'ctx> {
                 Ok(str_alloca.into())
             }
             "str_contains" => {
-                if args.len() != 2 { return Err("str_contains expects 2 arguments".into()); }
+                if args.len() != 2 { return Err("[E0711] str_contains expects 2 arguments".into()); }
                 let s_ptr = match args[0] {
                     BasicMetadataValueEnum::PointerValue(pv) => pv,
-                    _ => return Err("str_contains: first arg must be string".into()),
+                    _ => return Err("[E0712] str_contains: first arg must be string".into()),
                 };
                 let sub_ptr = match args[1] {
                     BasicMetadataValueEnum::PointerValue(pv) => pv,
@@ -5549,14 +5554,14 @@ impl<'ctx> CodeGenerator<'ctx> {
                 Ok(ext)
             }
             "str_starts_with" => {
-                if args.len() != 2 { return Err("str_starts_with expects 2 arguments".into()); }
+                if args.len() != 2 { return Err("[E0711] str_starts_with expects 2 arguments".into()); }
                 let s_ptr = match args[0] {
                     BasicMetadataValueEnum::PointerValue(pv) => pv,
-                    _ => return Err("str_starts_with: first arg must be string".into()),
+                    _ => return Err("[E0712] str_starts_with: first arg must be string".into()),
                 };
                 let prefix_ptr = match args[1] {
                     BasicMetadataValueEnum::PointerValue(pv) => pv,
-                    _ => return Err("str_starts_with: second arg must be string".into()),
+                    _ => return Err("[E0712] str_starts_with: second arg must be string".into()),
                 };
                 let i8_ty = self.context.i8_type();
                 let i8_ptr = i8_ty.ptr_type(inkwell::AddressSpace::default());
@@ -5595,10 +5600,10 @@ impl<'ctx> CodeGenerator<'ctx> {
                 Ok(ext)
             }
             "str_ends_with" => {
-                if args.len() != 2 { return Err("str_ends_with expects 2 arguments".into()); }
+                if args.len() != 2 { return Err("[E0711] str_ends_with expects 2 arguments".into()); }
                 let s_ptr = match args[0] {
                     BasicMetadataValueEnum::PointerValue(pv) => pv,
-                    _ => return Err("str_ends_with: first arg must be string".into()),
+                    _ => return Err("[E0712] str_ends_with: first arg must be string".into()),
                 };
                 let suffix_ptr = match args[1] {
                     BasicMetadataValueEnum::PointerValue(pv) => pv,
@@ -5688,7 +5693,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                         self.builder.build_signed_int_to_float(iv, f64_ty, "a_f64")
                             .map_err(|e| format!("int_to_float error: {}", e))?
                     }
-                    _ => return Err("pow requires numeric arguments".into()),
+                    _ => return Err("[E0712] pow requires numeric arguments".into()),
                 };
                 let b = match args[1] {
                     BasicMetadataValueEnum::FloatValue(fv) => fv,
@@ -5696,7 +5701,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                         self.builder.build_signed_int_to_float(iv, f64_ty, "b_f64")
                             .map_err(|e| format!("int_to_float error: {}", e))?
                     }
-                    _ => return Err("pow requires numeric arguments".into()),
+                    _ => return Err("[E0712] pow requires numeric arguments".into()),
                 };
                 let pow_fn = self.module.get_function("pow")
                     .or_else(|| {
@@ -5782,7 +5787,7 @@ impl<'ctx> CodeGenerator<'ctx> {
             }
             // ========== JSON functions ==========
             "to_json" => {
-                if args.len() != 1 { return Err("to_json expects 1 argument".into()); }
+                if args.len() != 1 { return Err("[E0711] to_json expects 1 argument".into()); }
                 let to_json_fn = self.module.get_function("mimi_to_json").unwrap();
                 let call = self.builder.build_call(to_json_fn, &args, "to_json_call")
                     .map_err(|e| format!("to_json error: {}", e))?;
@@ -5797,10 +5802,10 @@ impl<'ctx> CodeGenerator<'ctx> {
             }
             // ========== String parsing ==========
             "str_parse_int" | "to_int" => {
-                if args.len() != 1 { return Err("str_parse_int/to_int expects 1 argument".into()); }
+                if args.len() != 1 { return Err("[E0711] str_parse_int/to_int expects 1 argument".into()); }
                 let s_ptr = match args[0] {
                     BasicMetadataValueEnum::PointerValue(pv) => pv,
-                    _ => return Err("str_parse_int: first arg must be string".into()),
+                    _ => return Err("[E0712] str_parse_int: first arg must be string".into()),
                 };
                 let i8_ptr = self.context.i8_type().ptr_type(inkwell::AddressSpace::default());
                 // strtol(s, NULL, 10)
@@ -5823,10 +5828,10 @@ impl<'ctx> CodeGenerator<'ctx> {
                 Ok(self.expect_basic_value(&call, "strtol")?)
             }
             "str_parse_float" | "to_float" => {
-                if args.len() != 1 { return Err("str_parse_float/to_float expects 1 argument".into()); }
+                if args.len() != 1 { return Err("[E0711] str_parse_float/to_float expects 1 argument".into()); }
                 let s_ptr = match args[0] {
                     BasicMetadataValueEnum::PointerValue(pv) => pv,
-                    _ => return Err("str_parse_float: first arg must be string".into()),
+                    _ => return Err("[E0712] str_parse_float: first arg must be string".into()),
                 };
                 let i8_ptr = self.context.i8_type().ptr_type(inkwell::AddressSpace::default());
                 // strtod(s, NULL)
@@ -5847,10 +5852,10 @@ impl<'ctx> CodeGenerator<'ctx> {
                 Ok(self.expect_basic_value(&call, "strtod")?)
             }
             "str_index_of" => {
-                if args.len() != 2 { return Err("str_index_of expects 2 arguments".into()); }
+                if args.len() != 2 { return Err("[E0711] str_index_of expects 2 arguments".into()); }
                 let s_ptr = match args[0] {
                     BasicMetadataValueEnum::PointerValue(pv) => pv,
-                    _ => return Err("str_index_of: first arg must be string".into()),
+                    _ => return Err("[E0712] str_index_of: first arg must be string".into()),
                 };
                 let sub_ptr = match args[1] {
                     BasicMetadataValueEnum::PointerValue(pv) => pv,
@@ -5885,14 +5890,14 @@ impl<'ctx> CodeGenerator<'ctx> {
                 Ok(idx.into())
             }
             "str_repeat" => {
-                if args.len() != 2 { return Err("str_repeat expects 2 arguments".into()); }
+                if args.len() != 2 { return Err("[E0711] str_repeat expects 2 arguments".into()); }
                 let s_ptr = match args[0] {
                     BasicMetadataValueEnum::PointerValue(pv) => pv,
-                    _ => return Err("str_repeat: first arg must be string".into()),
+                    _ => return Err("[E0712] str_repeat: first arg must be string".into()),
                 };
                 let n = match args[1] {
                     BasicMetadataValueEnum::IntValue(iv) => iv,
-                    _ => return Err("str_repeat: second arg must be integer count".into()),
+                    _ => return Err("[E0712] str_repeat: second arg must be integer count".into()),
                 };
                 let i8_ty = self.context.i8_type();
                 let i8_ptr = i8_ty.ptr_type(inkwell::AddressSpace::default());
@@ -5998,10 +6003,10 @@ impl<'ctx> CodeGenerator<'ctx> {
             }
             // ========== String transformation ==========
             "str_trim" => {
-                if args.len() != 1 { return Err("str_trim expects 1 argument".into()); }
+                if args.len() != 1 { return Err("[E0711] str_trim expects 1 argument".into()); }
                 let s_ptr = match args[0] {
                     BasicMetadataValueEnum::PointerValue(pv) => pv,
-                    _ => return Err("str_trim: first arg must be string".into()),
+                    _ => return Err("[E0712] str_trim: first arg must be string".into()),
                 };
                 let i8_ty = self.context.i8_type();
                 let i8_ptr = i8_ty.ptr_type(inkwell::AddressSpace::default());
@@ -6161,10 +6166,10 @@ impl<'ctx> CodeGenerator<'ctx> {
                 Ok(str_alloca.into())
             }
             "str_to_upper" => {
-                if args.len() != 1 { return Err("str_to_upper expects 1 argument".into()); }
+                if args.len() != 1 { return Err("[E0711] str_to_upper expects 1 argument".into()); }
                 let s_ptr = match args[0] {
                     BasicMetadataValueEnum::PointerValue(pv) => pv,
-                    _ => return Err("str_to_upper: first arg must be string".into()),
+                    _ => return Err("[E0712] str_to_upper: first arg must be string".into()),
                 };
                 let i8_ty = self.context.i8_type();
                 let i8_ptr = i8_ty.ptr_type(inkwell::AddressSpace::default());
@@ -6263,10 +6268,10 @@ impl<'ctx> CodeGenerator<'ctx> {
                 Ok(str_alloca.into())
             }
             "str_to_lower" => {
-                if args.len() != 1 { return Err("str_to_lower expects 1 argument".into()); }
+                if args.len() != 1 { return Err("[E0711] str_to_lower expects 1 argument".into()); }
                 let s_ptr = match args[0] {
                     BasicMetadataValueEnum::PointerValue(pv) => pv,
-                    _ => return Err("str_to_lower: first arg must be string".into()),
+                    _ => return Err("[E0712] str_to_lower: first arg must be string".into()),
                 };
                 let i8_ty = self.context.i8_type();
                 let i8_ptr = i8_ty.ptr_type(inkwell::AddressSpace::default());
@@ -6360,18 +6365,18 @@ impl<'ctx> CodeGenerator<'ctx> {
                 Ok(str_alloca.into())
             }
             "str_substring" => {
-                if args.len() != 3 { return Err("str_substring expects 3 arguments (s, start, end)".into()); }
+                if args.len() != 3 { return Err("[E0711] str_substring expects 3 arguments (s, start, end)".into()); }
                 let s_ptr = match args[0] {
                     BasicMetadataValueEnum::PointerValue(pv) => pv,
-                    _ => return Err("str_substring: first arg must be string".into()),
+                    _ => return Err("[E0712] str_substring: first arg must be string".into()),
                 };
                 let start = match args[1] {
                     BasicMetadataValueEnum::IntValue(iv) => iv,
-                    _ => return Err("str_substring: second arg must be integer start".into()),
+                    _ => return Err("[E0712] str_substring: second arg must be integer start".into()),
                 };
                 let end = match args[2] {
                     BasicMetadataValueEnum::IntValue(iv) => iv,
-                    _ => return Err("str_substring: third arg must be integer end".into()),
+                    _ => return Err("[E0712] str_substring: third arg must be integer end".into()),
                 };
                 let i8_ty = self.context.i8_type();
                 let i8_ptr = i8_ty.ptr_type(inkwell::AddressSpace::default());
@@ -6509,10 +6514,10 @@ impl<'ctx> CodeGenerator<'ctx> {
                 Ok(phi.as_basic_value())
             }
             "sum" => {
-                if args.len() != 1 { return Err("sum expects 1 argument (list)".into()); }
+                if args.len() != 1 { return Err("[E0711] sum expects 1 argument (list)".into()); }
                 let list_ptr = match args[0] {
                     BasicMetadataValueEnum::PointerValue(pv) => pv,
-                    _ => return Err("sum: first arg must be a list".into()),
+                    _ => return Err("[E0712] sum: first arg must be a list".into()),
                 };
                 let i64_ty = self.context.i64_type();
                 let list_struct_ty = BasicTypeEnum::StructType(self.context.struct_type(&[
@@ -7114,10 +7119,10 @@ impl<'ctx> CodeGenerator<'ctx> {
                 Ok(result_alloca.into())
             }
             "zip" => {
-                if args.len() != 2 { return Err("zip expects 2 arguments (list, list)".into()); }
+                if args.len() != 2 { return Err("[E0711] zip expects 2 arguments (list, list)".into()); }
                 let (list_ptr_a, list_ptr_b) = match (&args[0], &args[1]) {
                     (BasicMetadataValueEnum::PointerValue(pv_a), BasicMetadataValueEnum::PointerValue(pv_b)) => (pv_a, pv_b),
-                    _ => return Err("zip: both args must be lists".into()),
+                    _ => return Err("[E0712] zip: both args must be lists".into()),
                 };
                 let i64_ty = self.context.i64_type();
                 let i8_ptr = self.context.i8_type().ptr_type(inkwell::AddressSpace::default());
@@ -7233,14 +7238,14 @@ impl<'ctx> CodeGenerator<'ctx> {
                 Ok(result_alloca.into())
             }
             "str_split" => {
-                if args.len() != 2 { return Err("str_split expects 2 arguments (string, delimiter)".into()); }
+                if args.len() != 2 { return Err("[E0711] str_split expects 2 arguments (string, delimiter)".into()); }
                 let s_ptr = match args[0] {
                     BasicMetadataValueEnum::PointerValue(pv) => pv,
-                    _ => return Err("str_split: first arg must be string".into()),
+                    _ => return Err("[E0712] str_split: first arg must be string".into()),
                 };
                 let delim_ptr = match args[1] {
                     BasicMetadataValueEnum::PointerValue(pv) => pv,
-                    _ => return Err("str_split: second arg must be string".into()),
+                    _ => return Err("[E0712] str_split: second arg must be string".into()),
                 };
                 let func = self.module.get_function("mimi_str_split")
                     .ok_or("mimi_str_split not declared")?;
@@ -7315,18 +7320,18 @@ impl<'ctx> CodeGenerator<'ctx> {
                 Ok(result)
             }
             "str_replace" => {
-                if args.len() != 3 { return Err("str_replace expects 3 arguments".into()); }
+                if args.len() != 3 { return Err("[E0711] str_replace expects 3 arguments".into()); }
                 let s_ptr = match args[0] {
                     BasicMetadataValueEnum::PointerValue(pv) => pv,
-                    _ => return Err("str_replace: first arg must be string".into()),
+                    _ => return Err("[E0712] str_replace: first arg must be string".into()),
                 };
                 let from_ptr = match args[1] {
                     BasicMetadataValueEnum::PointerValue(pv) => pv,
-                    _ => return Err("str_replace: second arg must be string".into()),
+                    _ => return Err("[E0712] str_replace: second arg must be string".into()),
                 };
                 let to_ptr = match args[2] {
                     BasicMetadataValueEnum::PointerValue(pv) => pv,
-                    _ => return Err("str_replace: third arg must be string".into()),
+                    _ => return Err("[E0712] str_replace: third arg must be string".into()),
                 };
                 let func = self.module.get_function("mimi_str_replace")
                     .ok_or("mimi_str_replace not declared")?;
