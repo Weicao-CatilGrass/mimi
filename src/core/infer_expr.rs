@@ -163,6 +163,14 @@ impl<'a> Checker<'a> {
                                     return ret;
                                 }
                             }
+                            // Check string methods
+                            if type_name == "string" {
+                                return self.check_string_method(method_name, args, scopes);
+                            }
+                            // Check list methods
+                            if type_name == "List" {
+                                return self.check_list_method(method_name, args, scopes);
+                            }
                             self.emit_code(crate::diagnostic::codes::E0221, format!("type '{}' has no method '{}'", type_name, method_name));
                             Type::Name("unknown".into(), vec![])
                         } else if let Type::DynTrait(traits) = &obj_ty {
@@ -1585,6 +1593,131 @@ impl<'a> Checker<'a> {
             "map_err" => Type::Result(Box::new((*ok_ty).clone()), Box::new(Type::Name("unknown".into(), vec![]))),
             _ => {
                 self.emit(format!("Result<{}, {}> has no method '{}'", fmt_type(ok_ty), fmt_type(err_ty), method));
+                Type::Name("unknown".into(), vec![])
+            }
+        }
+    }
+
+    /// Type-check a method call on string
+    fn check_string_method(&mut self, method: &str, args: &[Expr], scopes: &mut Vec<HashMap<String, Type>>) -> Type {
+        match method {
+            "len" | "trim" | "to_upper" | "to_lower" => {
+                if !args.is_empty() {
+                    self.emit(format!("{} takes no arguments", method));
+                }
+                match method {
+                    "len" => Type::Name("i32".into(), vec![]),
+                    _ => Type::Name("string".into(), vec![]),
+                }
+            }
+            "parse_int" => {
+                if args.len() != 0 { self.emit("parse_int takes no arguments"); }
+                Type::Result(
+                    Box::new(Type::Name("i32".into(), vec![])),
+                    Box::new(Type::Name("string".into(), vec![])),
+                )
+            }
+            "parse_float" => {
+                if args.len() != 0 { self.emit("parse_float takes no arguments"); }
+                Type::Result(
+                    Box::new(Type::Name("f64".into(), vec![])),
+                    Box::new(Type::Name("string".into(), vec![])),
+                )
+            }
+            "contains" | "starts_with" | "ends_with" => {
+                if args.len() != 1 {
+                    self.emit(format!("{} expects 1 argument", method));
+                } else {
+                    let t = self.infer_expr(&args[0], scopes);
+                    if !same_type(&t, &Type::Name("string".into(), vec![])) {
+                        self.emit(format!("{} expects a string argument", method));
+                    }
+                }
+                Type::Name("bool".into(), vec![])
+            }
+            "split" => {
+                if args.len() != 1 {
+                    self.emit("split expects 1 argument");
+                } else {
+                    let t = self.infer_expr(&args[0], scopes);
+                    if !same_type(&t, &Type::Name("string".into(), vec![])) {
+                        self.emit("split expects a string argument");
+                    }
+                }
+                Type::Name("List".into(), vec![Type::Name("string".into(), vec![])])
+            }
+            "replace" => {
+                if args.len() != 2 {
+                    self.emit("replace expects 2 arguments");
+                } else {
+                    for a in args {
+                        let t = self.infer_expr(a, scopes);
+                        if !same_type(&t, &Type::Name("string".into(), vec![])) {
+                            self.emit("replace expects string arguments");
+                        }
+                    }
+                }
+                Type::Name("string".into(), vec![])
+            }
+            "repeat" => {
+                if args.len() != 1 {
+                    self.emit("repeat expects 1 argument");
+                } else {
+                    let t = self.infer_expr(&args[0], scopes);
+                    if !is_int(&t) {
+                        self.emit("repeat expects an integer argument");
+                    }
+                }
+                Type::Name("string".into(), vec![])
+            }
+            "char_at" => {
+                if args.len() != 1 {
+                    self.emit("char_at expects 1 argument");
+                } else {
+                    let t = self.infer_expr(&args[0], scopes);
+                    if !is_int(&t) {
+                        self.emit("char_at expects an integer argument");
+                    }
+                }
+                Type::Name("string".into(), vec![])
+            }
+            "substring" => {
+                if args.len() != 2 {
+                    self.emit("substring expects 2 arguments");
+                } else {
+                    for a in args {
+                        let t = self.infer_expr(a, scopes);
+                        if !is_int(&t) {
+                            self.emit("substring expects integer arguments");
+                        }
+                    }
+                }
+                Type::Name("string".into(), vec![])
+            }
+            "index_of" => {
+                if args.len() != 1 {
+                    self.emit("index_of expects 1 argument");
+                } else {
+                    let t = self.infer_expr(&args[0], scopes);
+                    if !same_type(&t, &Type::Name("string".into(), vec![])) {
+                        self.emit("index_of expects a string argument");
+                    }
+                }
+                Type::Name("i32".into(), vec![])
+            }
+            _ => {
+                self.emit(format!("string has no method '{}'", method));
+                Type::Name("unknown".into(), vec![])
+            }
+        }
+    }
+
+    /// Type-check a method call on List<T>
+    fn check_list_method(&mut self, method: &str, args: &[Expr], scopes: &mut Vec<HashMap<String, Type>>) -> Type {
+        match method {
+            "len" => Type::Name("i32".into(), vec![]),
+            _ => {
+                self.emit(format!("List has no method '{}'", method));
                 Type::Name("unknown".into(), vec![])
             }
         }
