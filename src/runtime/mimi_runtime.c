@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdint.h>
+#include <unistd.h>
 #include "mimi_runtime.h"
 
 #define INITIAL_CAPACITY 16
@@ -405,4 +406,92 @@ const char* mimi_str_replace(const char* s, const char* from, const char* to) {
     /* Copy remainder */
     strcpy(out, scan);
     return result;
+}
+
+/* ========== Thread pool for parasteps ========== */
+
+#include <pthread.h>
+
+#define POOL_MAX_THREADS 64
+#define POOL_MAX_TASKS 1024
+
+typedef struct {
+    void* (*func)(void*);
+    void* arg;
+} PoolTask;
+
+static pthread_mutex_t pool_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t pool_cond = PTHREAD_COND_INITIALIZER;
+static PoolTask pool_tasks[POOL_MAX_TASKS];
+static int pool_task_count = 0;
+static int pool_task_head = 0;
+static int pool_task_tail = 0;
+static int pool_shutdown = 0;
+static int pool_active_threads = 0;
+static int pool_threads_initialized = 0;
+static pthread_t pool_threads[POOL_MAX_THREADS];
+static int pool_thread_count = 0;
+
+static void* pool_worker(void* arg) {
+    (void)arg;
+    while (1) {
+        PoolTask task;
+        int got_task = 0;
+
+        pthread_mutex_lock(&pool_mutex);
+        while (pool_task_head == pool_task_tail && !pool_shutdown) {
+            pthread_cond_wait(&pool_cond, &pool_mutex);
+        }
+        if (pool_shutdown && pool_task_head == pool_task_tail) {
+            pthread_mutex_unlock(&pool_mutex);
+            break;
+        }
+        task = pool_tasks[pool_task_head % POOL_MAX_TASKS];
+        pool_task_head++;
+        pool_active_threads++;
+        pthread_mutex_unlock(&pool_mutex);
+
+        task.func(task.arg);
+
+        pthread_mutex_lock(&pool_mutex);
+        pool_active_threads--;
+        if (pool_task_head == pool_task_tail && pool_active_threads == 0) {
+            pthread_cond_broadcast(&pool_cond);
+        }
+        pthread_mutex_unlock(&pool_mutex);
+    }
+    return NULL;
+}
+
+static void pool_ensure_init(void) {
+    if (pool_threads_initialized) return;
+    int ncpu = sysconf(_SC_NPROCESSORS_ONLN);
+    if (ncpu < 1) ncpu = 4;
+    if (ncpu > POOL_MAX_THREADS) ncpu = POOL_MAX_THREADS;
+    pool_thread_count = ncpu;
+    for (int i = 0; i < ncpu; i++) {
+        pthread_create(&pool_threads[i], NULL, pool_worker, NULL);
+    }
+    pool_threads_initialized = 1;
+}
+
+void mimi_pool_submit(void* fn_ptr, void* arg) {
+    if (!fn_ptr) return;
+    pool_ensure_init();
+    void* (*func)(void*) = (void* (*)(void*))fn_ptr;
+    pthread_mutex_lock(&pool_mutex);
+    pool_tasks[pool_task_tail % POOL_MAX_TASKS].func = func;
+    pool_tasks[pool_task_tail % POOL_MAX_TASKS].arg = arg;
+    pool_task_tail++;
+    pthread_cond_signal(&pool_cond);
+    pthread_mutex_unlock(&pool_mutex);
+}
+
+void mimi_pool_join_all(void) {
+    if (!pool_threads_initialized) return;
+    pthread_mutex_lock(&pool_mutex);
+    while (pool_task_head < pool_task_tail || pool_active_threads > 0) {
+        pthread_cond_wait(&pool_cond, &pool_mutex);
+    }
+    pthread_mutex_unlock(&pool_mutex);
 }

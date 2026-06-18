@@ -1236,14 +1236,12 @@ impl<'a> Interpreter<'a> {
                         Err("spawn() should be called on Actor type, not instance".into())
                     }
                     _ => {
-                        // First, get a clone of the actor's current state
+                        // Get actor name and methods (clone from RwLock)
                         let actor_name: String;
-                        let actor_fields: HashMap<String, Value>;
                         let actor_methods: Vec<FuncDef>;
                         {
                             let actor = actor_arc.inner.read().map_err(|e| format!("actor lock failed: {}", e))?;
                             actor_name = actor.actor_name.clone();
-                            actor_fields = actor.fields.clone();
                             actor_methods = actor.methods.clone();
                         }
 
@@ -1254,12 +1252,8 @@ impl<'a> Interpreter<'a> {
 
                         // For actor methods, we need to call with self bound to this actor
                         self.push_scope();
-                        // Bind 'self' to the actor handle itself (for self.field = ... access)
+                        // Bind 'self' to the actor handle itself (for self.field access via RwLock)
                         self.bind("self", obj.clone());
-                        // Also bind all actor fields to scope (for direct field access)
-                        for (field_name, field_value) in &actor_fields {
-                            self.bind(field_name, field_value.clone());
-                        }
 
                         let result = self.call_func(func, args);
 

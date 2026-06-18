@@ -42,4 +42,11 @@ int64_t mimi_cap_register(const char* name);
 int mimi_cap_check(int64_t cap, const char* name);
 int mimi_cap_consume(int64_t cap, const char* name);
 
+/* Thread pool functions for parasteps.
+   mimi_pool_submit submits a function to be run in a worker thread.
+   fn_ptr is a void* that will be cast to a function pointer.
+   mimi_pool_join_all waits for all submitted tasks to complete. */
+void mimi_pool_submit(void* fn_ptr, void* arg);
+void mimi_pool_join_all(void);
+
 #endif

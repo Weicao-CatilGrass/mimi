@@ -984,9 +984,9 @@ impl<'a> Interpreter<'a> {
                 };
 
                 if let Some((actor_handle, method, args_vals)) = spawned {
+                    let spawned_file = self.file.clone();
                     super::pool::get_pool().execute(move || {
-                        let empty_file = File { imports: vec![], items: vec![] };
-                        let mut interp = Interpreter::new(&empty_file);
+                        let mut interp = Interpreter::new(&spawned_file);
                         let actor_val = Value::Actor(actor_handle);
                         let result = interp.call_method(&actor_val, &method, args_vals);
                         let _ = tx.send(result);
@@ -1014,9 +1014,9 @@ impl<'a> Interpreter<'a> {
                                 Value::Actor(h) => h.clone(),
                                 _ => unreachable!(),
                             };
+                            let spawned_file = self.file.clone();
                             super::pool::get_pool().execute(move || {
-                                let empty_file = File { imports: vec![], items: vec![] };
-                                let mut interp = Interpreter::new(&empty_file);
+                                let mut interp = Interpreter::new(&spawned_file);
                                 let actor_val = Value::Actor(actor_arc);
                                 let result = interp.call_method(&actor_val, &method, args_clone);
                                 let _ = tx.send(result);

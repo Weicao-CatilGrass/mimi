@@ -207,6 +207,19 @@ pub fn register_runtime<'ctx>(module: &Module<'ctx>, ctx: &'ctx Context) {
             BasicMetadataTypeEnum::PointerType(i8_ptr),
         ], false),
         Some(inkwell::module::Linkage::External));
+
+    // Thread pool for parasteps (replaces raw pthread_create)
+    // mimi_pool_submit(fn_ptr: i8*, arg: i8*) -> void
+    module.add_function("mimi_pool_submit",
+        void.fn_type(&[
+            BasicMetadataTypeEnum::PointerType(i8_ptr),  // fn_ptr
+            BasicMetadataTypeEnum::PointerType(i8_ptr),  // arg
+        ], false),
+        Some(inkwell::module::Linkage::External));
+    // mimi_pool_join_all() -> void: wait for all pool tasks to complete
+    module.add_function("mimi_pool_join_all",
+        void.fn_type(&[], false),
+        Some(inkwell::module::Linkage::External));
 }
 
 pub fn is_builtin(name: &str) -> bool {
