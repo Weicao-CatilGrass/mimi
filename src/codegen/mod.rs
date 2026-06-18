@@ -3139,12 +3139,21 @@ impl<'ctx> CodeGenerator<'ctx> {
                     "data_ptr_i64")
                     .map_err(|e| format!("bitcast error: {}", e))?
                     .into_pointer_value();
-                // Store each element
+                // Store each element (universal i64 representation)
                 for (i, elem) in elems.iter().enumerate() {
                     let val = self.compile_expr(elem, vars)?;
                     let iv = match val {
                         BasicValueEnum::IntValue(iv) => iv,
-                        _ => return Err("list elements must be i64 for now".into()),
+                        BasicValueEnum::FloatValue(fv) => {
+                            self.builder.build_bit_cast(fv, self.context.i64_type(), "f64_to_i64")
+                                .map_err(|e| format!("bitcast error: {}", e))?
+                                .into_int_value()
+                        }
+                        BasicValueEnum::PointerValue(pv) => {
+                            self.builder.build_ptr_to_int(pv, self.context.i64_type(), "ptr_to_i64")
+                                .map_err(|e| format!("ptr_to_int error: {}", e))?
+                        }
+                        _ => return Err("list elements must be scalar types (int, float, pointer) for now".into()),
                     };
                     let idx = self.context.i64_type().const_int(i as u64, false);
                     let elem_ptr = unsafe {
