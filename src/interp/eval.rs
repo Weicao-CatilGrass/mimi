@@ -5,7 +5,7 @@ impl<'a> Interpreter<'a> {
         self.push_compensation_scope();
         let result = self.eval_block_inner(block);
         // Pop compensation scope: if error, run compensations; if ok, discard
-        self.pop_compensation_scope(result.is_err());
+        self.pop_compensation_scope(result.is_err() || self.early_return.is_some());
         result
     }
 
@@ -43,8 +43,8 @@ impl<'a> Interpreter<'a> {
                     }
                 }
             }
-            // Propagate break/continue signals out of the block
-            if self.loop_action.is_some() {
+            // Propagate break/continue and early return signals out of the block
+            if self.loop_action.is_some() || self.early_return.is_some() {
                 return Ok(None);
             }
         }
@@ -163,9 +163,11 @@ impl<'a> Interpreter<'a> {
             }
             Stmt::While { cond, body } => {
                 while is_truthy(&self.eval_expr(cond)?) {
+                    if self.early_return.is_some() { break; }
                     if let Some(v) = self.eval_block(body)? {
                         return Ok(Some(v));
                     }
+                    if self.early_return.is_some() { break; }
                     match self.loop_action.take() {
                         Some(LoopAction::Break(val)) => {
                             if let Some(v) = val {
@@ -197,7 +199,9 @@ impl<'a> Interpreter<'a> {
                 };
                 for item in list {
                     self.bind(var, item);
+                    if self.early_return.is_some() { break; }
                     self.eval_block(body)?;
+                    if self.early_return.is_some() { break; }
                     match self.loop_action.take() {
                         Some(LoopAction::Break(val)) => {
                             if let Some(v) = val {
@@ -690,6 +694,9 @@ impl<'a> Interpreter<'a> {
                                 }
                                 let result = self.eval_block(&body);
                                 self.pop_scope();
+                                if let Some(val) = self.early_return.take() {
+                                    return Ok(val);
+                                }
                                 result.map(|v| v.unwrap_or(Value::Unit))
                             }
                             _ => Err(format!("cannot call {}: expected a function or closure", Self::type_name(&callee_val))),
@@ -988,8 +995,10 @@ impl<'a> Interpreter<'a> {
                         // Check if this is a known failure variant
                         let is_failure = self.failure_variants.get(&name).copied().unwrap_or(false);
                         if is_failure {
-                            // Return error value - eval_block will catch it and run compensation
-                            Ok(Value::Error(format!("{} propagated via ?", name)))
+                            // Set early_return so that call_func returns this value,
+                            // eval_block triggers compensations, and match can catch it
+                            self.early_return = Some(Value::Variant(name, vals));
+                            Ok(Value::Unit)
                         } else {
                             // Treat as success variant - return inner value
                             Ok(vals.into_iter().next().unwrap_or(Value::Unit))
@@ -997,7 +1006,8 @@ impl<'a> Interpreter<'a> {
                     }
                     Value::Error(msg) => {
                         // ? on an already-propagated error: re-propagate
-                        Ok(Value::Error(msg))
+                        self.early_return = Some(Value::Error(msg));
+                        Ok(Value::Unit)
                     }
                     _ => {
                         Ok(Value::Error(format!("? operator requires Result or Option, found {}", v)))

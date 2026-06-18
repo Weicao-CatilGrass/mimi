@@ -336,6 +336,9 @@ impl<'a> Interpreter<'a> {
                         }
                         let result = self.eval_block(&body);
                         self.pop_scope();
+                        if let Some(val) = self.early_return.take() {
+                            return Ok(val);
+                        }
                         result.map(|v| v.unwrap_or(Value::Unit))
                     }
                     _ => Err("cannot call non-closure in quoted AST".into()),

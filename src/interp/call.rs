@@ -41,6 +41,9 @@ impl<'a> Interpreter<'a> {
             }
         }
 
+        // Isolate early_return per function call — save outer, clear for this function's body
+        let saved_early_return = self.early_return.take();
+
         let result = self.eval_block(&func.body);
 
         // Extract and check ensures conditions
@@ -74,6 +77,12 @@ impl<'a> Interpreter<'a> {
 
         self.pop_scope();
         self.pop_call();
+        // Check early_return set by this function's execution
+        if let Some(val) = self.early_return.take() {
+            self.early_return = saved_early_return; // restore outer early_return
+            return Ok(val);
+        }
+        self.early_return = saved_early_return; // restore (no early_return from this call)
         result.map(|v| v.unwrap_or(Value::Unit))
     }
 
@@ -97,6 +106,9 @@ impl<'a> Interpreter<'a> {
                     }
                     let result = self.eval_block(&body);
                     self.pop_scope();
+                    if let Some(val) = self.early_return.take() {
+                        return Ok(val);
+                    }
                     return result.map(|v| v.unwrap_or(Value::Unit));
                 }
                 other => {
@@ -336,6 +348,7 @@ impl<'a> Interpreter<'a> {
                         }
                         let mut result = Vec::new();
                         for item in l {
+                            if self.early_return.is_some() { break; }
                             self.push_scope();
                             for (n, v) in captured {
                                 self.bind(n, v.clone());
@@ -343,6 +356,7 @@ impl<'a> Interpreter<'a> {
                             self.bind(&params[0].name, item.clone());
                             let val = self.eval_block(body)?;
                             self.pop_scope();
+                            if self.early_return.is_some() { break; }
                             result.push(val.unwrap_or(Value::Unit));
                         }
                         Ok(Value::List(result))
@@ -361,6 +375,7 @@ impl<'a> Interpreter<'a> {
                         }
                         let mut result = Vec::new();
                         for item in l {
+                            if self.early_return.is_some() { break; }
                             self.push_scope();
                             for (n, v) in captured {
                                 self.bind(n, v.clone());
@@ -368,6 +383,7 @@ impl<'a> Interpreter<'a> {
                             self.bind(&params[0].name, item.clone());
                             let val = self.eval_block(body)?;
                             self.pop_scope();
+                            if self.early_return.is_some() { break; }
                             if is_truthy(&val.unwrap_or(Value::Unit)) {
                                 result.push(item.clone());
                             }
@@ -388,6 +404,7 @@ impl<'a> Interpreter<'a> {
                         }
                         let mut acc = args[2].clone();
                         for item in l {
+                            if self.early_return.is_some() { break; }
                             self.push_scope();
                             for (n, v) in captured {
                                 self.bind(n, v.clone());
@@ -396,6 +413,7 @@ impl<'a> Interpreter<'a> {
                             self.bind(&params[1].name, item.clone());
                             let val = self.eval_block(body)?;
                             self.pop_scope();
+                            if self.early_return.is_some() { break; }
                             acc = val.unwrap_or(Value::Unit);
                         }
                         Ok(acc)
@@ -1274,7 +1292,9 @@ impl<'a> Interpreter<'a> {
             for (p, a) in func_clone.params.iter().zip(args_clone) {
                 interp.bind(&p.name, a);
             }
-            let result = interp.eval_block(&func_clone.body).map(|v| v.unwrap_or(Value::Unit));
+            let block_result = interp.eval_block(&func_clone.body).map(|v| v.unwrap_or(Value::Unit));
+            let result = interp.early_return.take()
+                .map_or(block_result, Ok);
             interp.pop_scope();
             let _ = tx.send(result);
         });
@@ -1657,6 +1677,9 @@ impl<'a> Interpreter<'a> {
                 }
                 let result = self.eval_block(body)?;
                 self.pop_scope();
+                if let Some(val) = self.early_return.take() {
+                    return Ok(val);
+                }
                 Ok(result.unwrap_or(Value::Unit))
             }
             _ => Err(format!("expected a closure, found {}", closure)),
