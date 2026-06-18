@@ -1,0 +1,52 @@
+// Mimi 验证程序集 2: 集合与字符串操作
+// 测试: List 操作、字符串操作、内置函数
+
+func main() -> i32 {
+    println("=== List 操作 ===");
+    let xs = [1, 2, 3, 4, 5];
+    println("len(xs) =", len(xs));
+    println("contains(xs, 3) =", contains(xs, 3));
+    println("contains(xs, 99) =", contains(xs, 99));
+
+    println("=== push/pop ===");
+    push(xs, 6);
+    println("after push, len =", len(xs));
+    let popped = pop(xs);
+    println("pop =", popped);
+    println("after pop, len =", len(xs));
+
+    println("=== 字符串操作 ===");
+    let s = "hello world";
+    println("len(s) =", len(s));
+
+    println("=== str_split/str_join ===");
+    let parts = str_split("a,b,c", ",");
+    println("split count =", len(parts));
+    let joined = str_join(parts, "+");
+    println("joined =", joined);
+
+    println("=== str_replace ===");
+    let replaced = str_replace("hello world", "world", "mimi");
+    println("replaced =", replaced);
+
+    println("=== range ===");
+    let r = range(0, 5);
+    println("range len =", len(r));
+
+    println("=== abs/min/max ===");
+    println("abs(-5) =", abs(-5));
+    println("min(3, 7) =", min(3, 7));
+    println("max(3, 7) =", max(3, 7));
+
+    println("=== sqrt ===");
+    println("sqrt(9.0) =", sqrt(9.0));
+    println("sqrt(2.0) =", sqrt(2.0));
+
+    println("=== to_string ===");
+    let s1 = to_string(42);
+    let s2 = to_string(3.14);
+    println(s1, s2);
+
+    println("=== 所有测试通过 ===");
+    return 0;
+}

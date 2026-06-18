@@ -203,7 +203,8 @@ impl Parser {
     }
 
     fn match_semi(&mut self) {
-        if matches!(self.peek_kind(), TokenKind::Semi) {
+        // SIF (Semicolon Inference): both explicit `;` and newline act as statement terminators
+        if matches!(self.peek_kind(), TokenKind::Semi | TokenKind::Newline) {
             self.advance();
         }
     }

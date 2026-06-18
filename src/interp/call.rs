@@ -1416,6 +1416,10 @@ impl<'a> Interpreter<'a> {
 
         // Call the function via libloading
         let result = unsafe {
+            // Clear errno before call to avoid stale errno
+            if contract.check_errno {
+                *libc::__errno_location() = 0;
+            }
             let lib = &self.loaded_libs[lib_idx];
             type CFunc = unsafe extern "C" fn(i64, i64, i64, i64, i64, i64, i64, i64) -> i64;
             let symbol: libloading::Symbol<CFunc> = lib.get(func_name.as_bytes())

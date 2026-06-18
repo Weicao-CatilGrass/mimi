@@ -1,0 +1,112 @@
+// Mimi 验证程序集 1: 基础类型与控制流
+// 测试: 基本类型、函数、if/while/for/match、递归
+
+func factorial(n: i32) -> i32 {
+    if n <= 1 {
+        return 1;
+    } else {
+        return n * factorial(n - 1);
+    }
+}
+
+func fibonacci(n: i32) -> i32 {
+    if n <= 1 {
+        return n;
+    }
+    return fibonacci(n - 1) + fibonacci(n - 2);
+}
+
+func is_prime(n: i32) -> bool {
+    if n < 2 {
+        return false;
+    }
+    let mut idx = 2;
+    while idx * idx <= n {
+        if n % idx == 0 {
+            return false;
+        }
+        idx += 1;
+    }
+    return true;
+}
+
+func sum_to(n: i32) -> i32 {
+    let mut s = 0;
+    let mut i = 1;
+    while i <= n {
+        s += i;
+        i += 1;
+    }
+    return s;
+}
+
+func sum_list(items: List<i32>) -> i32 {
+    let mut total = 0;
+    for x in items {
+        total += x;
+    }
+    return total;
+}
+
+type Shape {
+    Circle(f64)
+    Rectangle(f64, f64)
+}
+
+func area(s: Shape) -> f64 {
+    match s {
+        Circle(r) => 3.14159 * r * r,
+        Rectangle(w, h) => w * h,
+    }
+}
+
+func classify(x: i32) -> string {
+    if x > 0 {
+        return "positive";
+    } else if x < 0 {
+        return "negative";
+    } else {
+        return "zero";
+    }
+}
+
+func main() -> i32 {
+    println("=== 基础类型 ===");
+    let i_val: i32 = 42;
+    let f_val: f64 = 3.14;
+    let b_val: bool = true;
+    let s_val: string = "hello";
+    println(i_val, f_val, b_val, s_val);
+
+    println("=== 递归: factorial ===");
+    println("factorial(5) =", factorial(5));
+    println("factorial(10) =", factorial(10));
+
+    println("=== 递归: fibonacci ===");
+    println("fibonacci(10) =", fibonacci(10));
+
+    println("=== 循环: sum_to ===");
+    println("sum_to(100) =", sum_to(100));
+
+    println("=== 素数判断 ===");
+    println("is_prime(17) =", is_prime(17));
+    println("is_prime(25) =", is_prime(25));
+
+    println("=== 列表求和 ===");
+    let nums = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+    println("sum_list =", sum_list(nums));
+
+    println("=== ADT + match ===");
+    let c = Circle(5.0);
+    let r = Rectangle(3.0, 4.0);
+    println("circle area =", area(c));
+    println("rectangle area =", area(r));
+
+    println("=== if/else 分类 ===");
+    println("classify(5) =", classify(5));
+    println("classify(-3) =", classify(-3));
+    println("classify(0) =", classify(0));
+
+    println("=== 所有测试通过 ===");
+    return 0;
+}
