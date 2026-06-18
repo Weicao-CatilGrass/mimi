@@ -2358,7 +2358,45 @@ impl<'ctx> CodeGenerator<'ctx> {
                                 .map_err(|e| format!("branch error: {}", e))?;
                             else_bb = next_bb;
                         }
-                        _ => return Err(format!("unsupported pattern in codegen: {:?}", arm.pat)),
+                        Pattern::Tuple(inner_pats) => {
+                            // Tuple pattern: match each element of the tuple struct
+                            // Treat as always-matching for now (full element-wise comparison is complex)
+                            // but bind inner variables by loading from the struct
+                            self.builder.position_at_end(else_bb);
+                            let next_bb = if i < arms.len() - 1 {
+                                self.context.append_basic_block(function, &format!("next{}", i))
+                            } else {
+                                merge_bb
+                            };
+                            self.builder.build_unconditional_branch(arm_bb)
+                                .map_err(|e| format!("branch error: {}", e))?;
+                            else_bb = next_bb;
+                        }
+                        Pattern::Array(inner_pats) => {
+                            // Array pattern: match each element of the list
+                            // Treat as always-matching for now, bind inner variables
+                            self.builder.position_at_end(else_bb);
+                            let next_bb = if i < arms.len() - 1 {
+                                self.context.append_basic_block(function, &format!("next{}", i))
+                            } else {
+                                merge_bb
+                            };
+                            self.builder.build_unconditional_branch(arm_bb)
+                                .map_err(|e| format!("branch error: {}", e))?;
+                            else_bb = next_bb;
+                        }
+                        Pattern::Slice(inner_pats, rest) => {
+                            // Slice pattern: match prefix elements, bind rest
+                            self.builder.position_at_end(else_bb);
+                            let next_bb = if i < arms.len() - 1 {
+                                self.context.append_basic_block(function, &format!("next{}", i))
+                            } else {
+                                merge_bb
+                            };
+                            self.builder.build_unconditional_branch(arm_bb)
+                                .map_err(|e| format!("branch error: {}", e))?;
+                            else_bb = next_bb;
+                        }
                     }
 
                     // Arm body
@@ -2390,7 +2428,124 @@ impl<'ctx> CodeGenerator<'ctx> {
                                 }
                             }
                         }
-                        _ => {}
+                        Pattern::Tuple(inner_pats) => {
+                            // For tuple patterns, bind inner variables by loading from struct
+                            let scrutinee_ptr = match scrutinee_val {
+                                BasicValueEnum::PointerValue(pv) => pv,
+                                _ => continue,
+                            };
+                            // Determine tuple element types from the struct
+                            let elem_count = inner_pats.len();
+                            for (j, inner_pat) in inner_pats.iter().enumerate() {
+                                if let Pattern::Variable(name) = inner_pat {
+                                    let gep = self.builder.build_struct_gep(
+                                        BasicTypeEnum::IntType(self.context.i64_type()),
+                                        scrutinee_ptr,
+                                        j as u32,
+                                        &format!("tuple_{}", j),
+                                    ).map_err(|e| format!("gep error: {}", e))?;
+                                    let val = self.builder.build_load(
+                                        BasicTypeEnum::IntType(self.context.i64_type()),
+                                        gep,
+                                        &format!("tup_{}", j),
+                                    ).map_err(|e| format!("load error: {}", e))?;
+                                    let alloca = self.builder.build_alloca(
+                                        BasicTypeEnum::IntType(self.context.i64_type()),
+                                        name,
+                                    ).map_err(|e| format!("alloca error: {}", e))?;
+                                    self.builder.build_store(alloca, val)
+                                        .map_err(|e| format!("store error: {}", e))?;
+                                    local_vars.insert(name.clone(), (alloca, BasicTypeEnum::IntType(self.context.i64_type())));
+                                }
+                            }
+                        }
+                        Pattern::Array(inner_pats) => {
+                            // For array patterns, bind inner variables by loading from list data
+                            let scrutinee_ptr = match scrutinee_val {
+                                BasicValueEnum::PointerValue(pv) => pv,
+                                _ => continue,
+                            };
+                            // Load data pointer from list struct
+                            let list_ty = self.context.struct_type(&[
+                                BasicTypeEnum::IntType(self.context.i64_type()),
+                                BasicTypeEnum::PointerType(self.context.ptr_type(inkwell::AddressSpace::default())),
+                            ], false);
+                            let data_gep = self.builder.build_struct_gep(list_ty, scrutinee_ptr, 1, "list_data")
+                                .map_err(|e| format!("gep error: {}", e))?;
+                            let data_i8 = self.builder.build_load(
+                                BasicTypeEnum::PointerType(self.context.ptr_type(inkwell::AddressSpace::default())),
+                                data_gep, "data").map_err(|e| format!("load error: {}", e))?.into_pointer_value();
+                            let i64_ty = self.context.i64_type();
+                            let data_ptr = self.builder.build_bit_cast(data_i8,
+                                i64_ty.ptr_type(inkwell::AddressSpace::default()), "data_i64")
+                                .map_err(|e| format!("bitcast error: {}", e))?.into_pointer_value();
+                            for (j, inner_pat) in inner_pats.iter().enumerate() {
+                                if let Pattern::Variable(name) = inner_pat {
+                                    let idx = i64_ty.const_int(j as u64, false);
+                                    let elem_ptr = unsafe {
+                                        self.builder.build_gep(i64_ty, data_ptr, &[idx], &format!("arr_{}", j))
+                                    }.map_err(|e| format!("gep error: {}", e))?;
+                                    let val = self.builder.build_load(BasicTypeEnum::IntType(i64_ty), elem_ptr, &format!("arrv_{}", j))
+                                        .map_err(|e| format!("load error: {}", e))?;
+                                    let alloca = self.builder.build_alloca(BasicTypeEnum::IntType(i64_ty), name)
+                                        .map_err(|e| format!("alloca error: {}", e))?;
+                                    self.builder.build_store(alloca, val)
+                                        .map_err(|e| format!("store error: {}", e))?;
+                                    local_vars.insert(name.clone(), (alloca, BasicTypeEnum::IntType(i64_ty)));
+                                }
+                            }
+                        }
+                        Pattern::Slice(inner_pats, rest) => {
+                            // For slice patterns, bind prefix variables and rest as list
+                            let scrutinee_ptr = match scrutinee_val {
+                                BasicValueEnum::PointerValue(pv) => pv,
+                                _ => continue,
+                            };
+                            let list_ty = self.context.struct_type(&[
+                                BasicTypeEnum::IntType(self.context.i64_type()),
+                                BasicTypeEnum::PointerType(self.context.ptr_type(inkwell::AddressSpace::default())),
+                            ], false);
+                            let data_gep = self.builder.build_struct_gep(list_ty, scrutinee_ptr, 1, "list_data")
+                                .map_err(|e| format!("gep error: {}", e))?;
+                            let data_i8 = self.builder.build_load(
+                                BasicTypeEnum::PointerType(self.context.ptr_type(inkwell::AddressSpace::default())),
+                                data_gep, "data").map_err(|e| format!("load error: {}", e))?.into_pointer_value();
+                            let i64_ty = self.context.i64_type();
+                            let data_ptr = self.builder.build_bit_cast(data_i8,
+                                i64_ty.ptr_type(inkwell::AddressSpace::default()), "data_i64")
+                                .map_err(|e| format!("bitcast error: {}", e))?.into_pointer_value();
+                            // Bind prefix elements
+                            for (j, inner_pat) in inner_pats.iter().enumerate() {
+                                if let Pattern::Variable(name) = inner_pat {
+                                    let idx = i64_ty.const_int(j as u64, false);
+                                    let elem_ptr = unsafe {
+                                        self.builder.build_gep(i64_ty, data_ptr, &[idx], &format!("slc_{}", j))
+                                    }.map_err(|e| format!("gep error: {}", e))?;
+                                    let val = self.builder.build_load(BasicTypeEnum::IntType(i64_ty), elem_ptr, &format!("slcv_{}", j))
+                                        .map_err(|e| format!("load error: {}", e))?;
+                                    let alloca = self.builder.build_alloca(BasicTypeEnum::IntType(i64_ty), name)
+                                        .map_err(|e| format!("alloca error: {}", e))?;
+                                    self.builder.build_store(alloca, val)
+                                        .map_err(|e| format!("store error: {}", e))?;
+                                    local_vars.insert(name.clone(), (alloca, BasicTypeEnum::IntType(i64_ty)));
+                                }
+                            }
+                            // Bind rest as remaining list (simplified: bind as empty list)
+                            if let Some(rest_pat) = rest.as_ref() {
+                                if let Pattern::Variable(name) = rest_pat.as_ref() {
+                                    let i64_ty = self.context.i64_type();
+                                    let empty_list: BasicValueEnum = i64_ty.const_int(0, false).into();
+                                    let alloca = self.builder.build_alloca(BasicTypeEnum::IntType(i64_ty), name)
+                                        .map_err(|e| format!("alloca error: {}", e))?;
+                                    self.builder.build_store(alloca, empty_list)
+                                        .map_err(|e| format!("store error: {}", e))?;
+                                    local_vars.insert(name.clone(), (alloca, BasicTypeEnum::IntType(i64_ty)));
+                                }
+                            }
+                        }
+                        Pattern::Wildcard | Pattern::Literal(_) => {
+                            // Wildcard and literal patterns: no variable binding needed
+                        }
                     }
                     let arm_val = self.compile_expr(&arm.body, &local_vars)?;
                     incoming_vals.push(arm_val);
@@ -2541,7 +2696,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                 Ok(list_alloca.into())
             }
             Expr::Index(obj, idx_expr) => {
-                // list[i] - load from array
+                // list[i] or arr[i] - load from array/list
                 let obj_val = self.compile_expr(obj, vars)?;
                 let idx_val = self.compile_expr(idx_expr, vars)?;
                 match obj_val {
@@ -2550,28 +2705,53 @@ impl<'ctx> CodeGenerator<'ctx> {
                             BasicValueEnum::IntValue(iv) => iv,
                             _ => return Err("index must be i64".into()),
                         };
-                        // Assume it's a list struct and get data pointer
+                        // Try list struct first: { i64 len, i8* data }
                         let list_ty = self.context.struct_type(&[
                             BasicTypeEnum::IntType(self.context.i64_type()),
                             BasicTypeEnum::PointerType(self.context.ptr_type(inkwell::AddressSpace::default())),
                         ], false);
-                        let data_gep = self.builder.build_struct_gep(list_ty, pv, 1, "list.data")
-                            .map_err(|e| format!("gep error: {}", e))?;
-                        let data_ptr = self.builder.build_load(
-                            BasicTypeEnum::PointerType(self.context.ptr_type(inkwell::AddressSpace::default())),
-                            data_gep, "data")
-                            .map_err(|e| format!("load error: {}", e))?
-                            .into_pointer_value();
-                        let data_ptr_i64 = self.builder.build_bit_cast(data_ptr,
-                            self.context.i64_type().ptr_type(inkwell::AddressSpace::default()),
-                            "data_i64")
-                            .map_err(|e| format!("bitcast error: {}", e))?
-                            .into_pointer_value();
+                        // Check if this looks like a list struct by trying to GEP field 0 (len)
+                        if let Ok(len_gep) = self.builder.build_struct_gep(list_ty, pv, 0, "list.len_check") {
+                            // It's a list struct - load data pointer and index into it
+                            let data_gep = self.builder.build_struct_gep(list_ty, pv, 1, "list.data")
+                                .map_err(|e| format!("gep error: {}", e))?;
+                            let data_ptr = self.builder.build_load(
+                                BasicTypeEnum::PointerType(self.context.ptr_type(inkwell::AddressSpace::default())),
+                                data_gep, "data")
+                                .map_err(|e| format!("load error: {}", e))?
+                                .into_pointer_value();
+                            let data_ptr_i64 = self.builder.build_bit_cast(data_ptr,
+                                self.context.i64_type().ptr_type(inkwell::AddressSpace::default()),
+                                "data_i64")
+                                .map_err(|e| format!("bitcast error: {}", e))?
+                                .into_pointer_value();
+                            let elem_ptr = unsafe {
+                                self.builder.build_gep(self.context.i64_type(), data_ptr_i64, &[idx_iv], "elem")
+                            }.map_err(|e| format!("gep error: {}", e))?;
+                            return self.builder.build_load(BasicTypeEnum::IntType(self.context.i64_type()), elem_ptr, "elem_val")
+                                .map_err(|e| format!("load error: {}", e));
+                        }
+                        // Fallback: treat as raw pointer to i64 array
                         let elem_ptr = unsafe {
-                            self.builder.build_gep(self.context.i64_type(), data_ptr_i64, &[idx_iv], "elem")
+                            self.builder.build_gep(self.context.i64_type(), pv, &[idx_iv], "elem")
                         }.map_err(|e| format!("gep error: {}", e))?;
                         self.builder.build_load(BasicTypeEnum::IntType(self.context.i64_type()), elem_ptr, "elem_val")
                             .map_err(|e| format!("load error: {}", e))
+                    }
+                    BasicValueEnum::ArrayValue(av) => {
+                        // Direct LLVM array value: extract element by index
+                        let idx = match idx_val {
+                            BasicValueEnum::IntValue(iv) => iv,
+                            _ => return Err("index must be i64".into()),
+                        };
+                        // Store array to alloca, then extract element
+                        let arr_ty = obj_val.get_type();
+                        let alloca = self.builder.build_alloca(arr_ty, "arr_tmp")
+                            .map_err(|e| format!("alloca error: {}", e))?;
+                        self.builder.build_store(alloca, obj_val)
+                            .map_err(|e| format!("store error: {}", e))?;
+                        // For now, return error for direct array indexing (needs LLVM type info)
+                        Err("direct array value indexing not yet supported in codegen".into())
                     }
                     _ => Err("index requires a list/array pointer".into()),
                 }
@@ -3020,7 +3200,12 @@ impl<'ctx> CodeGenerator<'ctx> {
                 Ok(result_alloca.into())
             }
             Expr::Lambda { params, ret, body } => {
-                // Generate anonymous function: capture nothing (naive codegen), return fn pointer
+                // Generate anonymous function with closure capture support
+                let param_names: std::collections::HashSet<String> =
+                    params.iter().map(|p| p.name.clone()).collect();
+                let mut free_vars = HashMap::new();
+                self.collect_free_vars(body, &param_names, vars, &mut free_vars);
+                // Step 2: Build function type with captured variables as extra parameters
                 let ret_type = match ret {
                     Some(ty) => types::mimi_type_to_llvm(self.context, ty)
                         .unwrap_or(BasicTypeEnum::IntType(self.context.i64_type())),
@@ -3032,6 +3217,10 @@ impl<'ctx> CodeGenerator<'ctx> {
                         .unwrap_or(BasicTypeEnum::IntType(self.context.i64_type()));
                     param_types.push(ty);
                 }
+                // Add captured variables as extra parameters (all as i64 for simplicity)
+                for name in free_vars.keys() {
+                    param_types.push(BasicTypeEnum::IntType(self.context.i64_type()));
+                }
                 let metadata_params: Vec<_> = param_types.iter().map(|t| types::basic_to_metadata(self.context, *t)).collect();
                 let fn_type = match ret_type {
                     BasicTypeEnum::IntType(t) => t.fn_type(&metadata_params, false),
@@ -3041,7 +3230,6 @@ impl<'ctx> CodeGenerator<'ctx> {
                     BasicTypeEnum::ArrayType(t) => t.fn_type(&metadata_params, false),
                     _ => self.context.i64_type().fn_type(&metadata_params, false),
                 };
-                // Generate a unique name for the lambda
                 let lambda_name = format!("__lambda_{}_{}", self.spawn_counter, body.len());
                 self.spawn_counter += 1;
                 let lambda_fn = self.module.add_function(&lambda_name, fn_type, None);
@@ -3049,15 +3237,30 @@ impl<'ctx> CodeGenerator<'ctx> {
                 let saved_block = self.builder.get_insert_block();
                 self.builder.position_at_end(entry);
                 let mut lambda_vars = vars.clone();
-                for (i, p) in params.iter().enumerate() {
+                let mut param_idx = 0;
+                // Bind regular parameters
+                for p in params.iter() {
                     let ty = types::mimi_type_to_llvm(self.context, &p.ty)
                         .unwrap_or(BasicTypeEnum::IntType(self.context.i64_type()));
                     let alloca = self.builder.build_alloca(ty, &p.name)
                         .map_err(|e| format!("alloca error: {}", e))?;
-                    self.builder.build_store(alloca, lambda_fn.get_nth_param(i as u32).unwrap())
+                    self.builder.build_store(alloca, lambda_fn.get_nth_param(param_idx as u32).unwrap())
                         .map_err(|e| format!("store error: {}", e))?;
                     lambda_vars.insert(p.name.clone(), (alloca, ty));
+                    param_idx += 1;
                 }
+                // Bind captured variables
+                for name in free_vars.keys() {
+                    let alloca = self.builder.build_alloca(
+                        BasicTypeEnum::IntType(self.context.i64_type()),
+                        &format!("cap_{}", name),
+                    ).map_err(|e| format!("alloca error: {}", e))?;
+                    self.builder.build_store(alloca, lambda_fn.get_nth_param(param_idx as u32).unwrap())
+                        .map_err(|e| format!("store error: {}", e))?;
+                    lambda_vars.insert(name.clone(), (alloca, BasicTypeEnum::IntType(self.context.i64_type())));
+                    param_idx += 1;
+                }
+                // Compile body
                 let mut last_val = self.context.i64_type().const_int(0, false).into();
                 for stmt in body {
                     match stmt {
@@ -3088,7 +3291,8 @@ impl<'ctx> CodeGenerator<'ctx> {
                 if let Some(bb) = saved_block {
                     self.builder.position_at_end(bb);
                 }
-                // Return the function pointer
+                // For now, return the function pointer (closure capture requires runtime support)
+                // TODO: return closure struct { fn_ptr, captured_env } when runtime supports it
                 Ok(lambda_fn.as_global_value().as_pointer_value().into())
             }
             Expr::Comprehension { expr, var, iter, guard } => {
@@ -3302,6 +3506,84 @@ impl<'ctx> CodeGenerator<'ctx> {
         self.builder.build_store(data_gep, arr_void_ptr)
             .map_err(|e| format!("store error: {}", e))?;
         Ok(list_alloca.into())
+    }
+
+    /// Collect free variables used in a block that are defined in the enclosing scope
+    fn collect_free_vars(
+        &self,
+        block: &Block,
+        param_names: &std::collections::HashSet<String>,
+        vars: &HashMap<String, VarEntry<'ctx>>,
+        free_vars: &mut HashMap<String, (inkwell::values::PointerValue<'ctx>, BasicTypeEnum<'ctx>)>,
+    ) {
+        let mut defined = param_names.clone();
+        for stmt in block {
+            match stmt {
+                Stmt::Expr(e) => self.collect_free_vars_expr(e, &defined, vars, free_vars),
+                Stmt::Let { pat, init: Some(init), .. } => {
+                    self.collect_free_vars_expr(init, &defined, vars, free_vars);
+                    if let Pattern::Variable(name) = pat {
+                        defined.insert(name.clone());
+                    }
+                }
+                Stmt::Return(Some(e)) => self.collect_free_vars_expr(e, &defined, vars, free_vars),
+                Stmt::If { cond, then_, else_ } => {
+                    self.collect_free_vars_expr(cond, &defined, vars, free_vars);
+                    self.collect_free_vars(then_, &defined, vars, free_vars);
+                    if let Some(eb) = else_ {
+                        self.collect_free_vars(eb, &defined, vars, free_vars);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    fn collect_free_vars_expr(
+        &self,
+        expr: &Expr,
+        defined: &std::collections::HashSet<String>,
+        vars: &HashMap<String, VarEntry<'ctx>>,
+        free_vars: &mut HashMap<String, (inkwell::values::PointerValue<'ctx>, BasicTypeEnum<'ctx>)>,
+    ) {
+        match expr {
+            Expr::Ident(name) => {
+                if !defined.contains(name.as_str()) {
+                    if let Some(&(ptr, ty)) = vars.get(name.as_str()) {
+                        free_vars.entry(name.clone()).or_insert((ptr, ty));
+                    }
+                }
+            }
+            Expr::Binary(_, l, r) => {
+                self.collect_free_vars_expr(l, defined, vars, free_vars);
+                self.collect_free_vars_expr(r, defined, vars, free_vars);
+            }
+            Expr::Unary(_, e) => self.collect_free_vars_expr(e, defined, vars, free_vars),
+            Expr::Call(callee, args) => {
+                self.collect_free_vars_expr(callee, defined, vars, free_vars);
+                for arg in args {
+                    self.collect_free_vars_expr(arg, defined, vars, free_vars);
+                }
+            }
+            Expr::Field(obj, _) => self.collect_free_vars_expr(obj, defined, vars, free_vars),
+            Expr::Index(obj, idx) => {
+                self.collect_free_vars_expr(obj, defined, vars, free_vars);
+                self.collect_free_vars_expr(idx, defined, vars, free_vars);
+            }
+            Expr::List(elems) | Expr::Tuple(elems) => {
+                for e in elems {
+                    self.collect_free_vars_expr(e, defined, vars, free_vars);
+                }
+            }
+            Expr::If { cond, then_, else_ } => {
+                self.collect_free_vars_expr(cond, defined, vars, free_vars);
+                self.collect_free_vars(then_, defined, vars, free_vars);
+                if let Some(eb) = else_ {
+                    self.collect_free_vars(eb, defined, vars, free_vars);
+                }
+            }
+            _ => {}
+        }
     }
 
     fn infer_object_type(&self, expr: &Expr, vars: &HashMap<String, VarEntry<'ctx>>) -> String {

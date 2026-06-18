@@ -164,9 +164,11 @@ impl<'a> Interpreter<'a> {
                 let q_arg = self.quote_expr(e)?;
                 Ok(QuotedAst::Call(Box::new(QuotedAst::Ident("type_of".into())), vec![q_arg]))
             }
-            Expr::TypeInfo(_ty) => {
-                // Quote type_info as a function call
-                Ok(QuotedAst::Call(Box::new(QuotedAst::Ident("type_info".into())), vec![]))
+            Expr::TypeInfo(ty) => {
+                // Evaluate type_info at quote time using the interpreter's type definitions
+                let type_name = self.resolve_type_name(ty);
+                let info = self.type_info_for(&type_name)?;
+                Ok(QuotedAst::Interpolate(Box::new(info)))
             }
             Expr::SliceExpr { target, start, end } => {
                 let q_target = self.quote_expr(target)?;

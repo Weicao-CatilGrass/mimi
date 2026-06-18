@@ -363,3 +363,82 @@ fn adv_comprehension() {
         }
     "#);
 }
+
+// ===================== Match Pattern Tests =====================
+
+#[test]
+fn adv_match_constructor_pattern() {
+    assert_compiles(r#"
+        func main() -> i64 {
+            let x = 42
+            match x {
+                42 => 1,
+                _ => 0,
+            }
+        }
+    "#);
+}
+
+#[test]
+fn adv_match_literal_pattern() {
+    assert_compiles(r#"
+        func main() -> i64 {
+            let x = 10
+            match x {
+                1 => 100,
+                2 => 200,
+                _ => 0,
+            }
+        }
+    "#);
+}
+
+#[test]
+fn adv_match_wildcard_pattern() {
+    assert_compiles(r#"
+        func main() -> i64 {
+            let x = 5
+            match x {
+                _ => x + 1,
+            }
+        }
+    "#);
+}
+
+#[test]
+fn adv_match_variable_pattern() {
+    assert_compiles(r#"
+        func main() -> i64 {
+            let x = 7
+            match x {
+                n => n * 2,
+            }
+        }
+    "#);
+}
+
+// ===================== Closure Capture Test =====================
+
+#[test]
+fn adv_closure_capture() {
+    assert_compiles(r#"
+        func main() -> i64 {
+            let x = 10
+            let add = fn(a: i64) -> i64 { a + x }
+            0
+        }
+    "#);
+}
+
+// ===================== Slice Expression Test =====================
+
+#[test]
+fn adv_slice_with_indices() {
+    assert_compiles(r#"
+        func main() -> i64 {
+            let arr = [10, 20, 30, 40, 50]
+            let sliced = arr[1..4]
+            0
+        }
+    "#);
+}
