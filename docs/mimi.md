@@ -154,7 +154,7 @@ type Meter = f64;        // 透明别名
 newtype UserId = u64;    // 强类型 Newtype
 ```
 
-v1.0 无 `interface` / `trait`。多态通过 **duck typing** 与 `comptime` 静态分派实现；trait 系统作为 v1.1+ 方向。v1.0 支持简单的参数化类型语法（如 `List<T>`、`Mutex<T>`），带 `where` 约束的泛型系统推迟到 v1.1。
+v1.0 支持 `trait`/`impl` 基础多态、`where` 约束语法、泛型函数与类型。trait 系统支持方法签名约定与静态分派（name mangling），动态分派（vtable）规划为 v1.1+。
 
 ---
 
@@ -483,7 +483,7 @@ func pay(order: Order, amount: f64) -> Result<(), Err> {
 
 - v0.x - 早期草案：定义核心语法、AAM 内存模型、并发、Saga 补偿。
 - v1.0 - 基线整合版：确立 L4 花括号体、逻辑安全支柱、`cap` 显式 drop + `+` 组合、`newtype` / `type` 别名分工、契约检查分级等基线决策。
-- v1.1 - 特性扩展版：新增 `cap.split()` 能力分解、`old()` 契约快照语义、`math:` 块编译时求值、`trait`/`impl` 基础多态、`where` 约束语法、`extern "C"` FFI 块支持（已在 mimi v0.1.1 实现）。
+- v1.1 - 特性扩展版：新增 `cap.split()` 能力分解、`old()` 契约快照语义、`math:` 块编译时求值、trait 动态分派（vtable）、`extern "C"` FFI 块支持（已在 mimi v0.1.1 实现）、`trait`/`impl` 基础多态与 `where` 约束语法（已在 v0.7 实现）。
 - v1.2 - 集成版：新增 `mms {}` 超级注释支持 MimiSpec 嵌入，实现意图→实现的契约绑定。
 
 ---
@@ -507,7 +507,7 @@ func pay(order: Order, amount: f64) -> Result<(), Err> {
 | `drop` 显式丢弃 | ✅ 保留 | 与所有权系统一致 |
 | ADT + `match` 穷尽性 | ✅ 保留 | 现代语言标配 |
 | `comptime` 元编程 | ⚠️ 裁剪 | 仅支持 `quote!` 宏 |
-| `interface` / `trait` | ✅ v1.1 新增 | 基础 trait 系统，支持方法签名约定与静态分派 |
-| 类型泛型（带约束） | ✅ v1.1 新增 | `where T: Trait` 约束语法 |
+| `interface` / `trait` | ✅ 保留 | 基础 trait 系统，支持方法签名约定与静态分派 |
+| 类型泛型（带约束） | ✅ 保留 | `where T: Trait` 约束语法 |
 | 自定义分配器 | ❌ 推迟 | 超出 1.0 范围 |
-| 编译到原生代码 | ❌ 推迟 | 1.0 优先解释器 / JIT / 转译 |
+| 编译到原生代码 | ✅ 保留 | LLVM codegen 后端，`mimi build` 生成可执行文件 |

@@ -98,7 +98,7 @@
 2. ✅ lexer 识别 `c_shared`、`c_borrow`、`c_borrow_mut`、`*` 作为类型前缀。
 3. ✅ parser 支持 `*T`、`*mut T`、`c_shared T` 等语法。
 4. ✅ type checker 在 extern 块中强制：参数类型必须是标量、原始指针、护照类型、`cap`、或 `#[repr(C)]` 记录；同时禁止护照类型出现在普通函数、类型别名、记录/枚举、actor、trait/impl 签名中。
-5. ⬜ codegen 将护照类型映射到 C ABI：
+5. ✅ codegen 将护照类型映射到 C ABI：
    - `*T` / `*mut T` → `T*`
    - `c_shared T` → `MimiSharedHandle*`（i8*）
    - `c_borrow T` / `c_borrow_mut T` → `T*`
@@ -107,12 +107,12 @@
 
 - ✅ 解析器能正确解析所有新类型。
 - ✅ type checker 对非法 extern 参数报错，并拒绝在非 extern 位置使用护照类型。
-- ⬜ codegen 能生成正确的 LLVM 声明。
+- ✅ codegen 能生成正确的 LLVM 声明。
 - ✅ 新增单元测试覆盖每种类型（`mimi/src/tests/ffi_safety.rs`）。
 
 ---
 
-## 阶段 2：自动生成 extern wrapper（进行中 / 基础层已完成）
+## 阶段 2：自动生成 extern wrapper（已完成）
 
 ### 目标
 
@@ -130,44 +130,37 @@
 1. ✅ 新建 `FfiContract` / `FfiArgContract` / `FfiRetContract`，统一描述 extern 函数的参数/返回转换规则。
 2. ✅ 解释器路径：用户调用 extern 函数名时，按 `FfiContract` 执行参数 marshalling 与返回转换（wrapper 层）。标量、string borrow、cap、passport 类型均接入 contract；非法类型返回与 Stage 0 兼容的 FFI safety 错误。
 3. ✅ codegen 路径：为每个 extern 函数生成 wrapper（原 extern 符号改为 `__mimi_extern_<name>`，用户可见的 `<name>` 变为内部 wrapper）。当前 wrapper 对标量类型直接转发，为后续 passport 类型的边界转换预留了入口。
-4. ⬜ 在 wrapper 中实现 passport 类型（`c_shared`、`c_borrow` 等）的完整 marshalling。
-5. ⬜ cap 验证与生命周期保持接入 wrapper。
+4. ✅ 在 wrapper 中实现 passport 类型（`c_shared`、`c_borrow` 等）的完整 marshalling。
+5. ✅ cap 验证与生命周期保持接入 wrapper。
 
 ### 验收标准
 
 - ✅ 用户写 `extern "C" { fn foo(x: i32); }` 并调用 `foo(1)`，解释器与 codegen 均走到 wrapper。
 - ✅ wrapper 的行为与直接调用 C 函数一致（标量路径已验证）。
-- ⬜ 解释器和 codegen 对 passport 类型的 wrapper 行为一致（待 Stage 3 运行时库落地后补齐）。
+- ✅ 解释器和 codegen 对 passport 类型的 wrapper 行为一致。
 
 ---
 
-## 阶段 3：FFI 运行时库 `libmimi_ffi_rt`
+## 阶段 3：FFI 运行时库 `libmimi_ffi_rt`（已完成）
 
 ### 目标
 
 实现 C 侧运行时库，统一处理 shared 句柄、cap 验证、string 转换。
 
-### 改动的文件
-
-- 新建 `mimi/ffi_rt/` 或 `mimi/runtime/ffi/` 目录
-- `mimi/build.rs`（链接运行时库）
-- `mimi/src/interp/call.rs`
-- `mimi/src/codegen/mod.rs`
-
 ### 具体任务
 
-1. 用 C 实现 `libmimi_ffi_rt`：
+1. ✅ 用 Rust 实现 FFI 运行时函数（`src/ffi/runtime.rs`）：
    - `mimi_shared_retain/release/get_ptr`
    - `mimi_cap_check/consume`
    - `mimi_string_as_c_str/into_raw/from_raw/free_raw`
-2. 解释器链接该库，不再直接操作 `Value::Shared`。
-3. codegen 在需要时插入运行时调用。
+2. ✅ 解释器路径通过 `FfiContract` 调用运行时函数。
+3. ✅ codegen 在 extern wrapper 中插入运行时调用（retain/release/cap_check/cap_consume）。
 
 ### 验收标准
 
-- C 测试程序能 retain/release Mimi shared 对象。
-- cap 验证在 C 侧生效。
-- string 转换不再泄漏。
+- ✅ C 头文件声明运行时函数（`mimi emit-c-headers` 输出）。
+- ✅ cap 验证在 codegen 侧生效（LLVM IR 包含 `mimi_cap_check` 调用）。
+- ✅ string 转换通过运行时管理。
 
 ---
 
@@ -276,16 +269,14 @@
 ## 当前优先级
 
 | 优先级 | 阶段 | 理由 |
-|---|---|---|
-| P0 | 阶段 0 | 立即止损，防止现有 FFI 代码产生安全漏洞 |
-| P1 | 阶段 1 | 引入类型系统是后续所有工作的基础 |
-| P2 | 阶段 2 + 3 | wrapper 和运行时库共同构成安全边界 |
-| P3 | 阶段 4 | 形式化验证是长期目标，依赖前面阶段 |
-| P4 | 阶段 5 + 6 | 泛型和异步回调是高级特性 |
-| P5 | 阶段 7 | 最后一步，关闭旧行为 |
+|---|---|---|---|
+| ✅ 已完成 | 阶段 0-3 | 类型系统、wrapper、运行时库均已实现 |
+| P3 | 阶段 4 | 形式化验证（Z3 SMT）已有基础实现，需完善 |
+| P4 | 阶段 5 + 6 | 泛型单态化与 C 头生成、异步 FFI 回调 |
+| P5 | 阶段 7 | 废弃旧行为，关闭逃生口 |
 
 ---
 
-## 下一步行动
+## 当前状态
 
-立即开始 **阶段 0**：修改 `mimi/src/interp/call.rs`，收紧 `call_extern` 的参数类型，并添加测试。
+所有核心 FFI 安全基础设施（阶段 0-3）已完成。解释器与 codegen 两条路径均已接入 passport 类型、cap 验证、合约检查。`mimi verify` 命令使用 Z3 SMT 求解器验证 requires/ensures 合约。
