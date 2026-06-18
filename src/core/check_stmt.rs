@@ -109,6 +109,9 @@ impl<'a> Checker<'a> {
                     self.check_expr_parasteps_safe(e, scopes);
                 }
             }
+            Expr::TupleIndex(obj, _) => {
+                self.check_expr_parasteps_safe(obj, scopes);
+            }
             _ => {}
         }
     }

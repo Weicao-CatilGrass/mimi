@@ -305,21 +305,28 @@ impl Parser {
                         e = Expr::Call(Box::new(e), args);
                     } else if self.at(&TokenKind::Dot) {
                         self.advance();
-                        let field = if self.at(&TokenKind::Ident("".into())) {
-                            self.expect_ident()
-                        } else if self.at(&TokenKind::Spawn) {
+                        if let TokenKind::Int(s) = &self.peek().kind {
+                            let idx = s.replace('_', "").parse::<usize>()
+                                .map_err(|_| ParseError::new("invalid tuple index", self.peek().line, self.peek().col))?;
                             self.advance();
-                            Ok("spawn".to_string())
-                        } else if self.at(&TokenKind::Await) {
-                            self.advance();
-                            Ok("await".to_string())
-                        } else if self.at(&TokenKind::Quote) {
-                            self.advance();
-                            Ok("quote".to_string())
+                            e = Expr::TupleIndex(Box::new(e), idx);
                         } else {
-                            self.expect_ident()
-                        }?;
-                        e = Expr::Field(Box::new(e), field);
+                            let field = if self.at(&TokenKind::Ident("".into())) {
+                                self.expect_ident()
+                            } else if self.at(&TokenKind::Spawn) {
+                                self.advance();
+                                Ok("spawn".to_string())
+                            } else if self.at(&TokenKind::Await) {
+                                self.advance();
+                                Ok("await".to_string())
+                            } else if self.at(&TokenKind::Quote) {
+                                self.advance();
+                                Ok("quote".to_string())
+                            } else {
+                                self.expect_ident()
+                            }?;
+                            e = Expr::Field(Box::new(e), field);
+                        }
                     } else if self.at(&TokenKind::LBracket) {
                         self.advance();
                         // Check for slice syntax: arr[start..end], arr[..end], arr[start..]
@@ -580,8 +587,16 @@ impl Parser {
                 expr = Expr::Call(Box::new(expr), args);
             } else if self.at(&TokenKind::Dot) {
                 self.advance();
-                let field = self.expect_ident()?;
-                expr = Expr::Field(Box::new(expr), field);
+                // Check for numeric tuple index: t.0, t.1, etc.
+                if let TokenKind::Int(s) = &self.peek().kind {
+                    let idx = s.replace('_', "").parse::<usize>()
+                        .map_err(|_| ParseError::new("invalid tuple index", self.peek().line, self.peek().col))?;
+                    self.advance();
+                    expr = Expr::TupleIndex(Box::new(expr), idx);
+                } else {
+                    let field = self.expect_ident()?;
+                    expr = Expr::Field(Box::new(expr), field);
+                }
             } else if self.at(&TokenKind::LBracket) {
                 self.advance();
                 let first = self.parse_expr(0)?;

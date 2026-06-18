@@ -280,6 +280,7 @@ impl<'a> Checker<'a> {
                 }
             }
             Expr::Field(obj, _) => Self::collect_uses_in_expr(obj, uses),
+            Expr::TupleIndex(obj, _) => Self::collect_uses_in_expr(obj, uses),
             Expr::Index(obj, idx) => {
                 Self::collect_uses_in_expr(obj, uses);
                 Self::collect_uses_in_expr(idx, uses);
@@ -745,8 +746,12 @@ impl<'a> Checker<'a> {
             Type::Option(_) | Type::Result(_, _) => false,
             Type::Array(_, _) | Type::Slice(_) => false,
             Type::Func(_, _) => false,
-            Type::Newtype(_, _) => {
-                // TODO: allow #[repr(C)] newtypes once attributes are tracked
+            Type::Newtype(name, inner) => {
+                if let Some(tdef) = self.types.get(name) {
+                    if tdef.attributes.contains(&TypeAttribute::ReprC) {
+                        return self.is_valid_extern_type(inner, _in_pointer);
+                    }
+                }
                 false
             }
             Type::ImplTrait(_) => false,

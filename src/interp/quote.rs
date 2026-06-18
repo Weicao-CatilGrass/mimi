@@ -189,6 +189,14 @@ impl<'a> Interpreter<'a> {
                     Box::new(q_end),
                 ))
             }
+            Expr::TupleIndex(obj, idx) => {
+                let q_obj = self.quote_expr(obj)?;
+                // Represent tuple index as a function call to "tuple_index"
+                Ok(QuotedAst::Call(
+                    Box::new(QuotedAst::Ident("tuple_index".into())),
+                    vec![q_obj, QuotedAst::Literal(Lit::Int(*idx as i64))],
+                ))
+            }
         }
     }
 

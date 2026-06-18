@@ -382,6 +382,8 @@ pub enum Expr {
     },
     /// Turbofish: func_name::<Type>(args) — explicit type instantiation
     Turbofish(String, Vec<Type>, Vec<Expr>),
+    /// Numeric tuple field access: t.0, t.1, etc.
+    TupleIndex(Box<Expr>, usize),
 }
 
 #[derive(Debug, Clone)]
