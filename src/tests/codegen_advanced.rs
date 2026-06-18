@@ -442,3 +442,49 @@ fn adv_slice_with_indices() {
         }
     "#);
 }
+
+// ===================== Parasteps Test =====================
+
+#[test]
+fn adv_parasteps_basic() {
+    assert_compiles(r#"
+        func main() -> i64 {
+            parasteps {
+                spawn println("hello")
+            }
+            0
+        }
+    "#);
+}
+
+// ===================== Quote/Comptime Error Tests =====================
+
+#[test]
+fn adv_quote_produces_error() {
+    let src = r#"
+        func main() -> i64 {
+            let ast = quote { let x = 1 }
+            0
+        }
+    "#;
+    let file = parse(src);
+    let context = inkwell::context::Context::create();
+    let mut codegen = crate::codegen::CodeGenerator::new(&context, "test");
+    let result = codegen.compile_file(&file);
+    assert!(result.is_err(), "quote should produce error in codegen");
+}
+
+#[test]
+fn adv_comptime_produces_error() {
+    let src = r#"
+        func main() -> i64 {
+            let x = comptime { 1 + 2 }
+            0
+        }
+    "#;
+    let file = parse(src);
+    let context = inkwell::context::Context::create();
+    let mut codegen = crate::codegen::CodeGenerator::new(&context, "test");
+    let result = codegen.compile_file(&file);
+    assert!(result.is_err(), "comptime should produce error in codegen");
+}
