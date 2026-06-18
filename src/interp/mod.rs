@@ -75,6 +75,8 @@ pub struct Interpreter<'a> {
     pub default_allocator: AllocatorKind,
     /// Current loop control flow action (break/continue signal)
     loop_action: Option<LoopAction>,
+    /// Early return signal for ? propagation (exception-like, preserves value)
+    early_return: Option<Value>,
     /// Call stack for error context (function names being executed)
     call_stack: Vec<String>,
     /// O(1) function lookup index: name -> FuncDef
@@ -143,6 +145,7 @@ impl<'a> Interpreter<'a> {
             loaded_libs: Vec::new(),
             default_allocator: AllocatorKind::System,
             loop_action: None,
+            early_return: None,
             call_stack: Vec::new(),
             func_index,
             actor_index,
