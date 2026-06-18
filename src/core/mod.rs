@@ -1465,7 +1465,10 @@ impl<'a> Checker<'a> {
     fn get_enum_variants(&self, ty: &Type) -> Vec<String> {
         match ty {
             Type::Name(name, _) => {
-                if let Some(tdef) = self.types.get(name) {
+                if name == "bool" {
+                    // Built-in bool: pretend it has true/false variants
+                    vec!["true".into(), "false".into()]
+                } else if let Some(tdef) = self.types.get(name) {
                     match &tdef.kind {
                         TypeDefKind::Enum(variants) => {
                             variants.iter().map(|v| v.name.clone()).collect()

@@ -1385,9 +1385,14 @@ impl<'a> Checker<'a> {
                     (all, true)
                 }
             }
-            Pattern::Literal(_) => {
-                // Literal patterns don't cover enum variants
-                (Vec::new(), false)
+            Pattern::Literal(lit) => {
+                // For bool literals, cover the specific variant (true/false)
+                let covered = match lit {
+                    Lit::Bool(true) => vec!["true".into()],
+                    Lit::Bool(false) => vec!["false".into()],
+                    _ => Vec::new(),
+                };
+                (covered, false)
             }
             Pattern::Constructor(name, _) => {
                 // Constructor pattern covers only that specific variant
