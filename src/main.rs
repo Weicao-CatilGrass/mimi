@@ -3,6 +3,7 @@ mod codegen;
 mod contracts;
 pub mod core;
 pub mod diagnostic;
+pub mod error;
 mod ffi;
 mod fmt;
 mod interp;
@@ -406,8 +407,18 @@ fn mms(files: &[PathBuf], show_ast: bool, json: bool, render: bool, latex: bool)
                 }
             } else {
                 eprintln!("✗ Parsing failed for {} with {} error(s)", path.display(), result.errors.len());
+                let use_color = colors_enabled();
+                let src_ref = Some(source.as_str());
+                let filename = &path.display().to_string();
                 for err in &result.errors {
-                    eprintln!("  - {:?}", err);
+                    let span = crate::span::Span::single(err.line(), err.col());
+                    let diag = crate::diagnostic::Diagnostic::error(err.to_string(), span);
+                    let formatted = format_diagnostic(&diag, src_ref, filename);
+                    if use_color {
+                        eprint!("{}", formatted);
+                    } else {
+                        eprint!("{}", strip_ansi(&formatted));
+                    }
                 }
             }
         }
@@ -1106,7 +1117,7 @@ fn build(path: Option<&Path>, output: Option<&Path>, emit_ir: bool, strict: bool
     codegen.no_std = no_std;
     codegen.verify_contracts = verify_contracts;
 
-    codegen.compile_file(&merged_file)?;
+    codegen.compile_file(&merged_file).map_err(|e| e.to_string())?;
 
     if emit_ir {
         println!("{}", codegen.emit_ir());
@@ -1120,7 +1131,7 @@ fn build(path: Option<&Path>, output: Option<&Path>, emit_ir: bool, strict: bool
     });
     let output_path = output.unwrap_or(&output_path_buf);
 
-    codegen.compile_to_object(&output_path.with_extension("o"))?;
+    codegen.compile_to_object(&output_path.with_extension("o")).map_err(|e| e.to_string())?;
 
     // Compile and link C runtime
     let obj_path = output_path.with_extension("o");
