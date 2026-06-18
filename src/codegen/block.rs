@@ -69,7 +69,8 @@ impl<'ctx> CodeGenerator<'ctx> {
                         return Err("[E0712] if condition must be boolean".into());
                     };
 
-                    let function = self.current_function().unwrap();
+                    let function = self.current_function()
+                        .ok_or_else(|| "codegen: no current function for if block".to_string())?;
                     let then_bb = self.context.append_basic_block(function, "then");
                     let else_bb = self.context.append_basic_block(function, "else");
                     let merge_bb = self.context.append_basic_block(function, "ifcont");
@@ -271,7 +272,8 @@ impl<'ctx> CodeGenerator<'ctx> {
                     } else {
                         return Err("[E0712] if condition must be boolean".into());
                     };
-                    let function = self.current_function().unwrap();
+                    let function = self.current_function()
+                        .ok_or_else(|| "codegen: no current function for if expression".to_string())?;
                     let then_bb = self.context.append_basic_block(function, "blt_then");
                     let else_bb = self.context.append_basic_block(function, "blt_else");
                     let merge_bb = self.context.append_basic_block(function, "blt_merge");
@@ -287,7 +289,8 @@ impl<'ctx> CodeGenerator<'ctx> {
                         }
                         v
                     };
-                    let then_bb_end = self.builder.get_insert_block().unwrap();
+                    let then_bb_end = self.builder.get_insert_block()
+                        .ok_or_else(|| "codegen: no insert block after then branch".to_string())?;
                     let else_val = {
                         self.builder.position_at_end(else_bb);
                         if let Some(eb) = else_ {
@@ -302,7 +305,8 @@ impl<'ctx> CodeGenerator<'ctx> {
                             self.context.i64_type().const_int(0, false).into()
                         }
                     };
-                    let else_bb_end = self.builder.get_insert_block().unwrap();
+                    let else_bb_end = self.builder.get_insert_block()
+                        .ok_or_else(|| "codegen: no insert block after else branch".to_string())?;
                     // Ensure else_bb has a terminator (it's empty for no-else case)
                     if !self.block_has_terminator() {
                         self.builder.build_unconditional_branch(merge_bb)

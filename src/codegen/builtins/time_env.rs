@@ -30,7 +30,8 @@ impl<'ctx> CodeGenerator<'ctx> {
         args: &[BasicMetadataValueEnum<'ctx>],
     ) -> Result<BasicValueEnum<'ctx>, String> {
                 if !args.is_empty() { return Err("now/timestamp expects 0 arguments".into()); }
-                let fn_val = self.module.get_function("mimi_now").unwrap();
+                let fn_val = self.module.get_function("mimi_now")
+                    .ok_or_else(|| "codegen: mimi_now not declared".to_string())?;
                 let call = self.builder.build_call(fn_val, &[], "now_call")
                     .map_err(|e| format!("now error: {}", e))?;
                 Ok(self.expect_basic_value(&call, "now")?)
@@ -42,7 +43,8 @@ impl<'ctx> CodeGenerator<'ctx> {
         args: &[BasicMetadataValueEnum<'ctx>],
     ) -> Result<BasicValueEnum<'ctx>, String> {
                 if !args.is_empty() { return Err("now_ms/timestamp_ms expects 0 arguments".into()); }
-                let fn_val = self.module.get_function("mimi_now_ms").unwrap();
+                let fn_val = self.module.get_function("mimi_now_ms")
+                    .ok_or_else(|| "codegen: mimi_now_ms not declared".to_string())?;
                 let call = self.builder.build_call(fn_val, &[], "now_ms_call")
                     .map_err(|e| format!("now_ms error: {}", e))?;
                 Ok(self.expect_basic_value(&call, "now_ms")?)
@@ -54,7 +56,8 @@ impl<'ctx> CodeGenerator<'ctx> {
         args: &[BasicMetadataValueEnum<'ctx>],
     ) -> Result<BasicValueEnum<'ctx>, String> {
                 if args.len() != 1 { return Err("sleep expects 1 argument (milliseconds)".into()); }
-                let fn_val = self.module.get_function("mimi_sleep").unwrap();
+                let fn_val = self.module.get_function("mimi_sleep")
+                    .ok_or_else(|| "codegen: mimi_sleep not declared".to_string())?;
                 self.builder.build_call(fn_val, &args, "sleep_call")
                     .map_err(|e| format!("sleep error: {}", e))?;
                 Ok(self.context.i64_type().const_int(0, false).into())
@@ -66,7 +69,8 @@ impl<'ctx> CodeGenerator<'ctx> {
         args: &[BasicMetadataValueEnum<'ctx>],
     ) -> Result<BasicValueEnum<'ctx>, String> {
                 if args.len() != 1 { return Err("getenv expects 1 argument (name)".into()); }
-                let getenv_fn = self.module.get_function("mimi_getenv").unwrap();
+                let getenv_fn = self.module.get_function("mimi_getenv")
+                    .ok_or_else(|| "codegen: mimi_getenv not declared".to_string())?;
                 let call = self.builder.build_call(getenv_fn, &args, "getenv_call")
                     .map_err(|e| format!("getenv error: {}", e))?;
                 let ptr = match call.try_as_basic_value().left() {
@@ -93,7 +97,8 @@ impl<'ctx> CodeGenerator<'ctx> {
     ) -> Result<BasicValueEnum<'ctx>, String> {
                 if !args.is_empty() { return Err("args expects 0 arguments".into()); }
                 // Return the args count (simplified: return as i64 for now)
-                let count_fn = self.module.get_function("mimi_args_count").unwrap();
+                let count_fn = self.module.get_function("mimi_args_count")
+                    .ok_or_else(|| "codegen: mimi_args_count not declared".to_string())?;
                 let call = self.builder.build_call(count_fn, &[], "args_count_call")
                     .map_err(|e| format!("args error: {}", e))?;
                 Ok(self.expect_basic_value(&call, "args")?)

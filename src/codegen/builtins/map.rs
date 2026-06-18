@@ -229,7 +229,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     i64_ty.ptr_type(inkwell::AddressSpace::default()), "values_ptr_i64")
                     .map_err(|e| format!("bitcast error: {}", e))?
                     .into_pointer_value();
-                let function = self.current_function().unwrap();
+                let function = self.current_function().ok_or_else(|| "codegen: no current function for map_from_list loop".to_string())?;
                 let loop_bb = self.context.append_basic_block(function, "map_from_list_loop");
                 let body_bb = self.context.append_basic_block(function, "map_from_list_body");
                 let done_bb = self.context.append_basic_block(function, "map_from_list_done");

@@ -145,7 +145,8 @@ impl<'ctx> CodeGenerator<'ctx> {
     ) -> Result<BasicValueEnum<'ctx>, String> {
                 if args.len() != 1 { return Err("[E0711] from_json expects 1 argument".into()); }
                 let raw_ptr = self.extract_raw_str_ptr(&args[0])?;
-                let from_json_fn = self.module.get_function("mimi_from_json").unwrap();
+                let from_json_fn = self.module.get_function("mimi_from_json")
+                    .ok_or_else(|| "codegen: mimi_from_json not declared".to_string())?;
                 let result = self.builder.build_call(from_json_fn, &[
                     BasicMetadataValueEnum::PointerValue(raw_ptr),
                 ], "from_json_call")
@@ -165,7 +166,8 @@ impl<'ctx> CodeGenerator<'ctx> {
                 if args.len() != 2 { return Err("[E0711] json_get_string expects 2 arguments".into()); }
                 let json_ptr = self.extract_raw_str_ptr(&args[0])?;
                 let key_ptr = self.extract_raw_str_ptr(&args[1])?;
-                let func = self.module.get_function("json_get_string").unwrap();
+                let func = self.module.get_function("json_get_string")
+                    .ok_or_else(|| "codegen: json_get_string not declared".to_string())?;
                 let result = self.builder.build_call(func, &[
                     BasicMetadataValueEnum::PointerValue(json_ptr),
                     BasicMetadataValueEnum::PointerValue(key_ptr),
@@ -185,7 +187,8 @@ impl<'ctx> CodeGenerator<'ctx> {
                 if args.len() != 2 { return Err("[E0711] json_get_int expects 2 arguments".into()); }
                 let json_ptr = self.extract_raw_str_ptr(&args[0])?;
                 let key_ptr = self.extract_raw_str_ptr(&args[1])?;
-                let func = self.module.get_function("json_get_int").unwrap();
+                let func = self.module.get_function("json_get_int")
+                    .ok_or_else(|| "codegen: json_get_int not declared".to_string())?;
                 let result = self.builder.build_call(func, &[
                     BasicMetadataValueEnum::PointerValue(json_ptr),
                     BasicMetadataValueEnum::PointerValue(key_ptr),
@@ -205,7 +208,8 @@ impl<'ctx> CodeGenerator<'ctx> {
                     BasicMetadataValueEnum::IntValue(iv) => iv,
                     _ => return Err("[E0712] json_get_element: index must be i32".into()),
                 };
-                let func = self.module.get_function("json_get_element").unwrap();
+                let func = self.module.get_function("json_get_element")
+                    .ok_or_else(|| "codegen: json_get_element not declared".to_string())?;
                 let result = self.builder.build_call(func, &[
                     BasicMetadataValueEnum::PointerValue(json_ptr),
                     BasicMetadataValueEnum::IntValue(index),
