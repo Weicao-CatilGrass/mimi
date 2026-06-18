@@ -807,7 +807,46 @@ LLVM_SYS_180_PREFIX=/tmp/llvm-wrapper cargo test
 
 ---
 
-## 21. 语法速查
+## 21. 项目配置 (mimi.toml)
+
+```toml
+[package]
+name = "my-project"
+version = "0.1.0"
+description = "A Mimi project"
+entry = "main.mimi"
+
+[[dependencies]]
+name = "my-lib"
+version = "^1.0"
+
+[[dependencies]]
+name = "helper"
+path = "../helper"
+
+[[dependencies]]
+name = "utils"
+git = "https://github.com/user/utils"
+tag = "v2.0"
+
+[registry]
+url = "https://registry.mimi-lang.org"
+```
+
+### 依赖来源
+
+| 字段 | 说明 |
+|------|------|
+| `version` | 版本约束 (semver: `^1.0`, `>=0.5, <2.0`, `*`) |
+| `path` | 本地路径依赖 |
+| `git` | Git 仓库 URL |
+| `tag` | Git 分支/标签 (默认 `main`) |
+
+---
+
+---
+
+## 22. 语法速查
 
 ### 函数声明
 

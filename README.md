@@ -193,10 +193,17 @@ func booking() -> Result<(), string> {
 | `mimi check <file.mimi>` | 类型检查 `.mimi` 文件 |
 | `mimi run <file.mimi>` | 类型检查并运行 |
 | `mimi build <file.mimi>` | 编译为本地可执行文件 |
+| `mimi build <file.mimi> --verify-contracts` | 编译并验证合约 |
 | `mimi fmt <files...>` | 格式化文件 |
 | `mimi fmt --check <files...>` | 检查格式（不修改） |
 | `mimi lint <files...>` | 静态分析 |
 | `mimi lsp` | 启动 LSP 服务器 |
+| `mimi init` | 初始化新项目 |
+| `mimi add <name>` | 添加依赖 |
+| `mimi install` | 安装依赖 |
+| `mimi tree` | 显示依赖树 |
+| `mimi list` | 列出依赖 |
+| `mimi publish` | 发布到本地 registry |
 
 ---
 
@@ -256,9 +263,15 @@ mimi/
 
 ## 版本
 
-当前版本: **v0.3.1**
+当前版本: **v0.7.0**
 
 语言规范: v1.0.0-rc.1
+
+### 更新日志
+
+- **v0.7.0** — Std 补齐, Codegen 修复, 工具链 (fmt/lint), 合约验证, 包管理升级
+- **v0.3.1** — 基础类型、函数、闭包、ADT、模式匹配、错误处理
+- **v0.1.1** — 初始版本
 
 ---
 

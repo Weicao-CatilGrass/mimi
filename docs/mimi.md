@@ -485,6 +485,7 @@ func pay(order: Order, amount: f64) -> Result<(), Err> {
 - v1.0 - 基线整合版：确立 L4 花括号体、逻辑安全支柱、`cap` 显式 drop + `+` 组合、`newtype` / `type` 别名分工、契约检查分级等基线决策。
 - v1.1 - 特性扩展版：新增 `cap.split()` 能力分解、`old()` 契约快照语义、`math:` 块编译时求值、trait 动态分派（vtable）、`extern "C"` FFI 块支持（已在 mimi v0.1.1 实现）、`trait`/`impl` 基础多态与 `where` 约束语法（已在 v0.7 实现）。
 - v1.2 - 集成版：新增 `mms {}` 超级注释支持 MimiSpec 嵌入，实现意图→实现的契约绑定。
+- v1.3 - 工具链版（规划中）：格式化器、静态分析器、LSP 增强（foldingRange、Warning 级别诊断）。
 
 ---
 
