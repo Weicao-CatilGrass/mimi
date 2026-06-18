@@ -1,7 +1,11 @@
+// Random number utilities
+
+// random_float: Returns random float in [lo, hi).
 pub func random_float(lo: f64, hi: f64) -> f64 {
     random() * (hi - lo) + lo
 }
 
+// random_int: Returns random integer in [lo, hi).
 pub func random_int(lo: i32, hi: i32) -> i32 {
     let ri_span = hi - lo
     if ri_span <= 0 {
@@ -10,6 +14,7 @@ pub func random_int(lo: i32, hi: i32) -> i32 {
     to_int(floor(random() * to_float(ri_span))) + lo
 }
 
+// random_choice: Returns a random element from xs.
 pub func random_choice<T>(xs: List<T>) -> T {
     let len = len(xs)
     if len == 0 {
@@ -19,10 +24,12 @@ pub func random_choice<T>(xs: List<T>) -> T {
     xs[idx]
 }
 
+// random_bool: Returns true with 50% probability.
 pub func random_bool() -> bool {
     random() >= 0.5
 }
 
+// random_sample: Returns n random elements from xs without replacement.
 pub func random_sample<T>(xs: List<T>, n: i32) -> List<T> {
     let rs_len = len(xs)
     let mut rs_result: List<T> = []
@@ -37,6 +44,7 @@ pub func random_sample<T>(xs: List<T>, n: i32) -> List<T> {
     rs_result
 }
 
+// shuffle: Returns xs with elements randomly permuted (Fisher-Yates).
 pub func shuffle<T>(xs: List<T>) -> List<T> {
     let sh_len = len(xs)
     let mut sh_rest = xs

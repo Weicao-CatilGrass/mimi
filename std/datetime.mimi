@@ -1,39 +1,36 @@
 // Datetime operations based on Unix timestamps
-// Uses now()/now_ms() builtins which return i64 (seconds/milliseconds since epoch)
 
+// now_secs: Current Unix timestamp in seconds.
 pub func now_secs() -> i64 {
     now()
 }
 
+// now_millis: Current Unix timestamp in milliseconds.
 pub func now_millis() -> i64 {
     now_ms()
 }
 
+// timestamp_secs: Alias for now_secs.
 pub func timestamp_secs() -> i64 {
     now()
 }
 
+// timestamp_millis: Alias for now_millis.
 pub func timestamp_millis() -> i64 {
     now_ms()
 }
 
-// Time constants
-pub const SECONDS_PER_MINUTE: i64 = 60
-pub const SECONDS_PER_HOUR: i64 = 3600
-pub const SECONDS_PER_DAY: i64 = 86400
-pub const MILLIS_PER_SECOND: i64 = 1000
-pub const MILLIS_PER_MINUTE: i64 = 60000
-pub const MILLIS_PER_HOUR: i64 = 3600000
-pub const MILLIS_PER_DAY: i64 = 86400000
-
+// seconds_to_millis: Converts seconds to milliseconds.
 pub func seconds_to_millis(secs: i64) -> i64 {
     secs * MILLIS_PER_SECOND
 }
 
+// millis_to_seconds: Converts milliseconds to seconds.
 pub func millis_to_seconds(ms: i64) -> i64 {
     ms / MILLIS_PER_SECOND
 }
 
+// format_duration_secs: Formats total_secs as "Xd Yh Zm Ws".
 pub func format_duration_secs(total_secs: i64) -> string {
     let ds_days = total_secs / SECONDS_PER_DAY
     let ds_rem = total_secs % SECONDS_PER_DAY
@@ -44,55 +41,76 @@ pub func format_duration_secs(total_secs: i64) -> string {
     to_string(ds_days) + "d " + to_string(ds_hours) + "h " + to_string(ds_minutes) + "m " + to_string(ds_seconds) + "s"
 }
 
+// format_duration_ms: Formats ms as duration with fractional seconds.
 pub func format_duration_ms(ms: i64) -> string {
     let total_secs = ms / MILLIS_PER_SECOND
     let rem_ms = ms % MILLIS_PER_SECOND
     format_duration_secs(total_secs) + "." + to_string(rem_ms) + "ms"
 }
 
+// days_from_now: Returns Unix timestamp days from now.
 pub func days_from_now(days: i64) -> i64 {
     now() + days * SECONDS_PER_DAY
 }
 
+// hours_from_now: Returns Unix timestamp hours from now.
 pub func hours_from_now(hours: i64) -> i64 {
     now() + hours * SECONDS_PER_HOUR
 }
 
+// minutes_from_now: Returns Unix timestamp minutes from now.
 pub func minutes_from_now(mins: i64) -> i64 {
     now() + mins * SECONDS_PER_MINUTE
 }
 
+// is_future: Returns true if timestamp_secs > now.
 pub func is_future(timestamp_secs: i64) -> bool {
     timestamp_secs > now()
 }
 
+// is_past: Returns true if timestamp_secs < now.
 pub func is_past(timestamp_secs: i64) -> bool {
     timestamp_secs < now()
 }
 
+// time_since: Returns seconds elapsed since timestamp_secs.
 pub func time_since(timestamp_secs: i64) -> i64 {
     now() - timestamp_secs
 }
 
+// time_until: Returns seconds until timestamp_secs.
 pub func time_until(timestamp_secs: i64) -> i64 {
     timestamp_secs - now()
 }
 
+// elapsed_since: Returns milliseconds elapsed since start_ms.
 pub func elapsed_since(start_ms: i64) -> i64 {
     now_ms() - start_ms
 }
 
+// sleep_secs: Sleeps for secs seconds.
 pub func sleep_secs(secs: i32) {
     sleep(secs * 1000)
 }
 
+// sleep_ms: Sleeps for ms milliseconds.
 pub func sleep_ms(ms: i32) {
     sleep(ms)
 }
 
+// sleep_until: Sleeps until Unix timestamp_secs.
 pub func sleep_until(timestamp_secs: i64) {
     let diff = timestamp_secs - now()
     if diff > 0 {
         sleep(to_int(diff * MILLIS_PER_SECOND))
     }
 }
+
+// Time constants
+pub const SECONDS_PER_MINUTE: i64 = 60
+pub const SECONDS_PER_HOUR: i64 = 3600
+pub const SECONDS_PER_DAY: i64 = 86400
+pub const MILLIS_PER_SECOND: i64 = 1000
+pub const MILLIS_PER_MINUTE: i64 = 60000
+pub const MILLIS_PER_HOUR: i64 = 3600000
+pub const MILLIS_PER_DAY: i64 = 86400000

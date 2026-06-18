@@ -1,75 +1,94 @@
+// is_empty: Returns true if s has length 0.
 pub func is_empty(s: string) -> bool {
     len(s) == 0
 }
 
+// char_at: Returns the character at index as a single-character string.
 pub func char_at(s: string, index: i32) -> string {
     str_char_at(s, index)
 }
 
+// substring: Returns s[start..end] inclusive-exclusive range.
 pub func substring(s: string, start: i32, end: i32) -> string {
     str_substring(s, start, end)
 }
 
+// starts_with: Returns true if s starts with prefix.
 pub func starts_with(s: string, prefix: string) -> bool {
     str_starts_with(s, prefix)
 }
 
+// ends_with: Returns true if s ends with suffix.
 pub func ends_with(s: string, suffix: string) -> bool {
     str_ends_with(s, suffix)
 }
 
+// to_upper: Returns s converted to uppercase (ASCII).
 pub func to_upper(s: string) -> string {
     str_to_upper(s)
 }
 
+// to_lower: Returns s converted to lowercase (ASCII).
 pub func to_lower(s: string) -> string {
     str_to_lower(s)
 }
 
+// trim: Removes leading and trailing whitespace from s.
 pub func trim(s: string) -> string {
     str_trim(s)
 }
 
+// replace: Replaces all occurrences of from with to in s.
 pub func replace(s: string, from: string, to: string) -> string {
     str_replace(s, from, to)
 }
 
+// split: Splits s by delimiter into a list of substrings.
 pub func split(s: string, delimiter: string) -> List<string> {
     str_split(s, delimiter)
 }
 
+// join: Combines parts with separator between each element.
 pub func join(parts: List<string>, separator: string) -> string {
     str_join(parts, separator)
 }
 
+// repeat: Returns s repeated n times.
 pub func repeat(s: string, n: i32) -> string {
     str_repeat(s, n)
 }
 
+// index_of: Returns (true, pos) if sub is found in s, else (false, -1).
 pub func index_of(s: string, sub: string) -> (bool, i32) {
     str_index_of(s, sub)
 }
 
+// parse_int: Parses s as integer. Returns (true, val) on success.
 pub func parse_int(s: string) -> (bool, i32) {
     str_parse_int(s)
 }
 
+// parse_float: Parses s as float. Returns (true, val) on success.
 pub func parse_float(s: string) -> (bool, f64) {
     str_parse_float(s)
 }
 
+// is_digit: Returns true if s is a single ASCII digit (0-9).
 pub func is_digit(s: string) -> bool {
     len(s) == 1 && char_at(s, 0) >= "0" && char_at(s, 0) <= "9"
 }
 
+// is_alpha: Returns true if s is a single ASCII letter (a-z, A-Z).
 pub func is_alpha(s: string) -> bool {
     len(s) == 1 && ((char_at(s, 0) >= "a" && char_at(s, 0) <= "z") || (char_at(s, 0) >= "A" && char_at(s, 0) <= "Z"))
 }
 
+// is_alphanumeric: Returns true if s is a digit or letter.
 pub func is_alphanumeric(s: string) -> bool {
     is_digit(s) || is_alpha(s)
 }
 
+// count_char: Counts occurrences of target character in s.
 pub func count_char(s: string, target: string) -> i32 {
     let mut cc_cnt = 0
     for cc_i in range(0, len(s)) {
@@ -80,6 +99,7 @@ pub func count_char(s: string, target: string) -> i32 {
     cc_cnt
 }
 
+// trim_left: Removes leading whitespace from s.
 pub func trim_left(s: string) -> string {
     let mut tl_idx = 0
     while tl_idx < len(s) && char_at(s, tl_idx) == " " {
@@ -88,6 +108,7 @@ pub func trim_left(s: string) -> string {
     substring(s, tl_idx, len(s))
 }
 
+// trim_right: Removes trailing whitespace from s.
 pub func trim_right(s: string) -> string {
     let mut tr_end = len(s)
     while tr_end > 0 && char_at(s, tr_end - 1) == " " {
@@ -96,6 +117,7 @@ pub func trim_right(s: string) -> string {
     substring(s, 0, tr_end)
 }
 
+// pad_left: Pads s on the left with pad_char to reach width.
 pub func pad_left(s: string, width: i32, pad_char: string) -> string {
     if len(s) >= width {
         s
@@ -104,6 +126,7 @@ pub func pad_left(s: string, width: i32, pad_char: string) -> string {
     }
 }
 
+// pad_right: Pads s on the right with pad_char to reach width.
 pub func pad_right(s: string, width: i32, pad_char: string) -> string {
     if len(s) >= width {
         s
@@ -112,23 +135,28 @@ pub func pad_right(s: string, width: i32, pad_char: string) -> string {
     }
 }
 
+// lines: Splits s by newline into a list of lines.
 pub func lines(s: string) -> List<string> {
     str_split(s, "\n")
 }
 
+// words: Splits trimmed s by spaces into a list of words.
 pub func words(s: string) -> List<string> {
     str_split(trim(s), " ")
 }
 
+// contains: Returns true if sub appears in s.
 pub func contains(s: string, sub: string) -> bool {
     str_contains(s, sub)
 }
 
+// capitalize: Returns s with first character uppercased.
 pub func capitalize(s: string) -> string {
     if len(s) == 0 { return s }
     str_to_upper(str_char_at(s, 0)) + str_substring(s, 1, len(s))
 }
 
+// title: Returns s with each word capitalized.
 pub func title(s: string) -> string {
     let words_list = words(s)
     let mut result: List<string> = []
@@ -138,6 +166,7 @@ pub func title(s: string) -> string {
     str_join(result, " ")
 }
 
+// reverse_string: Returns s with characters in reverse order.
 pub func reverse_string(s: string) -> string {
     let n = len(s)
     let mut rev_chars: List<string> = []
@@ -147,6 +176,7 @@ pub func reverse_string(s: string) -> string {
     str_join(rev_chars, "")
 }
 
+// truncate: Returns s shortened to max_len with "..." suffix if needed.
 pub func truncate(s: string, max_len: i32) -> string {
     if len(s) <= max_len {
         s
@@ -155,6 +185,7 @@ pub func truncate(s: string, max_len: i32) -> string {
     }
 }
 
+// remove_prefix: Strips prefix from s if present.
 pub func remove_prefix(s: string, prefix: string) -> string {
     if str_starts_with(s, prefix) {
         str_substring(s, len(prefix), len(s))
@@ -163,6 +194,7 @@ pub func remove_prefix(s: string, prefix: string) -> string {
     }
 }
 
+// remove_suffix: Strips suffix from s if present.
 pub func remove_suffix(s: string, suffix: string) -> string {
     if str_ends_with(s, suffix) {
         str_substring(s, 0, len(s) - len(suffix))
@@ -171,52 +203,64 @@ pub func remove_suffix(s: string, suffix: string) -> string {
     }
 }
 
+// count_lines: Returns the number of lines in s.
 pub func count_lines(s: string) -> i32 {
     len(lines(s))
 }
 
+// count_words: Returns the number of words in s.
 pub func count_words(s: string) -> i32 {
     len(words(s))
 }
 
+// first_char: Returns the first character of s, or "" if empty.
 pub func first_char(s: string) -> string {
     if len(s) == 0 { "" } else { str_char_at(s, 0) }
 }
 
+// last_char: Returns the last character of s, or "" if empty.
 pub func last_char(s: string) -> string {
     let n = len(s)
     if n == 0 { "" } else { str_char_at(s, n - 1) }
 }
 
+// without_last: Returns s without its last character.
 pub func without_last(s: string) -> string {
     let n = len(s)
     if n <= 1 { "" } else { str_substring(s, 0, n - 1) }
 }
 
+// without_first: Returns s without its first character.
 pub func without_first(s: string) -> string {
     if len(s) <= 1 { "" } else { str_substring(s, 1, len(s)) }
 }
 
+// surround: Returns left + s + right.
 pub func surround(s: string, left: string, right: string) -> string {
     left + s + right
 }
 
+// quote: Wraps s in double quotes.
 pub func quote(s: string) -> string {
     surround(s, "\"", "\"")
 }
 
+// paren: Wraps s in parentheses.
 pub func paren(s: string) -> string {
     surround(s, "(", ")")
 }
 
+// bracket: Wraps s in square brackets.
 pub func bracket(s: string) -> string {
     surround(s, "[", "]")
 }
 
+// brace: Wraps s in curly braces.
 pub func brace(s: string) -> string {
     surround(s, "{", "}")
 }
 
+// indent: Prepends n spaces to each line of s.
 pub func indent(s: string, n: i32) -> string {
     let prefix = str_repeat(" ", n)
     let mut indented: List<string> = []
@@ -226,10 +270,12 @@ pub func indent(s: string, n: i32) -> string {
     str_join(indented, "\n")
 }
 
+// ellipsis: Alias for truncate.
 pub func ellipsis(s: string, max_len: i32) -> string {
     truncate(s, max_len)
 }
 
+// count_substring: Counts non-overlapping occurrences of sub in s.
 pub func count_substring(s: string, sub: string) -> i32 {
     let mut cs_cnt = 0
     let mut cs_pos = 0
@@ -246,11 +292,13 @@ pub func count_substring(s: string, sub: string) -> i32 {
     cs_cnt
 }
 
+// is_blank: Returns true if s is empty or whitespace-only.
 pub func is_blank(s: string) -> bool {
     let trimmed = str_trim(s)
     len(trimmed) == 0
 }
 
+// replace_all: Alias for replace.
 pub func replace_all(s: string, from: string, to: string) -> string {
     str_replace(s, from, to)
 }

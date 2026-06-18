@@ -1,27 +1,34 @@
+// square: Returns x * x.
 pub func square(x: i32) -> i32 {
     x * x
 }
 
+// cube: Returns x * x * x.
 pub func cube(x: i32) -> i32 {
     x * x * x
 }
 
+// abs: Absolute value for integers.
 pub func abs(x: i32) -> i32 {
     if x < 0 { -x } else { x }
 }
 
+// abs_float: Absolute value for floats.
 pub func abs_float(x: f64) -> f64 {
     if x < 0.0 { -x } else { x }
 }
 
+// sign: Returns -1, 0, or 1 indicating sign of x.
 pub func sign(x: i32) -> i32 {
     if x > 0 { 1 } else if x < 0 { -1 } else { 0 }
 }
 
+// sign_float: Returns -1.0, 0.0, or 1.0 indicating sign of x.
 pub func sign_float(x: f64) -> f64 {
     if x > 0.0 { 1.0 } else if x < 0.0 { -1.0 } else { 0.0 }
 }
 
+// factorial: Iterative factorial of n (n >= 0).
 pub func factorial(n: i32) -> i32 {
     let mut fac_acc = 1
     let mut fac_k = 2
@@ -32,6 +39,7 @@ pub func factorial(n: i32) -> i32 {
     fac_acc
 }
 
+// fibonacci: Returns the nth Fibonacci number (F_0 = 0, F_1 = 1).
 pub func fibonacci(n: i32) -> i32 {
     if n <= 0 { return 0 }
     if n == 1 { return 1 }
@@ -47,6 +55,7 @@ pub func fibonacci(n: i32) -> i32 {
     fib_b
 }
 
+// is_prime: Returns true if n is a prime number.
 pub func is_prime(n: i32) -> bool {
     if n < 2 { return false }
     if n == 2 { return true }
@@ -59,6 +68,7 @@ pub func is_prime(n: i32) -> bool {
     true
 }
 
+// random_int: Returns random integer in [lo, hi).
 pub func random_int(lo: i32, hi: i32) -> i32 {
     let ri_span = hi - lo
     if ri_span <= 0 {
@@ -67,6 +77,7 @@ pub func random_int(lo: i32, hi: i32) -> i32 {
     to_int(floor(random() * to_float(ri_span))) + lo
 }
 
+// mod_pow: Modular exponentiation: (base^exp) % modulus.
 pub func mod_pow(base: i32, exp: i32, modulus: i32) -> i32 {
     let mut mp_acc = 1
     let mut mp_bv = base % modulus
@@ -81,18 +92,22 @@ pub func mod_pow(base: i32, exp: i32, modulus: i32) -> i32 {
     mp_acc
 }
 
+// deg_to_rad: Converts degrees to radians.
 pub func deg_to_rad(degrees: f64) -> f64 {
     degrees * pi() / 180.0
 }
 
+// rad_to_deg: Converts radians to degrees.
 pub func rad_to_deg(radians: f64) -> f64 {
     radians * 180.0 / pi()
 }
 
+// map_range: Maps value from [in_min, in_max] to [out_min, out_max].
 pub func map_range(value: f64, in_min: f64, in_max: f64, out_min: f64, out_max: f64) -> f64 {
     out_min + (value - in_min) * (out_max - out_min) / (in_max - in_min)
 }
 
+// is_power_of_two: Returns true if n is a power of two (n > 0).
 pub func is_power_of_two(n: i32) -> bool {
     if n <= 0 {
         return false
@@ -107,6 +122,7 @@ pub func is_power_of_two(n: i32) -> bool {
     true
 }
 
+// next_power_of_two: Returns smallest power of two >= n.
 pub func next_power_of_two(n: i32) -> i32 {
     if n <= 0 {
         return 1
@@ -118,6 +134,7 @@ pub func next_power_of_two(n: i32) -> i32 {
     np_p
 }
 
+// count_digits: Returns the number of decimal digits in n.
 pub func count_digits(n: i32) -> i32 {
     if n == 0 { return 1 }
     let mut cd_cnt = 0
@@ -129,6 +146,7 @@ pub func count_digits(n: i32) -> i32 {
     cd_cnt
 }
 
+// digit_at: Returns the digit at position pos (0 = units) in n.
 pub func digit_at(n: i32, pos: i32) -> i32 {
     let mut da_val = if n < 0 { -n } else { n }
     let mut da_p = 0
@@ -139,6 +157,7 @@ pub func digit_at(n: i32, pos: i32) -> i32 {
     da_val % 10
 }
 
+// sum_digits: Returns the sum of decimal digits of n.
 pub func sum_digits(n: i32) -> i32 {
     let mut sd_acc = 0
     let mut sd_val = if n < 0 { -n } else { n }
@@ -149,6 +168,7 @@ pub func sum_digits(n: i32) -> i32 {
     sd_acc
 }
 
+// reverse_number: Returns n with decimal digits reversed.
 pub func reverse_number(n: i32) -> i32 {
     let mut rn_acc = 0
     let mut rn_val = if n < 0 { -n } else { n }
@@ -159,11 +179,13 @@ pub func reverse_number(n: i32) -> i32 {
     rn_acc
 }
 
+// is_palindrome_number: Returns true if n is a palindrome (e.g. 121).
 pub func is_palindrome_number(n: i32) -> bool {
     if n < 0 { return false }
     n == reverse_number(n)
 }
 
+// collatz_steps: Returns steps to reach 1 via Collatz sequence.
 pub func collatz_steps(n: i32) -> i32 {
     let mut cs_cnt = 0
     let mut cs_val = n
@@ -178,28 +200,34 @@ pub func collatz_steps(n: i32) -> i32 {
     cs_cnt
 }
 
+// power: Returns base^exp (floating-point).
 pub func power(base: f64, exp: f64) -> f64 {
     pow(base, exp)
 }
 
+// sqrt_val: Returns the square root of x.
 pub func sqrt_val(x: f64) -> f64 {
     sqrt(x)
 }
 
+// floor_val: Returns the largest integer <= x as i64.
 pub func floor_val(x: f64) -> i64 {
     floor(x)
 }
 
+// ceil_val: Returns the smallest integer >= x as i64.
 pub func ceil_val(x: f64) -> i64 {
     ceil(x)
 }
 
+// round_val: Returns x rounded to nearest integer as i64.
 pub func round_val(x: f64) -> i64 {
     round(x)
 }
 
 // ---- Number theory ----
 
+// gcd: Greatest common divisor of a and b (Euclidean algorithm).
 pub func gcd(a: i32, b: i32) -> i32 {
     let mut g_x = a
     let mut g_y = b
@@ -211,6 +239,7 @@ pub func gcd(a: i32, b: i32) -> i32 {
     g_x
 }
 
+// lcm: Least common multiple of a and b.
 pub func lcm(a: i32, b: i32) -> i32 {
     if a == 0 || b == 0 { 0 } else { a * b / gcd(a, b) }
 }
@@ -225,36 +254,41 @@ pub func is_odd_number(n: i32) -> bool {
     n % 2 != 0
 }
 
+// is_divisible_by: Returns true if n is divisible by d (d != 0).
 pub func is_divisible_by(n: i32, d: i32) -> bool {
     d != 0 && n % d == 0
 }
 
 // ---- Statistics ----
 
+// min_val: Returns the smaller of a and b.
 pub func min_val(a: i32, b: i32) -> i32 {
     if a < b { a } else { b }
 }
 
+// max_val: Returns the larger of a and b.
 pub func max_val(a: i32, b: i32) -> i32 {
     if a > b { a } else { b }
 }
 
 // ---- Geometry ----
 
+// area_circle: Returns πr².
 pub func area_circle(r: f64) -> f64 {
     pi() * r * r
 }
 
+// circumference: Returns 2πr.
 pub func circumference(r: f64) -> f64 {
     2.0 * pi() * r
 }
 
+// hypot: Returns sqrt(a² + b²).
 pub func hypot(a: f64, b: f64) -> f64 {
     sqrt(a * a + b * b)
 }
 
+// Duplicate of prelude::clamp — kept for compatibility
 pub func clamp_int(value: i32, lo: i32, hi: i32) -> i32 {
     if value < lo { lo } else if value > hi { hi } else { value }
 }
-
-

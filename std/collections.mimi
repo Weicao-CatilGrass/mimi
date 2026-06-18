@@ -1,15 +1,19 @@
+// is_empty_list: Returns true if xs has length 0.
 pub func is_empty_list<T>(xs: List<T>) -> bool {
     len(xs) == 0
 }
 
+// first: Returns the first element of xs.
 pub func first<T>(xs: List<T>) -> T {
     xs[0]
 }
 
+// last: Returns the last element of xs.
 pub func last<T>(xs: List<T>) -> T {
     xs[len(xs) - 1]
 }
 
+// take: Returns the first n elements of xs.
 pub func take<T>(xs: List<T>, n: i32) -> List<T> {
     if n < len(xs) {
         xs[0..n]
@@ -18,6 +22,7 @@ pub func take<T>(xs: List<T>, n: i32) -> List<T> {
     }
 }
 
+// drop_n: Returns xs without the first n elements.
 pub func drop_n<T>(xs: List<T>, n: i32) -> List<T> {
     if n < len(xs) {
         xs[n..len(xs)]
@@ -26,6 +31,7 @@ pub func drop_n<T>(xs: List<T>, n: i32) -> List<T> {
     }
 }
 
+// find: Searches for target in xs, returns (found, index).
 pub func find<T>(xs: List<T>, target: T) -> (bool, i32) {
     for fi_i in range(0, len(xs)) {
         if xs[fi_i] == target {
@@ -35,46 +41,54 @@ pub func find<T>(xs: List<T>, target: T) -> (bool, i32) {
     (false, -1)
 }
 
+// count_val: Counts occurrences of target in xs.
 pub func count_val<T>(xs: List<T>, target: T) -> i32 {
     reduce(xs, fn(cv_acc: i32, cv_x: T) -> i32 {
         if cv_x == target { cv_acc + 1 } else { cv_acc }
     }, 0)
 }
 
+// dedup: Removes duplicate elements from xs (stable order).
 pub func dedup<T>(xs: List<T>) -> List<T> {
     reduce(xs, fn(dd_acc: List<T>, dd_x: T) -> List<T> {
         if contains(dd_acc, dd_x) { dd_acc } else { push(dd_acc, dd_x) }
     }, [])
 }
 
+// concat: Appends ys to xs.
 pub func concat<T>(xs: List<T>, ys: List<T>) -> List<T> {
     reduce(ys, fn(ct_acc: List<T>, ct_x: T) -> List<T> {
         push(ct_acc, ct_x)
     }, xs)
 }
 
+// reverse_list: Returns xs in reverse order.
 pub func reverse_list<T>(xs: List<T>) -> List<T> {
     reverse(xs)
 }
 
+// remove_at: Returns xs with the element at index removed.
 pub func remove_at<T>(xs: List<T>, index: i32) -> List<T> {
     reduce(range(0, len(xs)), fn(ra_acc: List<T>, ra_i: i32) -> List<T> {
         if ra_i != index { push(ra_acc, xs[ra_i]) } else { ra_acc }
     }, [])
 }
 
+// remove_value: Returns xs with all occurrences of value removed.
 pub func remove_value<T>(xs: List<T>, value: T) -> List<T> {
     reduce(xs, fn(rv_acc: List<T>, rv_x: T) -> List<T> {
         if rv_x != value { push(rv_acc, rv_x) } else { rv_acc }
     }, [])
 }
 
+// fill_list: Creates a list of length n filled with value.
 pub func fill_list<T>(n: i32, value: T) -> List<T> {
     reduce(range(0, n), fn(fl_acc: List<T>, _: i32) -> List<T> {
         push(fl_acc, value)
     }, [])
 }
 
+// range_step: Generates a range [start, end) with given step.
 pub func range_step(start: i32, end: i32, step: i32) -> List<i32> {
     if step == 0 {
         []
@@ -89,12 +103,14 @@ pub func range_step(start: i32, end: i32, step: i32) -> List<i32> {
     }
 }
 
+// sum: Sums a list of integers.
 pub func sum(xs: List<i32>) -> i32 {
     reduce(xs, fn(s_acc: i32, s_x: i32) -> i32 {
         s_acc + s_x
     }, 0)
 }
 
+// sum_float: Sums a list of floats.
 pub func sum_float(xs: List<f64>) -> f64 {
     reduce(xs, fn(sf_acc: f64, sf_x: f64) -> f64 {
         sf_acc + sf_x
@@ -106,40 +122,44 @@ pub func sum_float(xs: List<f64>) -> f64 {
 //             for xs in xss { result = concat(result, xs) }
 //             result
 
+// sort_list: Returns a sorted copy of xs (ascending).
 pub func sort_list(xs: List<i32>) -> List<i32> {
     sort(xs)
 }
 
-pub func unique<T>(xs: List<T>) -> List<T> {
-    dedup(xs)
-}
-
+// filter_positives: Filters xs to keep only positive values.
 pub func filter_positives(xs: List<i32>) -> List<i32> {
     filter(xs, fn(fp_x: i32) -> bool { fp_x > 0 })
 }
 
+// filter_negatives: Filters xs to keep only negative values.
 pub func filter_negatives(xs: List<i32>) -> List<i32> {
     filter(xs, fn(fn_x: i32) -> bool { fn_x < 0 })
 }
 
+// filter_evens: Filters xs to keep only even values.
 pub func filter_evens(xs: List<i32>) -> List<i32> {
     filter(xs, fn(fe_x: i32) -> bool { is_even(fe_x) })
 }
 
+// filter_odds: Filters xs to keep only odd values.
 pub func filter_odds(xs: List<i32>) -> List<i32> {
     filter(xs, fn(fo_x: i32) -> bool { is_odd(fo_x) })
 }
 
+// map_list: Applies f to each element of xs.
 pub func map_list<T, U>(xs: List<T>, f: func(T) -> U) -> List<U> {
     reduce(xs, fn(ml_acc: List<U>, ml_x: T) -> List<U> {
         push(ml_acc, f(ml_x))
     }, [])
 }
 
+// unique: Returns xs with duplicate elements removed (alias for dedup).
 pub func unique<T>(xs: List<T>) -> List<T> {
     dedup(xs)
 }
 
+// any: Returns true if any element satisfies pred.
 pub func any<T>(xs: List<T>, pred: func(T) -> bool) -> bool {
     for a_x in xs {
         if pred(a_x) { return true }
@@ -147,6 +167,7 @@ pub func any<T>(xs: List<T>, pred: func(T) -> bool) -> bool {
     false
 }
 
+// all: Returns true if all elements satisfy pred.
 pub func all<T>(xs: List<T>, pred: func(T) -> bool) -> bool {
     for al_x in xs {
         if !pred(al_x) { return false }
@@ -154,6 +175,7 @@ pub func all<T>(xs: List<T>, pred: func(T) -> bool) -> bool {
     true
 }
 
+// find_map: Finds first element matching f, returns (true, mapped) or (false, unknown).
 pub func find_map<T, U>(xs: List<T>, f: func(T) -> (bool, U)) -> (bool, U) {
     for fm_x in xs {
         let fm_result = f(fm_x)
@@ -162,6 +184,7 @@ pub func find_map<T, U>(xs: List<T>, f: func(T) -> (bool, U)) -> (bool, U) {
     (false, unknown)
 }
 
+// partition: Splits xs into (matching, non-matching) per pred.
 pub func partition<T>(xs: List<T>, pred: func(T) -> bool) -> (List<T>, List<T>) {
     let mut pt_yes: List<T> = []
     let mut pt_no: List<T> = []
@@ -175,6 +198,7 @@ pub func partition<T>(xs: List<T>, pred: func(T) -> bool) -> (List<T>, List<T>) 
     (pt_yes, pt_no)
 }
 
+// group_by: Groups elements by key_fn into a Record.
 pub func group_by<T, K>(xs: List<T>, key_fn: func(T) -> K) -> Record {
     let mut result = map_new()
     for gb_x in xs {
@@ -191,6 +215,7 @@ pub func group_by<T, K>(xs: List<T>, key_fn: func(T) -> K) -> Record {
     result
 }
 
+// chunks: Splits xs into chunks of size (last chunk may be smaller).
 pub func chunks<T>(xs: List<T>, size: i32) -> List<List<T> > {
     let mut ch_result: List<List<T> > = []
     let mut ch_i = 0
@@ -207,6 +232,7 @@ pub func chunks<T>(xs: List<T>, size: i32) -> List<List<T> > {
     ch_result
 }
 
+// intersperse: Returns xs with sep placed between each element.
 pub func intersperse<T>(xs: List<T>, sep: T) -> List<T> {
     if len(xs) <= 1 { return xs }
     let mut is_result: List<T> = [xs[0]]
@@ -219,6 +245,7 @@ pub func intersperse<T>(xs: List<T>, sep: T) -> List<T> {
     is_result
 }
 
+// min_list: Returns the minimum element of xs (integer).
 pub func min_list(xs: List<i32>) -> i32 {
     let mut ml_min = xs[0]
     for ml_x in xs {
@@ -227,6 +254,7 @@ pub func min_list(xs: List<i32>) -> i32 {
     ml_min
 }
 
+// max_list: Returns the maximum element of xs (integer).
 pub func max_list(xs: List<i32>) -> i32 {
     let mut ml_max = xs[0]
     for ml_x in xs {
@@ -235,6 +263,7 @@ pub func max_list(xs: List<i32>) -> i32 {
     ml_max
 }
 
+// filter_list: Filters xs by predicate (custom implementation).
 pub func filter_list<T>(xs: List<T>, pred: func(T) -> bool) -> List<T> {
     let mut fl_res: List<T> = []
     for fl_x in xs {
@@ -245,6 +274,7 @@ pub func filter_list<T>(xs: List<T>, pred: func(T) -> bool) -> List<T> {
     fl_res
 }
 
+// reduce_list: Reduces xs with f and initial value init.
 pub func reduce_list<T, U>(xs: List<T>, f: func(U, T) -> U, init: U) -> U {
     let mut rl_acc = init
     for rl_x in xs {
@@ -253,6 +283,7 @@ pub func reduce_list<T, U>(xs: List<T>, f: func(U, T) -> U, init: U) -> U {
     rl_acc
 }
 
+// min_index: Returns the index of the minimum element (-1 if empty).
 pub func min_index<T>(xs: List<T>) -> i32 {
     if len(xs) == 0 { return -1 }
     let mut mi_idx = 0
@@ -266,6 +297,7 @@ pub func min_index<T>(xs: List<T>) -> i32 {
     mi_idx
 }
 
+// max_index: Returns the index of the maximum element (-1 if empty).
 pub func max_index<T>(xs: List<T>) -> i32 {
     if len(xs) == 0 { return -1 }
     let mut mi_idx = 0

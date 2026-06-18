@@ -1,35 +1,44 @@
+// identity: Returns the input unchanged.
 pub func identity<T>(x: T) -> T {
     x
 }
 
+// const_val: Ignores second argument, returns first.
 pub func const_val<T, U>(x: T, _y: U) -> T {
     x
 }
 
+// is_even: Returns true if x is divisible by 2.
 pub func is_even(x: i32) -> bool {
     x % 2 == 0
 }
 
+// is_odd: Returns true if x is not divisible by 2.
 pub func is_odd(x: i32) -> bool {
     x % 2 != 0
 }
 
+// is_positive: Returns true if x > 0.
 pub func is_positive(x: i32) -> bool {
     x > 0
 }
 
+// is_negative: Returns true if x < 0.
 pub func is_negative(x: i32) -> bool {
     x < 0
 }
 
+// is_zero: Returns true if x == 0.
 pub func is_zero(x: i32) -> bool {
     x == 0
 }
 
+// negate: Logical NOT for booleans.
 pub func negate(b: bool) -> bool {
     !b
 }
 
+// min3: Returns the smallest of three integers.
 pub func min3(a: i32, b: i32, c: i32) -> i32 {
     if a <= b {
         if a <= c { a } else { c }
@@ -38,6 +47,7 @@ pub func min3(a: i32, b: i32, c: i32) -> i32 {
     }
 }
 
+// max3: Returns the largest of three integers.
 pub func max3(a: i32, b: i32, c: i32) -> i32 {
     if a >= b {
         if a >= c { a } else { c }
@@ -46,10 +56,12 @@ pub func max3(a: i32, b: i32, c: i32) -> i32 {
     }
 }
 
+// swap: Swaps the positions of two values.
 pub func swap<T, U>(a: T, b: U) -> (U, T) {
     (b, a)
 }
 
+// clamp: Restricts value to [min_val, max_val] inclusive.
 pub func clamp(value: i32, min_val: i32, max_val: i32) -> i32 {
     if value < min_val {
         min_val
@@ -60,6 +72,7 @@ pub func clamp(value: i32, min_val: i32, max_val: i32) -> i32 {
     }
 }
 
+// clamp_float: Restricts floating-point value to [min_val, max_val] inclusive.
 pub func clamp_float(value: f64, min_val: f64, max_val: f64) -> f64 {
     if value < min_val {
         min_val
@@ -70,54 +83,66 @@ pub func clamp_float(value: f64, min_val: f64, max_val: f64) -> f64 {
     }
 }
 
+// lerp: Linear interpolation: a + (b - a) * t.
 pub func lerp(a: f64, b: f64, t: f64) -> f64 {
     a + (b - a) * t
 }
 
+// compose: Returns f ∘ g (function composition).
 pub func compose<T, U, V>(f: func(U) -> V, g: func(T) -> U) -> func(T) -> V {
     fn(x: T) -> V { f(g(x)) }
 }
 
+// pipe: Applies f to x (pipeline operator).
 pub func pipe<T, U>(x: T, f: func(T) -> U) -> U {
     f(x)
 }
 
+// tap: Calls f(x) for side effects, then returns x.
 pub func tap<T>(x: T, f: func(T) -> ()) -> T {
     f(x)
     x
 }
 
+// flip: Returns a function with the first two arguments swapped.
 pub func flip<T, U, V>(f: func(T, U) -> V) -> func(U, T) -> V {
     fn(a: U, b: T) -> V { f(b, a) }
 }
 
+// apply: Alias for calling f(x).
 pub func apply<T, U>(f: func(T) -> U, x: T) -> U {
     f(x)
 }
 
+// konst: Returns a function that always returns x regardless of argument.
 pub func konst<T, U>(x: T) -> func(U) -> T {
     fn(_: U) -> T { x }
 }
 
+// fail: Prints an error message and exits with code 1.
 pub func fail(msg: string) -> unit {
     println("ERROR:", msg)
     exit(1)
 }
 
+// unreachable: Prints error and exits — marks unreachable code paths.
 pub func unreachable() -> unit {
     println("ERROR: reached unreachable code")
     exit(1)
 }
 
+// todo: Prints message and exits — marks unimplemented code paths.
 pub func todo() -> unit {
     println("TODO: unimplemented")
     exit(1)
 }
 
+// type_of: Returns the type name of x as a string.
 pub func type_of<T>(x: T) -> string {
     type_name(x)
 }
 
+// assert_non_null: Asserts x is not null/unknown, returns x. Exits on failure.
 pub func assert_non_null<T>(x: T, name: string) -> T {
     if x == unknown {
         println("ERROR:", name, "is null")
@@ -126,40 +151,55 @@ pub func assert_non_null<T>(x: T, name: string) -> T {
     x
 }
 
+// default_i32: Returns 0.
 pub func default_i32() -> i32 { 0 }
 
+// default_f64: Returns 0.0.
 pub func default_f64() -> f64 { 0.0 }
 
+// default_bool: Returns false.
 pub func default_bool() -> bool { false }
 
+// default_string: Returns empty string.
 pub func default_string() -> string { "" }
 
+// increment: Returns x + 1.
 pub func increment(x: i32) -> i32 { x + 1 }
 
+// decrement: Returns x - 1.
 pub func decrement(x: i32) -> i32 { x - 1 }
 
+// double: Returns x * 2.
 pub func double(x: i32) -> i32 { x * 2 }
 
+// triple: Returns x * 3.
 pub func triple(x: i32) -> i32 { x * 3 }
 
+// half: Returns x / 2 (integer division).
 pub func half(x: i32) -> i32 { x / 2 }
 
+// sqr: Returns x * x.
 pub func sqr(x: i32) -> i32 { x * x }
 
+// cube_int: Returns x * x * x.
 pub func cube_int(x: i32) -> i32 { x * x * x }
 
+// eq: Equality check via the Eq trait.
 pub func eq<T>(a: T, b: T) -> bool where T: Eq {
     a == b
 }
 
+// not_eq: Inequality check via the Eq trait.
 pub func not_eq<T>(a: T, b: T) -> bool where T: Eq {
     a != b
 }
 
+// not: Boolean NOT.
 pub func not(b: bool) -> bool {
     !b
 }
 
+// assert_msg: If condition is false, prints message and exits with code 1.
 pub func assert_msg(cond: bool, msg: string) {
     if !cond {
         println("ASSERTION FAILED:", msg)
@@ -167,6 +207,7 @@ pub func assert_msg(cond: bool, msg: string) {
     }
 }
 
+// repeat_action: Calls f(i) for i in 0..n.
 pub func repeat_action(n: i32, f: func(i32) -> ()) {
     let mut ra_i = 0
     while ra_i < n {
@@ -175,6 +216,7 @@ pub func repeat_action(n: i32, f: func(i32) -> ()) {
     }
 }
 
+// times: Calls f() n times.
 pub func times(n: i32, f: func() -> ()) {
     let mut t_i = 0
     while t_i < n {
@@ -183,11 +225,13 @@ pub func times(n: i32, f: func() -> ()) {
     }
 }
 
+// to_int_safe: Parses s as integer, returns default on failure.
 pub func to_int_safe(s: string, default: i32) -> i32 {
     let tis_parsed = str_parse_int(s)
     if tis_parsed.0 { tis_parsed.1 } else { default }
 }
 
+// to_float_safe: Parses s as float, returns default on failure.
 pub func to_float_safe(s: string, default: f64) -> f64 {
     let tfs_parsed = str_parse_float(s)
     if tfs_parsed.0 { tfs_parsed.1 } else { default }

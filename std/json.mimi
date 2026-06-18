@@ -1,40 +1,49 @@
-// JSON operations - wraps compiler builtins
+// JSON operations — wraps compiler builtins
 
+// to_json: Serializes a value to a JSON string.
 pub func to_json(value: Any) -> string {
     to_json(value)
 }
 
+// from_json: Parses a JSON string into a Mimi value (string escape).
 pub func from_json(s: string) -> string {
     from_json(s)
 }
 
+// get_string: Gets a string field from a JSON object by key.
 pub func get_string(json: string, key: string) -> string {
     json_get_string(json, key)
 }
 
+// get_int: Gets an integer field from a JSON object by key.
 pub func get_int(json: string, key: string) -> i64 {
     json_get_int(json, key)
 }
 
+// get_element: Gets the element at index from a JSON array.
 pub func get_element(json: string, index: i32) -> string {
     json_get_element(json, index)
 }
 
+// get_bool: Gets a boolean field from a JSON object by key.
 pub func get_bool(json: string, key: string) -> bool {
     let v = json_get_string(json, key)
     v == "true"
 }
 
+// get_float: Gets a float field from a JSON object by key.
 pub func get_float(json: string, key: string) -> f64 {
     let v = json_get_string(json, key)
     let parsed = str_parse_float(v)
     if parsed.0 { parsed.1 } else { 0.0 }
 }
 
+// has_key: Returns true if the JSON object contains the given key.
 pub func has_key(json: string, key: string) -> bool {
     json_get_string(json, key) != ""
 }
 
+// is_valid_json: Returns true if s is syntactically valid JSON.
 pub func is_valid_json(s: string) -> bool {
     let result = from_json(s)
     result != ""
@@ -46,14 +55,17 @@ pub func to_string_pretty(json: string) -> string {
     json
 }
 
+// get_object: Gets a nested JSON object by key as a string.
 pub func get_object(json: string, key: string) -> string {
     json_get_string(json, key)
 }
 
+// get_array: Gets a nested JSON array by key as a string.
 pub func get_array(json: string, key: string) -> string {
     json_get_string(json, key)
 }
 
+// array_length: Returns the number of elements in a JSON array.
 pub func array_length(json: string) -> i32 {
     let mut al_i = 0
     let mut al_found = true

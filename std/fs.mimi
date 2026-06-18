@@ -1,25 +1,34 @@
+// Filesystem operations
+
+// exists: Returns true if path exists on disk.
 pub func exists(path: string) -> bool {
     file_exists(path)
 }
 
+// read: Reads the entire file at path into a string.
 pub func read(path: string) -> string {
     read_file(path)
 }
 
+// write: Writes content to path, overwriting if it exists.
 pub func write(path: string, content: string) {
     write_file(path, content)
 }
 
+// read_lines: Reads file at path and splits by newline.
 pub func read_lines(path: string) -> List<string> {
     str_split(read_file(path), "\n")
 }
 
 // Note: file_size reads the entire file to measure length.
 // A dedicated stat() call is not yet available in the C runtime.
+//
+// file_size: Returns the size of the file at path in bytes.
 pub func file_size(path: string) -> i32 {
     len(read_file(path))
 }
 
+// write_lines: Writes each string in xs as a line to path.
 pub func write_lines(path: string, xs: List<string>) {
     write_file(path, str_join(xs, "\n"))
 }
