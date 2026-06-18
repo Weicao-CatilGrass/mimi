@@ -10,7 +10,7 @@
 
 use std::collections::HashSet;
 
-use crate::ast::{ExternFunc, Expr, Type};
+use crate::ast::{CapMode, ExternFunc, Expr, Type};
 
 /// Contract for one extern function.
 #[derive(Debug, Clone)]
@@ -40,7 +40,8 @@ pub enum FfiArgContract {
     /// A Mimi `string` whose ownership is transferred to C (C must free).
     StringTransfer,
     /// A linear capability passed as an opaque handle.
-    Cap,
+    /// Preserves the `CapMode` (Borrow or Move) from the AST.
+    Cap(CapMode),
     /// Raw immutable pointer `*T`.
     RawPtr(Box<Type>),
     /// Raw mutable pointer `*mut T`.
@@ -102,8 +103,9 @@ impl FfiContract {
             .iter()
             .map(|p| {
                 // If the parameter has a cap_mode annotation (cap @), treat it as Cap
-                if p.cap_mode.is_some() {
-                    FfiArgContract::Cap
+                // and preserve the mode (Borrow vs Move)
+                if let Some(mode) = p.cap_mode {
+                    FfiArgContract::Cap(mode)
                 } else {
                     FfiArgContract::from_type_with_caps(&p.ty, cap_names)
                 }
@@ -145,7 +147,7 @@ impl FfiArgContract {
         match ty {
             Type::Name(name, _) => {
                 if cap_names.contains(name.as_str()) {
-                    return FfiArgContract::Cap;
+                    return FfiArgContract::Cap(CapMode::Borrow);
                 }
                 match name.as_str() {
                     "i32" | "i64" | "bool" => FfiArgContract::Int,
@@ -155,7 +157,7 @@ impl FfiArgContract {
                     other => FfiArgContract::Unsupported(other.to_string()),
                 }
             }
-            Type::Cap(_) => FfiArgContract::Cap,
+            Type::Cap(_) => FfiArgContract::Cap(CapMode::Move),
             Type::RawPtr(inner) => FfiArgContract::RawPtr(inner.clone()),
             Type::RawPtrMut(inner) => FfiArgContract::RawPtrMut(inner.clone()),
             Type::CShared(inner) => FfiArgContract::CShared(inner.clone()),

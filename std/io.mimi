@@ -40,36 +40,54 @@ pub func print_list<T>(xs: List<T>) {
     println(to_string(xs))
 }
 
-pub func input_line() -> string {
+pub func input_line() -> Result<string, string> {
     let result = input()
     if result.0 {
-        result.1
+        Result::Ok(result.1)
     } else {
-        ""
+        Result::Err("input: failed to read line")
     }
 }
 
-pub func input_int() -> i32 {
-    let line = input_line()
-    let parsed = str_parse_int(line)
-    if parsed.0 {
-        parsed.1
-    } else {
-        0
+pub func input_int() -> Result<i32, string> {
+    match input_line() {
+        Result::Ok(line) => {
+            let parsed = str_parse_int(line)
+            if parsed.0 {
+                Result::Ok(parsed.1)
+            } else {
+                Result::Err("input_int: not a valid integer")
+            }
+        }
+        Result::Err(e) => Result::Err(e)
     }
 }
 
-pub func input_float() -> f64 {
-    let line = input_line()
-    let parsed = str_parse_float(line)
-    if parsed.0 {
-        parsed.1
-    } else {
-        0.0
+pub func input_float() -> Result<f64, string> {
+    match input_line() {
+        Result::Ok(line) => {
+            let parsed = str_parse_float(line)
+            if parsed.0 {
+                Result::Ok(parsed.1)
+            } else {
+                Result::Err("input_float: not a valid float")
+            }
+        }
+        Result::Err(e) => Result::Err(e)
     }
 }
 
-pub func input_bool() -> bool {
-    let line = input_line()
-    line == "true" || line == "yes" || line == "1"
+pub func input_bool() -> Result<bool, string> {
+    match input_line() {
+        Result::Ok(line) => {
+            if line == "true" || line == "yes" || line == "1" {
+                Result::Ok(true)
+            } else if line == "false" || line == "no" || line == "0" {
+                Result::Ok(false)
+            } else {
+                Result::Err("input_bool: expected 'true'/'false'/'yes'/'no'/'1'/'0'")
+            }
+        }
+        Result::Err(e) => Result::Err(e)
+    }
 }
