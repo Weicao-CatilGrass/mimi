@@ -98,7 +98,7 @@ impl<'ctx> CodeGenerator<'ctx> {
             if let Some(ty) = types::mimi_type_to_llvm(self.context, &param.ty) {
                 let alloca = self.builder.build_alloca(ty, &param.name)
                     .map_err(|e| format!("alloca error: {}", e))?;
-                self.builder.build_store(alloca, function.get_nth_param(i as u32).expect("param index matches function signature"))
+                self.builder.build_store(alloca, function.get_nth_param(i as u32).ok_or_else(|| "param index matches function signature".to_string())?)
                     .map_err(|e| format!("store error: {}", e))?;
                 vars.insert(param.name.clone(), (alloca, ty));
                 
@@ -193,7 +193,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                         return Err("[E0712] if condition must be boolean".into());
                     };
 
-                    let function = self.current_function().unwrap();
+                    let function = self.current_function().ok_or_else(|| "codegen: no current function for if".to_string())?;
                     let then_bb = self.context.append_basic_block(function, "then");
                     let else_bb = self.context.append_basic_block(function, "else");
                     let merge_bb = self.context.append_basic_block(function, "ifcont");
@@ -206,14 +206,14 @@ impl<'ctx> CodeGenerator<'ctx> {
                         self.builder.position_at_end(then_bb);
                         let mut then_vars = vars.clone();
                         let v = self.compile_block_last_val(then_, &mut then_vars)?;
-                        let current = self.builder.get_insert_block().unwrap();
+                        let current = self.builder.get_insert_block().ok_or_else(|| "codegen: no insert block for then block".to_string())?;
                         if current.get_terminator().is_none() {
                             self.builder.build_unconditional_branch(merge_bb)
                                 .map_err(|e| format!("branch error: {}", e))?;
                         }
                         v
                     };
-                    let then_bb_end = self.builder.get_insert_block().unwrap();
+                    let then_bb_end = self.builder.get_insert_block().ok_or_else(|| "codegen: no insert block after then".to_string())?;
 
                     // Else block
                     let else_val = {
@@ -221,7 +221,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                         if let Some(else_block) = else_ {
                             let mut else_vars = vars.clone();
                             let v = self.compile_block_last_val(else_block, &mut else_vars)?;
-                            let current = self.builder.get_insert_block().unwrap();
+                            let current = self.builder.get_insert_block().ok_or_else(|| "codegen: no insert block for else block".to_string())?;
                             if current.get_terminator().is_none() {
                                 self.builder.build_unconditional_branch(merge_bb)
                                     .map_err(|e| format!("branch error: {}", e))?;
@@ -231,7 +231,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                             self.context.i64_type().const_int(0, false).into()
                         }
                     };
-                    let else_bb_end = self.builder.get_insert_block().unwrap();
+                    let else_bb_end = self.builder.get_insert_block().ok_or_else(|| "codegen: no insert block after else".to_string())?;
                     // No-else case: else_bb has no terminator yet — supply one
                     if else_bb_end.get_terminator().is_none() {
                         self.builder.build_unconditional_branch(merge_bb)
@@ -251,7 +251,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     }
                 }
                 Stmt::While { cond, body } => {
-                    let function = self.current_function().unwrap();
+                    let function = self.current_function().ok_or_else(|| "codegen: no current function for while".to_string())?;
                     let loop_bb = self.context.append_basic_block(function, "loop");
                     let body_bb = self.context.append_basic_block(function, "loopbody");
                     let merge_bb = self.context.append_basic_block(function, "loopcont");
@@ -289,7 +289,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     self.builder.position_at_end(merge_bb);
                 }
                 Stmt::For { var, iterable, body } => {
-                    let function = self.current_function().unwrap();
+                    let function = self.current_function().ok_or_else(|| "codegen: no current function for for".to_string())?;
                     let iterable_val = self.compile_expr(iterable, &vars)?;
 
                     if let Expr::Binary(BinOp::Range, start_expr, end_expr) = iterable {
@@ -482,7 +482,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                         self.builder.build_unconditional_branch(target)
                             .map_err(|e| format!("break error: {}", e))?;
                         // Create unreachable block for subsequent statements
-                        let function = self.current_function().unwrap();
+                        let function = self.current_function().ok_or_else(|| "codegen: no current function for break".to_string())?;
                         let unreachable = self.context.append_basic_block(function, "unreachable");
                         self.builder.position_at_end(unreachable);
                     } else {
@@ -493,7 +493,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     if let Some(target) = self.loop_continue {
                         self.builder.build_unconditional_branch(target)
                             .map_err(|e| format!("continue error: {}", e))?;
-                        let function = self.current_function().unwrap();
+                        let function = self.current_function().ok_or_else(|| "codegen: no current function for continue".to_string())?;
                         let unreachable = self.context.append_basic_block(function, "unreachable");
                         self.builder.position_at_end(unreachable);
                     } else {
@@ -679,7 +679,7 @@ impl<'ctx> CodeGenerator<'ctx> {
             if let Some(ty) = types::mimi_type_to_llvm(self.context, &resolved) {
                 let alloca = self.builder.build_alloca(ty, &param.name)
                     .map_err(|e| format!("alloca error: {}", e))?;
-                self.builder.build_store(alloca, function.get_nth_param(i as u32).expect("param index matches"))
+                self.builder.build_store(alloca, function.get_nth_param(i as u32).ok_or_else(|| "param index matches".to_string())?)
                     .map_err(|e| format!("store error: {}", e))?;
                 vars.insert(param.name.clone(), (alloca, ty));
                 if matches!(&param.ty, Type::Cap(_)) {
