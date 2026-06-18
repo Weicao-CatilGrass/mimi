@@ -1,29 +1,36 @@
-// Testing utilities - wraps compiler builtins
+// Testing utilities — wraps compiler builtins
 
+// assert_eq_int: Asserts a == b, panics on mismatch.
 pub func assert_eq_int(a: i32, b: i32) {
     assert_eq(a, b)
 }
 
+// assert_ne_int: Asserts a != b, panics on mismatch.
 pub func assert_ne_int(a: i32, b: i32) {
     assert_ne(a, b)
 }
 
+// assert_approx_eq_float: Asserts a ≈ b within floating tolerance.
 pub func assert_approx_eq_float(a: f64, b: f64) {
     assert_approx_eq(a, b)
 }
 
+// assert_true: Asserts cond is true.
 pub func assert_true(cond: bool) {
     assert(cond)
 }
 
+// assert_false: Asserts cond is false.
 pub func assert_false(cond: bool) {
     assert(!cond)
 }
 
+// assert_eq_string: Asserts a == b for strings.
 pub func assert_eq_string(a: string, b: string) {
     if a == b { } else { assert(false) }
 }
 
+// assert_eq_bool: Asserts a == b for booleans.
 pub func assert_eq_bool(a: bool, b: bool) {
     if a == b { } else { assert(false) }
 }

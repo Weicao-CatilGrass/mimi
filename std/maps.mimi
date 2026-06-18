@@ -1,41 +1,46 @@
-// Map (dictionary) operations - wraps compiler builtins
-// Maps use string keys and are implemented as Records internally.
+// Map (dictionary) operations — wraps compiler builtins
 
+// new: Creates an empty Record (map).
 pub func new() -> Record {
     map_new()
 }
 
+// get: Looks up key in map m. Returns (found, value).
 pub func get(m: Record, key: string) -> (bool, Any) {
     map_get(m, key)
 }
 
+// set: Sets key to value in map m, returns updated map.
 pub func set(m: Record, key: string, value: Any) -> Record {
     map_set(m, key, value)
 }
 
+// has_key: Returns true if key exists in m.
 pub func has_key(m: Record, key: string) -> bool {
     map_has_key(m, key)
 }
 
+// remove: Removes key from map m, returns updated map.
 pub func remove(m: Record, key: string) -> Record {
     map_remove(m, key)
 }
 
+// size: Returns the number of entries in map m.
 pub func size(m: Record) -> i32 {
     map_size(m)
 }
 
+// from_list: Creates a map from a list of (key, value) pairs.
 pub func from_list(pairs: List<(string, Any)>) -> Record {
     map_from_list(pairs)
 }
 
-// keys() and values() are available as builtins directly.
-// Use them without the std::maps:: prefix to avoid shadowing.
-
+// is_empty: Returns true if map m has 0 entries.
 pub func is_empty(m: Record) -> bool {
     map_size(m) == 0
 }
 
+// get_or_default: Looks up key, returns default if not found.
 pub func get_or_default(m: Record, key: string, default: Any) -> Any {
     let result = map_get(m, key)
     if result.0 {
@@ -45,6 +50,7 @@ pub func get_or_default(m: Record, key: string, default: Any) -> Any {
     }
 }
 
+// merge: Returns a new map with all entries from a and b (b overwrites a).
 pub func merge(a: Record, b: Record) -> Record {
     let b_keys = keys(b)
     let mut result = a
@@ -55,12 +61,14 @@ pub func merge(a: Record, b: Record) -> Record {
     result
 }
 
+// to_list: Converts a map to a list of (key, value) pairs.
 pub func to_list(m: Record) -> List<(string, Any)> {
     let ks = keys(m)
     let vs = values(m)
     zip(ks, vs)
 }
 
+// filter_keys: Returns a new map with only keys satisfying pred.
 pub func filter_keys(m: Record, pred: func(string) -> bool) -> Record {
     let ks = keys(m)
     let mut result = map_new()
@@ -73,6 +81,7 @@ pub func filter_keys(m: Record, pred: func(string) -> bool) -> Record {
     result
 }
 
+// map_values: Returns a new map with f applied to each value.
 pub func map_values(m: Record, f: func(Any) -> Any) -> Record {
     let ks = keys(m)
     let mut result = map_new()
@@ -83,6 +92,7 @@ pub func map_values(m: Record, f: func(Any) -> Any) -> Record {
     result
 }
 
+// update: Applies f to the value at key, returns updated map.
 pub func update(m: Record, key: string, f: func(Any) -> Any) -> Record {
     let uv = map_get(m, key)
     if uv.0 {
@@ -92,6 +102,7 @@ pub func update(m: Record, key: string, f: func(Any) -> Any) -> Record {
     }
 }
 
+// pick: Returns a new map with only the specified keys.
 pub func pick(m: Record, ks: List<string>) -> Record {
     let mut result = map_new()
     for pk in ks {
@@ -103,6 +114,7 @@ pub func pick(m: Record, ks: List<string>) -> Record {
     result
 }
 
+// omit: Returns a new map without the specified keys.
 pub func omit(m: Record, ks: List<string>) -> Record {
     let all_keys = keys(m)
     let mut result = m

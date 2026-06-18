@@ -1,23 +1,31 @@
+// Result type utilities
+
+// is_ok_result: Returns true if result is Ok.
 pub func is_ok_result<T, E>(result: Result<T, E>) -> bool {
     result.is_ok()
 }
 
+// is_err_result: Returns true if result is Err.
 pub func is_err_result<T, E>(result: Result<T, E>) -> bool {
     result.is_err()
 }
 
+// result_unwrap: Returns the Ok value or panics on Err.
 pub func result_unwrap<T, E>(result: Result<T, E>) -> T {
     result.unwrap()
 }
 
+// unwrap_or: Returns the Ok value, or default on Err.
 pub func unwrap_or<T, E>(result: Result<T, E>, default: T) -> T {
     if result.is_ok() { result.unwrap() } else { default }
 }
 
+// expect_result: Returns the Ok value, or panics with msg on Err.
 pub func expect_result<T, E>(result: Result<T, E>, msg: string) -> T {
     result.expect(msg)
 }
 
+// map_result: Applies f to the Ok value, preserving Err.
 pub func map_result<T, E, U>(result: Result<T, E>, f: func(T) -> U) -> Result<U, E> {
     if result.is_ok() {
         Result::Ok(f(result.unwrap()))
@@ -26,6 +34,7 @@ pub func map_result<T, E, U>(result: Result<T, E>, f: func(T) -> U) -> Result<U,
     }
 }
 
+// map_err_result: Applies f to the Err value, preserving Ok.
 pub func map_err_result<T, E, F>(result: Result<T, E>, f: func(E) -> F) -> Result<T, F> {
     result.map_err(f)
 }

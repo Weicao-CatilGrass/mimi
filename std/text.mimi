@@ -1,22 +1,29 @@
+// Text processing utilities
+
+// is_blank: Returns true if s is empty or whitespace-only.
 pub func is_blank(s: string) -> bool {
     len(str_trim(s)) == 0
 }
 
+// is_numeric: Returns true if s parses as an integer.
 pub func is_numeric(s: string) -> bool {
     let inn_parsed = str_parse_int(s)
     inn_parsed.0
 }
 
+// count_lines: Returns the number of lines in s.
 pub func count_lines(s: string) -> i32 {
     len(str_split(s, "\n"))
 }
 
+// slugify: Converts s to lowercase with hyphens.
 pub func slugify(s: string) -> string {
     let lower = str_to_lower(s)
     let sl_parts = str_split(lower, " ")
     str_join(sl_parts, "-")
 }
 
+// indent_text: Prepends n spaces to each line of s.
 pub func indent_text(s: string, n: i32) -> string {
     let it_lines = str_split(s, "\n")
     let mut it_res: List<string> = []
@@ -26,6 +33,7 @@ pub func indent_text(s: string, n: i32) -> string {
     str_join(it_res, "\n")
 }
 
+// wrap_text: Wraps s to width columns, returns list of lines.
 pub func wrap_text(s: string, width: i32) -> List<string> {
     let wt_words = str_split(s, " ")
     let mut wt_lines: List<string> = []
@@ -47,6 +55,7 @@ pub func wrap_text(s: string, width: i32) -> List<string> {
     wt_lines
 }
 
+// camel_to_snake: Converts CamelCase to snake_case.
 pub func camel_to_snake(s: string) -> string {
     let mut cts_res: List<string> = []
     let mut cts_word = ""

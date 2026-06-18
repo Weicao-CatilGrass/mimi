@@ -1,25 +1,31 @@
+// print_line: Prints s followed by a newline to stdout.
 pub func print_line(s: string) {
     println(s)
 }
 
+// print_raw: Prints s to stdout without a trailing newline.
 pub func print_raw(s: string) {
     print(s)
 }
 
+// print_format: Joins parts and prints without separator.
 pub func print_format(parts: List<string>) {
     print(str_join(parts, ""))
 }
 
+// print_err: Prints s followed by a newline to stderr.
 pub func print_err(s: string) {
     eprintln(s)
 }
 
+// print_lines: Prints each element of xs on its own line.
 pub func print_lines(xs: List<string>) {
     for pl_x in xs {
         println(pl_x)
     }
 }
 
+// print_bool: Prints "true" or "false".
 pub func print_bool(b: bool) {
     if b {
         println("true")
@@ -28,18 +34,22 @@ pub func print_bool(b: bool) {
     }
 }
 
+// print_int: Prints n to stdout.
 pub func print_int(n: i32) {
     println(to_string(n))
 }
 
+// print_float: Prints f to stdout.
 pub func print_float(f: f64) {
     println(to_string(f))
 }
 
+// print_list: Prints xs to stdout using its Show representation.
 pub func print_list<T>(xs: List<T>) {
     println(to_string(xs))
 }
 
+// input_line: Reads a line from stdin. Returns Err on failure.
 pub func input_line() -> Result<string, string> {
     let result = input()
     if result.0 {
@@ -49,6 +59,7 @@ pub func input_line() -> Result<string, string> {
     }
 }
 
+// input_int: Reads and parses an integer from stdin. Returns Err on failure.
 pub func input_int() -> Result<i32, string> {
     match input_line() {
         Result::Ok(line) => {
@@ -63,6 +74,7 @@ pub func input_int() -> Result<i32, string> {
     }
 }
 
+// input_float: Reads and parses a float from stdin. Returns Err on failure.
 pub func input_float() -> Result<f64, string> {
     match input_line() {
         Result::Ok(line) => {
@@ -77,6 +89,7 @@ pub func input_float() -> Result<f64, string> {
     }
 }
 
+// input_bool: Reads a bool from stdin (true/false/yes/no/1/0). Returns Err on failure.
 pub func input_bool() -> Result<bool, string> {
     match input_line() {
         Result::Ok(line) => {
