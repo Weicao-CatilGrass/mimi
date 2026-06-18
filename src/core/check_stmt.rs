@@ -139,14 +139,19 @@ impl<'a> Checker<'a> {
                 let declared = ty.as_ref().map(|t| self.resolve_type(t));
                 let final_ty = match declared {
                     Some(d) => {
-                        if !same_type(&d, &init_ty) {
-                            self.emit_code(crate::diagnostic::codes::E0209, format!(
-                                "pattern declared as {} but initialized with {}",
-                                fmt_type(&d),
-                                fmt_type(&init_ty)
-                            ));
+                        if matches!(&d, Type::Infer) {
+                            // _ type: infer from init expression
+                            init_ty.clone()
+                        } else {
+                            if !same_type(&d, &init_ty) {
+                                self.emit_code(crate::diagnostic::codes::E0209, format!(
+                                    "pattern declared as {} but initialized with {}",
+                                    fmt_type(&d),
+                                    fmt_type(&init_ty)
+                                ));
+                            }
+                            d
                         }
-                        d
                     }
                     None => {
                         if *ref_ {

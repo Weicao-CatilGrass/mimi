@@ -707,12 +707,13 @@ impl<'a> Checker<'a> {
             ),
             Type::Cap(_) | Type::Shared(_) | Type::LocalShared(_) | Type::Weak(_)
                 | Type::CShared(_) | Type::CBorrow(_) | Type::CBorrowMut(_)
-                | Type::RawPtr(_) | Type::RawPtrMut(_) | Type::RawString | Type::Allocator => ty.clone(),
+                | Type::RawPtr(_) | Type::RawPtrMut(_) | Type::RawString | Type::Allocator | Type::Infer => ty.clone(),
             Type::CBuffer(inner) => Type::CBuffer(Box::new(self.resolve_type(inner))),
             Type::Newtype(name, inner) => Type::Newtype(name.clone(), Box::new(self.resolve_type(inner))),
             Type::Array(inner, size) => Type::Array(Box::new(self.resolve_type(inner)), *size),
             Type::Slice(inner) => Type::Slice(Box::new(self.resolve_type(inner))),
             Type::Nothing => Type::Nothing,
+            Type::Infer => Type::Infer,
             Type::ImplTrait(traits) => Type::ImplTrait(traits.clone()),
         }
     }
@@ -747,7 +748,7 @@ impl<'a> Checker<'a> {
                 false
             }
             Type::ImplTrait(_) => false,
-            Type::Nothing | Type::Allocator => false,
+            Type::Nothing | Type::Allocator | Type::Infer => false,
         }
     }
 
@@ -970,7 +971,7 @@ impl<'a> Checker<'a> {
                 }
                 self.check_type_well_formed_inner(inner, context, allow_passport);
             }
-            Type::Cap(_) | Type::Nothing | Type::Allocator => {}
+            Type::Cap(_) | Type::Nothing | Type::Allocator | Type::Infer => {}
             Type::Array(inner, _) | Type::Slice(inner) => {
                 self.check_type_well_formed_inner(inner, context, allow_passport);
             }
@@ -1001,7 +1002,7 @@ impl<'a> Checker<'a> {
             Type::ExternFunc(args, ret) => args.iter().any(|a| Self::type_contains_passport(a)) || Self::type_contains_passport(ret),
             Type::CBuffer(inner) => Self::type_contains_passport(inner),
             Type::Newtype(_, inner) => Self::type_contains_passport(inner),
-            Type::Cap(_) | Type::Nothing | Type::Allocator => false,
+            Type::Cap(_) | Type::Nothing | Type::Allocator | Type::Infer => false,
             Type::ImplTrait(_) => false,
         }
     }
@@ -1509,7 +1510,7 @@ pub fn subst_type_params(ty: &Type, generics: &[GenericParam], type_map: &HashMa
         Type::CBorrow(inner) => Type::CBorrow(Box::new(subst_type_params(inner, generics, type_map))),
         Type::CBorrowMut(inner) => Type::CBorrowMut(Box::new(subst_type_params(inner, generics, type_map))),
         Type::Newtype(name, inner) => Type::Newtype(name.clone(), Box::new(subst_type_params(inner, generics, type_map))),
-        Type::Cap(_) | Type::Nothing | Type::RawString | Type::Allocator => ty.clone(),
+        Type::Cap(_) | Type::Nothing | Type::RawString | Type::Allocator | Type::Infer => ty.clone(),
         Type::ExternFunc(args, ret) => Type::ExternFunc(
             args.iter().map(|a| subst_type_params(a, generics, type_map)).collect(),
             Box::new(subst_type_params(ret, generics, type_map)),
@@ -1545,11 +1546,13 @@ fn same_type(a: &Type, b: &Type) -> bool {
             n == n2
         }
         (Type::Allocator, Type::Allocator) => true,
+        (Type::Infer, _) | (_, Type::Infer) => true,
         (Type::Array(a_inner, a_size), Type::Array(b_inner, b_size)) => {
             a_size == b_size && same_type(a_inner, b_inner)
         }
         (Type::Slice(a), Type::Slice(b)) => same_type(a, b),
         (Type::ImplTrait(a), Type::ImplTrait(b)) => a == b,
+        (Type::Infer, _) | (_, Type::Infer) => true,
         _ => false,
     }
 }
@@ -1600,6 +1603,7 @@ pub fn fmt_type(t: &Type) -> String {
         Type::CBorrow(inner) => format!("c_borrow {}", fmt_type(inner)),
         Type::CBorrowMut(inner) => format!("c_borrow_mut {}", fmt_type(inner)),
         Type::RawString => "raw_string".to_string(),
+        Type::Infer => "_".to_string(),
         Type::ExternFunc(args, ret) => {
             let args_str: Vec<String> = args.iter().map(|a| fmt_type(a)).collect();
             format!("extern \"C\" fn({}) -> {}", args_str.join(", "), fmt_type(ret))
