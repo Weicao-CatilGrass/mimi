@@ -725,8 +725,12 @@ impl<'a> Checker<'a> {
     /// extern function signature.
     fn is_valid_extern_type(&self, ty: &Type, _in_pointer: bool) -> bool {
         match ty {
-            // Scalars
-            Type::Name(name, _) => matches!(name.as_str(), "i32" | "i64" | "f64" | "bool" | "string" | "unit"),
+            // Scalars and #[repr(C)] user types
+            Type::Name(name, _) => {
+                matches!(name.as_str(), "i32" | "i64" | "f64" | "bool" | "string" | "unit")
+                || (self.types.get(name).map(|t| t.attributes.contains(&TypeAttribute::ReprC)).unwrap_or(false)
+                    && matches!(self.types.get(name).map(|t| &t.kind), Some(TypeDefKind::Enum(_))))
+            }
             // Capabilities
             Type::Cap(_) => true,
             // Raw pointers and FFI passport types
