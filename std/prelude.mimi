@@ -1,3 +1,11 @@
+pub func identity<T>(x: T) -> T {
+    x
+}
+
+pub func const_val<T, U>(x: T, _y: U) -> T {
+    x
+}
+
 pub func is_even(x: i32) -> bool {
     x % 2 == 0
 }
@@ -6,10 +14,62 @@ pub func is_odd(x: i32) -> bool {
     x % 2 != 0
 }
 
-pub func identity<T>(x: T) -> T {
-    x
+pub func is_positive(x: i32) -> bool {
+    x > 0
 }
 
-pub func const<T, U>(x: T, _y: U) -> T {
-    x
+pub func is_negative(x: i32) -> bool {
+    x < 0
+}
+
+pub func is_zero(x: i32) -> bool {
+    x == 0
+}
+
+pub func negate(b: bool) -> bool {
+    !b
+}
+
+pub func min3(a: i32, b: i32, c: i32) -> i32 {
+    if a <= b {
+        if a <= c { a } else { c }
+    } else {
+        if b <= c { b } else { c }
+    }
+}
+
+pub func max3(a: i32, b: i32, c: i32) -> i32 {
+    if a >= b {
+        if a >= c { a } else { c }
+    } else {
+        if b >= c { b } else { c }
+    }
+}
+
+pub func swap<T, U>(a: T, b: U) -> (U, T) {
+    (b, a)
+}
+
+pub func clamp(value: i32, min_val: i32, max_val: i32) -> i32 {
+    if value < min_val {
+        min_val
+    } else if value > max_val {
+        max_val
+    } else {
+        value
+    }
+}
+
+pub func clamp_float(value: f64, min_val: f64, max_val: f64) -> f64 {
+    if value < min_val {
+        min_val
+    } else if value > max_val {
+        max_val
+    } else {
+        value
+    }
+}
+
+pub func lerp(a: f64, b: f64, t: f64) -> f64 {
+    a + (b - a) * t
 }

@@ -1,0 +1,121 @@
+pub func is_empty(s: string) -> bool {
+    len(s) == 0
+}
+
+pub func char_at(s: string, index: i32) -> string {
+    str_char_at(s, index)
+}
+
+pub func substring(s: string, start: i32, end: i32) -> string {
+    str_substring(s, start, end)
+}
+
+pub func starts_with(s: string, prefix: string) -> bool {
+    str_starts_with(s, prefix)
+}
+
+pub func ends_with(s: string, suffix: string) -> bool {
+    str_ends_with(s, suffix)
+}
+
+pub func to_upper(s: string) -> string {
+    str_to_upper(s)
+}
+
+pub func to_lower(s: string) -> string {
+    str_to_lower(s)
+}
+
+pub func trim(s: string) -> string {
+    str_trim(s)
+}
+
+pub func replace(s: string, from: string, to: string) -> string {
+    str_replace(s, from, to)
+}
+
+pub func split(s: string, delimiter: string) -> List<string> {
+    str_split(s, delimiter)
+}
+
+pub func join(parts: List<string>, separator: string) -> string {
+    str_join(parts, separator)
+}
+
+pub func repeat(s: string, n: i32) -> string {
+    str_repeat(s, n)
+}
+
+pub func index_of(s: string, sub: string) -> (bool, i32) {
+    str_index_of(s, sub)
+}
+
+pub func parse_int(s: string) -> (bool, i32) {
+    str_parse_int(s)
+}
+
+pub func parse_float(s: string) -> (bool, f64) {
+    str_parse_float(s)
+}
+
+pub func is_digit(s: string) -> bool {
+    len(s) == 1 && char_at(s, 0) >= "0" && char_at(s, 0) <= "9"
+}
+
+pub func is_alpha(s: string) -> bool {
+    len(s) == 1 && ((char_at(s, 0) >= "a" && char_at(s, 0) <= "z") || (char_at(s, 0) >= "A" && char_at(s, 0) <= "Z"))
+}
+
+pub func is_alphanumeric(s: string) -> bool {
+    is_digit(s) || is_alpha(s)
+}
+
+pub func count_char(s: string, target: string) -> i32 {
+    let mut cc_cnt = 0
+    for cc_i in range(0, len(s)) {
+        if char_at(s, cc_i) == target {
+            cc_cnt += 1
+        }
+    }
+    cc_cnt
+}
+
+pub func trim_left(s: string) -> string {
+    let mut tl_idx = 0
+    while tl_idx < len(s) && char_at(s, tl_idx) == " " {
+        tl_idx += 1
+    }
+    substring(s, tl_idx, len(s))
+}
+
+pub func trim_right(s: string) -> string {
+    let mut tr_end = len(s)
+    while tr_end > 0 && char_at(s, tr_end - 1) == " " {
+        tr_end -= 1
+    }
+    substring(s, 0, tr_end)
+}
+
+pub func pad_left(s: string, width: i32, pad_char: string) -> string {
+    if len(s) >= width {
+        s
+    } else {
+        repeat(pad_char, width - len(s)) + s
+    }
+}
+
+pub func pad_right(s: string, width: i32, pad_char: string) -> string {
+    if len(s) >= width {
+        s
+    } else {
+        s + repeat(pad_char, width - len(s))
+    }
+}
+
+pub func lines(s: string) -> List<string> {
+    str_split(s, "\n")
+}
+
+pub func words(s: string) -> List<string> {
+    str_split(trim(s), " ")
+}

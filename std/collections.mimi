@@ -1,20 +1,112 @@
-pub func sum(xs: List<i32>) -> i32 {
-    let mut total = 0
-    for x in xs {
-        total = total + x
-    }
-    total
+pub func is_empty_list(xs: List<i32>) -> bool {
+    len(xs) == 0
 }
 
-pub func contains<T>(xs: List<T>, x: T) -> bool {
-    for elem in xs {
-        if elem == x {
-            return true
+pub func first(xs: List<i32>) -> i32 {
+    xs[0]
+}
+
+pub func last(xs: List<i32>) -> i32 {
+    xs[len(xs) - 1]
+}
+
+pub func take(xs: List<i32>, n: i32) -> List<i32> {
+    if n < len(xs) {
+        xs[0..n]
+    } else {
+        xs
+    }
+}
+
+pub func drop_n(xs: List<i32>, n: i32) -> List<i32> {
+    if n < len(xs) {
+        xs[n..len(xs)]
+    } else {
+        []
+    }
+}
+
+pub func find(xs: List<i32>, target: i32) -> (bool, i32) {
+    for fi_i in range(0, len(xs)) {
+        if xs[fi_i] == target {
+            return (true, fi_i)
         }
     }
-    false
+    (false, -1)
 }
 
-pub func is_empty<T>(xs: List<T>) -> bool {
-    len(xs) == 0
+pub func count_val(xs: List<i32>, target: i32) -> i32 {
+    reduce(xs, fn(cv_acc: i32, cv_x: i32) -> i32 {
+        if cv_x == target { cv_acc + 1 } else { cv_acc }
+    }, 0)
+}
+
+pub func dedup(xs: List<i32>) -> List<i32> {
+    reduce(xs, fn(dd_acc: List<i32>, dd_x: i32) -> List<i32> {
+        if contains(dd_acc, dd_x) { dd_acc } else { push(dd_acc, dd_x) }
+    }, [])
+}
+
+pub func concat(xs: List<i32>, ys: List<i32>) -> List<i32> {
+    reduce(ys, fn(ct_acc: List<i32>, ct_x: i32) -> List<i32> {
+        push(ct_acc, ct_x)
+    }, xs)
+}
+
+pub func reverse_list(xs: List<i32>) -> List<i32> {
+    reverse(xs)
+}
+
+pub func remove_at(xs: List<i32>, index: i32) -> List<i32> {
+    reduce(range(0, len(xs)), fn(ra_acc: List<i32>, ra_i: i32) -> List<i32> {
+        if ra_i != index { push(ra_acc, xs[ra_i]) } else { ra_acc }
+    }, [])
+}
+
+pub func remove_value(xs: List<i32>, value: i32) -> List<i32> {
+    reduce(xs, fn(rv_acc: List<i32>, rv_x: i32) -> List<i32> {
+        if rv_x != value { push(rv_acc, rv_x) } else { rv_acc }
+    }, [])
+}
+
+pub func fill_list(n: i32, value: i32) -> List<i32> {
+    reduce(range(0, n), fn(fl_acc: List<i32>, _: i32) -> List<i32> {
+        push(fl_acc, value)
+    }, [])
+}
+
+pub func range_step(start: i32, end: i32, step: i32) -> List<i32> {
+    if step == 0 {
+        []
+    } else if step > 0 {
+        reduce(range(0, (end - start + step - 1) / step), fn(rs_acc: List<i32>, rs_k: i32) -> List<i32> {
+            push(rs_acc, start + rs_k * step)
+        }, [])
+    } else {
+        reduce(range(0, (start - end - step - 1) / (-step)), fn(rs_acc: List<i32>, rs_k: i32) -> List<i32> {
+            push(rs_acc, start + rs_k * step)
+        }, [])
+    }
+}
+
+pub func sum_float(xs: List<f64>) -> f64 {
+    reduce(xs, fn(sf_acc: f64, sf_x: f64) -> f64 {
+        sf_acc + sf_x
+    }, 0.0)
+}
+
+pub func filter_positives(xs: List<i32>) -> List<i32> {
+    filter(xs, fn(fp_x: i32) -> bool { fp_x > 0 })
+}
+
+pub func filter_negatives(xs: List<i32>) -> List<i32> {
+    filter(xs, fn(fn_x: i32) -> bool { fn_x < 0 })
+}
+
+pub func filter_evens(xs: List<i32>) -> List<i32> {
+    filter(xs, fn(fe_x: i32) -> bool { is_even(fe_x) })
+}
+
+pub func filter_odds(xs: List<i32>) -> List<i32> {
+    filter(xs, fn(fo_x: i32) -> bool { is_odd(fo_x) })
 }
