@@ -66,6 +66,7 @@ pub struct Parser {
     tokens: Vec<Token>,
     pos: usize,
     mode: ParseMode,
+    recovery_mode: bool,
 }
 
 impl Parser {
@@ -78,18 +79,24 @@ impl Parser {
     }
 
     fn with_mode(tokens: Vec<Token>, mode: ParseMode) -> Self {
-        Self { tokens, pos: 0, mode }
+        Self { tokens, pos: 0, mode, recovery_mode: false }
+    }
+
+    /// Create a parser in recovery mode: statement-level errors are caught and skipped.
+    pub fn new_with_recovery(tokens: Vec<Token>) -> Self {
+        Self { tokens, pos: 0, mode: ParseMode::Production, recovery_mode: true }
     }
 
     /// Skip tokens until we reach a synchronization point.
     /// Returns true if we found a sync point, false if we reached EOF.
+    /// Always consumes the sync token to guarantee progress.
     fn recover_to_sync(&mut self, sync_tokens: &[TokenKind]) -> bool {
-        let max_skip = 100; // prevent infinite loops
+        let max_skip = 100;
         let mut skipped = 0;
         while !self.at(&TokenKind::Eof) && skipped < max_skip {
-            // Check if current token is a sync point
             for sync in sync_tokens {
                 if self.at(sync) {
+                    self.advance(); // consume sync token to guarantee progress
                     return true;
                 }
             }
@@ -230,6 +237,7 @@ impl Parser {
     /// Parse a file with error recovery, collecting multiple errors.
     /// Returns the parsed file (possibly partial) and all errors encountered.
     pub fn parse_file_with_recovery(mut self) -> (File, Vec<ParseError>) {
+        self.recovery_mode = true;
         let mut errors = Vec::new();
 
         self.skip_newlines();
@@ -812,6 +820,10 @@ impl Parser {
     }
 
     fn parse_block_with_terminator(&mut self, terminator: TokenKind, label: &str) -> Result<Block, ParseError> {
+        // In recovery mode, catch statement errors and continue
+        if self.recovery_mode {
+            return self.parse_block_with_recovery(terminator, label);
+        }
         let mut stmts = Vec::new();
         self.skip_newlines();
         while !self.at(&terminator) && !self.at(&TokenKind::Eof) {
@@ -866,6 +878,59 @@ impl Parser {
             stmts.push(self.parse_stmt()?);
         }
         self.expect(terminator, label)?;
+        Ok(stmts)
+    }
+
+    /// Parse a block with error recovery: catches statement errors and continues.
+    /// Always returns Ok with partial results; errors are collected internally.
+    fn parse_block_with_recovery(&mut self, terminator: TokenKind, label: &str) -> Result<Block, ParseError> {
+        let mut stmts = Vec::new();
+        self.skip_newlines();
+        while !self.at(&terminator) && !self.at(&TokenKind::Eof) {
+            self.skip_newlines();
+            if self.at(&terminator) || self.at(&TokenKind::Eof) {
+                break;
+            }
+            if self.at(&TokenKind::Requires) {
+                self.advance();
+                if self.expect(TokenKind::Colon, "`:`").is_ok() {
+                    if let Ok(expr) = self.parse_expr(0) {
+                        stmts.push(Stmt::Requires(expr));
+                    }
+                }
+                continue;
+            }
+            if self.at(&TokenKind::Ensures) {
+                self.advance();
+                if self.expect(TokenKind::Colon, "`:`").is_ok() {
+                    if let Ok(expr) = self.parse_expr(0) {
+                        stmts.push(Stmt::Ensures(expr));
+                    }
+                }
+                continue;
+            }
+            if self.at(&TokenKind::Desc) {
+                self.advance();
+                if let Ok(s) = self.expect_string() {
+                    stmts.push(Stmt::Desc(s));
+                }
+                continue;
+            }
+            if self.at(&TokenKind::Rule) {
+                self.advance();
+                if let Ok(s) = self.expect_string() {
+                    stmts.push(Stmt::Desc(format!("rule: {}", s)));
+                }
+                continue;
+            }
+            match self.parse_stmt() {
+                Ok(stmt) => stmts.push(stmt),
+                Err(_) => {
+                    self.advance();
+                }
+            }
+        }
+        let _ = self.expect(terminator, label);
         Ok(stmts)
     }
 
