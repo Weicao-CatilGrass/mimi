@@ -395,7 +395,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                             .map_err(|e| format!("bitcast error: {}", e))?
                             .into_pointer_value();
                         // Loop: for i in 0..len
-                        let function = self.current_function().unwrap();
+                        let function = self.current_function().ok_or_else(|| "codegen: no current function for hof loop".to_string())?;
                         let loop_bb = self.context.append_basic_block(function, "hof_loop");
                         let body_bb = self.context.append_basic_block(function, "hof_body");
                         let done_bb = self.context.append_basic_block(function, "hof_done");
@@ -528,7 +528,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                             .map_err(|e| format!("alloca error: {}", e))?;
                         self.builder.build_store(acc_alloca, init_val)
                             .map_err(|e| format!("store error: {}", e))?;
-                        let function = self.current_function().unwrap();
+                        let function = self.current_function().ok_or_else(|| "codegen: no current function for reduce loop".to_string())?;
                         let loop_bb = self.context.append_basic_block(function, "reduce_loop");
                         let body_bb = self.context.append_basic_block(function, "reduce_body");
                         let done_bb = self.context.append_basic_block(function, "reduce_done");
@@ -826,7 +826,7 @@ impl<'ctx> CodeGenerator<'ctx> {
             return Err("match scrutinee must be integer (enum tag)".into());
         };
 
-        let function = self.current_function().unwrap();
+        let function = self.current_function().ok_or_else(|| "codegen: no current function for match".to_string())?;
         let merge_bb = self.context.append_basic_block(function, "matchcont");
         let mut else_bb = self.context.append_basic_block(function, "matchelse");
 
@@ -1320,7 +1320,7 @@ impl<'ctx> CodeGenerator<'ctx> {
         vars: &HashMap<String, VarEntry<'ctx>>,
     ) -> Result<BasicValueEnum<'ctx>, String> {
         // Spawn: create a thread to execute the expression
-        let parent_fn = self.current_function().unwrap();
+        let parent_fn = self.current_function().ok_or_else(|| "codegen: no current function for spawn".to_string())?;
         let parent_name = parent_fn.get_name().to_str().unwrap_or("unknown").to_string();
         let wrapper_name = format!("{}{}__spawn_wrapper", parent_name, self.spawn_counter).to_string();
         self.spawn_counter += 1;
@@ -1513,7 +1513,7 @@ impl<'ctx> CodeGenerator<'ctx> {
         // Extract discriminant (field 0) via GEP+load if pointer, or extract_value if struct
         let i1_ty = self.context.bool_type();
         let i64_ty = self.context.i64_type();
-        let function = self.current_function().unwrap();
+        let function = self.current_function().ok_or_else(|| "codegen: no current function for try".to_string())?;
         let ok_bb = self.context.append_basic_block(function, "try_ok");
         let err_bb = self.context.append_basic_block(function, "try_err");
 
@@ -1674,7 +1674,7 @@ impl<'ctx> CodeGenerator<'ctx> {
         } else {
             return Err("if expression condition must be boolean".into());
         };
-        let function = self.current_function().unwrap();
+        let function = self.current_function().ok_or_else(|| "codegen: no current function for if expr".to_string())?;
         let then_bb = self.context.append_basic_block(function, "ifexpr_then");
         let else_bb = self.context.append_basic_block(function, "ifexpr_else");
         let merge_bb = self.context.append_basic_block(function, "ifexpr_merge");
@@ -1688,7 +1688,7 @@ impl<'ctx> CodeGenerator<'ctx> {
             self.builder.build_unconditional_branch(merge_bb)
                 .map_err(|e| format!("branch error: {}", e))?;
         }
-        let then_bb_end = self.builder.get_insert_block().unwrap();
+        let then_bb_end = self.builder.get_insert_block().ok_or_else(|| "codegen: no insert block after then branch".to_string())?;
         // Else branch
         self.builder.position_at_end(else_bb);
         let else_val = if let Some(eb) = else_ {
@@ -1706,7 +1706,7 @@ impl<'ctx> CodeGenerator<'ctx> {
             }
             None
         };
-        let else_bb_end = self.builder.get_insert_block().unwrap();
+        let else_bb_end = self.builder.get_insert_block().ok_or_else(|| "codegen: no insert block after else branch".to_string())?;
         // Merge with phi
         self.builder.position_at_end(merge_bb);
         let ty = then_val.get_type();
@@ -1872,7 +1872,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                 .unwrap_or(BasicTypeEnum::IntType(self.context.i64_type()));
             let alloca = self.builder.build_alloca(ty, &p.name)
                 .map_err(|e| format!("alloca error: {}", e))?;
-            self.builder.build_store(alloca, lambda_fn.get_nth_param(param_idx as u32).unwrap())
+            self.builder.build_store(alloca, lambda_fn.get_nth_param(param_idx as u32).ok_or_else(|| "codegen: lambda param index out of range".to_string())?)
                 .map_err(|e| format!("store error: {}", e))?;
             lambda_vars.insert(p.name.clone(), (alloca, ty));
             param_idx += 1;
@@ -1883,7 +1883,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                 BasicTypeEnum::IntType(self.context.i64_type()),
                 &format!("cap_{}", name),
             ).map_err(|e| format!("alloca error: {}", e))?;
-            self.builder.build_store(alloca, lambda_fn.get_nth_param(param_idx as u32).unwrap())
+            self.builder.build_store(alloca, lambda_fn.get_nth_param(param_idx as u32).ok_or_else(|| "codegen: lambda captured var param index out of range".to_string())?)
                 .map_err(|e| format!("store error: {}", e))?;
             lambda_vars.insert(name.clone(), (alloca, BasicTypeEnum::IntType(self.context.i64_type())));
             param_idx += 1;
@@ -1973,7 +1973,7 @@ impl<'ctx> CodeGenerator<'ctx> {
             i64_ty.ptr_type(inkwell::AddressSpace::default()), "out_i64")
             .map_err(|e| format!("bitcast error: {}", e))?.into_pointer_value();
         // Loop: for i in 0..len
-        let function = self.current_function().unwrap();
+        let function = self.current_function().ok_or_else(|| "codegen: no current function for comprehension".to_string())?;
         let loop_bb = self.context.append_basic_block(function, "comp_loop");
         let body_bb = self.context.append_basic_block(function, "comp_body");
         let done_bb = self.context.append_basic_block(function, "comp_done");

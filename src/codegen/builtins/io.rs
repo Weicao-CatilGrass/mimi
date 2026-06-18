@@ -85,14 +85,6 @@ impl<'ctx> CodeGenerator<'ctx> {
                     BasicMetadataValueEnum::PointerValue(fmt_global.as_pointer_value()),
                 ];
                 printf_args.extend_from_slice(args);
-                // Use fprintf(stderr, ...)
-                let _stderr = self.module.get_global("stderr")
-                    .map(|g| g.as_pointer_value())
-                    .unwrap_or_else(|| {
-                        // Fallback: just use printf
-                        self.module.get_function("printf").unwrap().as_global_value().as_pointer_value()
-                    });
-                // For simplicity, use printf for stderr too (not ideal but functional)
                 let printf = self.module.get_function("printf")
                     .ok_or_else(|| "printf not declared".to_string())?;
                 self.builder.build_call(printf, &printf_args, "eprintf_call")
@@ -112,7 +104,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     BasicMetadataValueEnum::IntValue(iv) => iv,
                     _ => return Err("assert requires boolean/i64 argument".into()),
                 };
-                let function = self.current_function().unwrap();
+                let function = self.current_function().ok_or_else(|| "codegen: no current function for assert".to_string())?;
                 let ok_bb = self.context.append_basic_block(function, "assert_ok");
                 let fail_bb = self.context.append_basic_block(function, "assert_fail");
                 self.builder.build_conditional_branch(cond, ok_bb, fail_bb)
@@ -175,7 +167,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     }
                     _ => return Err("assert_eq requires same types".into()),
                 };
-                let function = self.current_function().unwrap();
+                let function = self.current_function().ok_or_else(|| "codegen: no current function for assert_eq".to_string())?;
                 let ok_bb = self.context.append_basic_block(function, "aeq_ok");
                 let fail_bb = self.context.append_basic_block(function, "aeq_fail");
                 self.builder.build_conditional_branch(eq, ok_bb, fail_bb)
@@ -238,7 +230,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     }
                     _ => return Err("assert_ne requires same types".into()),
                 };
-                let function = self.current_function().unwrap();
+                let function = self.current_function().ok_or_else(|| "codegen: no current function for assert_ne".to_string())?;
                 let ok_bb = self.context.append_basic_block(function, "ane_ok");
                 let fail_bb = self.context.append_basic_block(function, "ane_fail");
                 self.builder.build_conditional_branch(ne, ok_bb, fail_bb)
@@ -284,13 +276,13 @@ impl<'ctx> CodeGenerator<'ctx> {
                     (BasicMetadataValueEnum::FloatValue(l), BasicMetadataValueEnum::FloatValue(r)) => {
                         let diff = self.builder.build_float_sub(l, r, "diff")
                             .map_err(|e| format!("fsub error: {}", e))?;
-                        let fabs_fn = self.module.get_function("fabs")
-                            .or_else(|| {
-                                let f64 = self.context.f64_type();
-                                let ty = f64.fn_type(
-                                    &[inkwell::types::BasicMetadataTypeEnum::FloatType(f64)], false);
-                                Some(self.module.add_function("fabs", ty, Some(inkwell::module::Linkage::External)))
-                            }).unwrap();
+                let fabs_fn = self.module.get_function("fabs")
+                    .unwrap_or_else(|| {
+                        let f64 = self.context.f64_type();
+                        let ty = f64.fn_type(
+                            &[inkwell::types::BasicMetadataTypeEnum::FloatType(f64)], false);
+                        self.module.add_function("fabs", ty, Some(inkwell::module::Linkage::External))
+                    });
                         let abs_diff = self.builder.build_call(fabs_fn, &[
                             BasicMetadataValueEnum::FloatValue(diff),
                         ], "fabs_call")
@@ -304,7 +296,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     }
                     _ => return Err("[E0712] assert_approx_eq requires same numeric types".into()),
                 };
-                let function = self.current_function().unwrap();
+                let function = self.current_function().ok_or_else(|| "codegen: no current function for assert_approx_eq".to_string())?;
                 let ok_bb = self.context.append_basic_block(function, "aaeq_ok");
                 let fail_bb = self.context.append_basic_block(function, "aaeq_fail");
                 self.builder.build_conditional_branch(eq, ok_bb, fail_bb)
@@ -359,15 +351,15 @@ impl<'ctx> CodeGenerator<'ctx> {
                     "stdin"
                 ).map_err(|e| format!("load stdin error: {}", e))?.into_pointer_value();
                 let fgets_fn = self.module.get_function("fgets")
-                    .or_else(|| {
+                    .unwrap_or_else(|| {
                         let i8_ptr = self.context.i8_type().ptr_type(inkwell::AddressSpace::default());
                         let ty = i8_ptr.fn_type(&[
                             BasicMetadataTypeEnum::PointerType(i8_ptr),
                             BasicMetadataTypeEnum::IntType(self.context.i64_type()),
                             BasicMetadataTypeEnum::PointerType(i8_ptr),
                         ], false);
-                        Some(self.module.add_function("fgets", ty, Some(inkwell::module::Linkage::External)))
-                    }).unwrap();
+                        self.module.add_function("fgets", ty, Some(inkwell::module::Linkage::External))
+                    });
                 self.builder.build_call(fgets_fn, &[
                     BasicMetadataValueEnum::PointerValue(buf),
                     BasicMetadataValueEnum::IntValue(buf_size),
@@ -414,14 +406,14 @@ impl<'ctx> CodeGenerator<'ctx> {
                 // access(path, F_OK) where F_OK = 0
                 let i32_ty = self.context.i32_type();
                 let access_fn = self.module.get_function("access")
-                    .or_else(|| {
+                    .unwrap_or_else(|| {
                         let i8_ptr = self.context.i8_type().ptr_type(inkwell::AddressSpace::default());
                         let ty = i32_ty.fn_type(&[
                             BasicMetadataTypeEnum::PointerType(i8_ptr),
                             BasicMetadataTypeEnum::IntType(i32_ty),
                         ], false);
-                        Some(self.module.add_function("access", ty, Some(inkwell::module::Linkage::External)))
-                    }).unwrap();
+                        self.module.add_function("access", ty, Some(inkwell::module::Linkage::External))
+                    });
                 let ret = self.builder.build_call(access_fn, &[
                     BasicMetadataValueEnum::PointerValue(path_ptr),
                     BasicMetadataValueEnum::IntValue(i32_ty.const_int(0, false)),
@@ -456,14 +448,14 @@ impl<'ctx> CodeGenerator<'ctx> {
                 let mode_str = self.builder.build_global_string_ptr("r", "read_mode")
                     .map_err(|e| format!("global string error: {}", e))?;
                 let fopen_fn = self.module.get_function("fopen")
-                    .or_else(|| {
+                    .unwrap_or_else(|| {
                         let i8_ptr = self.context.i8_type().ptr_type(inkwell::AddressSpace::default());
                         let ty = i8_ptr.fn_type(&[
                             BasicMetadataTypeEnum::PointerType(i8_ptr),
                             BasicMetadataTypeEnum::PointerType(i8_ptr),
                         ], false);
-                        Some(self.module.add_function("fopen", ty, Some(inkwell::module::Linkage::External)))
-                    }).unwrap();
+                        self.module.add_function("fopen", ty, Some(inkwell::module::Linkage::External))
+                    });
                 let file = self.builder.build_call(fopen_fn, &[
                     BasicMetadataValueEnum::PointerValue(path_ptr),
                     BasicMetadataValueEnum::PointerValue(mode_str.as_pointer_value()),
@@ -475,15 +467,15 @@ impl<'ctx> CodeGenerator<'ctx> {
                 // fseek(file, 0, SEEK_END)
                 let i32_ty = self.context.i32_type();
                 let fseek_fn = self.module.get_function("fseek")
-                    .or_else(|| {
+                    .unwrap_or_else(|| {
                         let i8_ptr = self.context.i8_type().ptr_type(inkwell::AddressSpace::default());
                         let ty = i32_ty.fn_type(&[
                             BasicMetadataTypeEnum::PointerType(i8_ptr),
                             BasicMetadataTypeEnum::IntType(self.context.i64_type()),
                             BasicMetadataTypeEnum::IntType(i32_ty),
                         ], false);
-                        Some(self.module.add_function("fseek", ty, Some(inkwell::module::Linkage::External)))
-                    }).unwrap();
+                        self.module.add_function("fseek", ty, Some(inkwell::module::Linkage::External))
+                    });
                 self.builder.build_call(fseek_fn, &[
                     BasicMetadataValueEnum::PointerValue(file),
                     BasicMetadataValueEnum::IntValue(self.context.i64_type().const_int(0, false)),
@@ -492,13 +484,13 @@ impl<'ctx> CodeGenerator<'ctx> {
                     .map_err(|e| format!("fseek error: {}", e))?;
                 // ftell(file) -> file size
                 let ftell_fn = self.module.get_function("ftell")
-                    .or_else(|| {
+                    .unwrap_or_else(|| {
                         let i8_ptr = self.context.i8_type().ptr_type(inkwell::AddressSpace::default());
                         let ty = self.context.i64_type().fn_type(&[
                             BasicMetadataTypeEnum::PointerType(i8_ptr),
                         ], false);
-                        Some(self.module.add_function("ftell", ty, Some(inkwell::module::Linkage::External)))
-                    }).unwrap();
+                        self.module.add_function("ftell", ty, Some(inkwell::module::Linkage::External))
+                    });
                 let file_size = self.builder.build_call(ftell_fn, &[
                     BasicMetadataValueEnum::PointerValue(file),
                 ], "ftell_call")
@@ -508,13 +500,13 @@ impl<'ctx> CodeGenerator<'ctx> {
                     .into_int_value();
                 // rewind(file)
                 let rewind_fn = self.module.get_function("rewind")
-                    .or_else(|| {
+                    .unwrap_or_else(|| {
                         let i8_ptr = self.context.i8_type().ptr_type(inkwell::AddressSpace::default());
                         let ty = self.context.void_type().fn_type(&[
                             BasicMetadataTypeEnum::PointerType(i8_ptr),
                         ], false);
-                        Some(self.module.add_function("rewind", ty, Some(inkwell::module::Linkage::External)))
-                    }).unwrap();
+                        self.module.add_function("rewind", ty, Some(inkwell::module::Linkage::External))
+                    });
                 self.builder.build_call(rewind_fn, &[
                     BasicMetadataValueEnum::PointerValue(file),
                 ], "rewind_call")
@@ -534,7 +526,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     .into_pointer_value();
                 // fread(buf, 1, file_size, file)
                 let fread_fn = self.module.get_function("fread")
-                    .or_else(|| {
+                    .unwrap_or_else(|| {
                         let i8_ptr = self.context.i8_type().ptr_type(inkwell::AddressSpace::default());
                         let ty = self.context.i64_type().fn_type(&[
                             BasicMetadataTypeEnum::PointerType(i8_ptr),
@@ -542,8 +534,8 @@ impl<'ctx> CodeGenerator<'ctx> {
                             BasicMetadataTypeEnum::IntType(self.context.i64_type()),
                             BasicMetadataTypeEnum::PointerType(i8_ptr),
                         ], false);
-                        Some(self.module.add_function("fread", ty, Some(inkwell::module::Linkage::External)))
-                    }).unwrap();
+                        self.module.add_function("fread", ty, Some(inkwell::module::Linkage::External))
+                    });
                 self.builder.build_call(fread_fn, &[
                     BasicMetadataValueEnum::PointerValue(buf),
                     BasicMetadataValueEnum::IntValue(self.context.i64_type().const_int(1, false)),
@@ -564,13 +556,13 @@ impl<'ctx> CodeGenerator<'ctx> {
                     .map_err(|e| format!("store error: {}", e))?;
                 // fclose(file)
                 let fclose_fn = self.module.get_function("fclose")
-                    .or_else(|| {
+                    .unwrap_or_else(|| {
                         let i8_ptr = self.context.i8_type().ptr_type(inkwell::AddressSpace::default());
                         let ty = i32_ty.fn_type(&[
                             BasicMetadataTypeEnum::PointerType(i8_ptr),
                         ], false);
-                        Some(self.module.add_function("fclose", ty, Some(inkwell::module::Linkage::External)))
-                    }).unwrap();
+                        self.module.add_function("fclose", ty, Some(inkwell::module::Linkage::External))
+                    });
                 self.builder.build_call(fclose_fn, &[
                     BasicMetadataValueEnum::PointerValue(file),
                 ], "fclose_call")
@@ -611,14 +603,14 @@ impl<'ctx> CodeGenerator<'ctx> {
                 let mode_str = self.builder.build_global_string_ptr("w", "write_mode")
                     .map_err(|e| format!("global string error: {}", e))?;
                 let fopen_fn = self.module.get_function("fopen")
-                    .or_else(|| {
+                    .unwrap_or_else(|| {
                         let i8_ptr = self.context.i8_type().ptr_type(inkwell::AddressSpace::default());
                         let ty = i8_ptr.fn_type(&[
                             BasicMetadataTypeEnum::PointerType(i8_ptr),
                             BasicMetadataTypeEnum::PointerType(i8_ptr),
                         ], false);
-                        Some(self.module.add_function("fopen", ty, Some(inkwell::module::Linkage::External)))
-                    }).unwrap();
+                        self.module.add_function("fopen", ty, Some(inkwell::module::Linkage::External))
+                    });
                 let file = self.builder.build_call(fopen_fn, &[
                     BasicMetadataValueEnum::PointerValue(path_ptr),
                     BasicMetadataValueEnum::PointerValue(mode_str.as_pointer_value()),
@@ -638,7 +630,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     .ok_or("strlen returned void")?;
                 // fwrite(content, 1, len, file)
                 let fwrite_fn = self.module.get_function("fwrite")
-                    .or_else(|| {
+                    .unwrap_or_else(|| {
                         let i8_ptr = self.context.i8_type().ptr_type(inkwell::AddressSpace::default());
                         let ty = self.context.i64_type().fn_type(&[
                             BasicMetadataTypeEnum::PointerType(i8_ptr),
@@ -646,8 +638,8 @@ impl<'ctx> CodeGenerator<'ctx> {
                             BasicMetadataTypeEnum::IntType(self.context.i64_type()),
                             BasicMetadataTypeEnum::PointerType(i8_ptr),
                         ], false);
-                        Some(self.module.add_function("fwrite", ty, Some(inkwell::module::Linkage::External)))
-                    }).unwrap();
+                        self.module.add_function("fwrite", ty, Some(inkwell::module::Linkage::External))
+                    });
                 self.builder.build_call(fwrite_fn, &[
                     BasicMetadataValueEnum::PointerValue(content_ptr),
                     BasicMetadataValueEnum::IntValue(self.context.i64_type().const_int(1, false)),
@@ -658,13 +650,13 @@ impl<'ctx> CodeGenerator<'ctx> {
                 // fclose(file)
                 let i32_ty = self.context.i32_type();
                 let fclose_fn = self.module.get_function("fclose")
-                    .or_else(|| {
+                    .unwrap_or_else(|| {
                         let i8_ptr = self.context.i8_type().ptr_type(inkwell::AddressSpace::default());
                         let ty = i32_ty.fn_type(&[
                             BasicMetadataTypeEnum::PointerType(i8_ptr),
                         ], false);
-                        Some(self.module.add_function("fclose", ty, Some(inkwell::module::Linkage::External)))
-                    }).unwrap();
+                        self.module.add_function("fclose", ty, Some(inkwell::module::Linkage::External))
+                    });
                 self.builder.build_call(fclose_fn, &[
                     BasicMetadataValueEnum::PointerValue(file),
                 ], "fclose_call")

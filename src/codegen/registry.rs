@@ -178,7 +178,8 @@ impl<'ctx> CodeGenerator<'ctx> {
                             self.context.bool_type().const_int(0, false),
                             "cap_valid")
                             .map_err(|e| format!("compare error: {}", e))?;
-                        let function = self.current_function().unwrap();
+                        let function = self.current_function()
+                            .ok_or_else(|| "codegen: no current function for cap check in extern block".to_string())?;
                         let ok_bb = self.context.append_basic_block(function, &format!("cap_ok_{}", i));
                         let fail_bb = self.context.append_basic_block(function, &format!("cap_fail_{}", i));
                         self.builder.build_conditional_branch(is_valid, ok_bb, fail_bb)
