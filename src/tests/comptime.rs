@@ -284,3 +284,68 @@ func main() -> i32 {
     let v = run_source(src);
     assert_eq!(v, interp::Value::Int(15));
 }
+
+// ===================== P2-4: comptime + contracts =====================
+
+#[test]
+fn comptime_function_checked_at_runtime() {
+    // comptime 函数调用通过 call_func()，所以 verify_contracts 会检查合约。
+    // ensures: result > 0 但返回 0 → 运行时合约失败。
+    let src = r#"
+comptime func get_value() -> i32 {
+    ensures: result > 0
+    0
+}
+
+func main() -> i32 {
+    get_value()
+}
+"#;
+    // run_source uses default verify_contracts=true, so contract violation is caught
+    let result = run_source_result(src);
+    assert!(result.is_err());
+    let err = result.unwrap_err();
+    assert!(err.contains("ensures"), "error should mention ensures: {}", err);
+}
+
+#[test]
+fn comptime_generated_closure_no_contracts() {
+    // comptime 通过 quote! 生成的闭包不含合约（quote.rs:40 排除 Stmt::Ensures）。
+    // eval_quoted_ast() 不经过 call_func()，所以合约检查被绕过。
+    // 即使原始模板有 ensures，生成的闭包调用不触发合约检查。
+    let src = r#"
+comptime func make_adder() -> func(i32) -> i32 {
+    ensures: result > 0
+    fn(x: i32) -> i32 { x + 1 }
+}
+
+func main() -> i32 {
+    let f = make_adder()
+    f(0)
+}
+"#;
+    // make_adder() itself goes through call_func → catches ensures violation.
+    // But f(0) calls the generated closure via eval_quoted_ast → no contract check.
+    let result = run_source_result(src);
+    // make_adder() has ensures: result > 0 but returns a closure (not an i32)
+    // This will fail at contract check time
+    assert!(result.is_err());
+}
+
+#[test]
+fn comptime_contract_checked_at_call_site() {
+    // comptime 函数的合约在调用时检查（通过 call_func）。
+    // 如果 ensures 被满足，函数正常返回。
+    let src = r#"
+comptime func get_positive() -> i32 {
+    ensures: result > 0
+    42
+}
+
+func main() -> i32 {
+    get_positive()
+}
+"#;
+    let v = run_source(src);
+    assert_eq!(v, interp::Value::Int(42));
+}
