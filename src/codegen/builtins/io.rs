@@ -1,6 +1,7 @@
 use super::CodeGenerator;
 use inkwell::types::{BasicMetadataTypeEnum, BasicTypeEnum};
 use inkwell::values::{BasicMetadataValueEnum, BasicValueEnum};
+use inkwell::IntPredicate;
 use crate::error::{CompileError, MimiResult};
 
 impl<'ctx> CodeGenerator<'ctx> {
@@ -478,13 +479,23 @@ impl<'ctx> CodeGenerator<'ctx> {
                         ], false);
                         self.module.add_function("fseek", ty, Some(inkwell::module::Linkage::External))
                     });
-                self.builder.build_call(fseek_fn, &[
+                let fseek_result = self.builder.build_call(fseek_fn, &[
                     BasicMetadataValueEnum::PointerValue(file),
                     BasicMetadataValueEnum::IntValue(self.context.i64_type().const_int(0, false)),
                     BasicMetadataValueEnum::IntValue(i32_ty.const_int(2, false)), // SEEK_END
                 ], "fseek_call")
-                    .map_err(|e| CompileError::LlvmError(format!("fseek error: {}", e)))?;
-                // ftell(file) -> file size
+                    .map_err(|e| CompileError::LlvmError(format!("fseek error: {}", e)))?
+                    .try_as_basic_value().left()
+                    .ok_or("fseek returned void")?
+                    .into_int_value();
+                // fseek returns 0 on success, non-zero on failure; guard against negative ftell result
+                let fseek_ok = self.builder.build_int_compare(
+                    IntPredicate::EQ,
+                    fseek_result,
+                    i32_ty.const_int(0, false),
+                    "fseek_ok",
+                ).map_err(|e| CompileError::LlvmError(format!("fseek compare error: {}", e)))?;
+                // ftell(file) -> file size (may be -1 if fseek failed)
                 let ftell_fn = self.module.get_function("ftell")
                     .unwrap_or_else(|| {
                         let i8_ptr = self.context.i8_type().ptr_type(inkwell::AddressSpace::default());
@@ -499,6 +510,21 @@ impl<'ctx> CodeGenerator<'ctx> {
                     .map_err(|e| CompileError::LlvmError(format!("ftell error: {}", e)))?
                     .try_as_basic_value().left()
                     .ok_or("ftell returned void")?
+                    .into_int_value();
+                // If fseek failed, clamp file_size to 0 to avoid negative malloc size
+                let zero = self.context.i64_type().const_int(0, false);
+                let neg_one = self.context.i64_type().const_int(
+                    (1u64 << 63) | 1u64, false); // i64::MIN as unsigned bit pattern for -1
+                let is_neg_one = self.builder.build_int_compare(
+                    IntPredicate::EQ,
+                    file_size,
+                    neg_one,
+                    "is_neg_one",
+                ).map_err(|e| CompileError::LlvmError(format!("neg_one compare error: {}", e)))?;
+                let clamp_cond = self.builder.build_or(fseek_ok, is_neg_one, "clamp_cond")
+                    .map_err(|e| CompileError::LlvmError(format!("or error: {}", e)))?;
+                let file_size = self.builder.build_select(clamp_cond, zero, file_size, "file_size")
+                    .map_err(|e| CompileError::LlvmError(format!("select error: {}", e)))?
                     .into_int_value();
                 // rewind(file)
                 let rewind_fn = self.module.get_function("rewind")

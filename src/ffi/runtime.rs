@@ -141,32 +141,6 @@ impl SharedHandle {
         self.inner.write().unwrap()
     }
 
-    /// Get a read-only pointer to the inner value.
-    /// DEPRECATED: This method uses `mem::forget` on the RwLock guard,
-    /// permanently leaking the lock. Use `borrow()` + guard lifetime management
-    /// or `with_value()` for scoped access instead.
-    /// This method is kept only for backward compatibility.
-    #[deprecated(since = "0.7.0", note = "leaks the RwLock guard; use borrow() with explicit guard management instead")]
-    pub fn as_ptr(&self) -> *const Value {
-        let guard = self.inner.read().unwrap();
-        let ptr: *const Value = &*guard;
-        std::mem::forget(guard);
-        ptr
-    }
-
-    /// Get a mutable pointer to the inner value.
-    /// DEPRECATED: This method uses `mem::forget` on the RwLock guard,
-    /// permanently leaking the lock. Use `borrow_mut()` + guard lifetime management
-    /// or `with_value_mut()` for scoped access instead.
-    /// This method is kept only for backward compatibility.
-    #[deprecated(since = "0.7.0", note = "leaks the RwLock guard; use borrow_mut() with explicit guard management instead")]
-    pub fn as_mut_ptr(&self) -> *mut Value {
-        let guard = self.inner.write().unwrap();
-        let ptr: *mut Value = &*guard as *const Value as *mut Value;
-        std::mem::forget(guard);
-        ptr
-    }
-
     /// Retain: increment the C-side strong reference count.
     pub fn retain(&self) {
         self.strong.fetch_add(1, Ordering::Relaxed);

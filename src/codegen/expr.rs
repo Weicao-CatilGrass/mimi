@@ -913,12 +913,11 @@ impl<'ctx> CodeGenerator<'ctx> {
                     else_bb = next_bb;
                 }
                 Pattern::Constructor(name, _) => {
-                    // Constructor pattern: compare tag (name hash as i64 for now)
+                    // Constructor pattern: compare tag using ordinal index
                     self.builder.position_at_end(else_bb);
-                    let tag_val = self.context.i64_type().const_int(
-                        name.bytes().fold(0u64, |acc, b| acc.wrapping_mul(31).wrapping_add(b as u64)),
-                        false,
-                    );
+                    // Look up the variant ordinal index from type definitions
+                    let ordinal = self.find_variant_ordinal(name);
+                    let tag_val = self.context.i64_type().const_int(ordinal, false);
                     let cmp = self.builder.build_int_compare(
                         inkwell::IntPredicate::EQ,
                         scrutinee_iv,

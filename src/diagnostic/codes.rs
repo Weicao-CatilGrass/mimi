@@ -138,6 +138,9 @@ pub const E0718: &str = "E0718"; // capability compilation error
 pub const E0719: &str = "E0719"; // compensation block error
 pub const E0720: &str = "E0720"; // generic instantiation error
 
+/// File/resource error codes (E07xx)
+pub const E0750: &str = "E0750"; // requires libc or I/O error
+
 /// Get a human-readable description for an error code.
 pub fn describe(code: &str) -> &'static str {
     match code {
@@ -262,6 +265,8 @@ pub fn describe(code: &str) -> &'static str {
         E0718 => "capability compilation error",
         E0719 => "compensation block error",
         E0720 => "generic instantiation error",
+
+        E0750 => "requires libc or I/O error",
 
         _ => "unknown error",
     }

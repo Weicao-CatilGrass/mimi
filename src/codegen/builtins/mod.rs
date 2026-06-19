@@ -429,7 +429,7 @@ impl<'ctx> CodeGenerator<'ctx> {
             "to_string", "int_to_string", "float_to_string",
             "pow", "random", "pi", "sqrt", "floor", "ceil", "round",
             "now", "timestamp", "now_ms", "timestamp_ms", "sleep",
-            "getenv", "args",
+            "getenv", "args", "from_int",
         ];
         if self.no_std && libc_builtins.contains(&name) {
             self.require_std(name)?;
@@ -514,7 +514,28 @@ impl<'ctx> CodeGenerator<'ctx> {
             "lexer" | "parse" => {
                 Err(CompileError::BuiltinError(format!("'{}' is a runtime-only function, not available in codegen", name)))
             }
+            "from_int" => self.compile_from_int(args),
             _ => Err(CompileError::BuiltinError(format!("builtin '{}' not yet implemented in codegen", name))),
         }
+    }
+
+    /// G2: Convert an integer to an enum tag value.
+    /// from_int(int_val, enum_type_name) -> i32 tag
+    fn compile_from_int(
+        &self,
+        args: &[BasicMetadataValueEnum<'ctx>],
+    ) -> MimiResult<BasicValueEnum<'ctx>> {
+        if args.len() < 1 {
+            return Err(CompileError::WrongArgCount("from_int expects at least 1 argument (int)".to_string()));
+        }
+        let val = match args[0] {
+            BasicMetadataValueEnum::IntValue(iv) => iv,
+            _ => return Err(CompileError::TypeMismatch("from_int: first arg must be integer".to_string())),
+        };
+        // Truncate i64 to i32 for enum tag
+        let i32_ty = self.context.i32_type();
+        let tag = self.builder.build_int_truncate(val, i32_ty, "from_int_trunc")
+            .map_err(|e| CompileError::LlvmError(format!("trunc error: {}", e)))?;
+        Ok(tag.into())
     }
 }

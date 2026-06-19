@@ -85,10 +85,10 @@ Source (.mimi)
 
 | 等级 | 数量 | 条目 |
 |------|------|------|
-| **P0 — Critical** | 8 | F1 (浮点 ABI), F2 (C 崩溃恢复), F3 (ensures 断裂), F4 (guard 泄漏), F5 (类型映射), F6 (内存契约), G5 (Shared RC), G10 (内存泄漏) |
-| **P1 — High** | 8 | F7 (ABI 校验), F8 (跨语言回调), G2 (枚举 match), N6 (ASan 禁用), F9 (绑定生成), G9 (跨文件模块), G1 (闭包 env), N2 (async 截断) |
-| **P2 — Medium** | 6 | G3 (if break/continue), G4 (? 运算符), G6 (arena), G8 (async), N1 (ring-buffer), F10 (errno), F11 (UTF-8) |
-| **P3 — Low** | 4 | G7 (借用检查, 设计如此), N3 (结构化并发), N4 (E2E 框架), N5 (LSP 性能) |
+| **P0 — Critical** | 11 | F1-F6, G5, G10, B1, B2, B3 |
+| **P1 — High** | 12 | F7-F9, G1-G2, G9, N2, N6, B4-B7 |
+| **P2 — Medium** | 13 | G3-G4, G6, G8, N1, F10-F11, B8-B14 |
+| **P3 — Low** | 7 | G7, N3-N5, B15-B17 |
 | **已修复** | 11 | R3-R5, R7-R9, R12, R15-R18 等 |
 
 ---
@@ -347,6 +347,267 @@ Phase 3: 工程化 + 绑定
 
 ---
 
+---
+
+## 十-B、未覆盖模块深度审计（2026-06-19 补充）
+
+> **范围**: AUDIT-REPORT 前几轮未覆盖的 22 个文件，包括 `manifest.rs`、`lockfile.rs`、`safe_arith.rs`、`lint.rs`、`fmt.rs`、`error.rs`、`span.rs`、`diagnostic/`、`contracts.rs`（Mimi 合约系统）、`ast.rs`、`lexer.rs`、`interp/pattern.rs`、`interp/quote.rs`、`interp/pool.rs`、`loader.rs`、`codegen/builtins/io.rs` 等。
+
+### P0 — 新增 Critical（3 个）
+
+#### B1: Slice pattern rest-binding 静默忽略匹配失败
+
+**严重度**: P0
+**位置**: `interp/pattern.rs:110`
+
+**现状**: `Pattern::Slice` 带 `rest_pat` 时，调用 `match_pattern_inner(rest_pat, &Value::List(remaining), bindings)` 但**丢弃返回值**。若 rest 模式不匹配（如 `[x, ..Rest(_, _)]` 需要构造函数），函数仍返回 `true`。
+
+```rust
+// line 110 — 返回值被忽略
+self.match_pattern_inner(rest_pat, &Value::List(remaining), bindings);
+// 随后无条件 `true`
+```
+
+**后果**: 任何带类型 rest 的 slice 模式会在错误数据上**静默成功**，运行时逻辑错误。
+
+**修复**: 改为 `return self.match_pattern_inner(rest_pat, &Value::List(remaining), bindings);`
+
+---
+
+#### B2: `compile_read_file` 忽略 `fseek` 返回值 → 无界 malloc / 崩溃
+
+**严重度**: P0
+**位置**: `codegen/builtins/io.rs:481-502`
+
+**现状**: `fseek(file, 0, SEEK_END)` 的 C 返回值（`int`）被丢弃（`.map_err(...)?` 只检查 LLVM IR 构建是否成功，不检查运行时 C 返回值）。若 `fseek` 失败，`ftell` 返回 `-1`（i64），随后用于 `malloc(size+1)` — 巨大或负数分配大小，导致 `malloc` 失败或 UB。
+
+```rust
+// line 481-486: fseek 的 C int 返回值未被检查
+self.builder.build_call(fseek_fn, &[...], "fseek_call")
+    .map_err(|e| CompileError::LlvmError(...))?;
+// line 496-502: ftell 结果直接作为 malloc 大小
+let file_size = self.builder.build_call(ftell_fn, &[...], "ftell_call")...;
+```
+
+**后果**: 编译产物的 `read_file` 内置函数在文件 I/O 错误时产生**内存损坏或崩溃**。
+
+**修复**: 在 `fseek` 后比较其返回值；非零时返回错误或空字符串。
+
+---
+
+#### B3: `CompileError::code()` 错误码映射大面积错误
+
+**严重度**: P0
+**位置**: `error.rs:108-147`
+
+**现状**: 多个 variant 映射到错误代码，与 `diagnostic/codes.rs` 及文档范围矛盾：
+
+| Variant | 当前（错误） | 正确值 |
+|---------|-------------|--------|
+| `FieldNotFound` | `"E0703"` (line 116) | `"E0220"` |
+| `ActorNotStruct` | `"E0703"` (line 113) | `"E0707"` |
+| `NotStruct` | `"E0703"` (line 118) | `"E0707"` |
+| `TypeMismatch` | `"E0712"` (line 117) | `"E0200"` |
+| `WrongArgCount` | `"E0711"` (line 119) | `"E0210"` |
+| `CapConsumed` | `"E0718"` (line 121) | `"E0304"` |
+| `FfiWrapper` | `"E0710"` (line 143) | 与 `ExternNotDeclared` 碰撞 |
+| `GenericsError` | `"E0720"` (line 136) | 与 `TurbofishArgCount` 碰撞 |
+
+**后果**: 任何通过 `CompileError::code()` 路由的诊断显示**错误/误导性错误码**。LSP 的 `--explain`、错误码查找工具链完全不可用。
+
+**修复**: 逐一核对 `diagnostic/codes.rs`，修正所有映射。
+
+---
+
+### P1 — 新增 High（4 个）
+
+#### B4: Formatter 把 `)` 结尾行当成缩进增加触发器
+
+**严重度**: P1
+**位置**: `fmt.rs:46`
+
+**现状（2026-06-19 核查）**: 当前代码 `trimmed.ends_with('{') || trimmed.ends_with('(') || trimmed.ends_with('[')` — **不含** `ends_with(')')`。审计报告撰写时记录的 `ends_with(')')` 问题在当前代码中已不存在。经核查，`starts_with(')')` 位于 line 35（减少缩进侧），使闭合 `)` 回到父级缩进，行为合理。**此项在当前代码中已不存在，无需修复。**
+
+---
+
+#### B5: Linter W001 对每个 `desc`/`rule` 都报警告
+
+**严重度**: P1
+**位置**: `lint.rs:33-47`
+
+**现状**: `Item::Desc` 和 `Item::Rule` **无条件**发出 W001 警告。正常模式 `desc` + `func` 会被误报。W001 的语义是"standalone `desc`/`rule` 无后续实现"，但代码**不检查后续是否有 `func`**。
+
+```rust
+// lines 33-47: 不检查 "this is followed by a func/type"
+Item::Desc(_text) => {
+    diagnostics.push(Diagnostic::warning_code("W001", ...));
+}
+```
+
+**后果**: 任何使用 `desc`/`rule` + `func` 的文件产生 **100% 误报**。
+
+**修复**: 检查 `file.items` 中 desc/rule 的下一项是否为 `Func` 或 `Type`。
+
+---
+
+#### B6: F-string lexer 转义序列处理不完整
+
+**严重度**: P1
+**位置**: `lexer.rs:562-575`
+
+**现状**: `scan_fstring` 处理 `\n`、`\t`、`\r` 时正确写入字面量，但 `\u{...}`、`\xNN` 等 Unicode/hex 转义**未被识别**。不识别的转义被静默透传（`line 572 s.push(c)` after advance），生成与预期不同的字符串值。
+
+**后果**: F-string 中的 Unicode 转义静默产生错误字符串，难以追踪。
+
+**修复**: 添加 `\u{...}` 和 `\xNN` 处理分支；未识别转义报 lexer 错误而非静默透传。
+
+---
+
+#### B7: Contract 语句全部报 `Span(0:0)` — 合约错误无法定位
+
+**严重度**: P1
+**位置**: `contracts.rs:45, 50`
+
+**现状**: `Stmt::Requires(expr, Span::single(0, 0))` 和 `Stmt::Ensures(expr, Span::single(0, 0))` 硬编码 line 0:0。`parse_condition` 使用 `Lexer::new(text).tokenize()` 无行号上下文，即使修正 span 也会全部指向 line 1。
+
+**后果**: 合约内类型错误/违反**永远指向文件顶部**，合约调试几乎不可能。
+
+**修复**: 传入原始行号偏移给 `parse_condition`，使 span 指向合约所在行。
+
+---
+
+### P2 — 新增 Medium（7 个）
+
+#### B8: `checked_div` / `checked_rem` 冗余零检查 + 溢出覆盖缺失
+
+**严重度**: P2
+**位置**: `safe_arith.rs:20-24, 28-34`
+
+**现状**: 两个函数在调用 Rust 内置 `checked_div`/`checked_rem` 前显式检查 `b == 0 → None`。Rust 内置已处理除零（返回 `None`），冗余检查无害但**掩盖了 `i64::MIN % -1` 溢出场景** — Rust 的 `checked_rem` 对此返回 `Some(i64::MIN)`（非 `None`），而冗余 guard 使该溢出情况不被暴露。
+
+**修复**: 移除冗余零检查，依赖内置行为；`MIN % -1` 溢出显式处理。
+
+---
+
+#### B9: lockfile 精确版本解析测试语义错误
+
+**严重度**: P2
+**位置**: `lockfile.rs:129-133`
+
+**现状**: 测试 `resolve_version_exact` 断言 `"1.0.0"` 在 `["0.1.0", "0.2.0", "1.0.0"]` 中解析为 `"1.0.0"`。但 `semver::VersionReq::parse("1.0.0")` 解析为 `^1.0.0`（任意 `>=1.0.0 <2.0.0`）。若可用列表含 `"1.1.0"`，测试将失败（返回 `"1.1.0"`）。测试通过仅因可用列表不含更高匹配版本。
+
+**修复**: 测试使用 `=1.0.0` 精确语法或扩展测试用例。
+
+---
+
+#### B10: `Span::contains` 多行 span 列检查缺失
+
+**严重度**: P2
+**位置**: `span.rs:45-56`
+
+**现状**: `contains` 仅在 `line == self.end_line` 时检查 `col > self.end_col`。对于多行 span（如 `1:5-3:10`），line 2 col 20 会被报告为 `true`（在 span 内），尽管超出逻辑终点。缺少中间行和起始行的列边界检查。
+
+**修复**: 添加 `line == self.start_line → col >= self.start_col` 以及中间行无条件包含逻辑。
+
+---
+
+#### B11: `interp/pool.rs` spawn 发送错误静默丢弃
+
+**严重度**: P2
+**位置**: `interp/pool.rs:30-32`
+
+**现状**: `execute` 使用 `let _ = self.sender.send(...)`。若线程池 receiver 被丢弃（所有 worker panic），send 静默失败。生产环境中 spawn 操作**假成功**，任务永不执行。
+
+**修复**: 将 `send` 错误向上传播或至少记录警告日志。
+
+---
+
+#### B12: Diagnostic format note 指示器列对齐错误
+
+**严重度**: P2
+**位置**: `diagnostic/format.rs:128-136`
+
+**现状**: note 跨行时（`note.span.end_line != note.span.start_line`），指示器行使用 `" ".repeat(start_col) + note.message`，将 note 消息直接放在代码行下方而非对应 span 列下方。 gutter 宽度基于 `end_line` 位数而非实际 span 宽度，导致格式化错位。
+
+**修复**: 使用 `start_col` 计算正确缩进 + 添加 `^^^^^` 下划线指示器。
+
+---
+
+#### B13: `interp/quote.rs` 双克隆冗余 RC bump
+
+**严重度**: P2
+**位置**: `interp/quote.rs:290`
+
+**现状**: `Ok(*v.clone())` — `v` 是 `Box<Value>`。`v.clone()` 克隆 Box（增加 RC），`*v.clone()` 解引用为 `Value`，`Ok(...)` 再 move。属于**双重引用计数递增**。
+
+```rust
+// line 290
+Ok(*v.clone())  // 应为 Ok(*v)
+```
+
+**修复**: 改为 `Ok(*v)`。
+
+---
+
+#### B14: `loader.rs` `merge_all` 导入与 item 重复 — 潜在 name collision
+
+**严重度**: P2
+**位置**: `loader.rs:207-221`
+
+**现状**: `merge_all` 从每个模块收集 `all_imports` 放入合并后的 `File`。但 `File.imports` 代表待解析的 `use` 语句。合并后解释器看到 `use foo` 其中 `foo` 已是 item — 导入既是 item 又是未解析导入。可能导致**双重查找或 name collision**。
+
+**修复**: 合并后清除已解析的导入，或将 `imports` 仅保留跨模块未满足的引用。
+
+---
+
+### P3 — 新增 Low（3 个）
+
+#### B15: `Span::width()` 对多行 span 返回 0
+
+**严重度**: P3
+**位置**: `span.rs:59-65`
+
+**现状**: 多行 span 的 `width()` 返回 0。任何依赖它的工具（下划线长度、caret 定位）对多行诊断输出不正确。
+
+**修复**: 返回 `(end_line - start_line) * line_width + end_col - start_col` 或文档说明仅限单行。
+
+---
+
+#### B16: `manifest.rs` root 路径 `parent()` 循环无意义
+
+**严重度**: P3
+**位置**: `manifest.rs:52-53`
+
+**现状**: `dir.parent().unwrap_or(&dir)` — 若 `dir` 是 root 路径（如 `/`），`parent()` 返回 `None`，`&dir`（`/`）被使用。随后 `dir.pop()` 对 `/` 返回 `false`（无法 pop 超过 root），多做一轮空循环。
+
+**修复**: 对 root 路径提前 `return Ok(None)`。
+
+---
+
+#### B17: `interp/quote.rs:290` 性能：`*v.clone()` 多余引用计数递增
+
+**严重度**: P3（注：与 B13 同一位置，此处作为性能问题单独记录）
+**位置**: `interp/quote.rs:290`
+
+**现状**: `Box<Value>` 的 `clone()` 递增 RC，随后立即解引用 move。在 comptime 求值热路径中，不必要的 RC 操作影响性能。
+
+**修复**: 改为 `Ok(*v)`（同 B13 修复）。
+
+---
+
+### 修复状态（2026-06-19）
+
+| 问题 | 状态 | 修复说明 |
+|------|------|---------|
+| B1 (slice pattern rest-binding) | ✅ 已修复 | `interp/pattern.rs:110` 添加 `return` 传播 rest 匹配结果 |
+| B2 (fseek/ftell 无界 malloc) | ✅ 已修复 | `codegen/builtins/io.rs:481-530` 捕获 fseek 返回值，ftell 结果 clamp 到 0 |
+| B3 (CompileError::code 映射) | ✅ 已修复 | `error.rs:108-148` 改用 `diagnostic/codes::*` 常量，消除全部错误映射 |
+| B4 (formatter `)` 缩进) | ℹ️ 无需修复 | 当前代码 line 46 已不含 `ends_with(')')`，审计时记录的问题已不存在 |
+| B5 (linter W001 误报) | ✅ 已修复 | `lint.rs:28-52` 新增 `is_followed_by_impl` 检查，desc/rule 后有 func/type 时不报警 |
+| B6-B17（P2/P3） | ⏸️ 待修复 | 按路线图 Phase 3 排期处理 |
+
+---
+
 ## 十一、历史风险项状态
 
 ### 已修复（11 项）
@@ -449,6 +710,17 @@ Cap          CapTable 注册/检查/消耗      ✅ 正确
 
 ## 十四、路线图
 
+### Phase 0.5 — 诊断与运行时基础修复（P0-P1，1-2 天）
+
+| 目标 | 工期 | 依赖 | 状态 |
+|------|------|------|------|
+| B3: `CompileError::code()` 映射修正 | 0.5 天 | 无 | ✅ 已修复 |
+| B1: Slice pattern rest-binding 返回值修复 | 0.5 天 | 无 | ✅ 已修复 |
+| B2: `fseek` 返回值检查 | 0.5 天 | 无 | ✅ 已修复 |
+| B5: Linter W001 上下文感知 | 0.5 天 | 无 | ✅ 已修复 |
+| B7: Contract span 行号传递 | 0.5 天 | 无 | ⏸️ 待修复 |
+| B4: Formatter `)` 缩进 | — | — | ℹ️ 无需修复（当前代码已正确） |
+
 ### Phase 1 — FFI 可信基础（P0，3-5 天）
 
 阻塞 v1.0。完成前不投入语言特性。
@@ -474,6 +746,10 @@ Cap          CapTable 注册/检查/消耗      ✅ 正确
 
 | 目标 | 工期 | 依赖 |
 |------|------|------|
+| B4: Formatter `)` 缩进修复 | 0.5 天 | 无 |
+| B6: F-string 转义序列补全 | 0.5 天 | 无 |
+| B11: pool.rs send 错误传播 | 0.5 天 | 无 |
+| B14: loader merge_all 导入清理 | 0.5 天 | 无 |
 | G9: 跨文件模块 E2E | 1 天 | 无 |
 | F9: Python binding generator | 1-2 天 | 无 |
 | F10: errno 完整映射 | 0.5 天 | 无 |
@@ -514,14 +790,19 @@ G3/G4 (测试覆盖)、N1 (ring-buffer)、G6/G8 (arena/async)、comptime (C head
 | 解析器 | `src/parser/{mod,parse_expr,parse_stmt,parse_type}.rs` | 2,738 |
 | 类型检查 | `src/core/{mod,check_stmt,infer_expr}.rs` | 3,973 |
 | 解释器 | `src/interp/{mod,eval,call,builtins,value}.rs` | 5,691 |
+| 模式匹配 | `src/interp/pattern.rs` | 116 |
+| 引用/QuasiQuote | `src/interp/quote.rs` | ~300 |
+| 线程池 | `src/interp/pool.rs` | ~50 |
 | 代码生成 | `src/codegen/{mod,expr,func,block,types,registry}.rs` | ~8,200 |
+| 内置函数 | `src/codegen/builtins/{mod,io,string,list,map,json,network,time_env}.rs` | ~2,500 |
 | **FFI** | **`src/ffi/{contract,runtime,callback,c_header}.rs` + `src/interp/ffi_call.rs`** | **~1,890** |
 | 验证器 | `src/verifier.rs` | 1,153 |
 | LSP | `src/lsp.rs` | 1,089 |
 | C 运行时 | `src/runtime/mimi_runtime.{c,h}` | 1,277+122 |
 | 测试 | `src/tests/` (66 文件) | 17,770 |
 | FFI 文档 | `docs/ffi-glue.md`, `docs/ffi-ownership-abi.md` | 944 |
+| 诊断/错误 | `src/{error,span,lint,fmt,contracts,ast,lexer,loader,manifest,lockfile,safe_arith}.rs` + `src/diagnostic/` | ~5,000 |
 
 ---
 
-*本报告基于 2026-06-19 的代码状态。Mimi 是完整的系统语言，FFI 是杀手级应用场景。所有语言特性服务于"让跨语言编排更安全、更可验证"。如语言版本升级，请同步修订。*
+*本报告基于 2026-06-19 的代码状态（六轮评估整合）。Mimi 是完整的系统语言，FFI 是杀手级应用场景。所有语言特性服务于"让跨语言编排更安全、更可验证"。如语言版本升级，请同步修订。*
