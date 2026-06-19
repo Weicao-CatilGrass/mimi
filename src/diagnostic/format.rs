@@ -120,19 +120,19 @@ pub fn format_diagnostic(diagnostic: &Diagnostic, source: Option<&str>, filename
                         width = gutter_width
                     ));
                     let start_col = note.span.start_col.saturating_sub(1);
-                    let _width = if note.span.end_line == note.span.start_line {
+                    let indicator_width = if note.span.end_line == note.span.start_line {
                         note.span.end_col.saturating_sub(note.span.start_col).max(1)
                     } else {
                         line_text.len().saturating_sub(start_col)
                     };
                     out.push_str(&format!(
-                        " {}{: >width$}{} | {}{}- {}{}{width}\n",
+                        " {}{: >width$}{} | {}{:^<width2$} {}{}\n",
                         colors::DIM, "", colors::RESET,
                         " ".repeat(start_col),
-                        colors::CYAN,
-                        note.message,
-                        colors::RESET,
-                        width = gutter_width
+                        colors::CYAN, "",
+                        note.message, colors::RESET,
+                        width = gutter_width,
+                        width2 = indicator_width,
                     ));
                 }
             }

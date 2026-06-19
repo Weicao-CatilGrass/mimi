@@ -17,20 +17,12 @@ pub fn checked_mul(a: i64, b: i64) -> Option<i64> {
 
 /// Checked division - returns None on division by zero
 pub fn checked_div(a: i64, b: i64) -> Option<i64> {
-    if b == 0 {
-        None
-    } else {
-        a.checked_div(b)
-    }
+    a.checked_div(b)
 }
 
 /// Checked modulo - returns None on division by zero
 pub fn checked_rem(a: i64, b: i64) -> Option<i64> {
-    if b == 0 {
-        None
-    } else {
-        a.checked_rem(b)
-    }
+    a.checked_rem(b)
 }
 
 /// Checked negation - returns None on overflow (i64::MIN)
