@@ -1090,6 +1090,128 @@ fn e2e_valgrind_shared_weak_lifecycle() {
     assert_eq!(stdout.trim(), "42");
 }
 
+// ===================== Network Module (P2-5) =====================
+// Note: compile_and_run doesn't support `use` imports, so we inline
+// the net.mimi wrapper functions directly.
+
+#[test]
+#[ignore]
+fn e2e_net_socket_create() {
+    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    let stdout = compile_and_run(r#"
+func main() -> i32 {
+    let fd = socket(2, 1, 0)
+    println(fd)
+    if fd >= 0 { close_fd(fd) }
+    0
+}
+"#).unwrap();
+    let fd: i32 = stdout.trim().parse().unwrap();
+    assert!(fd >= 0, "socket fd should be non-negative, got {}", fd);
+}
+
+#[test]
+#[ignore]
+fn e2e_net_connect_failure() {
+    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    let stdout = compile_and_run(r#"
+func tcp_connect(host: string, port: i32) -> Result<i32, string> {
+    let fd = socket(2, 1, 0)
+    if fd < 0 { return Result::Err("failed to create socket") }
+    let ret = connect(fd, host, port)
+    if ret < 0 { close_fd(fd); return Result::Err("connection failed") }
+    Result::Ok(fd)
+}
+
+func main() -> i32 {
+    let result = tcp_connect("127.0.0.1", 1)
+    match result {
+        Ok(fd) => { close_fd(fd); println("connected") }
+        Err(msg) => { println(msg) }
+    }
+    0
+}
+"#).unwrap();
+    // Port 1 is typically not listening — connection should fail
+    assert!(stdout.trim().contains("connection failed"),
+        "expected connection failed, got: {}", stdout.trim());
+}
+
+#[test]
+#[ignore]
+fn e2e_net_listen_bind() {
+    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    let stdout = compile_and_run(r#"
+func tcp_listen(port: i32, backlog: i32) -> Result<i32, string> {
+    let fd = socket(2, 1, 0)
+    if fd < 0 { return Result::Err("failed to create socket") }
+    let ret = bind(fd, port)
+    if ret < 0 { close_fd(fd); return Result::Err("bind failed") }
+    let ret2 = listen(fd, backlog)
+    if ret2 < 0 { close_fd(fd); return Result::Err("listen failed") }
+    Result::Ok(fd)
+}
+
+func main() -> i32 {
+    let result = tcp_listen(19876, 1)
+    match result {
+        Ok(fd) => { println("listening"); close_fd(fd) }
+        Err(msg) => { println(msg) }
+    }
+    0
+}
+"#).unwrap();
+    assert_eq!(stdout.trim(), "listening");
+}
+
+#[test]
+#[ignore]
+fn e2e_net_fetch_failure() {
+    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    let stdout = compile_and_run(r#"
+func fetch(url: string) -> Result<string, string> {
+    let body = http_get(url)
+    if body == "" { Result::Err("HTTP request failed") }
+    else { Result::Ok(body) }
+}
+
+func main() -> i32 {
+    let result = fetch("http://127.0.0.1:1/nonexistent")
+    match result {
+        Ok(body) => { println(body) }
+        Err(msg) => { println(msg) }
+    }
+    0
+}
+"#).unwrap();
+    assert!(stdout.trim().contains("HTTP request failed"),
+        "expected HTTP request failed, got: {}", stdout.trim());
+}
+
+#[test]
+#[ignore]
+fn e2e_net_fetch_post_failure() {
+    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    let stdout = compile_and_run(r#"
+func fetch_post(url: string, body: string) -> Result<string, string> {
+    let resp = http_post(url, body)
+    if resp == "" { Result::Err("HTTP request failed") }
+    else { Result::Ok(resp) }
+}
+
+func main() -> i32 {
+    let result = fetch_post("http://127.0.0.1:1/post", "data")
+    match result {
+        Ok(body) => { println(body) }
+        Err(msg) => { println(msg) }
+    }
+    0
+}
+"#).unwrap();
+    assert!(stdout.trim().contains("HTTP request failed"),
+        "expected HTTP request failed, got: {}", stdout.trim());
+}
+
 #[test]
 #[ignore]
 fn e2e_asan_string_ops() {
