@@ -389,7 +389,7 @@ pub fn is_builtin(name: &str) -> bool {
         | "now" | "timestamp" | "now_ms" | "timestamp_ms" | "sleep"
         | "getenv" | "args"
         | "to_json" | "from_json"
-        | "json_get_string" | "json_get_int" | "json_get_element"
+        | "json_get_string" | "json_get_int" | "json_get_element" | "json_is_valid"
         // Network builtins
         | "socket" | "connect" | "bind" | "listen" | "accept"
         | "send" | "recv" | "close_fd"

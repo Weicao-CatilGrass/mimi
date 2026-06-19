@@ -568,10 +568,12 @@ impl Parser {
                     self.advance();
                     self.expect(TokenKind::Colon, "`:` after requires")?;
                     requires = Some(self.parse_expr(0)?);
+                    self.skip_newlines();
                 } else if self.at(&TokenKind::Ensures) {
                     self.advance();
                     self.expect(TokenKind::Colon, "`:` after ensures")?;
                     ensures = Some(self.parse_expr(0)?);
+                    self.skip_newlines();
                 } else {
                     break;
                 }
