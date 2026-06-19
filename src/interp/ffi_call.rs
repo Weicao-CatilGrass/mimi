@@ -38,6 +38,34 @@ enum FfiGuard {
     },
 }
 
+/// RAII guard that tracks shared handles created during an FFI call and
+/// releases them from SHARED_TABLE on drop (all exit paths).
+struct FfiSharedGuard {
+    table: &'static crate::ffi::runtime::SharedHandleTable,
+    handles: Vec<i64>,
+}
+
+impl FfiSharedGuard {
+    fn new() -> Self {
+        Self {
+            table: &crate::ffi::runtime::SHARED_TABLE,
+            handles: Vec::new(),
+        }
+    }
+
+    fn register(&mut self, handle_id: i64) {
+        self.handles.push(handle_id);
+    }
+}
+
+impl Drop for FfiSharedGuard {
+    fn drop(&mut self) {
+        for id in &self.handles {
+            let _ = self.table.release(*id);
+        }
+    }
+}
+
 // F8: C callback trampoline invoked by a libffi closure.
 // Reads the Mimi closure from the thread-local context by callback_id,
 // converts C args to Mimi Values, calls the closure, and writes the result.
@@ -184,6 +212,8 @@ impl<'a> Interpreter<'a> {
         let mut string_guards: Vec<std::ffi::CString> = Vec::new();
         let mut shared_handles: Vec<std::sync::Arc<crate::ffi::runtime::SharedHandle>> = Vec::new();
         let mut ffi_guards: Vec<FfiGuard> = Vec::new();
+        let mut shared_guard = FfiSharedGuard::new();
+        let mut shared_dedup: HashMap<*const (), i64> = HashMap::new();
         for (arg, arg_contract) in args.iter().zip(&contract.args) {
             let c_arg = self.value_to_ffi_arg(
                 arg,
@@ -191,6 +221,8 @@ impl<'a> Interpreter<'a> {
                 &mut string_guards,
                 &mut shared_handles,
                 &mut ffi_guards,
+                &mut shared_guard,
+                &mut shared_dedup,
             )?;
             c_args.push(c_arg);
         }
@@ -374,6 +406,7 @@ impl<'a> Interpreter<'a> {
                     12 => "ENOMEM",
                     13 => "EACCES",
                     14 => "EFAULT",
+                    15 => "ENOTBLK",
                     16 => "EBUSY",
                     17 => "EEXIST",
                     18 => "EXDEV",
@@ -389,20 +422,97 @@ impl<'a> Interpreter<'a> {
                     28 => "ENOSPC",
                     29 => "ESPIPE",
                     30 => "EROFS",
+                    31 => "EMLINK",
                     32 => "EPIPE",
-                    34 => "EDOM",
-                    36 => "ERANGE",
-                    38 => "ENOSYS",
-                    39 => "ENOTEMPTY",
+                    33 => "EDOM",
+                    34 => "ERANGE",
+                    35 => "ENODATA",
+                    36 => "ETIME",
+                    37 => "ENOSR",
+                    38 => "ENOSTR",
+                    39 => "ENOSYS",
+                    40 => "ELOOP",
+                    41 => "ECANCELED",
+                    42 => "EIDRM",
+                    43 => "ENODATA",
+                    44 => "ENOLINK",
+                    45 => "ENOSR",
+                    46 => "ENOSTR",
+                    47 => "ENOTSOCK",
+                    48 => "EDESTADDRREQ",
+                    49 => "EMSGSIZE",
+                    50 => "EPROTOTYPE",
+                    51 => "ENOPROTOOPT",
+                    52 => "EPROTONOSUPPORT",
+                    53 => "ESOCKTNOSUPPORT",
+                    54 => "EOPNOTSUPP",
+                    55 => "ENOTSUP",
+                    56 => "EPFNOSUPPORT",
+                    57 => "EAFNOSUPPORT",
+                    58 => "EADDRINUSE",
+                    59 => "EADDRNOTAVAIL",
+                    60 => "ENETDOWN",
+                    61 => "ENETUNREACH",
+                    62 => "ENETRESET",
+                    63 => "ECONNABORTED",
+                    64 => "ECONNRESET",
+                    65 => "ENOBUFS",
+                    66 => "EISCONN",
+                    67 => "ENOTCONN",
+                    68 => "ESHUTDOWN",
+                    69 => "ETOOMANYREFS",
+                    70 => "ETIMEDOUT",
+                    71 => "ECONNREFUSED",
+                    72 => "EHOSTDOWN",
+                    73 => "EHOSTUNREACH",
+                    74 => "EALREADY",
+                    75 => "EINPROGRESS",
+                    76 => "ESTALE",
+                    77 => "EDQUOT",
+                    78 => "ENOMEDIUM",
+                    79 => "EMEDIUMTYPE",
+                    80 => "ECANCELED",
+                    81 => "ENOKEY",
+                    82 => "EKEYEXPIRED",
+                    83 => "EKEYREVOKED",
+                    84 => "EKEYREJECTED",
+                    85 => "EOWNERDEAD",
+                    86 => "ENOTRECOVERABLE",
+                    87 => "ERFKILL",
+                    88 => "EHWPOISON",
+                    89 => "EUCLEAN",
+                    90 => "ENOTNAM",
+                    91 => "ENAVAIL",
+                    92 => "EISNAM",
+                    93 => "EREMOTEIO",
+                    94 => "EDEADLK",
+                    95 => "ENOLCK",
+                    96 => "ENOTEMPTY",
                     97 => "EAFNOSUPPORT",
                     98 => "EADDRINUSE",
                     99 => "EADDRNOTAVAIL",
+                    100 => "ENETDOWN",
                     101 => "ENETUNREACH",
+                    102 => "ENETRESET",
+                    103 => "ECONNABORTED",
                     104 => "ECONNRESET",
+                    105 => "ENOBUFS",
+                    106 => "EISCONN",
+                    107 => "ENOTCONN",
+                    108 => "ESHUTDOWN",
+                    109 => "ETOOMANYREFS",
                     110 => "ETIMEDOUT",
                     111 => "ECONNREFUSED",
+                    112 => "EHOSTDOWN",
                     113 => "EHOSTUNREACH",
-                    _ => "UNKNOWN",
+                    _ => unsafe {
+                        let c_str = libc::strerror(errno);
+                        if !c_str.is_null() {
+                            std::ffi::CStr::from_ptr(c_str).to_str().unwrap_or("UNKNOWN")
+                        } else {
+                            "UNKNOWN"
+                        }
+                    }
                 };
                 return Err(format!(
                     "FFI errno: {} (code {})",
@@ -423,6 +533,8 @@ impl<'a> Interpreter<'a> {
         string_guards: &mut Vec<std::ffi::CString>,
         shared_handles: &mut Vec<std::sync::Arc<crate::ffi::runtime::SharedHandle>>,
         ffi_guards: &mut Vec<FfiGuard>,
+        shared_guard: &mut FfiSharedGuard,
+        shared_dedup: &mut HashMap<*const (), i64>,
     ) -> Result<i64, String> {
         match contract {
             FfiArgContract::Int => match arg {
@@ -456,8 +568,9 @@ impl<'a> Interpreter<'a> {
             },
             FfiArgContract::StringTransfer => match arg {
                 Value::String(s) => {
-                    // Transfer ownership: create a CString that C must free
-                    let c_str = std::ffi::CString::new(s.as_str())
+                    // Transfer ownership: strip NUL bytes then create a CString that C must free
+                    let sanitized: String = s.as_str().chars().filter(|&c| c != '\0').collect();
+                    let c_str = std::ffi::CString::new(sanitized)
                         .map_err(|e| format!("failed to convert string to C string: {}", e))?;
                     // Convert to raw pointer - C is now responsible for freeing
                     let ptr = c_str.into_raw() as i64;
@@ -509,15 +622,30 @@ impl<'a> Interpreter<'a> {
             FfiArgContract::RawPtr(_) => match arg {
                 // *T: immutable raw pointer
                 Value::Shared(arc) => {
-                    let handle_id = SHARED_TABLE.create(Arc::clone(arc));
-                    if let Some(handle) = SHARED_TABLE.get(handle_id) {
-                        shared_handles.push(handle.clone());
-                        let guard = handle.borrow();
-                        let ptr = &*guard as *const Value as *const () as i64;
-                        ffi_guards.push(FfiGuard::Read(unsafe { extend_guard_read(guard) }));
-                        Ok(ptr)
+                    let arc_ptr = Arc::as_ptr(arc) as *const ();
+                    if let Some(&existing_id) = shared_dedup.get(&arc_ptr) {
+                        if let Some(handle) = SHARED_TABLE.get(existing_id) {
+                            shared_handles.push(handle.clone());
+                            let guard = handle.borrow();
+                            let ptr = &*guard as *const Value as *const () as i64;
+                            ffi_guards.push(FfiGuard::Read(unsafe { extend_guard_read(guard) }));
+                            Ok(ptr)
+                        } else {
+                            Err("FFI wrapper: shared handle missing from table during raw ptr dedup".to_string())
+                        }
                     } else {
-                        Err("FFI wrapper: failed to create shared handle for raw pointer".to_string())
+                        let handle_id = SHARED_TABLE.create(Arc::clone(arc));
+                        shared_dedup.insert(arc_ptr, handle_id);
+                        shared_guard.register(handle_id);
+                        if let Some(handle) = SHARED_TABLE.get(handle_id) {
+                            shared_handles.push(handle.clone());
+                            let guard = handle.borrow();
+                            let ptr = &*guard as *const Value as *const () as i64;
+                            ffi_guards.push(FfiGuard::Read(unsafe { extend_guard_read(guard) }));
+                            Ok(ptr)
+                        } else {
+                            Err("FFI wrapper: failed to create shared handle for raw pointer".to_string())
+                        }
                     }
                 }
                 Value::Ref(rc) => {
@@ -535,15 +663,30 @@ impl<'a> Interpreter<'a> {
             FfiArgContract::RawPtrMut(_) => match arg {
                 // *mut T: mutable raw pointer
                 Value::Shared(arc) => {
-                    let handle_id = SHARED_TABLE.create(Arc::clone(arc));
-                    if let Some(handle) = SHARED_TABLE.get(handle_id) {
-                        shared_handles.push(handle.clone());
-                        let mut guard = handle.borrow_mut();
-                        let ptr = &mut *guard as *mut Value as *mut () as i64;
-                        ffi_guards.push(FfiGuard::Write(unsafe { extend_guard_write(guard) }));
-                        Ok(ptr)
+                    let arc_ptr = Arc::as_ptr(arc) as *const ();
+                    if let Some(&existing_id) = shared_dedup.get(&arc_ptr) {
+                        if let Some(handle) = SHARED_TABLE.get(existing_id) {
+                            shared_handles.push(handle.clone());
+                            let mut guard = handle.borrow_mut();
+                            let ptr = &mut *guard as *mut Value as *mut () as i64;
+                            ffi_guards.push(FfiGuard::Write(unsafe { extend_guard_write(guard) }));
+                            Ok(ptr)
+                        } else {
+                            Err("FFI wrapper: shared handle missing from table during raw ptr mut dedup".to_string())
+                        }
                     } else {
-                        Err("FFI wrapper: failed to create shared handle for mutable raw pointer".to_string())
+                        let handle_id = SHARED_TABLE.create(Arc::clone(arc));
+                        shared_dedup.insert(arc_ptr, handle_id);
+                        shared_guard.register(handle_id);
+                        if let Some(handle) = SHARED_TABLE.get(handle_id) {
+                            shared_handles.push(handle.clone());
+                            let mut guard = handle.borrow_mut();
+                            let ptr = &mut *guard as *mut Value as *mut () as i64;
+                            ffi_guards.push(FfiGuard::Write(unsafe { extend_guard_write(guard) }));
+                            Ok(ptr)
+                        } else {
+                            Err("FFI wrapper: failed to create shared handle for mutable raw pointer".to_string())
+                        }
                     }
                 }
                 Value::RefMut(rc) => {
@@ -561,8 +704,15 @@ impl<'a> Interpreter<'a> {
             FfiArgContract::CShared(_) => match arg {
                 // c_shared T: create a handle in SHARED_TABLE and return the handle ID
                 Value::Shared(arc) => {
-                    let handle_id = SHARED_TABLE.create(Arc::clone(arc));
-                    Ok(handle_id)
+                    let arc_ptr = Arc::as_ptr(arc) as *const ();
+                    if let Some(&existing_id) = shared_dedup.get(&arc_ptr) {
+                        Ok(existing_id)
+                    } else {
+                        let handle_id = SHARED_TABLE.create(Arc::clone(arc));
+                        shared_dedup.insert(arc_ptr, handle_id);
+                        shared_guard.register(handle_id);
+                        Ok(handle_id)
+                    }
                 }
                 Value::LocalShared(_rc) => {
                     // Convert LocalShared to Shared for handle creation
@@ -582,15 +732,30 @@ impl<'a> Interpreter<'a> {
             FfiArgContract::CBorrow(_) => match arg {
                 // c_borrow T: create a handle and return a pointer to the inner value
                 Value::Shared(arc) => {
-                    let handle_id = SHARED_TABLE.create(Arc::clone(arc));
-                    if let Some(handle) = SHARED_TABLE.get(handle_id) {
-                        shared_handles.push(handle.clone());
-                        let guard = handle.borrow();
-                        let ptr = &*guard as *const Value as *const () as i64;
-                        ffi_guards.push(FfiGuard::Read(unsafe { extend_guard_read(guard) }));
-                        Ok(ptr)
+                    let arc_ptr = Arc::as_ptr(arc) as *const ();
+                    if let Some(&existing_id) = shared_dedup.get(&arc_ptr) {
+                        if let Some(handle) = SHARED_TABLE.get(existing_id) {
+                            shared_handles.push(handle.clone());
+                            let guard = handle.borrow();
+                            let ptr = &*guard as *const Value as *const () as i64;
+                            ffi_guards.push(FfiGuard::Read(unsafe { extend_guard_read(guard) }));
+                            Ok(ptr)
+                        } else {
+                            Err("FFI wrapper: shared handle missing from table during c_borrow dedup".to_string())
+                        }
                     } else {
-                        Err("FFI wrapper: failed to create shared handle for c_borrow".to_string())
+                        let handle_id = SHARED_TABLE.create(Arc::clone(arc));
+                        shared_dedup.insert(arc_ptr, handle_id);
+                        shared_guard.register(handle_id);
+                        if let Some(handle) = SHARED_TABLE.get(handle_id) {
+                            shared_handles.push(handle.clone());
+                            let guard = handle.borrow();
+                            let ptr = &*guard as *const Value as *const () as i64;
+                            ffi_guards.push(FfiGuard::Read(unsafe { extend_guard_read(guard) }));
+                            Ok(ptr)
+                        } else {
+                            Err("FFI wrapper: failed to create shared handle for c_borrow".to_string())
+                        }
                     }
                 }
                 Value::Ref(rc) => {
@@ -610,15 +775,30 @@ impl<'a> Interpreter<'a> {
             FfiArgContract::CBorrowMut(_) => match arg {
                 // c_borrow_mut T: create a handle and return a mutable pointer to the inner value
                 Value::Shared(arc) => {
-                    let handle_id = SHARED_TABLE.create(Arc::clone(arc));
-                    if let Some(handle) = SHARED_TABLE.get(handle_id) {
-                        shared_handles.push(handle.clone());
-                        let mut guard = handle.borrow_mut();
-                        let ptr = &mut *guard as *mut Value as *mut () as i64;
-                        ffi_guards.push(FfiGuard::Write(unsafe { extend_guard_write(guard) }));
-                        Ok(ptr)
+                    let arc_ptr = Arc::as_ptr(arc) as *const ();
+                    if let Some(&existing_id) = shared_dedup.get(&arc_ptr) {
+                        if let Some(handle) = SHARED_TABLE.get(existing_id) {
+                            shared_handles.push(handle.clone());
+                            let mut guard = handle.borrow_mut();
+                            let ptr = &mut *guard as *mut Value as *mut () as i64;
+                            ffi_guards.push(FfiGuard::Write(unsafe { extend_guard_write(guard) }));
+                            Ok(ptr)
+                        } else {
+                            Err("FFI wrapper: shared handle missing from table during c_borrow_mut dedup".to_string())
+                        }
                     } else {
-                        Err("FFI wrapper: failed to create shared handle for c_borrow_mut".to_string())
+                        let handle_id = SHARED_TABLE.create(Arc::clone(arc));
+                        shared_dedup.insert(arc_ptr, handle_id);
+                        shared_guard.register(handle_id);
+                        if let Some(handle) = SHARED_TABLE.get(handle_id) {
+                            shared_handles.push(handle.clone());
+                            let mut guard = handle.borrow_mut();
+                            let ptr = &mut *guard as *mut Value as *mut () as i64;
+                            ffi_guards.push(FfiGuard::Write(unsafe { extend_guard_write(guard) }));
+                            Ok(ptr)
+                        } else {
+                            Err("FFI wrapper: failed to create shared handle for c_borrow_mut".to_string())
+                        }
                     }
                 }
                 Value::RefMut(rc) => {

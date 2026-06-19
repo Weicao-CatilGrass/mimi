@@ -166,6 +166,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                 Stmt::Return(Some(expr)) => {
                     self.pop_comp_scope();
                     self.free_heap_allocs()?;
+                    self.pop_shared_scope()?;
                     let val = self.compile_expr(expr, &vars)?;
                     let val = self.adjust_int_val(val, ret_type)?;
                     let ensures = self.ensures_stmts.clone();
@@ -178,6 +179,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                 Stmt::Return(None) => {
                     self.pop_comp_scope();
                     self.free_heap_allocs()?;
+                    self.pop_shared_scope()?;
                     let ensures = self.ensures_stmts.clone();
                     for ensures_expr in &ensures {
                         self.compile_contract_assert(ensures_expr, &vars, &format!("ensures violation in '{}'", func.name))?;
@@ -733,6 +735,7 @@ impl<'ctx> CodeGenerator<'ctx> {
         // Pop scopes (discard compensations on normal exit)
         self.pop_comp_scope();
         self.free_heap_allocs()?;
+        self.release_all_shared()?;
         self.pop_cap_scope();
 
         if !self.block_has_terminator() {

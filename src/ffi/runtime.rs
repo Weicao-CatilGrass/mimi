@@ -103,6 +103,7 @@ pub static CAP_TABLE: LazyLock<CapTable> = LazyLock::new(CapTable::new);
 /// A shared handle wraps an `Arc<RwLock<Value>>` and provides borrow/loan
 /// semantics for crossing the FFI boundary.
 pub struct SharedHandle {
+    id: i64,
     inner: Arc<RwLock<Value>>,
     /// C-side strong reference count (for retain/release balance).
     strong: AtomicI64,
@@ -110,8 +111,9 @@ pub struct SharedHandle {
 
 impl SharedHandle {
     /// Create a new handle from a shared value.
-    pub fn new(inner: Arc<RwLock<Value>>) -> Self {
+    pub fn new(id: i64, inner: Arc<RwLock<Value>>) -> Self {
         Self {
+            id,
             inner,
             strong: AtomicI64::new(1),
         }
@@ -156,6 +158,17 @@ impl SharedHandle {
     pub fn strong_count(&self) -> i64 {
         self.strong.load(Ordering::Relaxed)
     }
+
+    /// Get the opaque handle ID.
+    pub fn id(&self) -> i64 {
+        self.id
+    }
+}
+
+impl Drop for SharedHandle {
+    fn drop(&mut self) {
+        let _ = SHARED_TABLE.remove(self.id);
+    }
 }
 
 /// Thread-safe table mapping opaque handles (i64) to shared handles.
@@ -176,7 +189,7 @@ impl SharedHandleTable {
     /// Create a new handle from a shared value and return its opaque ID.
     pub fn create(&self, inner: Arc<RwLock<Value>>) -> i64 {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
-        let handle = Arc::new(SharedHandle::new(inner));
+        let handle = Arc::new(SharedHandle::new(id, inner));
         let mut handles = self.handles.lock().unwrap_or_else(|e| e.into_inner());
         handles.insert(id, handle);
         id
