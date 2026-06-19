@@ -9,8 +9,6 @@
 //!
 //! - **SharedHandleTable**: Maps opaque handles (i64) to `Arc<RwLock<Value>>`
 
-#![allow(dead_code)]
-
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::{Arc, LazyLock, Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard};

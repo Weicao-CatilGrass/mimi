@@ -6,8 +6,6 @@
 //! behave identically: argument marshalling, lifetime extension, and return
 //! value translation are driven by the same description.
 
-#![allow(dead_code)]
-
 use std::collections::HashSet;
 
 use crate::ast::{CapMode, ExternFunc, Expr, Type};
@@ -29,7 +27,6 @@ pub struct FfiContract {
 
 /// How a single argument is translated from a Mimi value to a C ABI argument.
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub enum FfiArgContract {
     /// Scalar integer or boolean passed by value.
     Int,
@@ -72,7 +69,6 @@ pub enum FfiArgContract {
 
 /// How the return value is translated from the C ABI back to a Mimi value.
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub enum FfiRetContract {
     /// No return value (`unit`).
     Unit,
@@ -137,7 +133,40 @@ impl FfiContract {
 
         // Auto-enable errno checking if return type is Result-like
         // (convention: negative return values indicate errors)
-        let check_errno = matches!(&func.ret, Some(Type::Name(name, _)) if name == "i32" || name == "i64");
+        let check_errno = matches!(&func.ret, Some(Type::Name(name, _)) if name == "i32" || name == "i64")
+            && matches!(func.name.as_str(),
+                "errno" | "strerror" | "perror"
+                | "open" | "openat" | "creat" | "fopen" | "fdopen"
+                | "read" | "write" | "pread" | "pwrite" | "readv" | "writev"
+                | "socket" | "connect" | "bind" | "listen" | "accept" | "accept4"
+                | "send" | "recv" | "sendto" | "recvfrom" | "sendmsg" | "recvmsg"
+                | "close" | "shutdown" | "dup" | "dup2" | "dup3"
+                | "fcntl" | "ioctl" | "poll" | "select" | "epoll_create" | "epoll_ctl" | "epoll_wait"
+                | "fork" | "execve" | "wait" | "waitpid" | "waitid"
+                | "kill" | "raise" | "signal" | "sigaction" | "sigprocmask"
+                | "pipe" | "pipe2" | "mkfifo" | "socketpair"
+                | "getaddrinfo" | "freeaddrinfo" | "getnameinfo"
+                | "gethostbyname" | "gethostbyaddr"
+                | "dlopen" | "dlsym" | "dlerror" | "dlclose"
+                | "mmap" | "munmap" | "mprotect" | "msync"
+                | "opendir" | "readdir" | "closedir"
+                | "stat" | "fstat" | "lstat" | "access" | "chmod" | "chown"
+                | "link" | "unlink" | "rename" | "symlink" | "mkdir" | "rmdir"
+                | "mount" | "umount" | "chdir" | "fchdir" | "getcwd"
+                | "setjmp" | "longjmp" | "sigsetjmp" | "siglongjmp"
+                | "time" | "ctime" | "localtime" | "gmtime"
+                | "strtol" | "strtoll" | "strtoul" | "strtoull" | "atoi" | "atol"
+                | "malloc" | "calloc" | "realloc" | "posix_memalign"
+                | "pthread_create" | "pthread_join" | "pthread_mutex_lock" | "pthread_mutex_unlock"
+                | "sem_init" | "sem_wait" | "sem_post" | "sem_destroy"
+                | "mq_open" | "mq_send" | "mq_receive" | "mq_close" | "mq_unlink"
+                | "clock_gettime" | "clock_settime" | "timer_create" | "timer_settime"
+                | "getenv" | "setenv" | "unsetenv" | "putenv"
+                | "system" | "popen" | "pclose" | "execl" | "execle" | "execlp" | "execv" | "execve" | "execvp"
+                | "realpath" | "canonicalize_file_name"
+                | "tempnam" | "tmpfile" | "mkstemp" | "mkdtemp"
+                | "getopt" | "getopt_long" | "getopt_long_only"
+            );
 
         Self {
             args,
@@ -157,10 +186,6 @@ impl FfiContract {
 }
 
 impl FfiArgContract {
-    fn from_type(ty: &Type) -> Self {
-        Self::from_type_with_caps(ty, &HashSet::new(), &HashSet::new())
-    }
-
     fn from_type_with_caps(ty: &Type, cap_names: &HashSet<String>, record_type_names: &HashSet<String>) -> Self {
         match ty {
             Type::Name(name, _) => {
@@ -175,10 +200,7 @@ impl FfiArgContract {
                     "List" => FfiArgContract::Json,
                     other => {
                         if record_type_names.contains(other) {
-                            // Record types are serialized as JSON strings
                             FfiArgContract::Json
-                        } else if cap_names.contains(other) {
-                            FfiArgContract::Cap(CapMode::Borrow)
                         } else {
                             FfiArgContract::Unsupported(other.to_string())
                         }
@@ -211,10 +233,6 @@ impl FfiArgContract {
 }
 
 impl FfiRetContract {
-    fn from_type(ty: &Type) -> Self {
-        Self::from_type_with_caps(ty, &HashSet::new(), &HashSet::new())
-    }
-
     fn from_type_with_caps(ty: &Type, _cap_names: &HashSet<String>, record_type_names: &HashSet<String>) -> Self {
         match ty {
             Type::Name(name, _) => match name.as_str() {
