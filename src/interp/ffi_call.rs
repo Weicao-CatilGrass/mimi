@@ -1,5 +1,5 @@
 use super::*;
-use crate::ffi::{FfiArgContract, FfiContract, FfiRetContract, CAP_TABLE, SHARED_TABLE, CALLBACK_TABLE};
+use crate::ffi::{FfiArgContract, FfiContract, FfiRetContract, CAP_TABLE, SHARED_TABLE, CALLBACK_TABLE, Errno};
 use libffi::middle::{Cif, Type as FfiType, CodePtr, arg as ffi_arg};
 use libffi::low::{self as ffi_low};
 use std::cell::RefCell;
@@ -66,6 +66,13 @@ impl Drop for FfiSharedGuard {
         for id in &self.handles {
             let _ = self.table.release(*id);
         }
+    }
+}
+
+/// Safe wrapper around `libc::free` for use as a `free_callback`.
+fn callback_free_callback(ptr: *mut std::ffi::c_void) {
+    if !ptr.is_null() {
+        unsafe { libc::free(ptr); }
     }
 }
 
@@ -180,17 +187,17 @@ impl<'a> Interpreter<'a> {
         extern_func: &ExternFunc,
         contract: &FfiContract,
         args: Vec<Value>,
-    ) -> Result<Value, String> {
+    ) -> Result<Value, Errno> {
         // Stage 2 wrapper layer: validate and convert arguments according to the
         // FFI contract before loading any shared library.  This keeps the
         // interpreter FFI path aligned with the codegen wrapper path.
         if contract.args.len() != args.len() {
-            return Err(format!(
+            return Err(Errno::Generic(format!(
                 "FFI wrapper: extern function '{}' expects {} arguments, got {}",
                 extern_func.name,
                 contract.args.len(),
                 args.len()
-            ));
+            )));
         }
 
         // Stage 4: Check precondition (requires) before the C call
@@ -200,22 +207,22 @@ impl<'a> Interpreter<'a> {
                 match result {
                     Ok(Value::Bool(true)) => { /* precondition holds */ }
                     Ok(Value::Bool(false)) => {
-                        return Err(format!(
+                        return Err(Errno::Generic(format!(
                             "FFI contract violation: precondition of '{}' failed",
                             extern_func.name
-                        ));
+                        )));
                     }
                     Ok(other) => {
-                        return Err(format!(
+                        return Err(Errno::Generic(format!(
                             "FFI contract error: precondition of '{}' must evaluate to bool, got {}",
                             extern_func.name, other
-                        ));
+                        )));
                     }
                     Err(e) => {
-                        return Err(format!(
+                        return Err(Errno::Generic(format!(
                             "FFI contract error: failed to evaluate precondition of '{}': {}",
                             extern_func.name, e
-                        ));
+                        )));
                     }
                 }
             }
@@ -232,6 +239,7 @@ impl<'a> Interpreter<'a> {
         let mut ffi_guards: Vec<FfiGuard> = Vec::new();
         let mut shared_guard = FfiSharedGuard::new();
         let mut shared_dedup: HashMap<*const (), i64> = HashMap::new();
+        let mut callback_ids: Vec<i64> = Vec::new();
         for (arg, arg_contract) in args.iter().zip(&contract.args) {
             let c_arg = self.value_to_ffi_arg(
                 arg,
@@ -241,12 +249,13 @@ impl<'a> Interpreter<'a> {
                 &mut ffi_guards,
                 &mut shared_guard,
                 &mut shared_dedup,
+                &mut callback_ids,
             )?;
             c_args.push(c_arg);
         }
 
         let lib_path = std::env::var("MIMI_FFI_LIB")
-            .map_err(|_| "MIMI_FFI_LIB environment variable not set for extern function call".to_string())?;
+            .map_err(|_| Errno::Generic("MIMI_FFI_LIB environment variable not set for extern function call".to_string()))?;
 
         // Load library if not already loaded
         let lib_idx = if let Some(idx) = self.loaded_libs.iter().position(|l| {
@@ -257,7 +266,7 @@ impl<'a> Interpreter<'a> {
             // Safety: libloading::Library::new loads a shared library via FFI; the path is guaranteed valid by environment variable check above.
             unsafe {
                 let lib = libloading::Library::new(&lib_path)
-                    .map_err(|e| format!("failed to load library '{}': {}", lib_path, e))?;
+                    .map_err(|e| Errno::Generic(format!("failed to load library '{}': {}", lib_path, e)))?;
                 self.loaded_libs.push(lib);
                 self.loaded_libs.len() - 1
             }
@@ -357,6 +366,10 @@ impl<'a> Interpreter<'a> {
                     ctx.interp = std::ptr::null();
                     ctx.entries.clear();
                 });
+                // F6: Remove callback entries from global CALLBACK_TABLE
+                for id in &callback_ids {
+                    CALLBACK_TABLE.remove(*id);
+                }
             }
 
             call_result?
@@ -384,136 +397,31 @@ impl<'a> Interpreter<'a> {
                 match eval_result {
                     Ok(Value::Bool(true)) => { /* postcondition holds */ }
                     Ok(Value::Bool(false)) => {
-                        return Err(format!(
+                        return Err(Errno::Generic(format!(
                             "FFI contract violation: postcondition of '{}' failed",
                             extern_func.name
-                        ));
+                        )));
                     }
                     Ok(other) => {
-                        return Err(format!(
+                        return Err(Errno::Generic(format!(
                             "FFI contract error: postcondition of '{}' must evaluate to bool, got {}",
                             extern_func.name, other
-                        ));
+                        )));
                     }
                     Err(e) => {
-                        return Err(format!(
+                        return Err(Errno::Generic(format!(
                             "FFI contract error: failed to evaluate postcondition of '{}': {}",
                             extern_func.name, e
-                        ));
+                        )));
                     }
                 }
             }
         }
 
-        // Priority 2: Map errno to Result if enabled
+        // Priority 2: Map errno to structured Errno if enabled
         if let Some(errno) = errno_value {
             if errno != 0 {
-                // Create an Err result with errno information
-                let errno_name = match errno {
-                    1 => "EPERM",
-                    2 => "ENOENT",
-                    3 => "ESRCH",
-                    4 => "EINTR",
-                    5 => "EIO",
-                    6 => "ENXIO",
-                    7 => "E2BIG",
-                    8 => "ENOEXEC",
-                    9 => "EBADF",
-                    10 => "ECHILD",
-                    11 => "EAGAIN",
-                    12 => "ENOMEM",
-                    13 => "EACCES",
-                    14 => "EFAULT",
-                    15 => "ENOTBLK",
-                    16 => "EBUSY",
-                    17 => "EEXIST",
-                    18 => "EXDEV",
-                    19 => "ENODEV",
-                    20 => "ENOTDIR",
-                    21 => "EISDIR",
-                    22 => "EINVAL",
-                    23 => "ENFILE",
-                    24 => "EMFILE",
-                    25 => "ENOTTY",
-                    26 => "ETXTBSY",
-                    27 => "EFBIG",
-                    28 => "ENOSPC",
-                    29 => "ESPIPE",
-                    30 => "EROFS",
-                    31 => "EMLINK",
-                    32 => "EPIPE",
-                    33 => "EDOM",
-                    34 => "ERANGE",
-                    35 => "ENODATA",
-                    36 => "ETIME",
-                    37 => "ENOSR",
-                    38 => "ENOSTR",
-                    39 => "ENOSYS",
-                    40 => "ELOOP",
-                     41 => "ECANCELED",
-                     42 => "EIDRM",
-                     47 => "ENOTSOCK",
-                    48 => "EDESTADDRREQ",
-                    49 => "EMSGSIZE",
-                    50 => "EPROTOTYPE",
-                    51 => "ENOPROTOOPT",
-                    52 => "EPROTONOSUPPORT",
-                    53 => "ESOCKTNOSUPPORT",
-                    54 => "EOPNOTSUPP",
-                    55 => "ENOTSUP",
-                    56 => "EPFNOSUPPORT",
-                    57 => "EAFNOSUPPORT",
-                    58 => "EADDRINUSE",
-                    59 => "EADDRNOTAVAIL",
-                    60 => "ENETDOWN",
-                    61 => "ENETUNREACH",
-                    62 => "ENETRESET",
-                    63 => "ECONNABORTED",
-                    64 => "ECONNRESET",
-                    65 => "ENOBUFS",
-                    66 => "EISCONN",
-                    67 => "ENOTCONN",
-                    68 => "ESHUTDOWN",
-                    69 => "ETOOMANYREFS",
-                    70 => "ETIMEDOUT",
-                    71 => "ECONNREFUSED",
-                    72 => "EHOSTDOWN",
-                    73 => "EHOSTUNREACH",
-                    74 => "EALREADY",
-                    75 => "EINPROGRESS",
-                    76 => "ESTALE",
-                    77 => "EDQUOT",
-                    78 => "ENOMEDIUM",
-                     79 => "EMEDIUMTYPE",
-                     81 => "ENOKEY",
-                     82 => "EKEYEXPIRED",
-                     83 => "EKEYREVOKED",
-                     84 => "EKEYREJECTED",
-                     85 => "EOWNERDEAD",
-                     86 => "ENOTRECOVERABLE",
-                     87 => "ERFKILL",
-                     88 => "EHWPOISON",
-                     89 => "EUCLEAN",
-                     90 => "ENOTNAM",
-                     91 => "ENAVAIL",
-                     92 => "EISNAM",
-                     93 => "EREMOTEIO",
-                     94 => "EDEADLK",
-                     95 => "ENOLCK",
-                     96 => "ENOTEMPTY",
-                     _ => unsafe {
-                        let c_str = libc::strerror(errno);
-                        if !c_str.is_null() {
-                            std::ffi::CStr::from_ptr(c_str).to_str().unwrap_or("UNKNOWN")
-                        } else {
-                            "UNKNOWN"
-                        }
-                    }
-                };
-                return Err(format!(
-                    "FFI errno: {} (code {})",
-                    errno_name, errno
-                ));
+                return Err(Errno::from_code(errno));
             }
         }
 
@@ -531,51 +439,52 @@ impl<'a> Interpreter<'a> {
         ffi_guards: &mut Vec<FfiGuard>,
         shared_guard: &mut FfiSharedGuard,
         shared_dedup: &mut HashMap<*const (), i64>,
-    ) -> Result<i64, String> {
+        callback_ids: &mut Vec<i64>,
+    ) -> Result<i64, Errno> {
         match contract {
             FfiArgContract::Int => match arg {
                 Value::Int(n) => Ok(*n),
                 Value::Bool(b) => Ok(*b as i64),
-                other => Err(format!(
+                other => Err(Errno::Generic(format!(
                     "FFI wrapper: expected scalar integer/bool argument, found {}",
                     other
-                )),
+                ))),
             },
             FfiArgContract::Float => match arg {
                 Value::Float(f) => Ok(f.to_bits() as i64),
                 Value::Int(n) => Ok((*n as f64).to_bits() as i64),
-                other => Err(format!(
+                other => Err(Errno::Generic(format!(
                     "FFI wrapper: expected f64 argument, found {}",
                     other
-                )),
+                ))),
             },
             FfiArgContract::StringBorrow => match arg {
                 Value::String(s) => {
                     let c_str = std::ffi::CString::new(s.as_str())
-                        .map_err(|e| format!("failed to convert string to C string: {}", e))?;
+                        .map_err(|e| Errno::Generic(format!("failed to convert string to C string: {}", e)))?;
                     let ptr = c_str.as_ptr() as i64;
                     string_guards.push(c_str); // keep the CString alive during the C call
                     Ok(ptr)
                 }
-                other => Err(format!(
+                other => Err(Errno::Generic(format!(
                     "FFI wrapper: expected string argument, found {}",
                     other
-                )),
+                ))),
             },
             FfiArgContract::StringTransfer => match arg {
                 Value::String(s) => {
                     // Transfer ownership: strip NUL bytes then create a CString that C must free
                     let sanitized: String = s.as_str().chars().filter(|&c| c != '\0').collect();
                     let c_str = std::ffi::CString::new(sanitized)
-                        .map_err(|e| format!("failed to convert string to C string: {}", e))?;
+                        .map_err(|e| Errno::Generic(format!("failed to convert string to C string: {}", e)))?;
                     // Convert to raw pointer - C is now responsible for freeing
                     let ptr = c_str.into_raw() as i64;
                     Ok(ptr)
                 }
-                other => Err(format!(
+                other => Err(Errno::Generic(format!(
                     "FFI wrapper: expected string argument for ownership transfer, found {}",
                     other
-                )),
+                ))),
             },
             FfiArgContract::Cap(mode) => match arg {
                 Value::Cap(names) => {
@@ -593,18 +502,18 @@ impl<'a> Interpreter<'a> {
                         }
                     }
                 }
-                other => Err(format!(
+                other => Err(Errno::Generic(format!(
                     "FFI safety: expected cap argument, found {}",
                     other
-                )),
+                ))),
             },
             FfiArgContract::Json => {
                 // Serialize the Mimi value to JSON and pass as a C string
                 let json_str = self.value_to_json(arg)?;
                 let json_text = serde_json::to_string(&json_str)
-                    .map_err(|e| format!("FFI: failed to serialize value to JSON: {}", e))?;
+                    .map_err(|e| Errno::Generic(format!("FFI: failed to serialize value to JSON: {}", e)))?;
                 let c_str = std::ffi::CString::new(json_text)
-                    .map_err(|e| format!("FFI: failed to convert JSON string to C string: {}", e))?;
+                    .map_err(|e| Errno::Generic(format!("FFI: failed to convert JSON string to C string: {}", e)))?;
                 let ptr = c_str.as_ptr() as i64;
                 string_guards.push(c_str);
                 Ok(ptr)
@@ -613,7 +522,7 @@ impl<'a> Interpreter<'a> {
                 Err(self.unsupported_ffi_arg_error(arg, ty))
             }
             FfiArgContract::Callback { param_types, ret_type } => {
-                self.value_to_ffi_callback(arg, param_types, ret_type, string_guards, shared_handles, ffi_guards)
+                self.value_to_ffi_callback(arg, param_types, ret_type, string_guards, shared_handles, ffi_guards, callback_ids)
             }
             FfiArgContract::RawPtr(_) => match arg {
                 // *T: immutable raw pointer
@@ -627,7 +536,7 @@ impl<'a> Interpreter<'a> {
                             ffi_guards.push(FfiGuard::Read(unsafe { extend_guard_read(guard) }));
                             Ok(ptr)
                         } else {
-                            Err("FFI wrapper: shared handle missing from table during raw ptr dedup".to_string())
+                            Err(Errno::Generic("FFI wrapper: shared handle missing from table during raw ptr dedup".to_string()))
                         }
                     } else {
                         let handle_id = SHARED_TABLE.create(Arc::clone(arc));
@@ -640,7 +549,7 @@ impl<'a> Interpreter<'a> {
                             ffi_guards.push(FfiGuard::Read(unsafe { extend_guard_read(guard) }));
                             Ok(ptr)
                         } else {
-                            Err("FFI wrapper: failed to create shared handle for raw pointer".to_string())
+                            Err(Errno::Generic("FFI wrapper: failed to create shared handle for raw pointer".to_string()))
                         }
                     }
                 }
@@ -651,10 +560,10 @@ impl<'a> Interpreter<'a> {
                     Ok(ptr)
                 }
                 Value::Int(n) => Ok(*n),
-                other => Err(format!(
+                other => Err(Errno::Generic(format!(
                     "FFI wrapper: raw pointer argument must be a shared value, reference, or opaque handle, found {}",
                     other
-                )),
+                ))),
             },
             FfiArgContract::RawPtrMut(_) => match arg {
                 // *mut T: mutable raw pointer
@@ -668,7 +577,7 @@ impl<'a> Interpreter<'a> {
                             ffi_guards.push(FfiGuard::Write(unsafe { extend_guard_write(guard) }));
                             Ok(ptr)
                         } else {
-                            Err("FFI wrapper: shared handle missing from table during raw ptr mut dedup".to_string())
+                            Err(Errno::Generic("FFI wrapper: shared handle missing from table during raw ptr mut dedup".to_string()))
                         }
                     } else {
                         let handle_id = SHARED_TABLE.create(Arc::clone(arc));
@@ -681,7 +590,7 @@ impl<'a> Interpreter<'a> {
                             ffi_guards.push(FfiGuard::Write(unsafe { extend_guard_write(guard) }));
                             Ok(ptr)
                         } else {
-                            Err("FFI wrapper: failed to create shared handle for mutable raw pointer".to_string())
+                            Err(Errno::Generic("FFI wrapper: failed to create shared handle for mutable raw pointer".to_string()))
                         }
                     }
                 }
@@ -692,10 +601,10 @@ impl<'a> Interpreter<'a> {
                     Ok(ptr)
                 }
                 Value::Int(n) => Ok(*n),
-                other => Err(format!(
+                other => Err(Errno::Generic(format!(
                     "FFI wrapper: mutable raw pointer argument must be a shared value, mutable reference, or opaque handle, found {}",
                     other
-                )),
+                ))),
             },
             FfiArgContract::CShared(_) => match arg {
                 // c_shared T: create a handle in SHARED_TABLE and return the handle ID
@@ -714,16 +623,16 @@ impl<'a> Interpreter<'a> {
                     // Convert LocalShared to Shared for handle creation
                     // Note: This is a limitation - LocalShared cannot be directly used with SharedHandleTable
                     // For now, return an error
-                    Err("FFI wrapper: c_shared does not support local_shared values yet. Use shared instead.".to_string())
+                    Err(Errno::Generic("FFI wrapper: c_shared does not support local_shared values yet. Use shared instead.".to_string()))
                 }
                 Value::Int(n) => {
                     // Already an opaque handle (from previous conversion)
                     Ok(*n)
                 }
-                other => Err(format!(
+                other => Err(Errno::Generic(format!(
                     "FFI wrapper: c_shared argument must be a shared value or opaque handle, found {}",
                     other
-                )),
+                ))),
             },
             FfiArgContract::CBorrow(_) => match arg {
                 // c_borrow T: create a handle and return a pointer to the inner value
@@ -737,7 +646,7 @@ impl<'a> Interpreter<'a> {
                             ffi_guards.push(FfiGuard::Read(unsafe { extend_guard_read(guard) }));
                             Ok(ptr)
                         } else {
-                            Err("FFI wrapper: shared handle missing from table during c_borrow dedup".to_string())
+                            Err(Errno::Generic("FFI wrapper: shared handle missing from table during c_borrow dedup".to_string()))
                         }
                     } else {
                         let handle_id = SHARED_TABLE.create(Arc::clone(arc));
@@ -750,7 +659,7 @@ impl<'a> Interpreter<'a> {
                             ffi_guards.push(FfiGuard::Read(unsafe { extend_guard_read(guard) }));
                             Ok(ptr)
                         } else {
-                            Err("FFI wrapper: failed to create shared handle for c_borrow".to_string())
+                            Err(Errno::Generic("FFI wrapper: failed to create shared handle for c_borrow".to_string()))
                         }
                     }
                 }
@@ -763,10 +672,10 @@ impl<'a> Interpreter<'a> {
                 Value::Int(n) => {
                     Ok(*n)
                 }
-                other => Err(format!(
+                other => Err(Errno::Generic(format!(
                     "FFI wrapper: c_borrow argument must be a shared value, reference, or opaque handle, found {}",
                     other
-                )),
+                ))),
             },
             FfiArgContract::CBorrowMut(_) => match arg {
                 // c_borrow_mut T: create a handle and return a mutable pointer to the inner value
@@ -780,7 +689,7 @@ impl<'a> Interpreter<'a> {
                             ffi_guards.push(FfiGuard::Write(unsafe { extend_guard_write(guard) }));
                             Ok(ptr)
                         } else {
-                            Err("FFI wrapper: shared handle missing from table during c_borrow_mut dedup".to_string())
+                            Err(Errno::Generic("FFI wrapper: shared handle missing from table during c_borrow_mut dedup".to_string()))
                         }
                     } else {
                         let handle_id = SHARED_TABLE.create(Arc::clone(arc));
@@ -793,7 +702,7 @@ impl<'a> Interpreter<'a> {
                             ffi_guards.push(FfiGuard::Write(unsafe { extend_guard_write(guard) }));
                             Ok(ptr)
                         } else {
-                            Err("FFI wrapper: failed to create shared handle for c_borrow_mut".to_string())
+                            Err(Errno::Generic("FFI wrapper: failed to create shared handle for c_borrow_mut".to_string()))
                         }
                     }
                 }
@@ -806,10 +715,10 @@ impl<'a> Interpreter<'a> {
                 Value::Int(n) => {
                     Ok(*n)
                 }
-                other => Err(format!(
+                other => Err(Errno::Generic(format!(
                     "FFI wrapper: c_borrow_mut argument must be a shared value, mutable reference, or opaque handle, found {}",
                     other
-                )),
+                ))),
             },
         }
     }
@@ -817,15 +726,15 @@ impl<'a> Interpreter<'a> {
     /// F8: Apply a Mimi closure value to arguments from within a C callback context.
     /// Mirrors `apply_closure` in call.rs but designed for &self usage from a
     /// C trampoline via raw pointer.
-    pub(crate) fn apply_closure_ffi(&mut self, closure: &Value, args: Vec<Value>) -> Result<Value, String> {
+    pub(crate) fn apply_closure_ffi(&mut self, closure: &Value, args: Vec<Value>) -> Result<Value, Errno> {
         match closure {
             Value::Closure { params, body, captured, .. } => {
                 if params.len() != args.len() {
-                    return Err(format!(
+                    return Err(Errno::Generic(format!(
                         "closure expects {} arguments, got {}",
                         params.len(),
                         args.len()
-                    ));
+                    )));
                 }
                 self.push_scope();
                 for (n, v) in captured {
@@ -834,14 +743,14 @@ impl<'a> Interpreter<'a> {
                 for (param, arg) in params.iter().zip(args) {
                     self.bind(&param.name, arg);
                 }
-                let result = self.eval_block(body)?;
+                let result = self.eval_block(body).map_err(Errno::from)?;
                 self.pop_scope();
                 if let Some(val) = self.early_return.take() {
                     return Ok(val);
                 }
                 Ok(result.unwrap_or(Value::Unit))
             }
-            _ => Err(format!("expected a closure, found {}", closure)),
+            _ => Err(Errno::Generic(format!("expected a closure, found {}", closure))),
         }
     }
 
@@ -856,7 +765,8 @@ impl<'a> Interpreter<'a> {
         _string_guards: &mut Vec<std::ffi::CString>,
         _shared_handles: &mut Vec<std::sync::Arc<crate::ffi::runtime::SharedHandle>>,
         ffi_guards: &mut Vec<FfiGuard>,
-    ) -> Result<i64, String> {
+        callback_ids: &mut Vec<i64>,
+    ) -> Result<i64, Errno> {
         match arg {
             Value::Closure { .. } => {
                 let closure = arg.clone();
@@ -886,8 +796,9 @@ impl<'a> Interpreter<'a> {
                 let cb_id = CALLBACK_TABLE.register(
                     None,
                     Some(Box::new(|_id: i64, _args: &[i64]| -> i64 { 0 })),
-                    None,
+                    None, // arg freeing is handled by arg_free_mask in the trampoline
                 );
+                callback_ids.push(cb_id);
 
                 // Store the closure in the thread-local callback context
                 // F6: Build arg_free_mask from param_types — string/RawString/CBuffer
@@ -931,16 +842,16 @@ impl<'a> Interpreter<'a> {
                 // Already an opaque function pointer (passed through from a previous call)
                 Ok(*n)
             }
-            other => Err(format!(
+            other => Err(Errno::Generic(format!(
                 "FFI safety: expected a closure or function pointer for callback parameter, found {}",
                 other
-            )),
+            ))),
         }
     }
 
     /// Convert the raw i64 returned by a C function into a Mimi value according
     /// to the return-value contract.
-    fn ffi_ret_to_value(&self, result: i64, contract: &FfiRetContract) -> Result<Value, String> {
+    fn ffi_ret_to_value(&self, result: i64, contract: &FfiRetContract) -> Result<Value, Errno> {
         match contract {
             FfiRetContract::Unit => Ok(Value::Unit),
             FfiRetContract::Int => Ok(Value::Int(result)),
@@ -1003,59 +914,61 @@ impl<'a> Interpreter<'a> {
             | FfiRetContract::CBorrowMut(_) => {
                 Ok(Value::Int(result))
             }
-            FfiRetContract::Unsupported(ty) => Err(format!(
+            FfiRetContract::Unsupported(ty) => Err(Errno::Generic(format!(
                 "FFI safety: extern function declared with unsupported return type '{}'",
                 ty
-            )),
+            ))),
         }
     }
 
     /// Produce a Phase-0-compatible error for Mimi values that cannot cross the
     /// C ABI boundary.  Used when an extern declaration bypassed the type
     /// checker (e.g. in tests that call run_source_result directly).
-    fn unsupported_ffi_arg_error(&self, arg: &Value, _ty: &str) -> String {
+    fn unsupported_ffi_arg_error(&self, arg: &Value, _ty: &str) -> Errno {
         match arg {
             Value::Shared(_) | Value::LocalShared(_) | Value::WeakShared(_) | Value::WeakLocal(_) => {
-                format!(
+                Errno::Generic(format!(
                     "FFI safety: cannot pass shared value '{}' directly to extern function. \
                      Use a passport type such as c_shared T or c_borrow T instead.",
                     arg
-                )
+                ))
             }
             Value::Ref(_) | Value::RefMut(_) => {
-                format!(
+                Errno::Generic(format!(
                     "FFI safety: cannot pass borrowed reference '{}' directly to extern function. \
                      Use a passport type such as c_borrow T or c_borrow_mut T instead.",
                     arg
-                )
+                ))
             }
             Value::Cap(_) => {
-                "FFI safety: cap cannot be passed directly to extern functions yet. \
-                 Cap cross-boundary authentication (via a runtime CapTable) is planned for Phase 3."
-                    .to_string()
+                Errno::Generic(
+                    "FFI safety: cap cannot be passed directly to extern functions yet. \
+                     Cap cross-boundary authentication (via a runtime CapTable) is planned for Phase 3."
+                        .to_string()
+                )
             }
             Value::Record(_, _) | Value::Variant(_, _) | Value::List(_) | Value::Tuple(_) => {
-                format!(
+                Errno::Generic(format!(
                     "FFI safety: unsupported argument type '{}' for extern function call. \
                      Only scalar types (i32/i64/f64/bool) and borrowed strings are allowed. \
                      Complex Mimi values must be converted to passport types (c_shared T, \
                      c_borrow T, c_borrow_mut T, *T, *mut T) before crossing the FFI boundary.",
                     arg
-                )
+                ))
             }
             other => {
-                format!(
+                Errno::Generic(format!(
                     "FFI safety: unsupported argument type '{}' for extern function call. \
                      Only scalar types (i32/i64/f64/bool) and borrowed strings are allowed. \
                      Complex Mimi values must be converted to passport types (c_shared T, \
                      c_borrow T, c_borrow_mut T, *T, *mut T) before crossing the FFI boundary.",
                     other
-                )
+                ))
             }
         }
     }
 
-    pub(crate) fn value_to_json(&self, v: &Value) -> Result<serde_json::Value, String> {
+    pub(crate) fn value_to_json(&self, v: &Value) -> Result<serde_json::Value, Errno> {
         match v {
             Value::Int(n) => Ok(serde_json::Value::Number((*n).into())),
             Value::Float(f) => {
@@ -1128,25 +1041,25 @@ impl<'a> Interpreter<'a> {
         &self,
         extern_func: &ExternFunc,
         contract: &FfiContract,
-    ) -> Result<(), String> {
+    ) -> Result<(), Errno> {
         for (i, arg_contract) in contract.args.iter().enumerate() {
             if let FfiArgContract::Callback { param_types, .. } = arg_contract {
                 if param_types.is_empty() {
-                    return Err(format!(
+                    return Err(Errno::Generic(format!(
                         "FFI safety: callback parameter {} of '{}' has zero parameters",
                         i + 1,
                         extern_func.name
-                    ));
+                    )));
                 }
             }
         }
         if contract.args.len() != extern_func.params.len() {
-            return Err(format!(
+            return Err(Errno::Generic(format!(
                 "FFI safety: contract has {} args but extern '{}' declares {} params",
                 contract.args.len(),
                 extern_func.name,
                 extern_func.params.len()
-            ));
+            )));
         }
         Ok(())
     }

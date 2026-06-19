@@ -115,7 +115,8 @@ func main() -> i32 {
 }
 
 #[test]
-fn record_not_allowed_in_ffi() {
+fn record_allowed_in_ffi_via_json() {
+    // Record types are now supported via JSON serialization (like List/Tuple)
     let src = r#"
 type Point {
     x: i32
@@ -131,7 +132,8 @@ func main() -> i32 {
     __mimi_test_no_such_function_12345(p)
 }
 "#;
-    expect_ffi_safety_error(src, "unsupported argument type");
+    // Should proceed past type check to symbol resolution
+    expect_symbol_not_found(src);
 }
 
 #[test]

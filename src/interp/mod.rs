@@ -113,8 +113,11 @@ impl<'a> Interpreter<'a> {
         let mut type_defs: HashMap<String, TypeDef> = HashMap::new();
         for item in &file.items {
             Self::collect_traits(item, &mut trait_defs, &mut type_impls);
-            Self::collect_extern_funcs(item, &mut extern_funcs, &mut ffi_contracts, &cap_defs);
             Self::collect_type_defs(item, &mut type_defs);
+        }
+        // Build contracts after type_defs are populated so record type names are known
+        for item in &file.items {
+            Self::collect_extern_funcs(item, &mut extern_funcs, &mut ffi_contracts, &cap_defs, &type_defs);
         }
         // Expand built-in derive macros
         Self::expand_derives(&type_defs, &mut trait_defs, &mut type_impls);
@@ -239,18 +242,23 @@ impl<'a> Interpreter<'a> {
         out: &mut HashMap<String, ExternFunc>,
         contracts: &mut HashMap<String, FfiContract>,
         cap_defs: &HashMap<String, Vec<String>>,
+        type_defs: &HashMap<String, TypeDef>,
     ) {
         let cap_names: std::collections::HashSet<String> = cap_defs.keys().cloned().collect();
+        let record_type_names: std::collections::HashSet<String> = type_defs.iter()
+            .filter(|(_, td)| matches!(td.kind, TypeDefKind::Record(_)))
+            .map(|(name, _)| name.clone())
+            .collect();
         match item {
             Item::ExternBlock(block) => {
                 for func in &block.funcs {
                     out.insert(func.name.clone(), func.clone());
-                    contracts.insert(func.name.clone(), FfiContract::from_extern_with_caps(func, &cap_names));
+                    contracts.insert(func.name.clone(), FfiContract::from_extern_with_caps(func, &cap_names, &record_type_names));
                 }
             }
             Item::Module(m) => {
                 for inner in &m.items {
-                    Self::collect_extern_funcs(inner, out, contracts, cap_defs);
+                    Self::collect_extern_funcs(inner, out, contracts, cap_defs, type_defs);
                 }
             }
             _ => {}

@@ -251,6 +251,47 @@ impl<'ctx> CodeGenerator<'ctx> {
             // Store param types for later closure→thunk conversion in compile_call
             let param_types: Vec<crate::ast::Type> = ef.params.iter().map(|p| p.ty.clone()).collect();
             self.extern_param_types.insert(ef.name.clone(), param_types);
+
+            // Check for types requiring JSON serialization (not yet supported in codegen)
+            for p in &ef.params {
+                if let crate::ast::Type::Name(name, _) = &p.ty {
+                    if name == "List" || name == "Tuple" || self.record_type_names.contains(name.as_str()) {
+                        return Err(CompileError::LlvmError(format!(
+                            "codegen does not yet support complex type '{}' in extern parameter '{}'. \
+                             Use `mimi run` (interpreter) for JSON-serialized FFI, or convert to a \
+                             passport type (c_shared, c_borrow, *T) for native codegen FFI.",
+                            name, p.name
+                        )));
+                    }
+                }
+                if let crate::ast::Type::Tuple(_) = &p.ty {
+                    return Err(CompileError::LlvmError(format!(
+                        "codegen does not yet support Tuple type in extern parameter '{}'. \
+                         Use `mimi run` (interpreter) for JSON-serialized FFI.",
+                        p.name
+                    )));
+                }
+            }
+            // Same check for return type
+            if let Some(ret_ty) = &ef.ret {
+                if let crate::ast::Type::Name(name, _) = ret_ty {
+                    if name == "List" || name == "Tuple" || self.record_type_names.contains(name.as_str()) {
+                        return Err(CompileError::LlvmError(format!(
+                            "codegen does not yet support complex type '{}' as extern return type for '{}'. \
+                             Use `mimi run` (interpreter) for JSON-serialized FFI, or use a scalar/pointer return type.",
+                            name, ef.name
+                        )));
+                    }
+                }
+                if let crate::ast::Type::Tuple(_) = ret_ty {
+                    return Err(CompileError::LlvmError(format!(
+                        "codegen does not yet support Tuple as extern return type for '{}'. \
+                         Use `mimi run` (interpreter) for JSON-serialized FFI.",
+                        ef.name
+                    )));
+                }
+            }
+
             let mut param_tys = Vec::new();
             for p in &ef.params {
                 let ty = self.type_to_llvm_for_extern(&p.ty);
@@ -527,6 +568,10 @@ impl<'ctx> CodeGenerator<'ctx> {
         };
         self.type_llvm.insert(t.name.clone(), llvm_ty);
         self.type_defs.insert(t.name.clone(), t.clone());
+        // Track record types for JSON FFI serialization
+        if matches!(t.kind, crate::ast::TypeDefKind::Record(_)) {
+            self.record_type_names.insert(t.name.clone());
+        }
         Ok(())
     }
 

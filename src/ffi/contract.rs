@@ -110,12 +110,12 @@ impl FfiContract {
     /// validated by the type checker (`is_valid_extern_type`).  This function
     /// panics on unexpected types so that contract bugs surface early.
     pub fn from_extern(func: &ExternFunc) -> Self {
-        Self::from_extern_with_caps(func, &HashSet::new())
+        Self::from_extern_with_caps(func, &HashSet::new(), &HashSet::new())
     }
 
     /// Build a contract from an extern function declaration, with knowledge of
-    /// which type names refer to declared capabilities.
-    pub fn from_extern_with_caps(func: &ExternFunc, cap_names: &HashSet<String>) -> Self {
+    /// which type names refer to declared capabilities and which refer to records.
+    pub fn from_extern_with_caps(func: &ExternFunc, cap_names: &HashSet<String>, record_type_names: &HashSet<String>) -> Self {
         let args = func
             .params
             .iter()
@@ -125,14 +125,14 @@ impl FfiContract {
                 if let Some(mode) = p.cap_mode {
                     FfiArgContract::Cap(mode)
                 } else {
-                    FfiArgContract::from_type_with_caps(&p.ty, cap_names)
+                    FfiArgContract::from_type_with_caps(&p.ty, cap_names, record_type_names)
                 }
             })
             .collect();
         let ret = func
             .ret
             .as_ref()
-            .map(|ty| FfiRetContract::from_type_with_caps(ty, cap_names))
+            .map(|ty| FfiRetContract::from_type_with_caps(ty, cap_names, record_type_names))
             .unwrap_or(FfiRetContract::Unit);
 
         // Auto-enable errno checking if return type is Result-like
@@ -158,10 +158,10 @@ impl FfiContract {
 
 impl FfiArgContract {
     fn from_type(ty: &Type) -> Self {
-        Self::from_type_with_caps(ty, &HashSet::new())
+        Self::from_type_with_caps(ty, &HashSet::new(), &HashSet::new())
     }
 
-    fn from_type_with_caps(ty: &Type, cap_names: &HashSet<String>) -> Self {
+    fn from_type_with_caps(ty: &Type, cap_names: &HashSet<String>, record_type_names: &HashSet<String>) -> Self {
         match ty {
             Type::Name(name, _) => {
                 if cap_names.contains(name.as_str()) {
@@ -174,8 +174,10 @@ impl FfiArgContract {
                     "unit" => FfiArgContract::Int,
                     "List" => FfiArgContract::Json,
                     other => {
-                        // Check if it's a known record type (complex data type)
-                        if cap_names.contains(other) {
+                        if record_type_names.contains(other) {
+                            // Record types are serialized as JSON strings
+                            FfiArgContract::Json
+                        } else if cap_names.contains(other) {
                             FfiArgContract::Cap(CapMode::Borrow)
                         } else {
                             FfiArgContract::Unsupported(other.to_string())
@@ -197,6 +199,7 @@ impl FfiArgContract {
                     ret_type: ret_type.clone(),
                 }
             }
+
             Type::CBuffer(inner) => {
                 // CBuffer is a managed pointer - pass as opaque handle
                 FfiArgContract::RawPtr(inner.clone())
@@ -209,10 +212,10 @@ impl FfiArgContract {
 
 impl FfiRetContract {
     fn from_type(ty: &Type) -> Self {
-        Self::from_type_with_caps(ty, &HashSet::new())
+        Self::from_type_with_caps(ty, &HashSet::new(), &HashSet::new())
     }
 
-    fn from_type_with_caps(ty: &Type, _cap_names: &HashSet<String>) -> Self {
+    fn from_type_with_caps(ty: &Type, _cap_names: &HashSet<String>, record_type_names: &HashSet<String>) -> Self {
         match ty {
             Type::Name(name, _) => match name.as_str() {
                 "i32" | "i64" | "bool" => FfiRetContract::Int,
@@ -220,7 +223,13 @@ impl FfiRetContract {
                 "string" => FfiRetContract::String,
                 "unit" => FfiRetContract::Unit,
                 "List" => FfiRetContract::Json,
-                other => FfiRetContract::Unsupported(other.to_string()),
+                other => {
+                    if record_type_names.contains(other) {
+                        FfiRetContract::Json
+                    } else {
+                        FfiRetContract::Unsupported(other.to_string())
+                    }
+                }
             },
             Type::RawPtr(inner) => FfiRetContract::RawPtr(inner.clone()),
             Type::RawPtrMut(inner) => FfiRetContract::RawPtrMut(inner.clone()),
