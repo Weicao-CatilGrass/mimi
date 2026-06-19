@@ -136,6 +136,11 @@ impl Parser {
                 let inner = self.parse_type()?;
                 Ok(Type::Weak(Box::new(inner)))
             }
+            TokenKind::WeakLocal => {
+                self.advance();
+                let inner = self.parse_type()?;
+                Ok(Type::WeakLocal(Box::new(inner)))
+            }
             TokenKind::CShared => {
                 self.advance();
                 let inner = self.parse_type()?;

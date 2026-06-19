@@ -170,7 +170,8 @@ impl<'ctx> CodeGenerator<'ctx> {
         
         self.push_cap_scope();
         self.push_comp_scope();
-        
+        self.push_heap_scope();
+
         let mut vars: HashMap<String, VarEntry> = HashMap::new();
         
         // Bind self: allocate space for actor struct and store pointer
@@ -218,6 +219,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                 }
                 Stmt::Return(Some(expr)) => {
                     self.pop_comp_scope();
+                    self.free_heap_allocs()?;
                     self.pop_shared_scope()?;
                     self.pop_cap_scope();
                     let mut val = self.compile_expr(expr, &vars)?;
@@ -231,6 +233,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                 }
                 Stmt::Return(None) => {
                     self.pop_comp_scope();
+                    self.free_heap_allocs()?;
                     self.pop_shared_scope()?;
                     self.pop_cap_scope();
                     let ensures = self.ensures_stmts.clone();
@@ -454,12 +457,16 @@ impl<'ctx> CodeGenerator<'ctx> {
                     self.compile_shared_let_stmt(name, init, &mut vars)?;
                 }
                 Stmt::Desc(_) | Stmt::Requires(_, _) | Stmt::Ensures(_, _) | Stmt::Math(_) => {}
+                Stmt::Block(block) => {
+                    self.compile_block(block, &mut vars)?;
+                }
                 _ => {}
             }
         }
         
         self.check_unconsumed_caps()?;
         self.pop_comp_scope();
+        self.free_heap_allocs()?;
         self.release_all_shared()?;
         self.pop_cap_scope();
         
