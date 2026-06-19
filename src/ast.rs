@@ -476,6 +476,8 @@ pub enum Type {
     LocalShared(Box<Type>),
     /// Weak reference from shared
     Weak(Box<Type>),
+    /// Weak reference from local_shared
+    WeakLocal(Box<Type>),
     /// Newtype wrapper for strong type isolation (name, inner type)
     Newtype(String, Box<Type>),
     /// Nothing type (unreachable / error type)

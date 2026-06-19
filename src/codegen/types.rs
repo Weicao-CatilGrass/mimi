@@ -47,7 +47,7 @@ pub fn mimi_type_to_llvm<'ctx>(ctx: &'ctx Context, ty: &Type) -> Option<BasicTyp
             }
             Some(BasicTypeEnum::StructType(ctx.struct_type(&llvm_elems, false)))
         }
-        Type::Shared(_) | Type::LocalShared(_) | Type::Weak(_)
+        Type::Shared(_) | Type::LocalShared(_) | Type::Weak(_) | Type::WeakLocal(_)
             | Type::CShared(_) | Type::CBorrow(_) | Type::CBorrowMut(_)
             | Type::RawPtr(_) | Type::RawPtrMut(_) =>
             Some(BasicTypeEnum::PointerType(ctx.i8_type().ptr_type(AddressSpace::default()))),

@@ -622,18 +622,17 @@ impl<'a> Checker<'a> {
                 Type::Name("Future".into(), vec![])
             }
             Expr::Await(inner) => {
-                // Await unwraps the future type
                 let inner_ty = self.infer_expr(inner, scopes);
-                // For now, just return the inner type
                 match inner_ty {
                     Type::Name(n, args) if n == "Future" && !args.is_empty() => args[0].clone(),
-                    other => other,
+                    other => {
+                        self.emit(format!("await requires Future type, found {}", fmt_type(&other)));
+                        Type::Name("unknown".into(), vec![])
+                    }
                 }
             }
-            Expr::Quote(_) | Expr::QuoteInterpolate(_) => {
-                // quote! returns an AST value
-                Type::Name("AST".into(), vec![])
-            }
+            Expr::Quote(_) => Type::Name("AST".into(), vec![]),
+            Expr::QuoteInterpolate(inner) => self.infer_expr(inner, scopes),
             Expr::Comptime(block) => {
                 // Comptime block: infer type from last expression
                 let mut result_type = Type::Name("unit".into(), vec![]);
@@ -669,9 +668,22 @@ impl<'a> Checker<'a> {
                 // old(x) returns the same type as x
                 self.infer_expr(expr, scopes)
             }
-            Expr::Lambda { params, ret, .. } => {
+            Expr::Lambda { params, ret, body } => {
                 let param_types: Vec<Type> = params.iter().map(|p| p.ty.clone()).collect();
-                let return_type = ret.clone().unwrap_or_else(|| Type::Name("unit".into(), vec![]));
+                scopes.push(HashMap::new());
+                for p in params {
+                    scopes.last_mut().expect("scope non-empty").insert(p.name.clone(), p.ty.clone());
+                }
+                let mut body_type = Type::Name("unit".into(), vec![]);
+                for stmt in body {
+                    match stmt {
+                        Stmt::Expr(e) => body_type = self.infer_expr(e, scopes),
+                        Stmt::Return(Some(e)) => { body_type = self.infer_expr(e, scopes); break; }
+                        _ => {}
+                    }
+                }
+                scopes.pop();
+                let return_type = ret.clone().unwrap_or(body_type);
                 Type::Func(param_types, Box::new(return_type))
             }
             Expr::Turbofish(name, type_args, args) => {

@@ -81,6 +81,8 @@ pub struct Interpreter<'a> {
     early_return: Option<Value>,
     /// Call stack for error context (function names being executed)
     call_stack: Vec<String>,
+    /// Recursion depth guard to prevent stack overflow
+    recursion_depth: usize,
     /// O(1) function lookup index: name -> FuncDef
     func_index: HashMap<String, FuncDef>,
     /// O(1) actor lookup index: name -> ActorDef
@@ -152,9 +154,25 @@ impl<'a> Interpreter<'a> {
             loop_action: None,
             early_return: None,
             call_stack: Vec::new(),
+            recursion_depth: 0,
             func_index,
             actor_index,
         }
+    }
+
+    const MAX_RECURSION_DEPTH: usize = 4096;
+
+    fn with_depth_check<F, T>(&mut self, f: F) -> Result<T, String>
+    where
+        F: FnOnce(&mut Self) -> Result<T, String>,
+    {
+        if self.recursion_depth >= Self::MAX_RECURSION_DEPTH {
+            return Err("recursion limit exceeded (possible infinite recursion)".into());
+        }
+        self.recursion_depth += 1;
+        let result = f(self);
+        self.recursion_depth = self.recursion_depth.saturating_sub(1);
+        result
     }
 
     fn build_func_index(items: &[Item], index: &mut HashMap<String, FuncDef>) {
@@ -486,6 +504,7 @@ impl<'a> Interpreter<'a> {
             Type::Shared(inner) => format!("shared {}", self.resolve_type_name(inner)),
             Type::LocalShared(inner) => format!("local_shared {}", self.resolve_type_name(inner)),
             Type::Weak(inner) => format!("weak {}", self.resolve_type_name(inner)),
+            Type::WeakLocal(inner) => format!("weak_local {}", self.resolve_type_name(inner)),
             Type::RawPtr(inner) => format!("*{}", self.resolve_type_name(inner)),
             Type::RawPtrMut(inner) => format!("*mut {}", self.resolve_type_name(inner)),
             Type::CShared(inner) => format!("c_shared {}", self.resolve_type_name(inner)),

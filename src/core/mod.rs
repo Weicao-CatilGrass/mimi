@@ -693,7 +693,15 @@ impl<'a> Checker<'a> {
         match ty {
             Type::Name(name, args) => {
                 if let Some(aliased) = self.aliases.get(name) {
-                    // Simple aliases do not carry generic args in v0.2
+                    if let Some(generics) = self.type_generics.get(name) {
+                        if !args.is_empty() && args.len() == generics.len() {
+                            let type_map: HashMap<String, Type> = generics.iter()
+                                .zip(args.iter())
+                                .map(|(g, a)| (g.name.clone(), a.clone()))
+                                .collect();
+                            return subst_type_params(aliased, generics, &type_map);
+                        }
+                    }
                     aliased.clone()
                 } else if let Some(inner_ty) = self.newtypes.get(name) {
                     // This is a newtype - wrap the resolved inner type in Type::Newtype with name
@@ -718,7 +726,7 @@ impl<'a> Checker<'a> {
                 args.iter().map(|a| self.resolve_type(a)).collect(),
                 Box::new(self.resolve_type(ret)),
             ),
-            Type::Cap(_) | Type::Shared(_) | Type::LocalShared(_) | Type::Weak(_)
+            Type::Cap(_) | Type::Shared(_) | Type::LocalShared(_) | Type::Weak(_) | Type::WeakLocal(_)
                 | Type::CShared(_) | Type::CBorrow(_) | Type::CBorrowMut(_)
                 | Type::RawPtr(_) | Type::RawPtrMut(_) | Type::RawString | Type::Allocator => ty.clone(),
             Type::CBuffer(inner) => Type::CBuffer(Box::new(self.resolve_type(inner))),
@@ -755,7 +763,7 @@ impl<'a> Checker<'a> {
             // References are not allowed directly; must use c_borrow / c_borrow_mut
             Type::Ref(_, _) | Type::RefMut(_, _) => false,
             // Shared ownership is not allowed directly; must use c_shared
-            Type::Shared(_) | Type::LocalShared(_) | Type::Weak(_) => false,
+            Type::Shared(_) | Type::LocalShared(_) | Type::Weak(_) | Type::WeakLocal(_) => false,
             // Composite Mimi types are not allowed
             Type::Tuple(_) => false,
             Type::Option(_) | Type::Result(_, _) => false,
@@ -971,6 +979,7 @@ impl<'a> Checker<'a> {
             }
             Type::Ref(_, inner) | Type::RefMut(_, inner) | Type::Option(inner)
                 | Type::Shared(inner) | Type::LocalShared(inner) | Type::Weak(inner)
+                | Type::WeakLocal(inner)
                 | Type::RawPtr(inner) | Type::RawPtrMut(inner)
                 | Type::CShared(inner) | Type::CBorrow(inner) | Type::CBorrowMut(inner) => {
                 self.check_type_well_formed_inner(inner, context, allow_passport);
@@ -1032,6 +1041,7 @@ impl<'a> Checker<'a> {
             Type::Name(_, args) => args.iter().any(Self::type_contains_passport),
             Type::Ref(_, inner) | Type::RefMut(_, inner) | Type::Option(inner)
                 | Type::Shared(inner) | Type::LocalShared(inner) | Type::Weak(inner)
+                | Type::WeakLocal(inner)
                 | Type::Array(inner, _) | Type::Slice(inner) => Self::type_contains_passport(inner),
             Type::Result(ok, err) => Self::type_contains_passport(ok) || Self::type_contains_passport(err),
             Type::Tuple(elems) => elems.iter().any(Self::type_contains_passport),
@@ -1425,7 +1435,7 @@ impl<'a> Checker<'a> {
     fn type_uses_type_param(&self, ty: &Type, type_param: &str) -> bool {
         match ty {
             Type::Name(name, _) => name == type_param,
-            Type::Ref(_, inner) | Type::RefMut(_, inner) | Type::Option(inner) | Type::Shared(inner) | Type::LocalShared(inner) | Type::Weak(inner) => {
+            Type::Ref(_, inner) | Type::RefMut(_, inner) | Type::Option(inner) | Type::Shared(inner) | Type::LocalShared(inner) | Type::Weak(inner) | Type::WeakLocal(inner) => {
                 self.type_uses_type_param(inner, type_param)
             }
             Type::Result(ok, err) => {
@@ -1602,6 +1612,7 @@ pub fn subst_type_params(ty: &Type, generics: &[GenericParam], type_map: &HashMa
         Type::Shared(inner) => Type::Shared(Box::new(subst_type_params(inner, generics, type_map))),
         Type::LocalShared(inner) => Type::LocalShared(Box::new(subst_type_params(inner, generics, type_map))),
         Type::Weak(inner) => Type::Weak(Box::new(subst_type_params(inner, generics, type_map))),
+        Type::WeakLocal(inner) => Type::WeakLocal(Box::new(subst_type_params(inner, generics, type_map))),
         Type::RawPtr(inner) => Type::RawPtr(Box::new(subst_type_params(inner, generics, type_map))),
         Type::RawPtrMut(inner) => Type::RawPtrMut(Box::new(subst_type_params(inner, generics, type_map))),
         Type::CShared(inner) => Type::CShared(Box::new(subst_type_params(inner, generics, type_map))),
@@ -1638,6 +1649,7 @@ fn same_type(a: &Type, b: &Type) -> bool {
         (Type::Shared(a), Type::Shared(b)) => same_type(a, b),
         (Type::LocalShared(a), Type::LocalShared(b)) => same_type(a, b),
         (Type::Weak(a), Type::Weak(b)) => same_type(a, b),
+        (Type::WeakLocal(a), Type::WeakLocal(b)) => same_type(a, b),
         // Newtypes with same name and same inner type are equal
         (Type::Newtype(n1, a), Type::Newtype(n2, b)) => n1 == n2 && same_type(a, b),
         // A named type matches a newtype with the same inner type name
@@ -1702,6 +1714,7 @@ pub fn fmt_type(t: &Type) -> String {
         Type::Shared(inner) => format!("shared {}", fmt_type(inner)),
         Type::LocalShared(inner) => format!("local_shared {}", fmt_type(inner)),
         Type::Weak(inner) => format!("weak {}", fmt_type(inner)),
+        Type::WeakLocal(inner) => format!("weak_local {}", fmt_type(inner)),
         Type::Newtype(name, inner) => format!("newtype {} {}", name, fmt_type(inner)),
         Type::Nothing => "nothing".to_string(),
         Type::Allocator => "Allocator".to_string(),

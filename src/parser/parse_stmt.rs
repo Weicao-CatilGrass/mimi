@@ -30,6 +30,7 @@ impl Parser {
             TokenKind::Shared => self.parse_shared_let(SharedKind::Shared),
             TokenKind::LocalShared => self.parse_shared_let(SharedKind::LocalShared),
             TokenKind::Weak => self.parse_shared_let(SharedKind::Weak),
+            TokenKind::WeakLocal => self.parse_shared_let(SharedKind::WeakLocal),
             TokenKind::Mms => self.parse_mms_block(),
             TokenKind::LBrace => {
                 self.advance();

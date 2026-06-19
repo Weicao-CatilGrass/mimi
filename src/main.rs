@@ -1211,9 +1211,14 @@ fn promote(path: &Path, output: Option<&Path>) -> Result<(), String> {
     let file = parser::Parser::new(tokens).parse_file()?;
 
     for item in &file.items {
-        if let Item::Func(_) = item {
-            // Check if function has desc or rule without commitment
-            // For now, just check basic structure
+        if let Item::Func(f) = item {
+            let has_intent = f.body.iter().any(|s| matches!(s, Stmt::Desc(_) | Stmt::Requires(_, _) | Stmt::Ensures(_, _)));
+            if has_intent && !f.commitment.is_locked() {
+                return Err(format!(
+                    "function '{}' has uncommitted intent (no $ suffix on desc/rule); add '$' to lock before promoting",
+                    f.name
+                ));
+            }
         }
     }
 

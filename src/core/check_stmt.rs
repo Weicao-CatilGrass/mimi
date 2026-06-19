@@ -301,13 +301,13 @@ impl<'a> Checker<'a> {
                     }
                     SharedKind::WeakLocal => {
                         match &init_ty {
-                            Type::LocalShared(inner) => Type::Weak(inner.clone()),
+                            Type::LocalShared(inner) => Type::WeakLocal(inner.clone()),
                             _ => {
                             self.emit_code(crate::diagnostic::codes::E0411, format!(
                                 "weak_local requires a local_shared value, found {}",
                                 fmt_type(&init_ty)
                             ));
-                                Type::Weak(Box::new(Type::Name("unknown".into(), vec![])))
+                                Type::WeakLocal(Box::new(Type::Name("unknown".into(), vec![])))
                             }
                         }
                     }
@@ -447,13 +447,10 @@ impl<'a> Checker<'a> {
                     }
                 }
             }
-            Stmt::Desc(_) | Stmt::Requires(_, _) | Stmt::Ensures(_, _) | Stmt::Math(_) | Stmt::Ellipsis | Stmt::OnFailure(_) | Stmt::MmsBlock { .. } => {}
-            #[allow(unreachable_patterns)]
-            Stmt::Parasteps(block) => {
-                scopes.push(HashMap::new());
-                self.check_block(block, ret, scopes);
-                scopes.pop();
+            Stmt::Requires(expr, _) | Stmt::Ensures(expr, _) => {
+                self.infer_expr(expr, scopes);
             }
+            Stmt::Desc(_) | Stmt::Math(_) | Stmt::Ellipsis | Stmt::OnFailure(_) | Stmt::MmsBlock { .. } => {}
         }
     }
 }

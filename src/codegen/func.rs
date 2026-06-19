@@ -727,6 +727,9 @@ impl<'ctx> CodeGenerator<'ctx> {
                 Stmt::Desc(_) | Stmt::Requires(..) | Stmt::Ensures(..) | Stmt::Math(_) => {
                     // Skip contract-related statements in codegen
                 }
+                Stmt::Block(block) => {
+                    self.compile_block(block, &mut vars)?;
+                }
                 _ => {}
             }
         }
