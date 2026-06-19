@@ -207,11 +207,16 @@ impl ModuleLoader {
     /// Merge all loaded module items into a single file for interpretation
     pub fn merge_all(&self) -> File {
         let mut all_items = Vec::new();
+        let mut seen_imports = std::collections::HashSet::new();
         let mut all_imports = Vec::new();
 
         for module in self.modules.values() {
             all_items.extend(module.file.items.clone());
-            all_imports.extend(module.file.imports.clone());
+            for imp in &module.file.imports {
+                if seen_imports.insert(imp.path.clone()) {
+                    all_imports.push(imp.clone());
+                }
+            }
         }
 
         File {

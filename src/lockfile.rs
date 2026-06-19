@@ -129,8 +129,7 @@ mod tests {
     #[test]
     fn resolve_version_exact() {
         let available = ["0.1.0", "0.2.0", "1.0.0"];
-        // Exact version "1.0.0" is treated as "^1.0.0" by semver crate
-        assert_eq!(Lockfile::resolve_version("1.0.0", &available), Some("1.0.0".into()));
+        assert_eq!(Lockfile::resolve_version("=1.0.0", &available), Some("1.0.0".into()));
     }
 
     #[test]

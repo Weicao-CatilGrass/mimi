@@ -28,7 +28,9 @@ impl ThreadPool {
     }
 
     pub(crate) fn execute<F: FnOnce() + Send + 'static>(&self, job: F) {
-        let _ = self.sender.send(Box::new(job));
+        if let Err(e) = self.sender.send(Box::new(job)) {
+            eprintln!("[pool] failed to send task: {}", e);
+        }
     }
 }
 
