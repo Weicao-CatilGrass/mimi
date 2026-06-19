@@ -334,13 +334,12 @@ Phase 2: 语言特性 FFI 就绪
                  │
                  ▼
 Phase 3: 工程化 + 绑定
-├── F9: Python binding ──── ⏸️ 待开始
+├── F9: Python binding ──── ✅ PyBindGenerator + EmitPyBindings CLI
 ├── N6: ASan list_ops ───── ⏸️ 延期（需统一分配器）
-├── N2: async await 类型 ── ✅ 已修复
 └── B6-B17: 深度审计 P1-P3 补充修复 ✅ 全部完成
 ```
 
-**当前状态**: Phase 1 全部完成，G1+G2+G9+F6 已修复，**Shared RC 作用域清理本轮完成**，Phase 3 剩余 F9/N6。F5 列表/元组已通过 Json 支持。N1 ring-buffer 溢出已修复；N2 async await 类型截断已修复；G3/G6/G8 E2E 测试已通过；G4 `?` regression test 已添加；B15/B16 P3 修复完成。**第十轮：F6 回调 C→Mimi 字符串泄漏修复完成**（`arg_free_mask` 约定 + `libc::free` trampoline）。
+**当前状态**: Phase 1 全部完成，G1+G2+G9+F6+F9 已修复，**Shared RC 作用域清理本轮完成**。F5 列表/元组已通过 Json 支持。N1 ring-buffer 溢出已修复；N2 async await 类型截断已修复；G3/G6/G8 E2E 测试已通过；G4 `?` regression test 已添加；B15/B16 P3 修复完成。cap_scope pop 已添加到 actors/func return 路径；fseek/getenv 逻辑已清理。**第十轮（F6）+ 第十一轮（F9）均已完成**。
 
 ---
 
@@ -640,13 +639,14 @@ Cap          CapTable 注册/检查/消耗      ✅ 正确
 | **第八轮** — network/time_env/value/json/ffi 深度审计 | ✅ 全部完成（NEW-1~8） |
 | **第九轮** — F6 free_callback 基础设施 + G9 merge_all + N1/N2/G3/G4/G6/G8/B15/B16 | ✅ 全部完成 |
 | **第十轮** — F6 回调 C→Mimi 字符串泄漏修复（arg_free_mask + libc::free trampoline） | ✅ 已完成 |
+| **第十一轮** — F9 Python binding generator + cap_scope/fseek/getenv 代码修复 | ✅ 已完成 |
 
 ### 进行中 / 待开始
 
 | 目标 | 状态 | 工期 | 依赖 |
 |------|------|------|------|
 | G9: 跨文件模块 E2E | ✅ 已修复 | 1-2 天 | `merge_all` 重名检测 + `module_key` 相对路径 |
-| F9: Python binding generator | ⏸️ 待开始 | 1-2 天 | 无 |
+| F9: Python binding generator | ✅ 已修复 | `ffi/py_bind.rs` PyBindGenerator + `EmitPyBindings` CLI |
 | N6: ASan list_ops 启用 | ⏸️ 延期 | — | 需列表统一分配器架构变更 |
 | N2: async await i64 截断 | ✅ 已修复 | 1 天 | `pending_spawn_type` 保存结果类型 |
 | N1: ring-buffer 溢出 | ✅ 已修复 | 0.5 天 | `runtime.c` size_t + pthread_cond_wait 上限检查 |
@@ -690,7 +690,7 @@ G3/G4 (测试覆盖)、N1 (ring-buffer)、G6/G8 (arena/async)、comptime (C head
 
 | 项 | 位置 | 说明 |
 |----|------|------|
-| F9 | 新建文件 | Python binding generator（pybind11 stubs） |
+| F9 | `ffi/py_bind.rs` | ✅ 已修复：pybind11 binding generator，`mimi emit-py-bindings` CLI 命令，7 个类型映射 |
 | N2 | `codegen/expr.rs:1529-1618` | ✅ 已修复：`pending_spawn_type` 保存 spawn 表达式结果类型，await 时按实际类型加载 |
 
 ### P2 — 中优先级
