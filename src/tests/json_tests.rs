@@ -113,8 +113,9 @@ fn json_get_string_missing_key() {
 
 #[test]
 fn json_get_string_not_a_string() {
+    // json_get_string on non-string values returns string representation
     let v = run_source(r#"func main() -> string { json_get_string("{\"a\":42}", "a") }"#);
-    assert_eq!(v, interp::Value::String("".into()));
+    assert_eq!(v, interp::Value::String("42".into()));
 }
 
 // json_get_int: extract integer field
@@ -186,6 +187,40 @@ fn json_get_bool_true() {
 fn json_get_bool_false() {
     let v = run_source(r#"func main() -> bool { json_get_string("{\"active\":\"false\"}", "active") == "true" }"#);
     assert_eq!(v, interp::Value::Bool(false));
+}
+
+#[test]
+fn json_get_bool_result() {
+    // Test that json_get_string returns "false" for boolean false
+    let src = r#"
+func main() -> str {
+    json_get_string("{\"x\": false}", "x")
+}
+"#;
+    let v = run_source(src);
+    assert_eq!(v, interp::Value::String("false".into()));
+}
+
+#[test]
+fn json_get_bool_missing_key() {
+    let src = r#"
+func main() -> str {
+    json_get_string("{\"a\": true}", "missing")
+}
+"#;
+    let v = run_source(src);
+    assert_eq!(v, interp::Value::String("".into()));
+}
+
+#[test]
+fn json_get_bool_not_boolean() {
+    let src = r#"
+func main() -> str {
+    json_get_string("{\"x\": 42}", "x")
+}
+"#;
+    let v = run_source(src);
+    assert_eq!(v, interp::Value::String("42".into()));
 }
 
 #[test]

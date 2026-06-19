@@ -324,7 +324,13 @@ impl LspServer {
                     "result": null
                 }))
             }
-            "exit" => std::process::exit(0),
+            "exit" => {
+                // LSP spec: exit notification means server should terminate.
+                // Flush buffers before exiting to ensure log output is written.
+                let _ = std::io::stdout().flush();
+                let _ = std::io::stderr().flush();
+                std::process::exit(0)
+            }
             _ => None,
         }
     }

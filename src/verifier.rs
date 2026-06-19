@@ -6,6 +6,9 @@ use std::time::Instant;
 use z3::ast::{Bool as Z3Bool, Int as Z3Int, Real as Z3Real};
 use z3::{SatResult, Solver};
 
+/// Default Z3 solver timeout in milliseconds (5 seconds)
+const DEFAULT_TIMEOUT_MS: u64 = 5000;
+
 #[derive(Debug, Clone)]
 pub struct VerificationResult {
     pub func_name: String,
@@ -40,6 +43,11 @@ impl Verifier {
     pub fn new() -> Result<Self, String> {
         let solver = std::panic::catch_unwind(|| Solver::new())
             .map_err(|_| "failed to initialize Z3 solver (is libz3 installed?)".to_string())?;
+        // Set solver timeout to prevent infinite blocking on complex constraints.
+        // When timeout expires, solver.check() returns Unknown (already handled gracefully).
+        let mut params = z3::Params::new();
+        params.set_u32("timeout", DEFAULT_TIMEOUT_MS as u32);
+        solver.set_params(&params);
         Ok(Self { solver })
     }
 

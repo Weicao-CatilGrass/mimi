@@ -928,7 +928,13 @@ impl<'a> Interpreter<'a> {
                     .map_err(|e| format!("json_get_string parse error: {}", e))?;
                 match jv.get(key) {
                     Some(serde_json::Value::String(s)) => Ok(Value::String(s.clone())),
-                    _ => Ok(Value::String("".into())),
+                    Some(serde_json::Value::Bool(b)) => Ok(Value::String(if *b { "true".into() } else { "false".into() })),
+                    Some(serde_json::Value::Number(n)) => Ok(Value::String(n.to_string())),
+                    Some(serde_json::Value::Null) => Ok(Value::String("null".into())),
+                    Some(serde_json::Value::Array(_)) | Some(serde_json::Value::Object(_)) => {
+                        Ok(Value::String("".into()))
+                    }
+                    None => Ok(Value::String("".into())),
                 }
             }
             _ => Err("json_get_string expects (string, string)".into()),

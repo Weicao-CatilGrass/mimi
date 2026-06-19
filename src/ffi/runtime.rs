@@ -552,12 +552,12 @@ static MIMI_POOL: LazyLock<Option<MimiThreadPool>> = LazyLock::new(|| {
 });
 
 /// Submit a function pointer to the thread pool.
-/// `fn_ptr` is a C function pointer: `extern "C" fn(*mut u8) -> i64`
+/// `fn_ptr` is a C function pointer: `extern "C" fn(*mut u8) -> *mut u8`
 /// `arg` is passed as the argument to fn_ptr.
 ///
 /// # Safety
 /// The caller must ensure that:
-/// - `fn_ptr` is a valid function pointer
+/// - `fn_ptr` is a valid function pointer with signature `extern "C" fn(*mut u8) -> *mut u8`
 /// - `arg` is valid for the duration of the task
 /// - The function pointed to by `fn_ptr` is safe to call from another thread
 #[no_mangle]
@@ -569,10 +569,17 @@ pub unsafe extern "C" fn mimi_pool_submit(fn_ptr: *const u8, arg: *mut u8) {
     if fn_ptr as usize % std::mem::align_of::<usize>() != 0 {
         return;
     }
+    // Verify size compatibility: *const u8 and function pointers are pointer-sized
+    debug_assert_eq!(
+        std::mem::size_of::<*const u8>(),
+        std::mem::size_of::<extern "C" fn(*mut u8) -> *mut u8>(),
+        "function pointer and data pointer must have same size"
+    );
     if let Some(pool) = MIMI_POOL.as_ref() {
-        // SAFETY: The caller guarantees fn_ptr is a valid function pointer,
-        // arg is valid for the duration of the task, and alignment is verified above.
-        let func: extern "C" fn(*mut u8) -> *mut u8 = std::mem::transmute(fn_ptr);
+        // SAFETY: The caller guarantees fn_ptr is a valid function pointer with
+        // signature extern "C" fn(*mut u8) -> *mut u8, arg is valid for the
+        // duration of the task, alignment is verified above, and sizes are asserted equal.
+        let func: extern "C" fn(*mut u8) -> *mut u8 = std::mem::transmute_copy(&fn_ptr);
         pool.submit_raw(func, arg);
     }
 }

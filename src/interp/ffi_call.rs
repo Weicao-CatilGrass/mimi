@@ -92,6 +92,21 @@ impl<'a> Interpreter<'a> {
         //   - strings pass as pointer (i64 via `CString::as_ptr() as i64`)
         // The FfiContract type system (FfiArgContract/FfiRetContract) ensures correct
         // encoding/decoding at the Rust boundary. C functions must match this convention.
+        //
+        // LIMITATIONS:
+        //   - Max 8 arguments (x86_64 GP registers RDI..R8); excess args silently zeroed
+        //   - Float args are bit-cast to i64 in GP registers (NOT XMM0-7). C functions
+        //     declared with `double` params will read wrong registers — the C side must
+        //     accept `int64_t` and reinterpret, matching this non-standard ABI.
+        //   - Platform-specific: works on x86_64 SysV. ARM64/aarch64 has 8 GP regs
+        //     (X0-X7) so the 8-arg limit aligns, but floats go in V0-V7 (same issue).
+        //     x86 (32-bit) uses stack-based calling convention — NOT compatible.
+        if c_args.len() > 8 {
+            return Err(format!(
+                "FFI call to '{}': {} arguments exceeds ABI limit of 8 (x86_64 GP registers)",
+                func_name, c_args.len()
+            ));
+        }
         let result = unsafe {
             // Clear errno before call to avoid stale errno
             if contract.check_errno {
