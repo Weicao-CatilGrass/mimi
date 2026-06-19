@@ -135,7 +135,8 @@ func main() -> i32 {
 }
 
 #[test]
-fn list_not_allowed_in_ffi() {
+fn list_allowed_in_ffi_via_json() {
+    // List types are now supported via JSON serialization
     let src = r#"
 extern "C" {
     func __mimi_test_no_such_function_12345(xs: List<i32>) -> i32;
@@ -146,7 +147,8 @@ func main() -> i32 {
     __mimi_test_no_such_function_12345(xs)
 }
 "#;
-    expect_ffi_safety_error(src, "unsupported argument type");
+    // Should proceed past type check to symbol resolution
+    expect_symbol_not_found(src);
 }
 
 #[test]

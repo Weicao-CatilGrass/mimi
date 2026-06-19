@@ -1,5 +1,39 @@
 use super::*;
 use crate::ffi::{FfiArgContract, FfiContract, FfiRetContract, CAP_TABLE, SHARED_TABLE};
+use libffi::middle::{Cif, Type as FfiType, CodePtr, arg as ffi_arg};
+
+/// Holds borrow guards alive during a synchronous FFI C call.
+/// Stores the concrete guard type so it can be held across 'static boundaries.
+enum FfiGuard {
+    Read(std::sync::RwLockReadGuard<'static, Value>),
+    Write(std::sync::RwLockWriteGuard<'static, Value>),
+    RefRead(std::cell::Ref<'static, Value>),
+    RefWrite(std::cell::RefMut<'static, Value>),
+}
+
+/// Extend a RwLockReadGuard's lifetime to 'static.
+/// SAFETY: Caller must ensure the underlying RwLock outlives this guard.
+unsafe fn extend_guard_read<'a>(g: std::sync::RwLockReadGuard<'a, Value>) -> std::sync::RwLockReadGuard<'static, Value> {
+    std::mem::transmute(g)
+}
+
+/// Extend a RwLockWriteGuard's lifetime to 'static.
+/// SAFETY: Caller must ensure the underlying RwLock outlives this guard.
+unsafe fn extend_guard_write<'a>(g: std::sync::RwLockWriteGuard<'a, Value>) -> std::sync::RwLockWriteGuard<'static, Value> {
+    std::mem::transmute(g)
+}
+
+/// Extend a Ref's lifetime to 'static.
+/// SAFETY: Caller must ensure the underlying RefCell outlives this guard.
+unsafe fn extend_ref<'a>(g: std::cell::Ref<'a, Value>) -> std::cell::Ref<'static, Value> {
+    std::mem::transmute(g)
+}
+
+/// Extend a RefMut's lifetime to 'static.
+/// SAFETY: Caller must ensure the underlying RefCell outlives this guard.
+unsafe fn extend_ref_mut<'a>(g: std::cell::RefMut<'a, Value>) -> std::cell::RefMut<'static, Value> {
+    std::mem::transmute(g)
+}
 
 impl<'a> Interpreter<'a> {
     pub(crate) fn call_extern(
@@ -49,18 +83,16 @@ impl<'a> Interpreter<'a> {
         }
 
         let mut c_args: Vec<i64> = Vec::with_capacity(args.len());
-        let mut _string_guards: Vec<std::ffi::CString> = Vec::new();
-        let mut _shared_handles: Vec<std::sync::Arc<crate::ffi::runtime::SharedHandle>> = Vec::new();
-        let mut _borrow_guards_read: Vec<Box<dyn std::any::Any>> = Vec::new();
-        let mut _borrow_guards_write: Vec<Box<dyn std::any::Any>> = Vec::new();
+        let mut string_guards: Vec<std::ffi::CString> = Vec::new();
+        let mut shared_handles: Vec<std::sync::Arc<crate::ffi::runtime::SharedHandle>> = Vec::new();
+        let mut ffi_guards: Vec<FfiGuard> = Vec::new();
         for (arg, arg_contract) in args.iter().zip(&contract.args) {
             let c_arg = self.value_to_ffi_arg(
                 arg,
                 arg_contract,
-                &mut _string_guards,
-                &mut _shared_handles,
-                &mut _borrow_guards_read,
-                &mut _borrow_guards_write,
+                &mut string_guards,
+                &mut shared_handles,
+                &mut ffi_guards,
             )?;
             c_args.push(c_arg);
         }
@@ -85,45 +117,73 @@ impl<'a> Interpreter<'a> {
 
         let func_name = extern_func.name.clone();
 
-        // SAFETY: All C function calls use a uniform `fn(i64 x 8) -> i64` signature.
-        // This is correct on x86_64 SysV ABI where:
-        //   - integers/pointers pass in 6-bit GP registers (rdi, rsi, ...)
-        //   - floats pass in XMM registers but are bit-cast to i64 for the Rust side
-        //   - strings pass as pointer (i64 via `CString::as_ptr() as i64`)
-        // The FfiContract type system (FfiArgContract/FfiRetContract) ensures correct
-        // encoding/decoding at the Rust boundary. C functions must match this convention.
-        //
-        // LIMITATIONS:
-        //   - Max 8 arguments (x86_64 GP registers RDI..R8); excess args silently zeroed
-        //   - Float args are bit-cast to i64 in GP registers (NOT XMM0-7). C functions
-        //     declared with `double` params will read wrong registers — the C side must
-        //     accept `int64_t` and reinterpret, matching this non-standard ABI.
-        //   - Platform-specific: works on x86_64 SysV. ARM64/aarch64 has 8 GP regs
-        //     (X0-X7) so the 8-arg limit aligns, but floats go in V0-V7 (same issue).
-        //     x86 (32-bit) uses stack-based calling convention — NOT compatible.
-        if c_args.len() > 8 {
-            return Err(format!(
-                "FFI call to '{}': {} arguments exceeds ABI limit of 8 (x86_64 GP registers)",
-                func_name, c_args.len()
-            ));
-        }
-        let result = unsafe {
+        // Use libffi CIF for correct ABI handling (proper register routing for float/GP args)
+        let result = {
             // Clear errno before call to avoid stale errno
             if contract.check_errno {
-                *libc::__errno_location() = 0;
+                unsafe { *libc::__errno_location() = 0; }
             }
-            let lib = &self.loaded_libs[lib_idx];
-            type CFunc = unsafe extern "C" fn(i64, i64, i64, i64, i64, i64, i64, i64) -> i64;
-            let symbol: libloading::Symbol<CFunc> = lib.get(func_name.as_bytes())
-                .map_err(|e| format!("failed to find symbol '{}': {}", func_name, e))?;
 
-            // Call with up to 8 args (zeroed if fewer)
-            let mut raw_args = [0i64; 8];
-            for (i, &a) in c_args.iter().enumerate().take(8) {
-                raw_args[i] = a;
+            // Build libffi type descriptors for arguments
+            let mut cif_arg_types: Vec<FfiType> = Vec::with_capacity(contract.args.len());
+            for arg_contract in &contract.args {
+                match arg_contract {
+                    FfiArgContract::Float => cif_arg_types.push(FfiType::f64()),
+                    _ => cif_arg_types.push(FfiType::i64()),
+                }
             }
-            symbol(raw_args[0], raw_args[1], raw_args[2], raw_args[3],
-                   raw_args[4], raw_args[5], raw_args[6], raw_args[7])
+
+            // Build libffi type descriptor for return value
+            let cif_ret_type = match &contract.ret {
+                FfiRetContract::Unit => FfiType::void(),
+                FfiRetContract::Float => FfiType::f64(),
+                FfiRetContract::String | FfiRetContract::StringOwned | FfiRetContract::Json => FfiType::pointer(),
+                _ => FfiType::i64(),
+            };
+
+            let cif = Cif::new(cif_arg_types.into_iter(), cif_ret_type);
+
+            // Prepare typed arguments for libffi call
+            let mut typed_storage: Vec<Box<dyn std::any::Any>> = Vec::with_capacity(contract.args.len());
+            let mut ffi_args: Vec<libffi::middle::Arg> = Vec::with_capacity(contract.args.len());
+
+            for (i, (arg_val, arg_contract)) in args.iter().zip(&contract.args).enumerate() {
+                match arg_contract {
+                    FfiArgContract::Float => {
+                        let f = match arg_val {
+                            Value::Float(f) => *f,
+                            Value::Int(n) => *n as f64,
+                            _ => unreachable!("FFI contract ensures float arg is float or int"),
+                        };
+                        typed_storage.push(Box::new(f));
+                        let ptr = typed_storage.last().unwrap().downcast_ref::<f64>().unwrap();
+                        ffi_args.push(ffi_arg(ptr));
+                    }
+                    _ => {
+                        let v = c_args[i];
+                        typed_storage.push(Box::new(v));
+                        let ptr = typed_storage.last().unwrap().downcast_ref::<i64>().unwrap();
+                        ffi_args.push(ffi_arg(ptr));
+                    }
+                }
+            }
+
+            let lib = &self.loaded_libs[lib_idx];
+            // Get the function pointer as a raw address for libffi
+            let raw_fn: libloading::Symbol<*mut std::ffi::c_void> = unsafe {
+                lib.get(func_name.as_bytes())
+                    .map_err(|e| format!("failed to find symbol '{}': {}", func_name, e))?
+            };
+            let fn_ptr = *raw_fn;
+            let code_ptr = CodePtr(fn_ptr);
+
+            // Call via libffi with correct ABI and crash protection
+            let call_result = if self.verify_ffi {
+                self.call_ffi_with_fork_isolation(&cif, code_ptr, &ffi_args, &contract.ret)
+            } else {
+                self.call_ffi_direct(&cif, code_ptr, &ffi_args, &contract.ret)
+            };
+            call_result?
         };
 
         // Priority 2: Capture errno after C call if enabled
@@ -140,10 +200,11 @@ impl<'a> Interpreter<'a> {
         if self.verify_ffi {
             if let Some(ensures_expr) = &contract.ensures {
                 // Bind 'result' to the return value for ensures evaluation
-                // Note: The eval_expr method doesn't support scope binding directly,
-                // so we use a simpler approach - just evaluate the expression
-                // A more complete implementation would inject 'result' into the scope
+                // by temporarily injecting it into the current scope
+                self.push_scope();
+                self.env.last_mut().unwrap().insert("result".to_string(), return_value.clone());
                 let eval_result = self.eval_expr(ensures_expr);
+                self.pop_scope();
                 match eval_result {
                     Ok(Value::Bool(true)) => { /* postcondition holds */ }
                     Ok(Value::Bool(false)) => {
@@ -234,9 +295,8 @@ impl<'a> Interpreter<'a> {
         arg: &Value,
         contract: &FfiArgContract,
         string_guards: &mut Vec<std::ffi::CString>,
-        _shared_handles: &mut Vec<std::sync::Arc<crate::ffi::runtime::SharedHandle>>,
-        _borrow_guards_read: &mut Vec<Box<dyn std::any::Any>>,
-        _borrow_guards_write: &mut Vec<Box<dyn std::any::Any>>,
+        shared_handles: &mut Vec<std::sync::Arc<crate::ffi::runtime::SharedHandle>>,
+        ffi_guards: &mut Vec<FfiGuard>,
     ) -> Result<i64, String> {
         match contract {
             FfiArgContract::Int => match arg {
@@ -303,20 +363,29 @@ impl<'a> Interpreter<'a> {
                     other
                 )),
             },
+            FfiArgContract::Json => {
+                // Serialize the Mimi value to JSON and pass as a C string
+                let json_str = self.value_to_json(arg)?;
+                let json_text = serde_json::to_string(&json_str)
+                    .map_err(|e| format!("FFI: failed to serialize value to JSON: {}", e))?;
+                let c_str = std::ffi::CString::new(json_text)
+                    .map_err(|e| format!("FFI: failed to convert JSON string to C string: {}", e))?;
+                let ptr = c_str.as_ptr() as i64;
+                string_guards.push(c_str);
+                Ok(ptr)
+            }
             FfiArgContract::Unsupported(ty) => {
-                // Runtime fallback for declarations that bypass the type checker.
-                // Preserve the old Phase 0 error messages for the common unsafe
-                // Mimi value categories.
                 Err(self.unsupported_ffi_arg_error(arg, ty))
             }
             FfiArgContract::RawPtr(_) => match arg {
                 // *T: immutable raw pointer
                 Value::Shared(arc) => {
-                    // Create a handle to keep the shared value alive
                     let handle_id = SHARED_TABLE.create(Arc::clone(arc));
-                    // Get a pointer to the inner value
                     if let Some(handle) = SHARED_TABLE.get(handle_id) {
-                        let ptr = handle.as_ptr() as *const () as i64;
+                        shared_handles.push(handle.clone());
+                        let guard = handle.borrow();
+                        let ptr = &*guard as *const Value as *const () as i64;
+                        ffi_guards.push(FfiGuard::Read(unsafe { extend_guard_read(guard) }));
                         Ok(ptr)
                     } else {
                         Err("FFI wrapper: failed to create shared handle for raw pointer".to_string())
@@ -325,7 +394,7 @@ impl<'a> Interpreter<'a> {
                 Value::Ref(rc) => {
                     let borrow = rc.borrow();
                     let ptr = &*borrow as *const Value as *const () as i64;
-                    std::mem::forget(borrow);
+                    ffi_guards.push(FfiGuard::RefRead(unsafe { extend_ref(borrow) }));
                     Ok(ptr)
                 }
                 Value::Int(n) => Ok(*n),
@@ -337,11 +406,12 @@ impl<'a> Interpreter<'a> {
             FfiArgContract::RawPtrMut(_) => match arg {
                 // *mut T: mutable raw pointer
                 Value::Shared(arc) => {
-                    // Create a handle to keep the shared value alive
                     let handle_id = SHARED_TABLE.create(Arc::clone(arc));
-                    // Get a mutable pointer to the inner value
                     if let Some(handle) = SHARED_TABLE.get(handle_id) {
-                        let ptr = handle.as_mut_ptr() as *mut () as i64;
+                        shared_handles.push(handle.clone());
+                        let mut guard = handle.borrow_mut();
+                        let ptr = &mut *guard as *mut Value as *mut () as i64;
+                        ffi_guards.push(FfiGuard::Write(unsafe { extend_guard_write(guard) }));
                         Ok(ptr)
                     } else {
                         Err("FFI wrapper: failed to create shared handle for mutable raw pointer".to_string())
@@ -350,7 +420,7 @@ impl<'a> Interpreter<'a> {
                 Value::RefMut(rc) => {
                     let mut borrow = rc.borrow_mut();
                     let ptr = &mut *borrow as *mut Value as *mut () as i64;
-                    std::mem::forget(borrow);
+                    ffi_guards.push(FfiGuard::RefWrite(unsafe { extend_ref_mut(borrow) }));
                     Ok(ptr)
                 }
                 Value::Int(n) => Ok(*n),
@@ -383,11 +453,12 @@ impl<'a> Interpreter<'a> {
             FfiArgContract::CBorrow(_) => match arg {
                 // c_borrow T: create a handle and return a pointer to the inner value
                 Value::Shared(arc) => {
-                    // Create a handle to keep the shared value alive
                     let handle_id = SHARED_TABLE.create(Arc::clone(arc));
-                    // Get a pointer to the inner value
                     if let Some(handle) = SHARED_TABLE.get(handle_id) {
-                        let ptr = handle.as_ptr() as *const () as i64;
+                        shared_handles.push(handle.clone());
+                        let guard = handle.borrow();
+                        let ptr = &*guard as *const Value as *const () as i64;
+                        ffi_guards.push(FfiGuard::Read(unsafe { extend_guard_read(guard) }));
                         Ok(ptr)
                     } else {
                         Err("FFI wrapper: failed to create shared handle for c_borrow".to_string())
@@ -396,11 +467,10 @@ impl<'a> Interpreter<'a> {
                 Value::Ref(rc) => {
                     let borrow = rc.borrow();
                     let ptr = &*borrow as *const Value as *const () as i64;
-                    std::mem::forget(borrow);
+                    ffi_guards.push(FfiGuard::RefRead(unsafe { extend_ref(borrow) }));
                     Ok(ptr)
                 }
                 Value::Int(n) => {
-                    // Already an opaque handle
                     Ok(*n)
                 }
                 other => Err(format!(
@@ -411,11 +481,12 @@ impl<'a> Interpreter<'a> {
             FfiArgContract::CBorrowMut(_) => match arg {
                 // c_borrow_mut T: create a handle and return a mutable pointer to the inner value
                 Value::Shared(arc) => {
-                    // Create a handle to keep the shared value alive
                     let handle_id = SHARED_TABLE.create(Arc::clone(arc));
-                    // Get a mutable pointer to the inner value
                     if let Some(handle) = SHARED_TABLE.get(handle_id) {
-                        let ptr = handle.as_mut_ptr() as *mut () as i64;
+                        shared_handles.push(handle.clone());
+                        let mut guard = handle.borrow_mut();
+                        let ptr = &mut *guard as *mut Value as *mut () as i64;
+                        ffi_guards.push(FfiGuard::Write(unsafe { extend_guard_write(guard) }));
                         Ok(ptr)
                     } else {
                         Err("FFI wrapper: failed to create shared handle for c_borrow_mut".to_string())
@@ -424,11 +495,10 @@ impl<'a> Interpreter<'a> {
                 Value::RefMut(rc) => {
                     let mut borrow = rc.borrow_mut();
                     let ptr = &mut *borrow as *mut Value as *mut () as i64;
-                    std::mem::forget(borrow);
+                    ffi_guards.push(FfiGuard::RefWrite(unsafe { extend_ref_mut(borrow) }));
                     Ok(ptr)
                 }
                 Value::Int(n) => {
-                    // Already an opaque handle
                     Ok(*n)
                 }
                 other => Err(format!(
@@ -452,15 +522,49 @@ impl<'a> Interpreter<'a> {
                 } else {
                     // SAFETY: result is a non-null pointer returned by the FFI call.
                     // The FfiRetContract::String contract asserts the C function returns
-                    // a valid null-terminated C string. A buggy C function returning a
-                    // dangling or non-null-terminated pointer is undefined behavior —
-                    // catch_unwind provides a last-resort safety net.
+                    // a valid null-terminated C string (borrowed, Mimi does NOT free).
                     let c_str = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                         unsafe { std::ffi::CStr::from_ptr(result as *const i8) }
                     })).map_err(|_| format!(
                         "FFI safety: C function returned invalid string pointer (address {:#x})", result
                     ))?;
+                    // Note: borrowed string - the C side retains ownership.
+                    // If the C function allocated this string, it will leak.
+                    // Use StringOwned contract variant for C-allocated strings.
                     Ok(Value::String(c_str.to_string_lossy().into_owned()))
+                }
+            }
+            FfiRetContract::StringOwned => {
+                if result == 0 {
+                    Ok(Value::String(String::new()))
+                } else {
+                    // Read the C string (Mimi takes ownership, must free)
+                    let c_str = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        unsafe { std::ffi::CStr::from_ptr(result as *const i8) }
+                    })).map_err(|_| format!(
+                        "FFI safety: C function returned invalid string pointer (address {:#x})", result
+                    ))?;
+                    let s = c_str.to_string_lossy().into_owned();
+                    // Free the C-allocated string
+                    unsafe { libc::free(result as *mut libc::c_void); }
+                    Ok(Value::String(s))
+                }
+            }
+            FfiRetContract::Json => {
+                if result == 0 {
+                    Ok(Value::Unit)
+                } else {
+                    let c_str = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        unsafe { std::ffi::CStr::from_ptr(result as *const i8) }
+                    })).map_err(|_| format!(
+                        "FFI safety: C function returned invalid JSON string pointer (address {:#x})", result
+                    ))?;
+                    let json_str = c_str.to_string_lossy();
+                    let json_val: serde_json::Value = serde_json::from_str(&json_str)
+                        .map_err(|e| format!("FFI: failed to parse JSON return value: {}", e))?;
+                    // Free the C-allocated string
+                    unsafe { libc::free(result as *mut libc::c_void); }
+                    Ok(self.json_to_value(&json_val))
                 }
             }
             FfiRetContract::RawPtr(_)
@@ -468,7 +572,6 @@ impl<'a> Interpreter<'a> {
             | FfiRetContract::CShared(_)
             | FfiRetContract::CBorrow(_)
             | FfiRetContract::CBorrowMut(_) => {
-                // Passport pointers/handles are returned as opaque integers for now.
                 Ok(Value::Int(result))
             }
             FfiRetContract::Unsupported(ty) => Err(format!(
@@ -586,6 +689,90 @@ impl<'a> Interpreter<'a> {
                     .collect();
                 Value::Record(None, fields)
             }
+        }
+    }
+
+    /// Call a C function without crash protection via libffi.
+    fn call_ffi_direct(
+        &self,
+        cif: &Cif,
+        code_ptr: CodePtr,
+        ffi_args: &[libffi::middle::Arg],
+        ret_contract: &FfiRetContract,
+    ) -> Result<i64, String> {
+        unsafe {
+            match ret_contract {
+                FfiRetContract::Unit => {
+                    cif.call::<()>(code_ptr, ffi_args);
+                    Ok(0i64)
+                }
+                FfiRetContract::Float => {
+                    let val: f64 = cif.call(code_ptr, ffi_args);
+                    Ok(val.to_bits() as i64)
+                }
+                _ => Ok(cif.call::<i64>(code_ptr, ffi_args)),
+            }
+        }
+    }
+
+    /// Call a C function with crash isolation via fork().
+    /// If the child process crashes (SIGSEGV, SIGBUS, etc.), returns an Err.
+    fn call_ffi_with_fork_isolation(
+        &self,
+        cif: &Cif,
+        code_ptr: CodePtr,
+        ffi_args: &[libffi::middle::Arg],
+        ret_contract: &FfiRetContract,
+    ) -> Result<i64, String> {
+        let mut pipe_fds: [std::ffi::c_int; 2] = [0, 0];
+        let pipe_ret = unsafe { libc::pipe(pipe_fds.as_mut_ptr()) };
+        if pipe_ret != 0 {
+            return Err("FFI safety: failed to create pipe for crash isolation".to_string());
+        }
+
+        let pid = unsafe { libc::fork() };
+        if pid == 0 {
+            // CHILD: run the C call, send result, _exit
+            unsafe { libc::close(pipe_fds[0]); }
+            let result = self.call_ffi_direct(cif, code_ptr, ffi_args, ret_contract);
+            let result_code = match result {
+                Ok(val) => val,
+                Err(_) => i64::MIN,
+            };
+            unsafe {
+                libc::write(pipe_fds[1], &result_code as *const i64 as *const libc::c_void,
+                    std::mem::size_of::<i64>());
+                libc::close(pipe_fds[1]);
+                libc::_exit(0);
+            }
+        }
+
+        // PARENT
+        unsafe { libc::close(pipe_fds[1]); }
+        let mut status: i32 = 0;
+        unsafe { libc::waitpid(pid, &mut status, 0); }
+
+        if unsafe { libc::WIFSIGNALED(status) } {
+            let sig = unsafe { libc::WTERMSIG(status) };
+            let sig_name = match sig {
+                6 => "SIGABRT", 11 => "SIGSEGV", 7 => "SIGBUS",
+                4 => "SIGILL", 8 => "SIGFPE", _ => "unknown signal",
+            };
+            unsafe { libc::close(pipe_fds[0]); }
+            return Err(format!("FFI safety: C function crashed with {} (signal {})", sig_name, sig));
+        }
+
+        let mut result: i64 = 0;
+        unsafe {
+            libc::read(pipe_fds[0], &mut result as *mut i64 as *mut libc::c_void,
+                std::mem::size_of::<i64>());
+            libc::close(pipe_fds[0]);
+        }
+
+        if result == i64::MIN {
+            Err("FFI safety: C function returned an error".to_string())
+        } else {
+            Ok(result)
         }
     }
 

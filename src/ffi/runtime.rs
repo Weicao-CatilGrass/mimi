@@ -142,10 +142,11 @@ impl SharedHandle {
     }
 
     /// Get a read-only pointer to the inner value.
-    /// DEPRECATED: Prefer `with_value()` which provides safe scoped access.
-    /// This method leaks the read guard, preventing any write access to the
-    /// value while the pointer is outstanding. The guard is only cleaned up
-    /// when the handle is dropped.
+    /// DEPRECATED: This method uses `mem::forget` on the RwLock guard,
+    /// permanently leaking the lock. Use `borrow()` + guard lifetime management
+    /// or `with_value()` for scoped access instead.
+    /// This method is kept only for backward compatibility.
+    #[deprecated(since = "0.7.0", note = "leaks the RwLock guard; use borrow() with explicit guard management instead")]
     pub fn as_ptr(&self) -> *const Value {
         let guard = self.inner.read().unwrap();
         let ptr: *const Value = &*guard;
@@ -154,9 +155,11 @@ impl SharedHandle {
     }
 
     /// Get a mutable pointer to the inner value.
-    /// DEPRECATED: Prefer `with_value_mut()` which provides safe scoped access.
-    /// This method leaks the write guard, preventing any read/write access to
-    /// the value while the pointer is outstanding.
+    /// DEPRECATED: This method uses `mem::forget` on the RwLock guard,
+    /// permanently leaking the lock. Use `borrow_mut()` + guard lifetime management
+    /// or `with_value_mut()` for scoped access instead.
+    /// This method is kept only for backward compatibility.
+    #[deprecated(since = "0.7.0", note = "leaks the RwLock guard; use borrow_mut() with explicit guard management instead")]
     pub fn as_mut_ptr(&self) -> *mut Value {
         let guard = self.inner.write().unwrap();
         let ptr: *mut Value = &*guard as *const Value as *mut Value;
