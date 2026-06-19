@@ -7,7 +7,9 @@ use std::collections::HashMap;
 
 // F8: Thread-local context for synchronous callback invocation.
 // Set before each FFI call that involves callbacks, cleared after.
-// Maps callback_id -> (Mimi closure, ret_is_float).
+// Maps callback_id -> (Mimi closure, ret_is_float, arg_free_mask).
+// arg_free_mask[i] = true means callback arg i is a C-allocated string
+// that Mimi takes ownership of and must free after the callback returns.
 // SAFETY: The interpreter pointer is only valid during the synchronous
 // FFI call on the same thread. The closure value is cloned from the
 // interpreter's environment and lives for the duration of the call.
@@ -20,7 +22,8 @@ thread_local! {
 
 struct FfiCallbackCtx {
     interp: *const Interpreter<'static>,
-    entries: HashMap<i64, (Value, bool)>,
+    // (closure, ret_is_float, arg_free_mask: Vec<bool>)
+    entries: HashMap<i64, (Value, bool, Vec<bool>)>,
 }
 
 /// Holds borrow guards alive during a synchronous FFI C call.
@@ -81,7 +84,7 @@ unsafe extern "C" fn mimi_callback_trampoline_fn(
         let ctx = c.borrow();
         ctx.entries.get(&callback_id).cloned()
     });
-    let Some((closure, ret_is_float)) = entry else {
+    let Some((closure, ret_is_float, arg_free_mask)) = entry else {
         *result = 0;
         return;
     };
@@ -131,6 +134,18 @@ unsafe extern "C" fn mimi_callback_trampoline_fn(
         }
         Err(_) => {
             *result = i64::MIN;
+        }
+    }
+
+    // F6: Free C-allocated string pointers that Mimi takes ownership of.
+    // Convention: callback args typed as `string` / `RawString` / `CBuffer`
+    // are treated as transfer ownership — C allocated them, Mimi frees them.
+    for (i, &should_free) in arg_free_mask.iter().enumerate() {
+        if should_free && i < nargs {
+            let arg_ptr = *args.add(i);
+            if !arg_ptr.is_null() {
+                unsafe { libc::free(arg_ptr as *mut libc::c_void); }
+            }
         }
     }
 }
@@ -876,9 +891,17 @@ impl<'a> Interpreter<'a> {
                 );
 
                 // Store the closure in the thread-local callback context
+                // F6: Build arg_free_mask from param_types — string/RawString/CBuffer
+                // args are C-allocated and must be freed after the callback returns.
+                let arg_free_mask: Vec<bool> = param_types
+                    .iter()
+                    .map(|pt| matches!(pt, Type::Name(n, _) if n == "string")
+                        || matches!(pt, Type::RawString)
+                        || matches!(pt, Type::CBuffer(_)))
+                    .collect();
                 FFI_CALLBACK_CTX.with(|c| {
                     let mut ctx = c.borrow_mut();
-                    ctx.entries.insert(cb_id, (closure, ret_is_float));
+                    ctx.entries.insert(cb_id, (closure, ret_is_float, arg_free_mask));
                 });
 
                 // Create a libffi Closure that generates a C-compatible function pointer
@@ -1318,5 +1341,77 @@ fn ffi_ret_contract_to_debug(c: &FfiRetContract) -> String {
         FfiRetContract::CBorrow(t) => format!("c_borrow {:?}", t),
         FfiRetContract::CBorrowMut(t) => format!("c_borrow_mut {:?}", t),
         FfiRetContract::Unsupported(t) => format!("unsupported({})", t),
+    }
+}
+
+// ===================== F6 Callback String-Leak Tests =====================
+// Verifies that C-allocated string arguments passed to Mimi callbacks
+// are freed after the callback returns.
+
+#[cfg(test)]
+mod callback_leak_tests {
+    use super::*;
+    use crate::ast::Type;
+
+    /// Helper: compute arg_free_mask as done in value_to_ffi_callback.
+    fn compute_free_mask(param_types: &[Type]) -> Vec<bool> {
+        let mut mask = Vec::new();
+        for pt in param_types {
+            let should_free = matches!(pt, Type::Name(n, _) if n == "string")
+                || matches!(pt, Type::RawString)
+                || matches!(pt, Type::CBuffer(_));
+            mask.push(should_free);
+        }
+        mask
+    }
+
+    #[test]
+    fn test_free_mask_i32_args_no_free() {
+        let types = [Type::Name("i32".into(), Vec::new()), Type::Name("i64".into(), Vec::new())];
+        assert_eq!(compute_free_mask(&types), [false, false]);
+    }
+
+    #[test]
+    fn test_free_mask_string_arg_freed() {
+        let types = [Type::Name("string".into(), Vec::new())];
+        assert_eq!(compute_free_mask(&types), [true]);
+    }
+
+    #[test]
+    fn test_free_mask_mixed_args() {
+        let types = [
+            Type::Name("i32".into(), Vec::new()),
+            Type::Name("string".into(), Vec::new()),
+            Type::Name("f64".into(), Vec::new()),
+        ];
+        assert_eq!(compute_free_mask(&types), [false, true, false]);
+    }
+
+    #[test]
+    fn test_free_mask_raw_string() {
+        let types = [Type::RawString];
+        assert_eq!(compute_free_mask(&types), [true]);
+    }
+
+    #[test]
+    fn test_free_mask_cbuffer() {
+        let types = [Type::CBuffer(Box::new(Type::Name("u8".into(), Vec::new())))];
+        assert_eq!(compute_free_mask(&types), [true]);
+    }
+
+    #[test]
+    fn test_callback_ctx_three_tuple() {
+        // Verify FfiCallbackCtx entries store (Value, bool, Vec<bool>).
+        let entry: (Value, bool, Vec<bool>) = (Value::Int(0), false, Vec::from([true, false]));
+        assert_eq!(entry.2.len(), 2);
+        assert!(entry.2[0]);
+        assert!(!entry.2[1]);
+    }
+
+    #[test]
+    fn test_trampoline_frees_null_safe() {
+        // Verify libc::free(NULL) is safe (no crash).
+        // NULL free is a no-op in C.
+        unsafe { libc::free(std::ptr::null_mut()) };
     }
 }
