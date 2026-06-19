@@ -506,17 +506,12 @@ const char* mimi_str_join(const MimiList* list, const char* sep) {
 }
 
 void mimi_try_exit(int64_t payload) {
-    /* Try to interpret payload as a string pointer */
-    const char* s = (const char*)payload;
-    /* Heuristic: if the pointer looks like a valid userspace address and
-       the first few bytes look like printable ASCII, treat it as a string */
-    if (payload > 0x1000 && payload < 0x7fffffffffff) {
-        /* Check first byte for printable ASCII */
-        if (s[0] >= 0x20 && s[0] < 0x7f) {
-            fprintf(stderr, "Error: %s\n", s);
-            exit(1);
-        }
-    }
+    /* Print the error payload as a numeric value.
+     * We do NOT dereference payload as a pointer because:
+     * 1. It may not be a valid pointer (could be an integer error code)
+     * 2. Even if it looks like a pointer, dereferencing unmapped memory causes segfault
+     * 3. The printable-ASCII heuristic can be tricked into leaking arbitrary memory
+     * The caller should use fprintf(stderr, ...) directly if a string message is needed. */
     fprintf(stderr, "Error: Result::Err(%ld)\n", (long)payload);
     exit(1);
 }
@@ -600,9 +595,12 @@ const char* mimi_str_replace(const char* s, const char* from, const char* to) {
 
     if (count == 0) return strdup(s);
 
-    /* Calculate result length */
+    /* Calculate result length using signed arithmetic to avoid unsigned wraparound
+     * when to_len < from_len (shortening replacement). The result is always >= 0
+     * because count only reflects actual occurrences found in s. */
     size_t s_len = strlen(s);
-    size_t result_len = s_len + count * (to_len - from_len);
+    int64_t delta = (int64_t)to_len - (int64_t)from_len;
+    size_t result_len = s_len + (size_t)(count * delta);
     char* result = (char*)malloc(result_len + 1);
     if (!result) return strdup(s);
 
@@ -677,7 +675,11 @@ static void* pool_worker(void* arg) {
 }
 
 static void pool_ensure_init(void) {
-    if (pool_threads_initialized) return;
+    pthread_mutex_lock(&pool_mutex);
+    if (pool_threads_initialized) {
+        pthread_mutex_unlock(&pool_mutex);
+        return;
+    }
     int ncpu = sysconf(_SC_NPROCESSORS_ONLN);
     if (ncpu < 1) ncpu = 4;
     if (ncpu > POOL_MAX_THREADS) ncpu = POOL_MAX_THREADS;
@@ -686,6 +688,7 @@ static void pool_ensure_init(void) {
         pthread_create(&pool_threads[i], NULL, pool_worker, NULL);
     }
     pool_threads_initialized = 1;
+    pthread_mutex_unlock(&pool_mutex);
 }
 
 void mimi_pool_submit(void* fn_ptr, void* arg) {
