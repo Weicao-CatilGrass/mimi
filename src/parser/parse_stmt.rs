@@ -167,6 +167,8 @@ impl Parser {
     }
 
     fn parse_mms_block(&mut self) -> Result<Stmt, ParseError> {
+        let mms_line = self.peek().line;
+        let mms_col = self.peek().col;
         self.expect(TokenKind::Mms, "`mms`")?;
         self.skip_newlines();
         self.expect(TokenKind::LBrace, "`{`")?;
@@ -213,7 +215,8 @@ impl Parser {
         self.expect(TokenKind::RBrace, "`}`")?;
         self.match_semi();
         let ast = Self::try_parse_mimispec_with_timeout(&content);
-        Ok(Stmt::MmsBlock { content, ast })
+        let span = crate::span::Span::single(mms_line, mms_col);
+        Ok(Stmt::MmsBlock { content, ast, span })
     }
 
     fn try_parse_mimispec_with_timeout(content: &str) -> Option<mimispec::ast::File> {

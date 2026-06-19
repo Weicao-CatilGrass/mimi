@@ -384,7 +384,7 @@ impl<'a> Interpreter<'a> {
                             Value::RefMut(rc) => {
                                 *rc.0.borrow_mut() = v;
                             }
-                            _ => return Err("cannot assign through non-mutable reference".into()),
+                            _ => return Err(format!("cannot assign through non-mutable reference (type: {})", Self::type_name(&ref_val))),
                         }
                     }
                     Expr::Field(obj, field) => {
@@ -412,7 +412,7 @@ impl<'a> Interpreter<'a> {
                             Value::Actor(handle) => {
                                 handle.inner.write().map_err(|e| format!("actor lock failed: {}", e))?.fields.insert(field.clone(), v);
                             }
-                            _ => return Err("cannot assign to non-record/non-actor value".into()),
+                            _ => return Err(format!("cannot assign to field of non-record/non-actor value (type: {})", Self::type_name(&obj_val))),
                         }
                     }
                     Expr::Index(obj, idx) => {
@@ -421,7 +421,7 @@ impl<'a> Interpreter<'a> {
                         let idx_val = self.eval_expr(idx)?;
                         let index = match idx_val {
                             Value::Int(i) => i as usize,
-                            _ => return Err("list index must be an integer".into()),
+                            _ => return Err(format!("list index must be an integer, got {}", Self::type_name(&idx_val))),
                         };
                         match list_val {
                             Value::List(mut items) => {
@@ -444,7 +444,7 @@ impl<'a> Interpreter<'a> {
                                     }
                                 }
                             }
-                            _ => return Err("cannot index-assign to non-list value".into()),
+                            _ => return Err(format!("cannot index-assign to non-list value (type: {})", Self::type_name(&list_val))),
                         }
                     }
                     _ => return Err("assignment target must be a variable".into()),
@@ -743,7 +743,7 @@ impl<'a> Interpreter<'a> {
                 let iter_val = self.eval_expr(iter)?;
                 let items = match iter_val {
                     Value::List(l) => l,
-                    _ => return Err("comprehension requires a list".into()),
+                    _ => return Err(format!("comprehension requires a list, got {}", Self::type_name(&iter_val))),
                 };
                 let mut result = Vec::new();
                 for item in items {

@@ -281,11 +281,12 @@ fn extract_item_contracts(items: &[Item], out: &mut HashMap<String, Contract>) {
             Item::Func(func) => {
                 let mut contract = Contract::default();
                 for stmt in &func.body {
-                    if let Stmt::MmsBlock { content: text, .. } = stmt {
-                        let c = contracts::extract_contracts(text);
+                    if let Stmt::MmsBlock { content: text, span, .. } = stmt {
+                        let c = contracts::extract_contracts_with_span(text, *span);
                         contract.requires.extend(c.requires);
                         contract.ensures.extend(c.ensures);
                         contract.math.extend(c.math);
+                        contract.span = *span;
                     }
                 }
                 if !contract.requires.is_empty() || !contract.ensures.is_empty() || !contract.math.is_empty() {
