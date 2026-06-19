@@ -890,6 +890,7 @@ impl<'a> Interpreter<'a> {
                 let cb_id = CALLBACK_TABLE.register(
                     None,
                     Some(Box::new(|_id: i64, _args: &[i64]| -> i64 { 0 })),
+                    None,
                 );
 
                 // Store the closure in the thread-local callback context
