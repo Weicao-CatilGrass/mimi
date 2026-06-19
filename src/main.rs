@@ -59,9 +59,12 @@ enum Command {
         /// Enable runtime contract verification
         #[arg(long)]
         verify_contracts: bool,
-        /// Enable FFI contract verification (requires/ensures checking)
-        #[arg(long)]
+        /// Enable FFI contract verification (requires/ensures checking); use --skip-verify-ffi to disable
+        #[arg(long, default_value_t = true)]
         verify_ffi: bool,
+        /// Skip FFI contract verification (overrides --verify-ffi)
+        #[arg(long)]
+        skip_verify_ffi: bool,
         /// Default allocator type: system, arena, or bump
         #[arg(long, default_value = "system")]
         allocator: String,
@@ -227,7 +230,10 @@ fn main() {
     let args = Args::parse();
     let result = match args.cmd {
         Command::Check { path, extract_contracts, strict, verify_rules } => check(path.as_deref(), extract_contracts, strict, verify_rules),
-        Command::Run { path, verify_contracts, verify_ffi, allocator, strict } => run(path.as_deref(), verify_contracts, verify_ffi, &allocator, strict),
+        Command::Run { path, verify_contracts, verify_ffi, skip_verify_ffi, allocator, strict } => {
+            let ffi_check = verify_ffi && !skip_verify_ffi;
+            run(path.as_deref(), verify_contracts, ffi_check, &allocator, strict)
+        }
         Command::Test { path, allocator, filter, verbose, strict } => test(path.as_deref(), &allocator, filter.as_deref(), verbose, strict),
         Command::Init { name } => init(name.as_deref()),
         Command::Add { name, version, path } => add(&name, version.as_deref(), path.as_deref()),
