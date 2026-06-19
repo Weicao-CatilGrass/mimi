@@ -8,9 +8,19 @@ pub func first<T>(xs: List<T>) -> T {
     xs[0]
 }
 
+// first_result: Returns the first element of xs, or Err if xs is empty.
+pub func first_result<T>(xs: List<T>) -> Result<T, string> {
+    if len(xs) > 0 { Result::Ok(xs[0]) } else { Result::Err("first_result: empty list") }
+}
+
 // last: Returns the last element of xs.
 pub func last<T>(xs: List<T>) -> T {
     xs[len(xs) - 1]
+}
+
+// last_result: Returns the last element of xs, or Err if xs is empty.
+pub func last_result<T>(xs: List<T>) -> Result<T, string> {
+    if len(xs) > 0 { Result::Ok(xs[len(xs) - 1]) } else { Result::Err("last_result: empty list") }
 }
 
 // take: Returns the first n elements of xs.
@@ -251,6 +261,7 @@ pub func intersperse<T>(xs: List<T>, sep: T) -> List<T> {
 
 // min_list: Returns the minimum element of xs (integer).
 pub func min_list(xs: List<i32>) -> i32 {
+    if len(xs) == 0 { return 0 }
     let mut ml_min = xs[0]
     for ml_x in xs {
         if ml_x < ml_min { ml_min = ml_x }
@@ -258,13 +269,34 @@ pub func min_list(xs: List<i32>) -> i32 {
     ml_min
 }
 
+// min_list_result: Returns the minimum element of xs (integer), or Err if empty.
+pub func min_list_result(xs: List<i32>) -> Result<i32, string> {
+    if len(xs) == 0 { return Result::Err("min_list_result: empty list") }
+    let mut ml_min = xs[0]
+    for ml_x in xs {
+        if ml_x < ml_min { ml_min = ml_x }
+    }
+    Result::Ok(ml_min)
+}
+
 // max_list: Returns the maximum element of xs (integer).
 pub func max_list(xs: List<i32>) -> i32 {
+    if len(xs) == 0 { return 0 }
     let mut ml_max = xs[0]
     for ml_x in xs {
         if ml_x > ml_max { ml_max = ml_x }
     }
     ml_max
+}
+
+// max_list_result: Returns the maximum element of xs (integer), or Err if empty.
+pub func max_list_result(xs: List<i32>) -> Result<i32, string> {
+    if len(xs) == 0 { return Result::Err("max_list_result: empty list") }
+    let mut ml_max = xs[0]
+    for ml_x in xs {
+        if ml_x > ml_max { ml_max = ml_x }
+    }
+    Result::Ok(ml_max)
 }
 
 // filter_list: Filters xs by predicate (custom implementation).

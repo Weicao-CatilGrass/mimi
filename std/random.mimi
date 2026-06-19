@@ -15,14 +15,14 @@ pub func random_int(lo: i32, hi: i32) -> i32 {
     to_int(floor(random() * to_float(ri_span))) + lo
 }
 
-// random_choice: Returns a random element from xs.
-pub func random_choice<T>(xs: List<T>) -> T {
+// random_choice: Returns a random element from xs, or Err if xs is empty.
+pub func random_choice<T>(xs: List<T>) -> Result<T, string> {
     let len = len(xs)
     if len == 0 {
-        return xs[0]
+        return Result::Err("random_choice: empty list")
     }
     let idx = to_int(floor(random() * to_float(len)))
-    xs[idx]
+    Result::Ok(xs[idx])
 }
 
 // random_bool: Returns true with 50% probability.
