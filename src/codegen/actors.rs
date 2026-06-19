@@ -160,11 +160,19 @@ impl<'ctx> CodeGenerator<'ctx> {
                     self.pop_comp_scope();
                     let mut val = self.compile_expr(expr, &vars)?;
                     val = self.adjust_int_val(val, self.current_fn_ret_type())?;
+                    let ensures = self.ensures_stmts.clone();
+                    for ensures_expr in &ensures {
+                        self.compile_contract_assert(ensures_expr, &vars, &format!("ensures violation"))?;
+                    }
                     self.builder.build_return(Some(&val)).map_err(|e| CompileError::LlvmError(format!("return error: {}", e)))?;
                     return Ok(());
                 }
                 Stmt::Return(None) => {
                     self.pop_comp_scope();
+                    let ensures = self.ensures_stmts.clone();
+                    for ensures_expr in &ensures {
+                        self.compile_contract_assert(ensures_expr, &vars, &format!("ensures violation"))?;
+                    }
                     self.builder.build_return(None).map_err(|e| CompileError::LlvmError(format!("return error: {}", e)))?;
                     return Ok(());
                 }
@@ -389,6 +397,10 @@ impl<'ctx> CodeGenerator<'ctx> {
         self.pop_cap_scope();
         
         if !self.block_has_terminator() {
+            let ensures = self.ensures_stmts.clone();
+            for ensures_expr in &ensures {
+                self.compile_contract_assert(ensures_expr, &vars, &format!("ensures violation"))?;
+            }
             let last_val = self.adjust_int_val(last_val, ret_type)?;
             self.builder.build_return(Some(&last_val)).map_err(|e| CompileError::LlvmError(format!("return error: {}", e)))?;
         }
