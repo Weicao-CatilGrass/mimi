@@ -39,7 +39,10 @@ impl<'ctx> CodeGenerator<'ctx> {
                     val = self.adjust_int_val(val, ret_type)?;
                     let ensures = self.ensures_stmts.clone();
                     for ensures_expr in &ensures {
-                        self.compile_contract_assert(ensures_expr, vars, &format!("ensures violation"))?;
+                        let fn_name: String = self.current_function()
+                            .map(|f| f.get_name().to_string_lossy().into_owned())
+                            .unwrap_or_else(|| "unknown".to_string());
+                        self.compile_contract_assert(ensures_expr, vars, &format!("ensures violation in '{}'", fn_name))?;
                     }
                     self.builder.build_return(Some(&val)).map_err(|e| CompileError::LlvmError(format!("return error: {}", e)))?;
                     return Ok(());
@@ -47,7 +50,10 @@ impl<'ctx> CodeGenerator<'ctx> {
                 Stmt::Return(None) => {
                     let ensures = self.ensures_stmts.clone();
                     for ensures_expr in &ensures {
-                        self.compile_contract_assert(ensures_expr, vars, &format!("ensures violation"))?;
+                        let fn_name: String = self.current_function()
+                            .map(|f| f.get_name().to_string_lossy().into_owned())
+                            .unwrap_or_else(|| "unknown".to_string());
+                        self.compile_contract_assert(ensures_expr, vars, &format!("ensures violation in '{}'", fn_name))?;
                     }
                     self.builder.build_return(None).map_err(|e| CompileError::LlvmError(format!("return error: {}", e)))?;
                     return Ok(());
@@ -158,7 +164,12 @@ impl<'ctx> CodeGenerator<'ctx> {
                     let cond_bool = if let BasicValueEnum::IntValue(iv) = cond_val {
                         iv
                     } else {
-                        return Err(CompileError::TypeMismatch("if condition must be boolean".to_string()));
+                        let function = self.current_function()
+                            .ok_or_else(|| CompileError::LlvmError("codegen: no current function for if block".to_string()))?;
+                        let fn_name = function.get_name().to_str().unwrap_or("unknown");
+                        return Err(CompileError::TypeMismatch(
+                            format!("if condition must be bool, got {} in function '{}'", cond_val.get_type(), fn_name)
+                        ));
                     };
 
                     let function = self.current_function()
@@ -357,7 +368,12 @@ impl<'ctx> CodeGenerator<'ctx> {
                     let cond_bool = if let BasicValueEnum::IntValue(iv) = cond_val {
                         iv
                     } else {
-                        return Err(CompileError::TypeMismatch("if condition must be boolean".to_string()));
+                        let function = self.current_function()
+                            .ok_or_else(|| CompileError::LlvmError("codegen: no current function for if block".to_string()))?;
+                        let fn_name = function.get_name().to_str().unwrap_or("unknown");
+                        return Err(CompileError::TypeMismatch(
+                            format!("if condition must be bool, got {} in function '{}'", cond_val.get_type(), fn_name)
+                        ));
                     };
                     let function = self.current_function()
                         .ok_or_else(|| CompileError::LlvmError("codegen: no current function for if expression".to_string()))?;

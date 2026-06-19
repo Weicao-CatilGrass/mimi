@@ -102,7 +102,7 @@ impl<'ctx> CodeGenerator<'ctx> {
             if let Some(ty) = types::mimi_type_to_llvm(self.context, &param.ty) {
                 let alloca = self.builder.build_alloca(ty, &param.name)
                     .map_err(|e| CompileError::LlvmError(format!("alloca error: {}", e)))?;
-                self.builder.build_store(alloca, function.get_nth_param(i as u32).ok_or_else(|| CompileError::LlvmError("param index matches function signature".to_string()))?)
+                self.builder.build_store(alloca, function.get_nth_param(i as u32).ok_or_else(|| CompileError::LlvmError(format!("param index {} out of range for function '{}' with {} params", i, func.name, function.count_params())))?)
                     .map_err(|e| CompileError::LlvmError(format!("store error: {}", e)))?;
                 vars.insert(param.name.clone(), (alloca, ty));
                 
@@ -300,7 +300,10 @@ impl<'ctx> CodeGenerator<'ctx> {
                     let cond_bool = if let BasicValueEnum::IntValue(iv) = cond_val {
                         iv
                     } else {
-                        return Err(CompileError::TypeMismatch("if condition must be boolean".to_string()));
+                        let fn_name = function.get_name().to_str().unwrap_or("unknown");
+                        return Err(CompileError::TypeMismatch(
+                            format!("if condition must be bool, got {} in function '{}'", cond_val.get_type(), fn_name)
+                        ));
                     };
 
                     let function = self.current_function().ok_or_else(|| CompileError::LlvmError("codegen: no current function for if".to_string()))?;
@@ -376,7 +379,10 @@ impl<'ctx> CodeGenerator<'ctx> {
                     let cond_bool = if let BasicValueEnum::IntValue(iv) = cond_val {
                         iv
                     } else {
-                        return Err(CompileError::TypeMismatch("while condition must be boolean".to_string()));
+                        let fn_name = function.get_name().to_str().unwrap_or("unknown");
+                        return Err(CompileError::TypeMismatch(
+                            format!("while condition must be bool, got {} in function '{}'", cond_val.get_type(), fn_name)
+                        ));
                     };
                     self.builder.build_conditional_branch(cond_bool, body_bb, merge_bb)
                         .map_err(|e| CompileError::LlvmError(format!("branch error: {}", e)))?;

@@ -1,6 +1,6 @@
 use crate::ast::Type;
 use inkwell::context::Context;
-use inkwell::types::{BasicMetadataTypeEnum, BasicTypeEnum};
+use inkwell::types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum, StructType};
 use inkwell::AddressSpace;
 
 pub fn mimi_type_to_llvm<'ctx>(ctx: &'ctx Context, ty: &Type) -> Option<BasicTypeEnum<'ctx>> {
@@ -90,10 +90,9 @@ pub fn mimi_type_to_llvm<'ctx>(ctx: &'ctx Context, ty: &Type) -> Option<BasicTyp
             let disc = BasicTypeEnum::IntType(ctx.bool_type());
             Some(BasicTypeEnum::StructType(ctx.struct_type(&[disc, ok_llvm], false)))
         }
-        Type::Func(args, ret) => {
-            // Function pointers represented as i64 (opaque)
-            let _ = (args, ret);
-            Some(BasicTypeEnum::IntType(ctx.i64_type()))
+        Type::Func(_args, _ret) => {
+            // Closures represented as {fn_ptr: i8*, env_ptr: i8*}
+            Some(BasicTypeEnum::StructType(closure_struct_type(ctx)))
         }
         Type::Slice(inner) => {
             // Slice<T> represented as {ptr, len}
@@ -131,4 +130,14 @@ pub fn basic_to_metadata<'ctx>(ctx: &'ctx Context, ty: BasicTypeEnum<'ctx>) -> B
         BasicTypeEnum::ArrayType(t) => BasicMetadataTypeEnum::ArrayType(t),
         _ => BasicMetadataTypeEnum::IntType(ctx.i64_type()),
     }
+}
+
+/// Closure struct type: {fn_ptr: i8*, env_ptr: i8*}
+pub fn closure_struct_type<'ctx>(ctx: &'ctx Context) -> StructType<'ctx> {
+    let i8_ptr = ctx.i8_type().ptr_type(AddressSpace::default());
+    let fields = [
+        BasicTypeEnum::PointerType(i8_ptr),
+        BasicTypeEnum::PointerType(i8_ptr),
+    ];
+    ctx.struct_type(&fields, false)
 }
