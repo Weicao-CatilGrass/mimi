@@ -1324,6 +1324,9 @@ impl<'ctx> CodeGenerator<'ctx> {
             .try_as_basic_value().left()
             .ok_or("malloc returned void")?
             .into_pointer_value();
+        // Note: not registered with heap_allocs because list data can be realloc'd
+        // by push/pop builtins, causing double-free. The initial allocation would still
+        // be in heap_allocs after realloc frees it.
         let data_ptr_i64 = self.builder.build_bit_cast(data_ptr,
             self.context.i64_type().ptr_type(inkwell::AddressSpace::default()),
             "data_ptr_i64")
