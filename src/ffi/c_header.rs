@@ -1,4 +1,4 @@
-//! C header generation for extern blocks.
+//! C header generation for extern blocks and extern-exported Mimi functions.
 //!
 //! This module generates C header files from Mimi extern declarations,
 //! allowing C code to call Mimi functions safely.
@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 use std::fmt::Write;
 
-use crate::ast::{ExternFunc, Type, TypeAttribute, TypeDef, TypeDefKind};
+use crate::ast::{ExternFunc, FuncDef, Type, TypeAttribute, TypeDef, TypeDefKind, VariantPayload};
 use crate::ffi::contract::{FfiArgContract, FfiContract};
 
 /// C header generator
@@ -94,10 +94,63 @@ impl CHeaderGenerator {
                     writeln!(header)?;
                 }
                 TypeDefKind::Enum(variants) => {
-                    // Generate enum with integer tag
-                    writeln!(header, "typedef enum {} {{", name)?;
-                    for (i, variant) in variants.iter().enumerate() {
-                        writeln!(header, "    {}_{} = {},", name, variant.name, i)?;
+                    // Check if any variant has a payload
+                    let has_payload = variants.iter().any(|v| v.payload.is_some());
+                    if has_payload && type_def.attributes.contains(&TypeAttribute::ReprC) {
+                        // Generate as struct with tag + union for #[repr(C)] enums with payloads
+                        writeln!(header, "typedef struct {} {{", name)?;
+                        writeln!(header, "    int32_t tag;")?;
+                        writeln!(header, "    union {{")?;
+                        for variant in variants {
+                            let field_name = format!("payload_{}", variant.name);
+                            if let Some(payload) = &variant.payload {
+                                match payload {
+                                    VariantPayload::Tuple(types) => {
+                                        if types.len() == 1 {
+                                            let c_type = self.mimi_type_to_c_type(&types[0]);
+                                            writeln!(header, "        {} {};", c_type, field_name)?;
+                                        } else {
+                                            // Multi-field tuple: generate as struct in union
+                                            writeln!(header, "        struct {{")?;
+                                            for (j, t) in types.iter().enumerate() {
+                                                let c_type = self.mimi_type_to_c_type(t);
+                                                writeln!(header, "            {} field_{};", c_type, j)?;
+                                            }
+                                            writeln!(header, "        }} {};", field_name)?;
+                                        }
+                                    }
+                                    VariantPayload::Record(fields) => {
+                                        writeln!(header, "        struct {{")?;
+                                        for f in fields {
+                                            let c_type = self.mimi_type_to_c_type(&f.ty);
+                                            writeln!(header, "            {} {};", c_type, f.name)?;
+                                        }
+                                        writeln!(header, "        }} {};", field_name)?;
+                                    }
+                                }
+                            } else {
+                                // No-payload variants need a dummy to keep union non-empty
+                                writeln!(header, "        int8_t {};", field_name)?;
+                            }
+                        }
+                        writeln!(header, "    }} data;")?;
+                        writeln!(header, "}} {};", name)?;
+                    } else {
+                        // Generate simple enum with integer tag
+                        writeln!(header, "typedef enum {} {{", name)?;
+                        for (i, variant) in variants.iter().enumerate() {
+                            writeln!(header, "    {}_{} = {},", name, variant.name, i)?;
+                        }
+                        writeln!(header, "}} {};", name)?;
+                    }
+                    writeln!(header)?;
+                }
+                TypeDefKind::Union(fields) => {
+                    // Generate C union
+                    writeln!(header, "typedef union {} {{", name)?;
+                    for field in fields {
+                        let c_type = self.mimi_type_to_c_type(&field.ty);
+                        writeln!(header, "    {} {};", c_type, field.name)?;
                     }
                     writeln!(header, "}} {};", name)?;
                     writeln!(header)?;
@@ -243,6 +296,51 @@ impl CHeaderGenerator {
     }
 }
 
+/// Generate a C header that also includes Mimi→C exported functions.
+/// `exported_funcs` are Mimi functions marked `extern "C"`.
+pub fn generate_c_header_with_exported(
+    extern_funcs: &[ExternFunc],
+    exported_funcs: &[FuncDef],
+    type_defs: HashMap<String, TypeDef>,
+) -> Result<String, String> {
+    let generator = CHeaderGenerator::new(type_defs);
+    let mut header = generator.generate(extern_funcs).unwrap_or_default();
+
+    if !exported_funcs.is_empty() {
+        let _ = writeln!(&mut header, "\n// Exported Mimi functions (extern \"C\")");
+        for func in exported_funcs {
+            generator.generate_exported_func_decl(&mut header, func)
+                .map_err(|e| format!("Failed to generate exported func decl: {}", e))?;
+        }
+    }
+
+    Ok(header)
+}
+
+impl CHeaderGenerator {
+    /// Generate a C function declaration for a Mimi function exported with extern "C"
+    fn generate_exported_func_decl(
+        &self,
+        header: &mut String,
+        func: &FuncDef,
+    ) -> Result<(), std::fmt::Error> {
+        let ret_type = func.ret.as_ref()
+            .map(|ty| self.mimi_type_to_c_type(ty))
+            .unwrap_or_else(|| "void".to_string());
+
+        write!(header, "{} {}(", ret_type, func.name)?;
+        for (i, param) in func.params.iter().enumerate() {
+            if i > 0 {
+                write!(header, ", ")?;
+            }
+            let c_type = self.mimi_type_to_c_type(&param.ty);
+            write!(header, "{} {}", c_type, param.name)?;
+        }
+        writeln!(header, ");")?;
+        Ok(())
+    }
+}
+
 /// Generate C header from a list of extern functions
 pub fn generate_c_header(
     extern_funcs: &[ExternFunc],
@@ -276,6 +374,7 @@ mod tests {
             ret: Some(Type::Name("i32".to_string(), vec![])),
             requires: None,
             ensures: None,
+            variadic: false,
         }];
 
         let header = generate_c_header(&extern_funcs, HashMap::new()).unwrap();

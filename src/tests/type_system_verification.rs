@@ -34,6 +34,7 @@ mod type_system_verification {
             ret: Some(Type::Name("i32".to_string(), vec![])),
             requires: None,
             ensures: None,
+            variadic: false,
         };
         let contract = FfiContract::from_extern(&func);
         assert!(matches!(contract.args[0], FfiArgContract::RawPtr(_)));
@@ -64,6 +65,7 @@ mod type_system_verification {
             ret: Some(Type::Name("i64".to_string(), vec![])),
             requires: Some(crate::ast::Expr::Literal(crate::ast::Lit::Bool(true))),
             ensures: Some(crate::ast::Expr::Literal(crate::ast::Lit::Bool(true))),
+            variadic: false,
         };
         let contract = FfiContract::from_extern(&func);
         assert!(contract.requires.is_some());

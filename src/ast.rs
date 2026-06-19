@@ -71,6 +71,8 @@ pub struct ExternFunc {
     pub requires: Option<Expr>,
     /// Postcondition: must hold after the C function returns.
     pub ensures: Option<Expr>,
+    /// Whether this is a variadic function (e.g., printf).
+    pub variadic: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -152,6 +154,9 @@ pub struct FuncDef {
     pub effects: Vec<String>,
     pub is_comptime: bool,
     pub is_async: bool,
+    /// If Some(abi), this function is exported with a C-compatible ABI
+    /// (e.g., `extern "C" func foo() { ... }`).
+    pub extern_abi: Option<String>,
     /// Source position (line, col) from the `func` keyword
     pub pos: (usize, usize),
 }
@@ -203,6 +208,9 @@ pub enum TypeDefKind {
     Newtype(Type),
     Record(Vec<Field>),
     Enum(Vec<Variant>),
+    /// C-compatible union type: all fields share the same memory.
+    /// Only valid with #[repr(C)] attribute.
+    Union(Vec<Field>),
 }
 
 #[derive(Debug, Clone)]

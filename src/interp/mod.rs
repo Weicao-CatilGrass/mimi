@@ -329,6 +329,7 @@ impl<'a> Interpreter<'a> {
                             effects: vec![],
                             is_comptime: false,
                             is_async: false,
+                            extern_abi: None,
                             pos: (0, 0),
                         };
                         type_impls
@@ -352,6 +353,7 @@ impl<'a> Interpreter<'a> {
                             effects: vec![],
                             is_comptime: false,
                             is_async: false,
+                            extern_abi: None,
                             pos: (0, 0),
                         };
                         type_impls
@@ -379,6 +381,7 @@ impl<'a> Interpreter<'a> {
                             effects: vec![],
                             is_comptime: false,
                             is_async: false,
+                            extern_abi: None,
                             pos: (0, 0),
                         };
                         type_impls
@@ -553,6 +556,15 @@ impl<'a> Interpreter<'a> {
                 }
                 TypeDefKind::Newtype(ty) => {
                     fields_map.insert("inner".into(), Value::String(self.resolve_type_name(ty)));
+                }
+                TypeDefKind::Union(fields) => {
+                    for f in fields {
+                        let field_info = vec![
+                            (Value::String("name".into()), Value::String(f.name.clone())),
+                            (Value::String("type".into()), Value::String(self.resolve_type_name(&f.ty))),
+                        ];
+                        fields_map.insert(f.name.clone(), Value::Tuple(field_info.into_iter().map(|(_, v)| v).collect()));
+                    }
                 }
             }
             let mut info = HashMap::new();

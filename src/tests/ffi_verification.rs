@@ -114,6 +114,7 @@ mod ffi_verification_tests {
             ret: Some(Type::Name("i32".to_string(), vec![])),
             requires: None,
             ensures: None,
+            variadic: false,
         };
         
         let contract = FfiContract::from_extern(&func);
@@ -135,6 +136,7 @@ mod ffi_verification_tests {
             ret: Some(Type::Name("i32".to_string(), vec![])),
             requires: None,
             ensures: None,
+            variadic: false,
         };
         
         let contract = FfiContract::from_extern(&func);
@@ -159,6 +161,7 @@ mod ffi_verification_tests {
             ret: Some(Type::Name("i32".to_string(), vec![])),
             requires: None,
             ensures: None,
+            variadic: false,
         };
         
         let contract = FfiContract::from_extern(&func);

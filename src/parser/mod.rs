@@ -374,7 +374,36 @@ impl Parser {
             TokenKind::Cap => Ok(Item::Cap(self.parse_cap_def()?)),
             TokenKind::Trait => Ok(Item::Trait(self.parse_trait_def()?)),
             TokenKind::Impl => Ok(Item::Impl(self.parse_impl_def()?)),
-            TokenKind::Extern => Ok(Item::ExternBlock(self.parse_extern_block()?)),
+            TokenKind::Extern => {
+                // Check if this is `extern "C" func` (export) or `extern "C" { ... }` (import)
+                let saved_pos = self.pos;
+                let tok = self.peek();
+                let has_abi_string = matches!(tok.kind, TokenKind::String(_));
+                if has_abi_string {
+                    // Peek past the string to see if next is `func`
+                    let abi_str_pos = self.pos;
+                    self.advance(); // consume string
+                    let after_abi = self.peek_kind().clone();
+                    self.pos = saved_pos; // restore
+                    if matches!(after_abi, TokenKind::Func) {
+                        // extern "C" func ... { body } — Mimi → C export
+                        self.advance(); // consume `extern`
+                        let abi = {
+                            let tok = self.advance().clone(); // consume string
+                            if let TokenKind::String(s) = &tok.kind {
+                                s.clone()
+                            } else {
+                                "C".to_string()
+                            }
+                        };
+                        let mut f = self.parse_func()?;
+                        f.pub_ = pub_;
+                        f.extern_abi = Some(abi);
+                        return Ok(Item::Func(f));
+                    }
+                }
+                Ok(Item::ExternBlock(self.parse_extern_block()?))
+            }
             TokenKind::Rule => {
                 self.advance();
                 let s = self.expect_string()?;
@@ -552,6 +581,13 @@ impl Parser {
                     self.advance();
                 }
             }
+            // Check for variadic `...`
+            let variadic = if self.at(&TokenKind::Ellipsis) {
+                self.advance();
+                true
+            } else {
+                false
+            };
             self.expect(TokenKind::RParen, "`)`")?;
             let ret = if self.at(&TokenKind::Arrow) {
                 self.advance();
@@ -585,6 +621,7 @@ impl Parser {
                 ret,
                 requires,
                 ensures,
+                variadic,
             });
         }
         self.expect(TokenKind::RBrace, "`}`")?;
@@ -736,6 +773,7 @@ impl Parser {
             effects,
             is_comptime: false,
             is_async: false,
+            extern_abi: None,
             pos,
         })
     }
