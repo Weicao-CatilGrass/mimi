@@ -183,11 +183,78 @@ impl<'ctx> CodeGenerator<'ctx> {
                     return Ok(());
                 }
                 Stmt::Let { pat, init: Some(init), ty, .. } => {
-                    let mut val = self.compile_expr(init, &vars)?;
                     let name = match pat {
                         Pattern::Variable(n) => n.clone(),
                         _ => continue,
                     };
+                    // dyn Trait let-binding: build fat pointer from concrete value
+                    if let Some(Type::DynTrait(trait_names)) = &ty {
+                        let concrete_val = self.compile_expr(init, &vars)?;
+                        // Determine concrete type name
+                        let concrete_type = match init {
+                            Expr::Record { ty: Some(tn), .. } => tn.clone(),
+                            Expr::Ident(var_name) => self.var_type_names.get(var_name).cloned().unwrap_or_default(),
+                            _ => {
+                                return Err(CompileError::LlvmError(
+                                    format!("cannot infer concrete type for dyn Trait binding '{}'", name)
+                                ));
+                            }
+                        };
+                        if concrete_type.is_empty() {
+                            return Err(CompileError::LlvmError(
+                                format!("cannot infer concrete type for dyn Trait binding '{}'", name)
+                            ));
+                        }
+                        let trait_name = &trait_names[0];
+                        // Allocate concrete value on stack
+                        let concrete_ty = self.type_llvm.get(&concrete_type)
+                            .cloned()
+                            .unwrap_or_else(|| concrete_val.get_type());
+                        let data_alloca = self.builder.build_alloca(concrete_ty, &format!("{}_data", name))
+                            .map_err(|e| CompileError::LlvmError(format!("alloca error: {}", e)))?;
+                        self.builder.build_store(data_alloca, concrete_val)
+                            .map_err(|e| CompileError::LlvmError(format!("store error: {}", e)))?;
+                        let i8_ptr = self.context.i8_type().ptr_type(inkwell::AddressSpace::default());
+                        let data_ptr = self.builder.build_pointer_cast(
+                            data_alloca, i8_ptr, &format!("{}_data_i8", name)
+                        ).map_err(|e| CompileError::LlvmError(format!("pointer cast error: {}", e)))?;
+                        // Get vtable global
+                        let vtable_key = format!("{}__{}", concrete_type, trait_name);
+                        let vtable_gv = self.vtable_globals.get(&vtable_key)
+                            .ok_or_else(|| CompileError::LlvmError(
+                                format!("no vtable for {}.{}", concrete_type, trait_name)
+                            ))?;
+                        let vtable_ptr = self.builder.build_pointer_cast(
+                            vtable_gv.as_pointer_value(), i8_ptr,
+                            &format!("{}_vtable_i8", name)
+                        ).map_err(|e| CompileError::LlvmError(format!("pointer cast error: {}", e)))?;
+                        // Build fat pointer struct { ptr, ptr }
+                        let fat_ty = BasicTypeEnum::StructType(
+                            self.context.struct_type(&[
+                                BasicTypeEnum::PointerType(i8_ptr),
+                                BasicTypeEnum::PointerType(i8_ptr),
+                            ], false)
+                        );
+                        let fat_alloca = self.builder.build_alloca(fat_ty, &name)
+                            .map_err(|e| CompileError::LlvmError(format!("alloca error: {}", e)))?;
+                        let data_gep = self.builder.build_struct_gep(fat_ty, fat_alloca, 0, &format!("{}_data_gep", name))
+                            .map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?;
+                        self.builder.build_store(data_gep, data_ptr)
+                            .map_err(|e| CompileError::LlvmError(format!("store error: {}", e)))?;
+                        let vtable_gep = self.builder.build_struct_gep(fat_ty, fat_alloca, 1, &format!("{}_vtable_gep", name))
+                            .map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?;
+                        self.builder.build_store(vtable_gep, vtable_ptr)
+                            .map_err(|e| CompileError::LlvmError(format!("store error: {}", e)))?;
+                        let dyn_type_str = crate::core::fmt_type(&ty.as_ref().unwrap());
+                        self.var_type_names.insert(name.clone(), dyn_type_str);
+                        vars.insert(name.clone(), (fat_alloca, fat_ty));
+                        // Track capability variables
+                        if let Some(Type::Cap(_)) = &ty {
+                            self.register_cap(&name, fat_alloca);
+                        }
+                        continue;
+                    }
+                    let mut val = self.compile_expr(init, &vars)?;
                     let llvm_ty = if let Some(decl_ty) = ty {
                         let target = types::mimi_type_to_llvm(self.context, decl_ty)
                             .unwrap_or_else(|| val.get_type());
@@ -207,7 +274,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                         self.var_type_names.insert(name.clone(), tn.clone());
                     }
                     vars.insert(name.clone(), (alloca, llvm_ty));
-                    
+
                     // Track capability variables
                     if let Some(Type::Cap(_)) = &ty {
                         self.register_cap(&name, alloca);

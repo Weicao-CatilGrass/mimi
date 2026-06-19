@@ -120,6 +120,12 @@ pub enum Value {
     },
     /// C buffer with automatic memory management (malloc/free)
     CBuffer(std::sync::Arc<CBufferInner>),
+    /// Dynamic trait object: concrete value + trait name for vtable dispatch
+    DynTrait {
+        data: Box<Value>,
+        concrete_type: String,
+        trait_names: Vec<String>,
+    },
 }
 
 /// Kind of allocator
@@ -298,6 +304,9 @@ impl std::fmt::Display for Value {
             }
             Value::Range { start, end } => write!(f, "{}..{}", start, end),
             Value::CBuffer(inner) => write!(f, "CBuffer({:p}, {} bytes)", inner.ptr, inner.size),
+            Value::DynTrait { data, concrete_type, trait_names } => {
+                write!(f, "dyn {} {{ data: {}, concrete: {} }}", trait_names.join(" + "), data, concrete_type)
+            }
         }
     }
 }
@@ -310,6 +319,7 @@ pub(crate) fn contains_arena_ref(v: &Value, arena_id: usize) -> bool {
         Value::Record(_, fields) => fields.values().any(|v| contains_arena_ref(v, arena_id)),
         Value::Variant(_, args) => args.iter().any(|v| contains_arena_ref(v, arena_id)),
         Value::Newtype(inner) => contains_arena_ref(inner, arena_id),
+        Value::DynTrait { data, .. } => contains_arena_ref(data, arena_id),
         Value::Ref(rc) | Value::RefMut(rc) => {
             let v = rc.0.borrow();
             contains_arena_ref(&v, arena_id)
@@ -446,6 +456,7 @@ pub(crate) fn type_name(val: &Value) -> &'static str {
         Value::Slice { .. } => "slice",
         Value::Range { .. } => "range",
         Value::CBuffer(_) => "c_buffer",
+        Value::DynTrait { .. } => "dyn_trait",
     }
 }
 

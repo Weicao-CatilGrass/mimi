@@ -795,3 +795,64 @@ fn e2e_push_loop() {
     "#).unwrap();
     assert_eq!(stdout.trim(), "5");
 }
+
+// ===================== dyn Trait dispatch (codegen) =====================
+
+#[test]
+fn e2e_dyn_trait_dispatch() {
+    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    // NOTE: impl methods cannot use self.field in codegen yet (codegen doesn't
+    // track the inner type name for &T references). Methods return constants.
+    let stdout = compile_and_run(r#"
+trait Drawable {
+    func draw() -> i32;
+}
+
+type Circle {
+    radius: i32
+}
+
+impl Drawable for Circle {
+    func draw() -> i32 { 42 }
+}
+
+func main() -> i32 {
+    let c = Circle { radius: 10 }
+    let d: dyn Drawable = c
+    println(d.draw())
+    0
+}
+"#).unwrap();
+    assert_eq!(stdout.trim(), "42");
+}
+
+#[test]
+fn e2e_dyn_trait_dispatch_function_param() {
+    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    let stdout = compile_and_run(r#"
+trait Drawable {
+    func draw() -> i32;
+}
+
+type Circle {
+    radius: i32
+}
+
+impl Drawable for Circle {
+    func draw() -> i32 { 99 }
+}
+
+func use_drawer(d: dyn Drawable) -> i32 {
+    d.draw()
+}
+
+func main() -> i32 {
+    let c = Circle { radius: 10 }
+    let d: dyn Drawable = c
+    let result = use_drawer(d)
+    println(result)
+    0
+}
+"#).unwrap();
+    assert_eq!(stdout.trim(), "99");
+}

@@ -63,6 +63,9 @@ pub(crate) mod mms_integration;
 pub(crate) mod package_management;
 pub(crate) mod property;
 
+// === JSON test modules ===
+pub(crate) mod json_tests;
+
 // === CODEGEN test modules ===
 pub(crate) mod codegen_e2e;
 pub(crate) mod codegen_ir;
