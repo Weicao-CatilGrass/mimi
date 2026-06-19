@@ -89,6 +89,8 @@ impl Default for CallbackTable {
 /// Global callback table instance
 pub static CALLBACK_TABLE: LazyLock<CallbackTable> = LazyLock::new(CallbackTable::new);
 
+
+
 /// Standard trampoline: 2 args + userdata pattern.
 /// C calls this with (callback_id, arg1, arg2, userdata).
 pub unsafe extern "C" fn callback_trampoline(

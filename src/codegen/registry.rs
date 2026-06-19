@@ -252,12 +252,14 @@ impl<'ctx> CodeGenerator<'ctx> {
             let param_types: Vec<crate::ast::Type> = ef.params.iter().map(|p| p.ty.clone()).collect();
             self.extern_param_types.insert(ef.name.clone(), param_types);
 
-            // Only Tuple requires interpreter; List and Record now use JSON serialization
+            // Tuple is allowed in the type checker (serialized as JSON via interpreter).
+            // Codegen Tuple support requires adding a mimi_tuple_serialize runtime function.
             for p in &ef.params {
                 if let crate::ast::Type::Tuple(_) = &p.ty {
                     return Err(CompileError::LlvmError(format!(
                         "codegen does not yet support Tuple type in extern parameter '{}'. \
-                         Use `mimi run` (interpreter) for JSON-serialized FFI.",
+                         Use `mimi run` (interpreter) for JSON-serialized FFI, or convert to a \
+                         #[repr(C)] record type.",
                         p.name
                     )));
                 }
@@ -266,7 +268,8 @@ impl<'ctx> CodeGenerator<'ctx> {
                 if let crate::ast::Type::Tuple(_) = ret_ty {
                     return Err(CompileError::LlvmError(format!(
                         "codegen does not yet support Tuple as extern return type for '{}'. \
-                         Use `mimi run` (interpreter) for JSON-serialized FFI.",
+                         Use `mimi run` (interpreter) for JSON-serialized FFI, or convert to a \
+                         #[repr(C)] record type.",
                         ef.name
                     )));
                 }
@@ -323,32 +326,36 @@ impl<'ctx> CodeGenerator<'ctx> {
                 None => BasicTypeEnum::IntType(self.context.i64_type()),
             };
             let is_void_return = ef.ret.is_none();
+            let is_variadic = ef.variadic;
             let wrapper_fn_type = if is_void_return {
-                self.context.void_type().fn_type(&param_tys, false)
+                self.context.void_type().fn_type(&param_tys, is_variadic)
             } else {
                 match wrapper_ret_ty {
-                    BasicTypeEnum::IntType(t) => t.fn_type(&param_tys, false),
-                    BasicTypeEnum::FloatType(t) => t.fn_type(&param_tys, false),
-                    BasicTypeEnum::PointerType(t) => t.fn_type(&param_tys, false),
-                    BasicTypeEnum::StructType(t) => t.fn_type(&param_tys, false),
-                    BasicTypeEnum::ArrayType(t) => t.fn_type(&param_tys, false),
-                    _ => self.context.i64_type().fn_type(&param_tys, false),
+                    BasicTypeEnum::IntType(t) => t.fn_type(&param_tys, is_variadic),
+                    BasicTypeEnum::FloatType(t) => t.fn_type(&param_tys, is_variadic),
+                    BasicTypeEnum::PointerType(t) => t.fn_type(&param_tys, is_variadic),
+                    BasicTypeEnum::StructType(t) => t.fn_type(&param_tys, is_variadic),
+                    BasicTypeEnum::ArrayType(t) => t.fn_type(&param_tys, is_variadic),
+                    _ => self.context.i64_type().fn_type(&param_tys, is_variadic),
                 }
             };
             let extern_fn_type = if is_void_return {
-                self.context.void_type().fn_type(&extern_param_tys, false)
+                self.context.void_type().fn_type(&extern_param_tys, is_variadic)
             } else {
                 match extern_ret_ty {
-                    BasicTypeEnum::IntType(t) => t.fn_type(&extern_param_tys, false),
-                    BasicTypeEnum::FloatType(t) => t.fn_type(&extern_param_tys, false),
-                    BasicTypeEnum::PointerType(t) => t.fn_type(&extern_param_tys, false),
-                    BasicTypeEnum::StructType(t) => t.fn_type(&extern_param_tys, false),
-                    BasicTypeEnum::ArrayType(t) => t.fn_type(&extern_param_tys, false),
-                    _ => self.context.i64_type().fn_type(&extern_param_tys, false),
+                    BasicTypeEnum::IntType(t) => t.fn_type(&extern_param_tys, is_variadic),
+                    BasicTypeEnum::FloatType(t) => t.fn_type(&extern_param_tys, is_variadic),
+                    BasicTypeEnum::PointerType(t) => t.fn_type(&extern_param_tys, is_variadic),
+                    BasicTypeEnum::StructType(t) => t.fn_type(&extern_param_tys, is_variadic),
+                    BasicTypeEnum::ArrayType(t) => t.fn_type(&extern_param_tys, is_variadic),
+                    _ => self.context.i64_type().fn_type(&extern_param_tys, is_variadic),
                 }
             };
             let extern_name = format!("__mimi_extern_{}", ef.name);
             let extern_fn = self.module.add_function(&extern_name, extern_fn_type, Some(inkwell::module::Linkage::External));
+            // Set calling convention on the external function based on block ABI
+            let cc = crate::ffi::abi_to_llvm_call_conv(&block.abi);
+            extern_fn.set_call_conventions(cc);
             let wrapper_fn = self.module.add_function(&ef.name, wrapper_fn_type, Some(inkwell::module::Linkage::Internal));
 
             let entry = self.context.append_basic_block(wrapper_fn, "entry");
@@ -722,6 +729,18 @@ impl<'ctx> CodeGenerator<'ctx> {
             crate::ast::TypeDefKind::Alias(ty) | crate::ast::TypeDefKind::Newtype(ty) => {
                 types::mimi_type_to_llvm(self.context, ty)
                     .unwrap_or(BasicTypeEnum::IntType(self.context.i64_type()))
+            }
+            crate::ast::TypeDefKind::Union(fields) => {
+                // Represent union as a byte array large enough to hold the largest field
+                let max_size = fields.iter().map(|f| {
+                    let llvm_ty = types::mimi_type_to_llvm(self.context, &f.ty)
+                        .unwrap_or(BasicTypeEnum::IntType(self.context.i64_type()));
+                    llvm_ty.size_of()
+                        .and_then(|s| s.get_zero_extended_constant())
+                        .unwrap_or(8)
+                }).max().unwrap_or(8);
+                let array_ty = self.context.i8_type().array_type(max_size as u32);
+                BasicTypeEnum::ArrayType(array_ty)
             }
         };
         self.type_llvm.insert(t.name.clone(), llvm_ty);

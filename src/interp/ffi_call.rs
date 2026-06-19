@@ -811,14 +811,28 @@ impl<'a> Interpreter<'a> {
                 let cb_ref = &*userdata as &i64 as *const i64;
                 // SAFETY: userdata box is leaked and kept alive in FfiGuard
                 let cb_ref_static: &'static i64 = unsafe { &*cb_ref };
+
                 let ffi_closure = libffi::middle::Closure::new(
                     cif,
                     mimi_callback_trampoline_fn as ffi_low::Callback<i64, i64>,
                     cb_ref_static,
                 );
 
-                let code_ptr = ffi_closure.code_ptr();
-                let fn_ptr = code_ptr as *const unsafe extern "C" fn() as *const () as i64;
+                let code_ptr_ref = ffi_closure.code_ptr();
+                // code_ptr_ref is &unsafe extern "C" fn() — a reference to the generated
+                // trampoline function pointer. We convert it to a raw i64 address.
+                let fn_ptr_val: unsafe extern "C" fn() = *code_ptr_ref;
+                let fn_ptr_addr = fn_ptr_val as usize;
+                // Best-effort: mark the closure's code page executable.
+                // libffi should already do this, but some hardened kernels may need help.
+                let page_size = 4096usize;
+                let page_start = fn_ptr_addr & !(page_size - 1);
+                let _ = unsafe { libc::mprotect(
+                    page_start as *mut libc::c_void,
+                    page_size as libc::size_t,
+                    libc::PROT_READ | libc::PROT_EXEC,
+                ) };
+                let fn_ptr = fn_ptr_addr as i64;
 
                 // Keep the closure and its userdata alive for the duration of the C call
                 ffi_guards.push(FfiGuard::CallbackClosure {

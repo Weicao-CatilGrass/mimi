@@ -1296,10 +1296,16 @@ fn emit_c_headers(path: Option<&Path>, output: Option<&Path>) -> Result<(), Stri
     let file = parser::Parser::new(tokens).parse_file()?;
 
     let mut extern_funcs = Vec::new();
+    let mut exported_funcs = Vec::new();
     let mut type_defs = std::collections::HashMap::new();
     collect_extern_and_types(&file, &mut extern_funcs, &mut type_defs);
+    collect_exported_and_types(&file, &mut exported_funcs, &mut type_defs);
 
-    let header = ffi::c_header::generate_c_header(&extern_funcs, type_defs)?;
+    let header = if exported_funcs.is_empty() {
+        ffi::c_header::generate_c_header(&extern_funcs, type_defs)?
+    } else {
+        ffi::c_header::generate_c_header_with_exported(&extern_funcs, &exported_funcs, type_defs)?
+    };
 
     match output {
         Some(out_path) => {
@@ -1322,8 +1328,26 @@ fn emit_py_bindings(path: Option<&Path>, output: Option<&Path>) -> Result<(), St
     let file = parser::Parser::new(tokens).parse_file()?;
 
     let mut extern_funcs = Vec::new();
+    let mut exported_funcs = Vec::new();
     let mut type_defs = std::collections::HashMap::new();
     collect_extern_and_types(&file, &mut extern_funcs, &mut type_defs);
+    collect_exported_and_types(&file, &mut exported_funcs, &mut type_defs);
+    // Also include exported functions as extern-like declarations for Python bindings
+    for ef in &exported_funcs {
+        let extern_func = ast::ExternFunc {
+            name: ef.name.clone(),
+            params: ef.params.iter().map(|p| ast::ExternParam {
+                name: p.name.clone(),
+                ty: p.ty.clone(),
+                cap_mode: None,
+            }).collect(),
+            ret: ef.ret.clone(),
+            requires: None,
+            ensures: None,
+            variadic: false,
+        };
+        extern_funcs.push(extern_func);
+    }
 
     let pkg_name = path
         .file_stem()
@@ -1606,6 +1630,37 @@ fn collect_extern_and_types(
                         items: m.items.clone(),
                     },
                     extern_funcs,
+                    type_defs,
+                );
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Collect Mimi→C exported functions (marked `extern "C" func`) and type defs.
+fn collect_exported_and_types(
+    file: &File,
+    exported_funcs: &mut Vec<ast::FuncDef>,
+    type_defs: &mut HashMap<String, ast::TypeDef>,
+) {
+    for item in &file.items {
+        match item {
+            Item::Func(f) => {
+                if f.extern_abi.is_some() {
+                    exported_funcs.push(f.clone());
+                }
+            }
+            Item::Type(t) => {
+                type_defs.insert(t.name.clone(), t.clone());
+            }
+            Item::Module(m) => {
+                collect_exported_and_types(
+                    &ast::File {
+                        imports: Vec::new(),
+                        items: m.items.clone(),
+                    },
+                    exported_funcs,
                     type_defs,
                 );
             }

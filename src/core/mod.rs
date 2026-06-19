@@ -495,10 +495,19 @@ impl<'a> Checker<'a> {
                     .as_ref()
                     .map(|t| self.resolve_type(t))
                     .unwrap_or_else(|| Type::Name("unit".into(), vec![]));
+                let allow_passport = f.extern_abi.is_some();
                 for (i, p) in f.params.iter().enumerate() {
-                    self.check_type_well_formed(&params[i], &format!("parameter '{}' of function '{}'", p.name, qualified_name));
+                    if allow_passport {
+                        self.check_type_well_formed_allow_passport(&params[i], &format!("parameter '{}' of function '{}'", p.name, qualified_name));
+                    } else {
+                        self.check_type_well_formed(&params[i], &format!("parameter '{}' of function '{}'", p.name, qualified_name));
+                    }
                 }
-                self.check_type_well_formed(&ret, &format!("return type of function '{}'", qualified_name));
+                if allow_passport {
+                    self.check_type_well_formed_allow_passport(&ret, &format!("return type of function '{}'", qualified_name));
+                } else {
+                    self.check_type_well_formed(&ret, &format!("return type of function '{}'", qualified_name));
+                }
                 self.generic_scope.truncate(self.generic_scope.len() - generic_names.len());
                 self.funcs.insert(qualified_name.clone(), (params, ret));
                 // Store generic parameters if present
@@ -559,6 +568,12 @@ impl<'a> Checker<'a> {
                         for field in fields {
                             let field_ty = self.resolve_type(&field.ty);
                             self.check_type_well_formed(&field_ty, &format!("field '{}' of record '{}'", field.name, t.name));
+                        }
+                    }
+                    TypeDefKind::Union(fields) => {
+                        for field in fields {
+                            let field_ty = self.resolve_type(&field.ty);
+                            self.check_type_well_formed(&field_ty, &format!("field '{}' of union '{}'", field.name, t.name));
                         }
                     }
                 }
@@ -764,8 +779,9 @@ impl<'a> Checker<'a> {
             Type::Ref(_, _) | Type::RefMut(_, _) => false,
             // Shared ownership is not allowed directly; must use c_shared
             Type::Shared(_) | Type::LocalShared(_) | Type::Weak(_) | Type::WeakLocal(_) => false,
-            // Composite Mimi types are not allowed
-            Type::Tuple(_) => false,
+            // Composite Mimi types
+            // Tuple is allowed — serialized as JSON over FFI boundary
+            Type::Tuple(_) => true,
             Type::Option(_) | Type::Result(_, _) => false,
             Type::Array(_, _) | Type::Slice(_) => false,
             // G1b: Accept closures (Type::Func) as extern callback params
@@ -1483,7 +1499,7 @@ impl<'a> Checker<'a> {
         }
         // Check if it's a type name (actor/record or enum)
         if let Some(tdef) = self.types.get(name) {
-            if matches!(tdef.kind, TypeDefKind::Record(_) | TypeDefKind::Enum(_)) {
+            if matches!(tdef.kind, TypeDefKind::Record(_) | TypeDefKind::Enum(_) | TypeDefKind::Union(_)) {
                 // This is a type name - return it as a type
                 return Type::Name(name.into(), vec![]);
             }

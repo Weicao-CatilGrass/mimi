@@ -385,6 +385,25 @@ impl Parser {
         }
         if self.at(&TokenKind::Eq) {
             self.advance();
+            // Check for `= union { ... }` syntax (must match both variant AND value)
+            if matches!(self.peek_kind(), TokenKind::Ident(name) if name == "union") {
+                self.advance();
+                self.skip_newlines();
+                self.expect(TokenKind::LBrace, "`{` for union definition")?;
+                self.skip_newlines();
+                let fields = self.parse_record_fields()?;
+                self.skip_newlines();
+                self.expect(TokenKind::RBrace, "`}`")?;
+                return Ok(TypeDef {
+                    name,
+                    commitment,
+                    pub_: false,
+                    kind: TypeDefKind::Union(fields),
+                    generics,
+                    derives,
+                    attributes,
+                });
+            }
             let ty = self.parse_type()?;
             self.match_semi();
             return Ok(TypeDef {

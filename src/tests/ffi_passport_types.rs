@@ -268,6 +268,7 @@ fn raw_string_uses_string_owned_contract() {
         ret: Some(Type::RawString),
         requires: None,
         ensures: None,
+        variadic: false,
     };
 
     let contract = FfiContract::from_extern(&func);
@@ -293,6 +294,7 @@ fn list_type_uses_json_contract() {
         ret: Some(Type::Name("i32".to_string(), vec![])),
         requires: None,
         ensures: None,
+        variadic: false,
     };
 
     let contract = FfiContract::from_extern(&func);

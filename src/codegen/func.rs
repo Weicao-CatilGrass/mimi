@@ -27,6 +27,7 @@ impl<'ctx> CodeGenerator<'ctx> {
             effects: vec![],
             is_comptime: false,
             is_async: false,
+            extern_abi: None,
             pos: (0, 0),
         };
         self.compile_func(&body_func)?;
@@ -52,10 +53,11 @@ impl<'ctx> CodeGenerator<'ctx> {
             where_clause: None,
             generics: vec![],
             effects: vec![],
-                is_comptime: false,
-                is_async: false,
-                pos: (0, 0),
-            };
+            is_comptime: false,
+            is_async: false,
+            extern_abi: None,
+            pos: (0, 0),
+        };
             self.compile_func(&spawner_func)?;
         Ok(())
     }
@@ -89,7 +91,17 @@ impl<'ctx> CodeGenerator<'ctx> {
             _ => self.context.i64_type().fn_type(&metadata_params, false),
         };
 
-        let function = self.module.add_function(&func.name, fn_type, None);
+        let linkage = if func.extern_abi.is_some() {
+            Some(inkwell::module::Linkage::External)
+        } else {
+            None
+        };
+        let function = self.module.add_function(&func.name, fn_type, linkage);
+        // Set calling convention for extern "C" / extern "stdcall" etc.
+        if let Some(ref abi) = func.extern_abi {
+            let cc = crate::ffi::abi_to_llvm_call_conv(abi);
+            function.set_call_conventions(cc);
+        }
         let entry = self.context.append_basic_block(function, "entry");
         self.builder.position_at_end(entry);
 

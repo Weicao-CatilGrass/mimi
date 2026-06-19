@@ -313,6 +313,7 @@ mod tests {
                 ret: Some(Type::Name("i64".into(), Vec::new())),
                 requires: None,
                 ensures: None,
+                variadic: false,
             },
             ExternFunc {
                 name: "mimi_greet".to_string(),
@@ -322,6 +323,7 @@ mod tests {
                 ret: None,
                 requires: None,
                 ensures: None,
+                variadic: false,
             },
         ]
     }
