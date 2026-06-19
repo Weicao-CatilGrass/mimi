@@ -56,12 +56,9 @@ impl Span {
     }
 
     /// Get the length of the span on a single line (end_col - start_col).
+    /// For multi-line spans, returns the width of the last line.
     pub fn width(&self) -> usize {
-        if self.start_line == self.end_line {
-            self.end_col.saturating_sub(self.start_col)
-        } else {
-            0
-        }
+        self.end_col.saturating_sub(self.start_col)
     }
 }
 

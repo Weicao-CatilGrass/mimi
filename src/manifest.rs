@@ -53,8 +53,20 @@ impl Manifest {
             dir = dir.parent().unwrap_or(&dir).to_path_buf();
         }
         loop {
-            if let Some(manifest) = Self::load(&dir)? {
-                return Ok(Some((dir, manifest)));
+            match Self::load(&dir) {
+                Ok(Some(manifest)) => return Ok(Some((dir, manifest))),
+                Ok(None) => {}
+                Err(e) => {
+                    let err_str = e.to_string();
+                    if err_str.contains("EACCES")
+                        || err_str.contains("EPERM")
+                        || err_str.contains("Permission denied")
+                    {
+                        // Permission error: treat as not found and continue searching up
+                    } else {
+                        return Err(e);
+                    }
+                }
             }
             if !dir.pop() {
                 return Ok(None);
