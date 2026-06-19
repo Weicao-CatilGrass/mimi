@@ -3,27 +3,54 @@ use crate::span::Span;
 use std::collections::HashMap;
 
 /// Extracted contract from an mms block
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct Contract {
     pub requires: Vec<String>,
     pub ensures: Vec<String>,
     pub math: Vec<String>,
+    pub span: Span,
+}
+
+impl Default for Contract {
+    fn default() -> Self {
+        Self {
+            requires: Vec::new(),
+            ensures: Vec::new(),
+            math: Vec::new(),
+            span: Span::single(0, 0),
+        }
+    }
 }
 
 /// Extract contracts from mms block text content
 pub fn extract_contracts(mms_text: &str) -> Contract {
-    let mut contract = Contract::default();
-    for line in mms_text.lines() {
-        let line = line.trim();
-        if let Some(cond) = line.strip_prefix("requires:") {
-            contract.requires.push(cond.trim().to_string());
-        } else if let Some(cond) = line.strip_prefix("ensures:") {
-            contract.ensures.push(cond.trim().to_string());
-        } else if let Some(cond) = line.strip_prefix("math:") {
-            contract.math.push(cond.trim().to_string());
-        }
+    Contract {
+        requires: mms_text.lines()
+            .filter_map(|line| line.trim().strip_prefix("requires:").map(|s| s.trim().to_string()))
+            .collect(),
+        ensures: mms_text.lines()
+            .filter_map(|line| line.trim().strip_prefix("ensures:").map(|s| s.trim().to_string()))
+            .collect(),
+        math: mms_text.lines()
+            .filter_map(|line| line.trim().strip_prefix("math:").map(|s| s.trim().to_string()))
+            .collect(),
+        span: Span::single(0, 0),
     }
-    contract
+}
+
+pub fn extract_contracts_with_span(mms_text: &str, span: Span) -> Contract {
+    Contract {
+        requires: mms_text.lines()
+            .filter_map(|line| line.trim().strip_prefix("requires:").map(|s| s.trim().to_string()))
+            .collect(),
+        ensures: mms_text.lines()
+            .filter_map(|line| line.trim().strip_prefix("ensures:").map(|s| s.trim().to_string()))
+            .collect(),
+        math: mms_text.lines()
+            .filter_map(|line| line.trim().strip_prefix("math:").map(|s| s.trim().to_string()))
+            .collect(),
+        span,
+    }
 }
 
 /// Bind extracted contracts to their corresponding functions in the AST
@@ -42,12 +69,12 @@ fn bind_item_contracts(item: &mut Item, contracts: &HashMap<String, Contract>) {
                 for req in &contract.requires {
                     // Parse the condition as an expression if possible
                     if let Ok(expr) = parse_condition(req) {
-                        prefix.push(Stmt::Requires(expr, Span::single(0, 0)));
+                        prefix.push(Stmt::Requires(expr, contract.span));
                     }
                 }
                 for ens in &contract.ensures {
                     if let Ok(expr) = parse_condition(ens) {
-                        prefix.push(Stmt::Ensures(expr, Span::single(0, 0)));
+                        prefix.push(Stmt::Ensures(expr, contract.span));
                     }
                 }
                 if !contract.math.is_empty() {

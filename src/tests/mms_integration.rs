@@ -107,7 +107,7 @@ fn mms_block_ast_token_content() {
         if let Item::Func(f) = item { Some(f) } else { None }
     }).unwrap();
     let mms_stmt = func.body.iter().find_map(|s| {
-        if let Stmt::MmsBlock { content, ast } = s {
+        if let Stmt::MmsBlock { content, ast, .. } = s {
             Some((content.clone(), ast.clone()))
         } else {
             None
@@ -134,7 +134,7 @@ fn mms_block_ast_graceful_degradation() {
         if let Item::Func(f) = item { Some(f) } else { None }
     }).unwrap();
     let mms_stmt = func.body.iter().find_map(|s| {
-        if let Stmt::MmsBlock { content, ast } = s {
+        if let Stmt::MmsBlock { content, ast, .. } = s {
             Some((content.clone(), ast.clone()))
         } else {
             None
@@ -160,7 +160,7 @@ fn mms_block_ast_with_desc() {
         if let Item::Func(f) = item { Some(f) } else { None }
     }).unwrap();
     let mms_stmt = func.body.iter().find_map(|s| {
-        if let Stmt::MmsBlock { content, ast } = s {
+        if let Stmt::MmsBlock { content, ast, .. } = s {
             Some((content.clone(), ast.clone()))
         } else {
             None

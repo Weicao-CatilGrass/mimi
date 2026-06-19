@@ -308,6 +308,7 @@ pub enum Stmt {
     MmsBlock {
         content: String,
         ast: Option<mimispec::ast::File>,
+        span: crate::span::Span,
     },
     /// alloc(Kind) { ... } block using a specific allocator
     Alloc {
