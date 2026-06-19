@@ -6,29 +6,44 @@ pub func exists(path: string) -> bool {
 }
 
 // read: Reads the entire file at path into a string.
-pub func read(path: string) -> string {
+// Returns Err if the file cannot be read.
+pub func read(path: string) -> Result<string, string> {
     read_file(path)
 }
 
 // write: Writes content to path, overwriting if it exists.
-pub func write(path: string, content: string) {
+// Returns Err if the write fails.
+pub func write(path: string, content: string) -> Result<unit, string> {
     write_file(path, content)
 }
 
 // read_lines: Reads file at path and splits by newline.
-pub func read_lines(path: string) -> List<string> {
-    str_split(read_file(path), "\n")
+// Returns Err if the file cannot be read.
+pub func read_lines(path: string) -> Result<List<string>, string> {
+    let result = read_file(path)
+    if result.is_ok() {
+        Result::Ok(str_split(result.unwrap(), "\n"))
+    } else {
+        Result::Err("read_lines: failed to read file")
+    }
 }
 
 // Note: file_size reads the entire file to measure length.
 // A dedicated stat() call is not yet available in the C runtime.
 //
 // file_size: Returns the size of the file at path in bytes.
-pub func file_size(path: string) -> i32 {
-    len(read_file(path))
+// Returns Err if the file cannot be read.
+pub func file_size(path: string) -> Result<i32, string> {
+    let result = read_file(path)
+    if result.is_ok() {
+        Result::Ok(len(result.unwrap()))
+    } else {
+        Result::Err("file_size: failed to read file")
+    }
 }
 
 // write_lines: Writes each string in xs as a line to path.
-pub func write_lines(path: string, xs: List<string>) {
+// Returns Err if the write fails.
+pub func write_lines(path: string, xs: List<string>) -> Result<unit, string> {
     write_file(path, str_join(xs, "\n"))
 }
