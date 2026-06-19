@@ -137,12 +137,12 @@ pub(crate) fn check_source_strict(src: &str) -> Result<(), Vec<crate::diagnostic
 
 /// End-to-end codegen test: compile Mimi source -> LLVM -> native binary -> execute -> return stdout
 /// Requires `cc` and `ld` on PATH. Skips test if linker is unavailable.
+static E2E_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 pub(crate) fn compile_and_run(src: &str) -> Result<String, String> {
     use std::process::Command;
-    use std::sync::atomic::{AtomicU64, Ordering};
 
-    static E2E_COUNTER: AtomicU64 = AtomicU64::new(0);
-    let counter = E2E_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let counter = E2E_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
     let tokens = crate::lexer::Lexer::new(src).tokenize().map_err(|e| format!("lexer: {}", e))?;
     let file = crate::parser::Parser::new(tokens).parse_file().map_err(|e| format!("parser: {}", e))?;
@@ -198,10 +198,8 @@ pub(crate) fn compile_and_run(src: &str) -> Result<String, String> {
 /// Same as compile_and_run but sets verify_contracts = true.
 pub(crate) fn compile_and_verify_contracts(src: &str) -> Result<String, String> {
     use std::process::Command;
-    use std::sync::atomic::{AtomicU64, Ordering};
 
-    static E2E_COUNTER: AtomicU64 = AtomicU64::new(0);
-    let counter = E2E_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let counter = E2E_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
     let tokens = crate::lexer::Lexer::new(src).tokenize().map_err(|e| format!("lexer: {}", e))?;
     let file = crate::parser::Parser::new(tokens).parse_file().map_err(|e| format!("parser: {}", e))?;
