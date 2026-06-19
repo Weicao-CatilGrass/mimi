@@ -237,3 +237,66 @@ func main() -> i32 {
         err
     );
 }
+
+/// Test that ensures postcondition with 'result' binding parses correctly
+#[test]
+fn ffi_ensures_with_result_binding() {
+    let src = r#"
+extern "C" {
+    func positive(x: i32) -> i32
+        requires: x > 0
+        ensures: result > 0;
+}
+
+func main() -> i32 {
+    0
+}
+"#;
+    // Should parse and type-check (the contract is syntactically valid)
+    assert!(check_source(src).is_ok(), "ensures contract with result should parse and type-check");
+}
+
+/// Test that StringOwned contract is generated for raw_string return types
+#[test]
+fn raw_string_uses_string_owned_contract() {
+    use crate::ffi::contract::{FfiContract, FfiRetContract};
+    use crate::ast::{ExternFunc, ExternParam, Type};
+
+    let func = ExternFunc {
+        name: "get_string".to_string(),
+        params: vec![],
+        ret: Some(Type::RawString),
+        requires: None,
+        ensures: None,
+    };
+
+    let contract = FfiContract::from_extern(&func);
+    assert!(matches!(contract.ret, FfiRetContract::StringOwned),
+        "raw_string return should produce StringOwned contract, got {:?}", contract.ret);
+}
+
+/// Test that Json contract is generated for List types
+#[test]
+fn list_type_uses_json_contract() {
+    use crate::ffi::contract::{FfiContract, FfiArgContract};
+    use crate::ast::{ExternFunc, ExternParam, Type};
+
+    let func = ExternFunc {
+        name: "process_list".to_string(),
+        params: vec![
+            ExternParam {
+                name: "xs".to_string(),
+                ty: Type::Name("List".to_string(), vec![Type::Name("i32".to_string(), vec![])]),
+                cap_mode: None,
+            },
+        ],
+        ret: Some(Type::Name("i32".to_string(), vec![])),
+        requires: None,
+        ensures: None,
+    };
+
+    let contract = FfiContract::from_extern(&func);
+    assert_eq!(contract.args.len(), 1);
+    assert!(matches!(contract.args[0], FfiArgContract::Json),
+        "List arg should produce Json contract, got {:?}", contract.args[0]);
+}

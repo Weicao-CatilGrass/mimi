@@ -217,6 +217,7 @@ impl CHeaderGenerator {
             FfiArgContract::CShared(inner) | FfiArgContract::CBorrow(inner) | FfiArgContract::CBorrowMut(inner) => {
                 format!("MimiHandle /* {} */", self.mimi_type_to_c_type(inner))
             }
+            FfiArgContract::Json => "const char*".to_string(),
             FfiArgContract::Unsupported(_) => "void*".to_string(),
         }
     }
@@ -228,6 +229,8 @@ impl CHeaderGenerator {
             crate::ffi::contract::FfiRetContract::Int => "int64_t".to_string(),
             crate::ffi::contract::FfiRetContract::Float => "double".to_string(),
             crate::ffi::contract::FfiRetContract::String => "char*".to_string(),
+            crate::ffi::contract::FfiRetContract::StringOwned => "char*".to_string(),
+            crate::ffi::contract::FfiRetContract::Json => "char*".to_string(),
             crate::ffi::contract::FfiRetContract::RawPtr(inner) | crate::ffi::contract::FfiRetContract::RawPtrMut(inner) => {
                 format!("{}*", self.mimi_type_to_c_type(inner))
             }

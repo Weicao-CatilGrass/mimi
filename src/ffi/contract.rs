@@ -52,6 +52,9 @@ pub enum FfiArgContract {
     CBorrow(Box<Type>),
     /// Borrowed mutable boundary handle `c_borrow_mut T`.
     CBorrowMut(Box<Type>),
+    /// JSON-serialized value: List, Record, Tuple etc. passed as a JSON string.
+    /// The C side receives a `const char*` and must parse it.
+    Json,
     /// A type that the type checker already rejects but which may still appear
     /// in runtime-only paths (e.g. tests that bypass `core::check`).  The
     /// wrapper reports this as an FFI safety error at call time.
@@ -68,8 +71,11 @@ pub enum FfiRetContract {
     Int,
     /// 64-bit floating point.
     Float,
-    /// A null-terminated C string whose ownership is transferred to Mimi.
+    /// A null-terminated C string borrowed from C (Mimi does NOT free).
     String,
+    /// A null-terminated C string whose ownership is transferred to Mimi.
+    /// Mimi will free the C pointer with `libc::free` after reading.
+    StringOwned,
     /// Raw immutable pointer `*T`.
     RawPtr(Box<Type>),
     /// Raw mutable pointer `*mut T`.
@@ -80,6 +86,9 @@ pub enum FfiRetContract {
     CBorrow(Box<Type>),
     /// Borrowed mutable boundary handle `c_borrow_mut T`.
     CBorrowMut(Box<Type>),
+    /// JSON-serialized return value: List, Record, Tuple etc. returned as a
+    /// C string (Mimi frees the pointer after reading).
+    Json,
     /// A return type that the type checker rejects but which may be reached at
     /// runtime in tests that bypass `core::check`.
     Unsupported(String),
@@ -154,7 +163,15 @@ impl FfiArgContract {
                     "f64" => FfiArgContract::Float,
                     "string" => FfiArgContract::StringBorrow,
                     "unit" => FfiArgContract::Int,
-                    other => FfiArgContract::Unsupported(other.to_string()),
+                    "List" => FfiArgContract::Json,
+                    other => {
+                        // Check if it's a known record type (complex data type)
+                        if cap_names.contains(other) {
+                            FfiArgContract::Cap(CapMode::Borrow)
+                        } else {
+                            FfiArgContract::Unsupported(other.to_string())
+                        }
+                    }
                 }
             }
             Type::Cap(_) => FfiArgContract::Cap(CapMode::Move),
@@ -172,6 +189,7 @@ impl FfiArgContract {
                 // CBuffer is a managed pointer - pass as opaque handle
                 FfiArgContract::RawPtr(inner.clone())
             }
+            Type::Tuple(_) => FfiArgContract::Json,
             other => FfiArgContract::Unsupported(format!("{:?}", other)),
         }
     }
@@ -189,6 +207,7 @@ impl FfiRetContract {
                 "f64" => FfiRetContract::Float,
                 "string" => FfiRetContract::String,
                 "unit" => FfiRetContract::Unit,
+                "List" => FfiRetContract::Json,
                 other => FfiRetContract::Unsupported(other.to_string()),
             },
             Type::RawPtr(inner) => FfiRetContract::RawPtr(inner.clone()),
@@ -196,15 +215,14 @@ impl FfiRetContract {
             Type::CShared(inner) => FfiRetContract::CShared(inner.clone()),
             Type::CBorrow(inner) => FfiRetContract::CBorrow(inner.clone()),
             Type::CBorrowMut(inner) => FfiRetContract::CBorrowMut(inner.clone()),
-            Type::RawString => FfiRetContract::String,
+            Type::RawString => FfiRetContract::StringOwned,
             Type::ExternFunc(_, _) => {
-                // Function pointer - return as opaque handle
                 FfiRetContract::RawPtr(Box::new(Type::Name("unit".to_string(), vec![])))
             }
             Type::CBuffer(inner) => {
-                // CBuffer is a managed pointer - return as opaque handle
                 FfiRetContract::RawPtr(inner.clone())
             }
+            Type::Tuple(_) => FfiRetContract::Json,
             other => FfiRetContract::Unsupported(format!("{:?}", other)),
         }
     }
