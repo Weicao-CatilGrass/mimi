@@ -115,29 +115,17 @@ impl<'ctx> CodeGenerator<'ctx> {
                 _ => {}
             }
         }
-        // Second pass: register extern functions and compile user functions
+        // Second pass: register extern functions and external types
         for item in &file.items {
             match item {
                 Item::ExternBlock(block) => {
                     self.register_extern_block(block)?;
-                }
-                Item::Func(f) if !f.is_comptime && self.is_committed(&f.commitment) => {
-                    self.compile_func(f)?;
-                }
-                Item::Actor(actor) if self.is_committed(&actor.commitment) => {
-                    self.compile_actor(actor)?;
                 }
                 Item::Module(m) => {
                     for inner in &m.items {
                         match inner {
                             Item::ExternBlock(block) => {
                                 self.register_extern_block(block)?;
-                            }
-                            Item::Func(f) if !f.is_comptime && self.is_committed(&f.commitment) => {
-                                self.compile_func(f)?;
-                            }
-                            Item::Actor(actor) if self.is_committed(&actor.commitment) => {
-                                self.compile_actor(actor)?;
                             }
                             Item::Type(t) if self.is_committed(&t.commitment) => {
                                 self.register_type_def(t)?;
@@ -152,9 +140,35 @@ impl<'ctx> CodeGenerator<'ctx> {
                 _ => {}
             }
         }
-        // Second pass: compile impl methods for committed trait implementations
+        // Third pass: compile impl methods (needed before vtable construction)
         self.compile_impl_methods()?;
+        // Fourth pass: compile vtables (needed before user function compilation)
         self.compile_vtables()?;
+        // Fifth pass: compile user functions and actors
+        for item in &file.items {
+            match item {
+                Item::Func(f) if !f.is_comptime && self.is_committed(&f.commitment) => {
+                    self.compile_func(f)?;
+                }
+                Item::Actor(actor) if self.is_committed(&actor.commitment) => {
+                    self.compile_actor(actor)?;
+                }
+                Item::Module(m) => {
+                    for inner in &m.items {
+                        match inner {
+                            Item::Func(f) if !f.is_comptime && self.is_committed(&f.commitment) => {
+                                self.compile_func(f)?;
+                            }
+                            Item::Actor(actor) if self.is_committed(&actor.commitment) => {
+                                self.compile_actor(actor)?;
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
         Ok(())
     }
 }

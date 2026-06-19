@@ -81,6 +81,14 @@ impl<'a> Interpreter<'a> {
                         }
                         Value::Array(list.clone())
                     }
+                    // Coerce concrete type to dyn Trait when type annotation is dyn Trait
+                    (Some(Type::DynTrait(trait_names)), Value::Record(Some(concrete_type), _)) => {
+                        Value::DynTrait {
+                            data: Box::new(v.clone()),
+                            concrete_type: concrete_type.clone(),
+                            trait_names: trait_names.clone(),
+                        }
+                    }
                     _ => v,
                 };
 
@@ -831,10 +839,10 @@ impl<'a> Interpreter<'a> {
                         }
                     }
                 }
-                // Special case: if accessing field on "self" identifier, look up field directly from actor
+                // Special case: if accessing field on "self" identifier, look up field directly
                 if let Expr::Ident(name) = obj.as_ref() {
                     if name == "self" {
-                        // Look up self from scope, then get the field from the actor
+                        // Look up self from scope
                         if let Some(Value::Actor(handle)) = self.lookup("self") {
                             let actor = handle.inner.read().map_err(|e| format!("actor lock failed: {}", e))?;
                             if let Some(value) = actor.fields.get(field.as_str()) {
@@ -842,7 +850,7 @@ impl<'a> Interpreter<'a> {
                             }
                             return Err(format!("actor field '{}' not found", field));
                         }
-                        return Err("'self' is not bound to an actor".into());
+                        // For non-actor self values (records, etc.), fall through to normal field access
                     }
                 }
                 let obj_val = self.eval_expr(obj)?;
@@ -1354,6 +1362,7 @@ impl<'a> Interpreter<'a> {
             Value::Slice { .. } => "slice",
             Value::Range { .. } => "range",
             Value::CBuffer(_) => "c_buffer",
+            Value::DynTrait { .. } => "dyn_trait",
         }
     }
 }

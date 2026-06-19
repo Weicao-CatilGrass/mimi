@@ -1655,6 +1655,14 @@ fn same_type(a: &Type, b: &Type) -> bool {
     }
 }
 
+/// Check if a concrete type can be coerced to a dyn Trait type (e.g., Circle → dyn Drawable)
+fn is_trait_coercion(declared: &Type, init_ty: &Type) -> bool {
+    match (declared, init_ty) {
+        (Type::DynTrait(_), Type::Name(_, _)) => true,
+        _ => false,
+    }
+}
+
 fn is_int(t: &Type) -> bool {
     matches!(t, Type::Name(n, _) if n == "i32" || n == "i64")
 }

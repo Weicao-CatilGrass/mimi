@@ -480,3 +480,43 @@ fn ir_match_has_merge_block() {
     "#);
     assert!(ir.contains("matchcont"), "match needs merge block");
 }
+
+// ===================== dyn Trait type mapping test =====================
+
+#[test]
+fn ir_dyn_trait_type_maps_to_fat_pointer() {
+    let ir = compile_to_ir(r#"
+trait Drawable {
+    func draw() -> i32;
+}
+
+func use_dyn(d: dyn Drawable) -> i32 { 0 }
+func main() -> i32 { 0 }
+"#);
+    // The fat pointer for dyn Drawable is `{ ptr, ptr }` in opaque-pointer LLVM IR
+    assert!(ir.contains("{ ptr, ptr }") || ir.contains("i8*, i8*") || ir.contains("{ i8*, i8* }"),
+        "dyn Trait should compile to fat pointer, got:\n{}", ir);
+}
+
+#[test]
+fn ir_vtable_contains_method() {
+    let ir = compile_to_ir(r#"
+trait Drawable {
+    func draw() -> i32;
+}
+
+type Circle {
+    radius: i32
+}
+
+impl Drawable for Circle {
+    func draw() -> i32 { 42 }
+}
+
+func main() -> i32 { 0 }
+"#);
+    assert!(ir.contains("Circle__Drawable__draw"),
+        "impl method should be compiled with mangled name, got:\n{}", ir);
+    assert!(ir.contains("Circle_Drawable_vtable"),
+        "vtable global should exist, got:\n{}", ir);
+}

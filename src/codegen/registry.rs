@@ -98,17 +98,27 @@ impl<'ctx> CodeGenerator<'ctx> {
         Ok(())
     }
 
+    fn type_to_llvm_for_extern(&self, ty: &crate::ast::Type) -> BasicTypeEnum<'ctx> {
+        // For user-defined types (Type::Name), prefer the registered type_llvm entry
+        // which has the correct layout (e.g. i32 for #[repr(C)] enums).
+        if let crate::ast::Type::Name(name, _) = ty {
+            if let Some(&registered) = self.type_llvm.get(name.as_str()) {
+                return registered;
+            }
+        }
+        types::mimi_type_to_llvm(self.context, ty)
+            .unwrap_or(BasicTypeEnum::IntType(self.context.i64_type()))
+    }
+
     pub(super) fn register_extern_block(&mut self, block: &crate::ast::ExternBlock) -> MimiResult<()> {
         for ef in &block.funcs {
             let mut param_tys = Vec::new();
             for p in &ef.params {
-                let ty = types::mimi_type_to_llvm(self.context, &p.ty)
-                    .unwrap_or(BasicTypeEnum::IntType(self.context.i64_type()));
+                let ty = self.type_to_llvm_for_extern(&p.ty);
                 param_tys.push(types::basic_to_metadata(self.context, ty));
             }
             let ret_ty = match &ef.ret {
-                Some(ty) => types::mimi_type_to_llvm(self.context, ty)
-                    .unwrap_or(BasicTypeEnum::IntType(self.context.i64_type())),
+                Some(ty) => self.type_to_llvm_for_extern(ty),
                 None => BasicTypeEnum::IntType(self.context.i64_type()),
             };
             let fn_type = match ret_ty {
@@ -267,11 +277,15 @@ impl<'ctx> CodeGenerator<'ctx> {
                 BasicTypeEnum::StructType(self.context.struct_type(&field_tys, false))
             }
             crate::ast::TypeDefKind::Enum(_variants) => {
-                // Enum representation: i32 tag + union of largest variant payload
-                let tag_ty = BasicTypeEnum::IntType(self.context.i32_type());
-                let payload_ty = BasicTypeEnum::IntType(self.context.i64_type());
-                // For simplicity, use i64 as payload storage
-                BasicTypeEnum::StructType(self.context.struct_type(&[tag_ty, payload_ty], false))
+                if t.attributes.contains(&TypeAttribute::ReprC) {
+                    // #[repr(C)] enums are plain i32 (matching C int / enum)
+                    BasicTypeEnum::IntType(self.context.i32_type())
+                } else {
+                    // Internal enum representation: i32 tag + i64 payload
+                    let tag_ty = BasicTypeEnum::IntType(self.context.i32_type());
+                    let payload_ty = BasicTypeEnum::IntType(self.context.i64_type());
+                    BasicTypeEnum::StructType(self.context.struct_type(&[tag_ty, payload_ty], false))
+                }
             }
             crate::ast::TypeDefKind::Alias(ty) | crate::ast::TypeDefKind::Newtype(ty) => {
                 types::mimi_type_to_llvm(self.context, ty)

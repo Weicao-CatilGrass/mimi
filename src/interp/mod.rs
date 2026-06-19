@@ -450,6 +450,7 @@ impl<'a> Interpreter<'a> {
             Value::Slice { .. } => "slice".into(),
             Value::Range { .. } => "range".into(),
             Value::CBuffer(_) => "CBuffer".into(),
+            Value::DynTrait { trait_names, .. } => format!("dyn {}", trait_names.join(" + ")),
         }
     }
 

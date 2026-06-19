@@ -169,3 +169,109 @@ func main() -> i32 {
     let result = check_source(src);
     assert!(result.is_ok(), "trait impl should pass: {:?}", result.err());
 }
+
+// ===== dyn Trait interpreter tests =====
+
+#[test]
+fn dyn_trait_coercion_basic() {
+    let v = run_source(r#"
+trait Drawable {
+    func draw() -> i32;
+}
+
+type Circle {
+    radius: i32
+}
+
+impl Drawable for Circle {
+    func draw() -> i32 {
+        self.radius * 2
+    }
+}
+
+func main() -> i32 {
+    let c = Circle { radius: 10 }
+    let d: dyn Drawable = c
+    d.draw()
+}
+"#);
+    assert_eq!(v, interp::Value::Int(20));
+}
+
+#[test]
+fn dyn_trait_dispatch_return() {
+    let v = run_source(r#"
+trait Greeter {
+    func greet() -> string;
+}
+
+type English {
+    name: string
+}
+
+impl Greeter for English {
+    func greet() -> string {
+        "Hello, " + self.name
+    }
+}
+
+type French {
+    name: string
+}
+
+impl Greeter for French {
+    func greet() -> string {
+        "Bonjour, " + self.name
+    }
+}
+
+func main() -> string {
+    let e = English { name: "World" }
+    let d: dyn Greeter = e
+    d.greet()
+}
+"#);
+    assert_eq!(v, interp::Value::String("Hello, World".into()));
+}
+
+#[test]
+fn dyn_trait_multi_impl() {
+    let v = run_source(r#"
+trait Calculator {
+    func compute() -> i32;
+}
+
+type Adder {
+    x: i32,
+    y: i32
+}
+
+impl Calculator for Adder {
+    func compute() -> i32 {
+        self.x + self.y
+    }
+}
+
+type Multiplier {
+    a: i32,
+    b: i32
+}
+
+impl Calculator for Multiplier {
+    func compute() -> i32 {
+        self.a * self.b
+    }
+}
+
+func use_dyn(d: dyn Calculator) -> i32 {
+    d.compute()
+}
+
+func main() -> i32 {
+    let add = Adder { x: 3, y: 4 }
+    let mul = Multiplier { a: 5, b: 6 }
+    use_dyn(add) + use_dyn(mul)
+}
+"#);
+    assert_eq!(v, interp::Value::Int(3 + 4 + 5 * 6));
+}

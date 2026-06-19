@@ -374,6 +374,32 @@ impl<'a> Interpreter<'a> {
                     }
                 }
             }
+            Value::DynTrait { data, concrete_type, trait_names } => {
+                // Look up the concrete type's trait implementations
+                if let Some(impls) = self.type_impls.get(concrete_type) {
+                    for trait_name in trait_names {
+                        if let Some(methods) = impls.get(trait_name) {
+                            if let Some(func) = methods.iter().find(|f| f.name == method) {
+                                let func = func.clone();
+                                // Call the trait method with self = the concrete value
+                                self.push_scope();
+                                self.bind("self", *data.clone());
+                                // If the concrete value is a record, bind its fields too
+                                if let Value::Record(_, fields) = data.as_ref() {
+                                    for (field_name, field_value) in fields {
+                                        self.bind(field_name, field_value.clone());
+                                    }
+                                }
+                                let result = self.call_func(&func, args);
+                                self.pop_scope();
+                                return result;
+                            }
+                        }
+                    }
+                }
+                Err(format!("cannot call method '{}' on dyn {} (concrete type: {})",
+                    method, trait_names.join(" + "), concrete_type))
+            }
             Value::Record(type_name, fields) => {
                 // Handle built-in derive methods before trait dispatch
                 match method {
