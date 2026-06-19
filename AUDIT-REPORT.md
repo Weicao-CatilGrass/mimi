@@ -654,7 +654,7 @@ Cap          CapTable 注册/检查/消耗      ✅ 正确
 | G6/G8: Arena + async pthreads | ✅ 已修复 | 1 天 | E2E tests: arena scope + async spawn/await |
 | B15/B16: Span/Manifest | ✅ 已修复 | 0.5 天 | `span.rs` width 始终返回 end_col-start_col; `manifest.rs` EACCES 继续搜索 |
 | F6: 回调 C→Mimi 字符串泄漏 | ✅ 已修复 | arg_free_mask 约定 + trampoline libc::free（第 10 轮） |
-| **NEW-1~8 + Round 9** | **✅ 全部修复** | **—** | **—** |
+| **NEW-1~8 + Round 9-11** | **✅ 全部修复** | **—** | **—** |
 
 ### Phase 4 — 语言完善
 
@@ -710,8 +710,8 @@ G3/G4 (测试覆盖)、N1 (ring-buffer)、G6/G8 (arena/async)、comptime (C head
 | B16 | `manifest.rs:55-62` | ✅ 已修复：EACCES/EPERM 权限错误视为 not-found 继续向上搜索 |
 | B17 | `interp/quote.rs:290` | ℹ️ 设计保留：与 B13 合并，RC bump 语义正确无需额外优化 |
 | N3 | `codegen/expr.rs:1349-1463` | 无结构化并发（设计如此） |
-| N4 | `tests/mod.rs:1093-1095` | E2E 框架不支持 `use`（与 G9 相关） |
-| N5 | `lsp.rs:146,152` | LSP 全量重解析（非 bug，影响 UX） |
+| N4 | `tests/mod.rs:1093-1095` | ✅ 已修复（与 G9 相关，`merge_all` 重名检测解决） |
+| N5 | `lsp.rs:146,152` | LSP 全量重解析（非 bug，影响 UX，需增量解析架构） |
 
 ### 延期 / 设计如此
 
