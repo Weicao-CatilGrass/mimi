@@ -1,6 +1,5 @@
 use super::CodeGenerator;
 use crate::error::MimiResult;
-use inkwell::types::{BasicMetadataTypeEnum, BasicTypeEnum};
 use inkwell::values::{BasicMetadataValueEnum, BasicValueEnum};
 
 impl<'ctx> CodeGenerator<'ctx> {
@@ -10,14 +9,11 @@ impl<'ctx> CodeGenerator<'ctx> {
         args: &[BasicMetadataValueEnum<'ctx>],
     ) -> MimiResult<BasicValueEnum<'ctx>> {
                 if args.len() != 1 { return Err("[E0711] to_json expects 1 argument".into()); }
-                let i8_ptr_ty = self.context.i8_type().ptr_type(inkwell::AddressSpace::default());
                 let i64_ty = self.context.i64_type();
                 let malloc_fn = self.module.get_function("malloc")
                     .ok_or_else(|| "malloc not declared".to_string())?;
                 let sprintf_fn = self.module.get_function("sprintf")
                     .ok_or_else(|| "sprintf not declared".to_string())?;
-                let strlen_fn = self.module.get_function("strlen")
-                    .ok_or_else(|| "strlen not declared".to_string())?;
                 let strcpy_fn = self.module.get_function("strcpy")
                     .ok_or_else(|| "strcpy not declared".to_string())?;
                 let alloc_size = i64_ty.const_int(64, false);
@@ -29,17 +25,6 @@ impl<'ctx> CodeGenerator<'ctx> {
                     .ok_or("malloc returned void")?
                     .into_pointer_value();
                 match args[0] {
-                    BasicMetadataValueEnum::IntValue(iv) => {
-                        let fmt = self.builder.build_global_string_ptr("%ld", "json_int_fmt")
-                            .map_err(|e| format!("fmt error: {}", e))?;
-                        self.builder.build_call(sprintf_fn, &[
-                            BasicMetadataValueEnum::PointerValue(buf),
-                            BasicMetadataValueEnum::PointerValue(fmt.as_pointer_value()),
-                            BasicMetadataValueEnum::IntValue(iv),
-                        ], "json_sprintf")
-                            .map_err(|e| format!("sprintf error: {}", e))?;
-                        Ok(buf.into())
-                    }
                     BasicMetadataValueEnum::FloatValue(fv) => {
                         let fmt = self.builder.build_global_string_ptr("%f", "json_float_fmt")
                             .map_err(|e| format!("fmt error: {}", e))?;
@@ -51,54 +36,61 @@ impl<'ctx> CodeGenerator<'ctx> {
                             .map_err(|e| format!("sprintf error: {}", e))?;
                         Ok(buf.into())
                     }
-                    _ => {
-                        // For bool and string values: bool→"true"/"false", string→"\"...\""
-                        if let BasicMetadataValueEnum::IntValue(iv) = args[0] {
-                            // Check if it's a bool (i1 type) by checking bit width
-                            if iv.get_type().get_bit_width() == 1 {
-                                let true_str = self.builder.build_global_string_ptr("true", "json_true")
-                                    .map_err(|e| format!("fmt error: {}", e))?;
-                                let false_str = self.builder.build_global_string_ptr("false", "json_false")
-                                    .map_err(|e| format!("fmt error: {}", e))?;
-                                let cmp = self.builder.build_int_compare(
-                                    inkwell::IntPredicate::NE, iv,
-                                    self.context.bool_type().const_int(0, false), "is_true"
-                                ).map_err(|e| format!("cmp error: {}", e))?;
-                                let function = self.current_function()
-                                    .ok_or_else(|| "[E0712] to_json: no enclosing function".to_string())?;
-                                let true_bb = self.context.append_basic_block(function, "json_true_bb");
-                                let false_bb = self.context.append_basic_block(function, "json_false_bb");
-                                let merge_bb = self.context.append_basic_block(function, "json_merge_bb");
-                                self.builder.build_conditional_branch(cmp, true_bb, false_bb)
-                                    .map_err(|e| format!("branch error: {}", e))?;
-                                self.builder.position_at_end(true_bb);
-                                let true_str_ptr = true_str.as_pointer_value();
-                                // Safety: build_strcpy uses raw pointers with known-valid source; destination is freshly allocated buffer.
-                                unsafe {
-                                    self.builder.build_call(strcpy_fn, &[
-                                        BasicMetadataValueEnum::PointerValue(buf),
-                                        BasicMetadataValueEnum::PointerValue(true_str_ptr),
-                                    ], "json_strcpy_true")
-                                        .map_err(|e| format!("strcpy error: {}", e))?;
-                                }
-                                self.builder.build_unconditional_branch(merge_bb)
-                                    .map_err(|e| format!("branch error: {}", e))?;
-                                self.builder.position_at_end(false_bb);
-                                let false_str_ptr = false_str.as_pointer_value();
-                                // Safety: build_strcpy uses raw pointers with known-valid source; destination is freshly allocated buffer.
-                                unsafe {
-                                    self.builder.build_call(strcpy_fn, &[
-                                        BasicMetadataValueEnum::PointerValue(buf),
-                                        BasicMetadataValueEnum::PointerValue(false_str_ptr),
-                                    ], "json_strcpy_false")
-                                        .map_err(|e| format!("strcpy error: {}", e))?;
-                                }
-                                self.builder.build_unconditional_branch(merge_bb)
-                                    .map_err(|e| format!("branch error: {}", e))?;
-                                self.builder.position_at_end(merge_bb);
-                                return Ok(buf.into());
-                            }
+                    BasicMetadataValueEnum::IntValue(iv) if iv.get_type().get_bit_width() == 1 => {
+                        // Bool: true→"true", false→"false"
+                        let true_str = self.builder.build_global_string_ptr("true", "json_true")
+                            .map_err(|e| format!("fmt error: {}", e))?;
+                        let false_str = self.builder.build_global_string_ptr("false", "json_false")
+                            .map_err(|e| format!("fmt error: {}", e))?;
+                        let cmp = self.builder.build_int_compare(
+                            inkwell::IntPredicate::NE, iv,
+                            self.context.bool_type().const_int(0, false), "is_true"
+                        ).map_err(|e| format!("cmp error: {}", e))?;
+                        let function = self.current_function()
+                            .ok_or_else(|| "[E0712] to_json: no enclosing function".to_string())?;
+                        let true_bb = self.context.append_basic_block(function, "json_true_bb");
+                        let false_bb = self.context.append_basic_block(function, "json_false_bb");
+                        let merge_bb = self.context.append_basic_block(function, "json_merge_bb");
+                        self.builder.build_conditional_branch(cmp, true_bb, false_bb)
+                            .map_err(|e| format!("branch error: {}", e))?;
+                        self.builder.position_at_end(true_bb);
+                        // Safety: strcpy from known-valid static string to freshly allocated buffer.
+                        unsafe {
+                            self.builder.build_call(strcpy_fn, &[
+                                BasicMetadataValueEnum::PointerValue(buf),
+                                BasicMetadataValueEnum::PointerValue(true_str.as_pointer_value()),
+                            ], "json_strcpy_true")
+                                .map_err(|e| format!("strcpy error: {}", e))?;
                         }
+                        self.builder.build_unconditional_branch(merge_bb)
+                            .map_err(|e| format!("branch error: {}", e))?;
+                        self.builder.position_at_end(false_bb);
+                        // Safety: strcpy from known-valid static string to freshly allocated buffer.
+                        unsafe {
+                            self.builder.build_call(strcpy_fn, &[
+                                BasicMetadataValueEnum::PointerValue(buf),
+                                BasicMetadataValueEnum::PointerValue(false_str.as_pointer_value()),
+                            ], "json_strcpy_false")
+                                .map_err(|e| format!("strcpy error: {}", e))?;
+                        }
+                        self.builder.build_unconditional_branch(merge_bb)
+                            .map_err(|e| format!("branch error: {}", e))?;
+                        self.builder.position_at_end(merge_bb);
+                        Ok(buf.into())
+                    }
+                    BasicMetadataValueEnum::IntValue(iv) => {
+                        // Integer: sprintf("%ld", iv)
+                        let fmt = self.builder.build_global_string_ptr("%ld", "json_int_fmt")
+                            .map_err(|e| format!("fmt error: {}", e))?;
+                        self.builder.build_call(sprintf_fn, &[
+                            BasicMetadataValueEnum::PointerValue(buf),
+                            BasicMetadataValueEnum::PointerValue(fmt.as_pointer_value()),
+                            BasicMetadataValueEnum::IntValue(iv),
+                        ], "json_sprintf")
+                            .map_err(|e| format!("sprintf error: {}", e))?;
+                        Ok(buf.into())
+                    }
+                    _ => {
                         // String: wrap in quotes using sprintf("\"%s\"", str)
                         if let Ok(raw_ptr) = self.extract_raw_str_ptr(&args[0]) {
                             let fmt = self.builder.build_global_string_ptr("\"%s\"", "json_str_fmt")
