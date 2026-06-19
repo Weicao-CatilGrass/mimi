@@ -56,6 +56,17 @@ pub struct ModuleLoader {
 }
 
 impl ModuleLoader {
+    /// Compute a module key from a path: relative path from base_dir with / separators,
+    /// avoiding collisions between files with the same stem in different directories.
+    fn module_key(&self, path: &Path) -> String {
+        path.strip_prefix(&self.base_dir)
+            .or_else(|_| path.strip_prefix(std::env::current_dir().unwrap_or_default()))
+            .unwrap_or(path)
+            .with_extension("")
+            .to_string_lossy()
+            .replace('\\', "/")
+    }
+
     pub fn new(base_dir: PathBuf) -> Self {
         let mut loader = Self {
             base_dir: base_dir.clone(),
@@ -104,10 +115,7 @@ impl ModuleLoader {
         let file = parser::Parser::new(tokens).parse_file()
             .map_err(|e| format!("parse error in {}: {}", path.display(), e))?;
 
-        let module_name = path.file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or("unknown")
-            .to_string();
+        let module_name = self.module_key(path);
 
         let loaded = LoadedModule {
             path: path.to_path_buf(),
@@ -119,10 +127,7 @@ impl ModuleLoader {
         for import in &imports {
             let import_path = self.resolve_import(path, &import.path)?;
             let dep = self.load_file(&import_path)?;
-            let dep_name = import_path.file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or("unknown")
-                .to_string();
+            let dep_name = self.module_key(&import_path);
             self.modules.insert(dep_name, dep);
         }
 
@@ -204,13 +209,30 @@ impl ModuleLoader {
         self.modules.get(name)
     }
 
-    /// Merge all loaded module items into a single file for interpretation
-    pub fn merge_all(&self) -> File {
+    /// Merge all loaded module items into a single file for interpretation.
+    /// Detects duplicate item names and emits a diagnostic (returns Err) if found.
+    pub fn merge_all(&self) -> Result<File, String> {
         let mut all_items = Vec::new();
         let mut seen_imports = std::collections::HashSet::new();
         let mut all_imports = Vec::new();
+        let mut seen_names: std::collections::HashSet<String> = std::collections::HashSet::new();
 
         for module in self.modules.values() {
+            for item in &module.file.items {
+                if let Some(name) = item_name(item) {
+                    if !seen_names.insert(name.to_string()) {
+                        let dup_modules: Vec<String> = self.modules.values()
+                            .filter(|m| m.file.items.iter().any(|i| item_name(i) == Some(name)))
+                            .map(|m| m.path.display().to_string())
+                            .collect();
+                        return Err(format!(
+                            "duplicate item '{}' found in modules: {}",
+                            name,
+                            dup_modules.join(", ")
+                        ));
+                    }
+                }
+            }
             all_items.extend(module.file.items.clone());
             for imp in &module.file.imports {
                 if seen_imports.insert(imp.path.clone()) {
@@ -219,10 +241,10 @@ impl ModuleLoader {
             }
         }
 
-        File {
+        Ok(File {
             imports: all_imports,
             items: all_items,
-        }
+        })
     }
 
     /// Type-check all loaded modules
@@ -232,5 +254,21 @@ impl ModuleLoader {
             core::check(&module.file)?;
         }
         Ok(())
+    }
+}
+
+/// Extract the name from an Item for duplicate detection in merge_all.
+fn item_name(item: &Item) -> Option<&str> {
+    match item {
+        Item::Func(f) => Some(&f.name),
+        Item::Module(m) => Some(&m.name),
+        Item::Type(t) => Some(&t.name),
+        Item::Actor(a) => Some(&a.name),
+        Item::Cap(c) => Some(&c.name),
+        Item::Trait(t) => Some(&t.name),
+        Item::Impl(i) => Some(i.type_name.as_str()),
+        Item::ExternBlock(_) => None,
+        Item::Rule(_) => None,
+        Item::Desc(_) => None,
     }
 }

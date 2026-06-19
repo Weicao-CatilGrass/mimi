@@ -1582,7 +1582,7 @@ fn codegen_stdlib_loader_roundtrip() {
     let mut loader = crate::loader::ModuleLoader::new(std_dir.clone());
     let _ = loader.load_main(&math_path).expect("should load mymath.mimi");
     
-    let merged = loader.merge_all();
+    let merged = loader.merge_all().expect("merge_all should succeed");
     let context = inkwell::context::Context::create();
     let mut codegen = crate::codegen::CodeGenerator::new(&context, "stdlib_test");
     if let Err(ref e) = codegen.compile_file(&merged) {

@@ -573,7 +573,7 @@ fn run(path: Option<&Path>, verify_contracts: bool, verify_ffi: bool, allocator:
         let base_dir = path.parent().unwrap_or_else(|| std::path::Path::new(".")).to_path_buf();
         let mut loader = loader::ModuleLoader::new(base_dir);
         loader.load_main(&path)?;
-        loader.merge_all()
+        loader.merge_all()?
     } else {
         file
     };
@@ -756,7 +756,7 @@ fn test(path: Option<&Path>, allocator: &str, filter: Option<&str>, verbose: boo
         let base_dir = path.parent().unwrap_or_else(|| std::path::Path::new(".")).to_path_buf();
         let mut loader = loader::ModuleLoader::new(base_dir);
         loader.load_main(&path)?;
-        loader.merge_all()
+        loader.merge_all()?
     } else {
         file
     };
@@ -1089,7 +1089,7 @@ fn build(path: Option<&Path>, output: Option<&Path>, emit_ir: bool, strict: bool
         let base_dir = path.parent().unwrap_or_else(|| std::path::Path::new(".")).to_path_buf();
         let mut loader = loader::ModuleLoader::new(base_dir);
         loader.load_main(&path)?;
-        loader.merge_all()
+        loader.merge_all()?
     } else {
         file
     };

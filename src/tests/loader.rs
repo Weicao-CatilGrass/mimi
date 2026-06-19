@@ -69,7 +69,7 @@ func helper() -> i32 { 99 }
     let mut loader = crate::loader::ModuleLoader::new(dir.clone());
     let _ = loader.load_main(&main_path);
     let _ = loader.load_main(&mod_path);
-    let merged = loader.merge_all();
+    let merged = loader.merge_all().expect("merge_all should succeed");
     assert!(merged.items.len() >= 2, "merge should include all items");
     cleanup(&dir);
 }
