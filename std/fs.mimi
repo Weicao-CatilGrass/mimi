@@ -18,13 +18,13 @@ pub func write(path: string, content: string) -> Result<unit, string> {
 }
 
 // read_lines: Reads file at path and splits by newline.
-// Returns Err if the file cannot be read.
+// Returns Err with original I/O error message if the file cannot be read.
 pub func read_lines(path: string) -> Result<List<string>, string> {
     let result = read_file(path)
     if result.is_ok() {
         Result::Ok(str_split(result.unwrap(), "\n"))
     } else {
-        Result::Err("read_lines: failed to read file")
+        result.map_err(|e| "read_lines(" + path + "): " + e)
     }
 }
 
@@ -32,13 +32,13 @@ pub func read_lines(path: string) -> Result<List<string>, string> {
 // A dedicated stat() call is not yet available in the C runtime.
 //
 // file_size: Returns the size of the file at path in bytes.
-// Returns Err if the file cannot be read.
+// Returns Err with original I/O error message if the file cannot be read.
 pub func file_size(path: string) -> Result<i32, string> {
     let result = read_file(path)
     if result.is_ok() {
         Result::Ok(len(result.unwrap()))
     } else {
-        Result::Err("file_size: failed to read file")
+        result.map_err(|e| "file_size(" + path + "): " + e)
     }
 }
 

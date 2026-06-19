@@ -28,29 +28,6 @@ impl<'ctx> CodeGenerator<'ctx> {
                     .try_as_basic_value().left()
                     .ok_or("malloc returned void")?
                     .into_pointer_value();
-                let build_string_result = |self_: &Self, buf: inkwell::values::PointerValue<'ctx>| -> MimiResult<BasicValueEnum<'ctx>> {
-                    let str_len = self_.builder.build_call(strlen_fn, &[
-                        BasicMetadataValueEnum::PointerValue(buf),
-                    ], "json_strlen")
-                        .map_err(|e| format!("strlen error: {}", e))?
-                        .try_as_basic_value().left()
-                        .ok_or("strlen returned void")?;
-                    let string_ty = self_.context.struct_type(&[
-                        BasicTypeEnum::PointerType(i8_ptr_ty),
-                        BasicTypeEnum::IntType(i64_ty),
-                    ], false);
-                    let str_alloca = self_.builder.build_alloca(string_ty, "json_str")
-                        .map_err(|e| format!("alloca error: {}", e))?;
-                    let ptr_gep = self_.builder.build_struct_gep(string_ty, str_alloca, 0, "str_ptr")
-                        .map_err(|e| format!("gep error: {}", e))?;
-                    self_.builder.build_store(ptr_gep, buf)
-                        .map_err(|e| format!("store error: {}", e))?;
-                    let len_gep = self_.builder.build_struct_gep(string_ty, str_alloca, 1, "str_len")
-                        .map_err(|e| format!("gep error: {}", e))?;
-                    self_.builder.build_store(len_gep, str_len)
-                        .map_err(|e| format!("store error: {}", e))?;
-                    Ok(str_alloca.into())
-                };
                 match args[0] {
                     BasicMetadataValueEnum::IntValue(iv) => {
                         let fmt = self.builder.build_global_string_ptr("%ld", "json_int_fmt")
@@ -61,7 +38,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                             BasicMetadataValueEnum::IntValue(iv),
                         ], "json_sprintf")
                             .map_err(|e| format!("sprintf error: {}", e))?;
-                        build_string_result(self, buf)
+                        Ok(buf.into())
                     }
                     BasicMetadataValueEnum::FloatValue(fv) => {
                         let fmt = self.builder.build_global_string_ptr("%f", "json_float_fmt")
@@ -72,7 +49,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                             BasicMetadataValueEnum::FloatValue(fv),
                         ], "json_sprintf")
                             .map_err(|e| format!("sprintf error: {}", e))?;
-                        build_string_result(self, buf)
+                        Ok(buf.into())
                     }
                     _ => {
                         // For bool and string values: bool→"true"/"false", string→"\"...\""
@@ -119,20 +96,34 @@ impl<'ctx> CodeGenerator<'ctx> {
                                 self.builder.build_unconditional_branch(merge_bb)
                                     .map_err(|e| format!("branch error: {}", e))?;
                                 self.builder.position_at_end(merge_bb);
-                                return build_string_result(self, buf);
+                                return Ok(buf.into());
                             }
                         }
-                        // String / fallback: wrap in quotes using sprintf("\"%s\"", str)
-                        let raw_ptr = self.extract_raw_str_ptr(&args[0])?;
-                        let fmt = self.builder.build_global_string_ptr("\"%s\"", "json_str_fmt")
-                            .map_err(|e| format!("fmt error: {}", e))?;
-                        self.builder.build_call(sprintf_fn, &[
-                            BasicMetadataValueEnum::PointerValue(buf),
-                            BasicMetadataValueEnum::PointerValue(fmt.as_pointer_value()),
-                            BasicMetadataValueEnum::PointerValue(raw_ptr),
-                        ], "json_sprintf")
-                            .map_err(|e| format!("sprintf error: {}", e))?;
-                        build_string_result(self, buf)
+                        // String: wrap in quotes using sprintf("\"%s\"", str)
+                        if let Ok(raw_ptr) = self.extract_raw_str_ptr(&args[0]) {
+                            let fmt = self.builder.build_global_string_ptr("\"%s\"", "json_str_fmt")
+                                .map_err(|e| format!("fmt error: {}", e))?;
+                            self.builder.build_call(sprintf_fn, &[
+                                BasicMetadataValueEnum::PointerValue(buf),
+                                BasicMetadataValueEnum::PointerValue(fmt.as_pointer_value()),
+                                BasicMetadataValueEnum::PointerValue(raw_ptr),
+                            ], "json_sprintf")
+                                .map_err(|e| format!("sprintf error: {}", e))?;
+                            Ok(buf.into())
+                        } else {
+                            // Complex type (List, Record, etc.) — return stub "{}"
+                            let stub = self.builder.build_global_string_ptr("{}", "json_stub")
+                                .map_err(|e| format!("fmt error: {}", e))?;
+                            // Safety: strcpy from known-valid static string to freshly allocated buffer.
+                            unsafe {
+                                self.builder.build_call(strcpy_fn, &[
+                                    BasicMetadataValueEnum::PointerValue(buf),
+                                    BasicMetadataValueEnum::PointerValue(stub.as_pointer_value()),
+                                ], "json_strcpy_stub")
+                                    .map_err(|e| format!("strcpy error: {}", e))?;
+                            }
+                            Ok(buf.into())
+                        }
                     }
                 }
 

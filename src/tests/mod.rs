@@ -162,6 +162,9 @@ impl Default for E2EConfig {
 }
 
 fn compile_and_run_with_config(src: &str, config: &E2EConfig) -> Result<String, String> {
+    if config.use_valgrind && config.use_asan {
+        return Err("cannot use valgrind and ASAN simultaneously".into());
+    }
     use std::process::Command;
 
     let counter = E2E_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
