@@ -97,9 +97,10 @@ impl<'ctx> CodeGenerator<'ctx> {
         self.builder.build_conditional_branch(cond_bool, pass_bb, fail_bb)
             .map_err(|e| CompileError::LlvmError(format!("branch error: {}", e)))?;
 
-        // Fail block: call abort/panic
         self.builder.position_at_end(fail_bb);
-        let msg_ptr = self.builder.build_global_string_ptr(msg, "contract_msg")
+        let contract_text = format!("{:?}", expr);
+        let full_msg = format!("{} | contract: {}", msg, contract_text);
+        let msg_ptr = self.builder.build_global_string_ptr(&full_msg, "contract_msg")
             .map_err(|e| CompileError::LlvmError(format!("string error: {}", e)))?;
         let abort_fn = self.module.get_function("mimi_runtime_abort")
             .unwrap_or_else(|| {
@@ -116,7 +117,6 @@ impl<'ctx> CodeGenerator<'ctx> {
         self.builder.build_unconditional_branch(pass_bb)
             .map_err(|e| CompileError::LlvmError(format!("branch error: {}", e)))?;
 
-        // Continue at pass block
         self.builder.position_at_end(pass_bb);
         Ok(())
     }

@@ -485,6 +485,52 @@ MapHandle mimi_map_from_list(ValueHandle* keys, ValueHandle* values, int64_t n) 
     return handle;
 }
 
+/* mimi_map_keys: returns a MimiList (MimiList*) with all keys from the map */
+/* MimiList layout = { int64_t len; const char** data; } where data is an i64* array of i8* key pointers */
+MimiList* mimi_map_keys(MapHandle handle) {
+    MimiList* result = (MimiList*)calloc(1, sizeof(MimiList));
+    if (!result || !handle) return result;
+    Map* map = (Map*)handle;
+    result->len = map->size;
+    if (map->size == 0) {
+        result->data = NULL;
+        return result;
+    }
+    const char** keys = (const char**)malloc(map->size * sizeof(const char*));
+    if (!keys) { result->len = 0; return result; }
+    int64_t idx = 0;
+    for (int64_t i = 0; i < map->capacity; i++) {
+        if (map->entries[i].state == ENTRY_USED && map->entries[i].key) {
+            keys[idx++] = map->entries[i].key;
+        }
+    }
+    result->data = keys;
+    return result;
+}
+
+/* mimi_map_values: returns a MimiList (MimiList*) with all values from the map */
+/* Layout = { int64_t len; int64_t* data; } where data is an i64* array of ValueHandle values */
+MimiList* mimi_map_values(MapHandle handle) {
+    MimiList* result = (MimiList*)calloc(1, sizeof(MimiList));
+    if (!result || !handle) return result;
+    Map* map = (Map*)handle;
+    result->len = map->size;
+    if (map->size == 0) {
+        result->data = NULL;
+        return result;
+    }
+    int64_t* values = (int64_t*)malloc(map->size * sizeof(int64_t));
+    if (!values) { result->len = 0; return result; }
+    int64_t idx = 0;
+    for (int64_t i = 0; i < map->capacity; i++) {
+        if (map->entries[i].state == ENTRY_USED) {
+            values[idx++] = (int64_t)map->entries[i].value;
+        }
+    }
+    result->data = (const char**)values;
+    return result;
+}
+
 const char* mimi_value_type_name(ValueHandle handle) {
     (void)handle;
     return "unknown";
@@ -1595,8 +1641,11 @@ int    test_callback(int x, int (*cb)(int)) { return __mimi_extern_test_callback
 
 void mimi_runtime_abort(const char* msg) {
     if (msg) {
-        fprintf(stderr, "Contract violation: %s\n", msg);
+        fprintf(stderr, "[FFI contract violation] %s\n", msg);
+    } else {
+        fprintf(stderr, "[FFI contract violation] (no details)\n");
     }
+    fprintf(stderr, "Hint: use --skip-verify-ffi to disable contract checking.\n");
     abort();
 }
 
