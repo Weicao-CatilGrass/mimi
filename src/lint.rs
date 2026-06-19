@@ -25,25 +25,28 @@ impl Linter {
     pub fn lint(&self, file: &File, source: &str) -> LintResult {
         let mut diagnostics = Vec::new();
 
-        for item in &file.items {
+        for (idx, item) in file.items.iter().enumerate() {
             match item {
                 Item::Func(f) => {
                     self.lint_func(f, source, &mut diagnostics);
                 }
                 Item::Desc(_text) => {
-                    // W001: standalone desc without a following func/type
-                    diagnostics.push(Diagnostic::warning_code(
-                        "W001",
-                        format!("standalone `desc` has no associated implementation"),
-                        Span::single(0, 0),
-                    ));
+                    if !is_followed_by_impl(&file.items, idx) {
+                        diagnostics.push(Diagnostic::warning_code(
+                            "W001",
+                            format!("standalone `desc` has no associated implementation"),
+                            Span::single(0, 0),
+                        ));
+                    }
                 }
                 Item::Rule(_text) => {
-                    diagnostics.push(Diagnostic::warning_code(
-                        "W001",
-                        format!("standalone `rule` has no associated implementation"),
-                        Span::single(0, 0),
-                    ));
+                    if !is_followed_by_impl(&file.items, idx) {
+                        diagnostics.push(Diagnostic::warning_code(
+                            "W001",
+                            format!("standalone `rule` has no associated implementation"),
+                            Span::single(0, 0),
+                        ));
+                    }
                 }
                 _ => {}
             }
@@ -89,6 +92,10 @@ impl Default for Linter {
     fn default() -> Self {
         Self::new()
     }
+}
+
+fn is_followed_by_impl(items: &[Item], idx: usize) -> bool {
+    idx + 1 < items.len() && matches!(items[idx + 1], Item::Func(_) | Item::Type(_))
 }
 
 fn is_snake_case(name: &str) -> bool {

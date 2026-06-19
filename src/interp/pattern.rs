@@ -107,7 +107,7 @@ impl<'a> Interpreter<'a> {
                 // Bind rest pattern to remaining elements
                 if let Some(rest_pat) = rest {
                     let remaining: Vec<Value> = vals[pats.len()..].to_vec();
-                    self.match_pattern_inner(rest_pat, &Value::List(remaining), bindings);
+                    return self.match_pattern_inner(rest_pat, &Value::List(remaining), bindings);
                 }
                 true
             }
