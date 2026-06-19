@@ -288,7 +288,8 @@ impl<'ctx> CodeGenerator<'ctx> {
 
             // D: Reject Unsupported FFI contract types at codegen time with a
             // readable error rather than silently passing void* to C (UB risk).
-            let contract = crate::ffi::FfiContract::from_extern(ef);
+            let contract = crate::ffi::FfiContract::from_extern_with_caps(
+                ef, &self.cap_type_names, &self.record_type_names);
             for (i, arg_contract) in contract.args.iter().enumerate() {
                 if let crate::ffi::contract::FfiArgContract::Unsupported(ty) = arg_contract {
                     return Err(CompileError::LlvmError(format!(
