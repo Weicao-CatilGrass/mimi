@@ -6,8 +6,6 @@
 //! `register_with_invoker`, which stores a Rust closure alongside the
 //! Mimi closure for efficient C callback dispatch.
 
-#![allow(dead_code)]
-
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::{Arc, LazyLock, Mutex};
@@ -97,11 +95,11 @@ pub unsafe extern "C" fn callback_trampoline(
     callback_id: i64,
     arg1: i64,
     arg2: i64,
-    _userdata: *mut std::ffi::c_void,
+    userdata: *mut std::ffi::c_void,
 ) -> i64 {
     if let Some(handle) = CALLBACK_TABLE.get(callback_id) {
         if let Some(ref invoker) = handle.invoker {
-            return invoker(callback_id, &[arg1, arg2]);
+            return invoker(callback_id, &[arg1, arg2, userdata as i64]);
         }
         -1
     } else {
@@ -111,15 +109,19 @@ pub unsafe extern "C" fn callback_trampoline(
 
 /// qsort-style trampoline: compares two elements via userdata callback ID.
 /// C calls this with (a_ptr, b_ptr, userdata_ptr_to_callback_id).
+/// The two element pointers are passed as raw i64 values so the callback
+/// can cast them back to typed pointers as needed.
 pub unsafe extern "C" fn qsort_trampoline(
-    _a: *const std::ffi::c_void,
-    _b: *const std::ffi::c_void,
+    a: *const std::ffi::c_void,
+    b: *const std::ffi::c_void,
     userdata: *mut std::ffi::c_void,
 ) -> i32 {
+    let a_val = a as i64;
+    let b_val = b as i64;
     let callback_id = *(userdata as *const i64);
     if let Some(handle) = CALLBACK_TABLE.get(callback_id) {
         if let Some(ref invoker) = handle.invoker {
-            return invoker(callback_id, &[]) as i32;
+            return invoker(callback_id, &[a_val, b_val]) as i32;
         }
     }
     0
