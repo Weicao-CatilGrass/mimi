@@ -124,6 +124,15 @@ impl<'ctx> CodeGenerator<'ctx> {
             }
         }
 
+        // Collect ensures contracts for runtime checking at return points
+        self.ensures_stmts = if self.verify_contracts {
+            func.body.iter().filter_map(|s| {
+                if let Stmt::Ensures(expr, _) = s { Some(Box::new(expr.clone())) } else { None }
+            }).collect()
+        } else {
+            Vec::new()
+        };
+
         // Compile requires contracts as runtime asserts when verify_contracts is enabled
         if self.verify_contracts {
             for stmt in &func.body {
@@ -157,11 +166,19 @@ impl<'ctx> CodeGenerator<'ctx> {
                     self.pop_comp_scope();
                     let val = self.compile_expr(expr, &vars)?;
                     let val = self.adjust_int_val(val, ret_type)?;
+                    let ensures = self.ensures_stmts.clone();
+                    for ensures_expr in &ensures {
+                        self.compile_contract_assert(ensures_expr, &vars, &format!("ensures violation in '{}'", func.name))?;
+                    }
                     self.builder.build_return(Some(&val)).map_err(|e| CompileError::LlvmError(format!("return error: {}", e)))?;
                     return Ok(());
                 }
                 Stmt::Return(None) => {
                     self.pop_comp_scope();
+                    let ensures = self.ensures_stmts.clone();
+                    for ensures_expr in &ensures {
+                        self.compile_contract_assert(ensures_expr, &vars, &format!("ensures violation in '{}'", func.name))?;
+                    }
                     self.builder.build_return(None).map_err(|e| CompileError::LlvmError(format!("return error: {}", e)))?;
                     return Ok(());
                 }
@@ -639,6 +656,13 @@ impl<'ctx> CodeGenerator<'ctx> {
         self.pop_comp_scope();
         self.pop_cap_scope();
 
+        if !self.block_has_terminator() {
+            let ensures = self.ensures_stmts.clone();
+            for ensures_expr in &ensures {
+                self.compile_contract_assert(ensures_expr, &vars, &format!("ensures violation in '{}'", func.name))?;
+            }
+        }
+        let last_val = self.adjust_int_val(last_val, ret_type)?;
         self.builder.build_return(Some(&last_val)).map_err(|e| CompileError::LlvmError(format!("return error: {}", e)))?;
         Ok(())
     }

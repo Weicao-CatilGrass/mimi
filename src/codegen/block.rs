@@ -33,11 +33,20 @@ impl<'ctx> CodeGenerator<'ctx> {
                 }
                 Stmt::Return(Some(expr)) => {
                     let mut val = self.compile_expr(expr, vars)?;
-                    val = self.adjust_int_val(val, self.current_fn_ret_type())?;
+                    let ret_type = self.current_fn_ret_type();
+                    val = self.adjust_int_val(val, ret_type)?;
+                    let ensures = self.ensures_stmts.clone();
+                    for ensures_expr in &ensures {
+                        self.compile_contract_assert(ensures_expr, vars, &format!("ensures violation"))?;
+                    }
                     self.builder.build_return(Some(&val)).map_err(|e| CompileError::LlvmError(format!("return error: {}", e)))?;
                     return Ok(());
                 }
                 Stmt::Return(None) => {
+                    let ensures = self.ensures_stmts.clone();
+                    for ensures_expr in &ensures {
+                        self.compile_contract_assert(ensures_expr, vars, &format!("ensures violation"))?;
+                    }
                     self.builder.build_return(None).map_err(|e| CompileError::LlvmError(format!("return error: {}", e)))?;
                     return Ok(());
                 }
