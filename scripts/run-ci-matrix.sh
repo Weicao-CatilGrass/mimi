@@ -90,8 +90,16 @@ run_matrix_cell "fuzz-dual-path" bash "$SCRIPT_DIR/fuzz-dual-path.sh" 50
 echo "--- 9. 完备性探测 ---"
 run_matrix_cell "exhaustive" bash "$SCRIPT_DIR/fuzz-exhaustive.sh"
 
-# 10. 压力测试 (CI 模式 = 缩小规模)
-echo "--- 10. 压力测试 ---"
+# 10. Valgrind E2E 测试
+echo "--- 10. Valgrind E2E 测试 ---"
+run_matrix_cell "valgrind-e2e" cargo test --manifest-path "$PROJECT_DIR/Cargo.toml" -- e2e_valgrind --ignored
+
+# 11. ASAN E2E 测试
+echo "--- 11. ASAN E2E 测试 ---"
+run_matrix_cell "asan-e2e" cargo test --manifest-path "$PROJECT_DIR/Cargo.toml" -- e2e_asan --ignored
+
+# 12. 压力测试 (CI 模式 = 缩小规模)
+echo "--- 12. 压力测试 ---"
 run_matrix_cell "stress" bash "$SCRIPT_DIR/stress-test.sh" --ci
 
 echo ""

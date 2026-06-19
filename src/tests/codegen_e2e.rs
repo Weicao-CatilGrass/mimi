@@ -906,3 +906,105 @@ func main() -> i32 {
 "#).unwrap();
     assert_eq!(stdout.trim(), "99");
 }
+
+// ===================== Sanitizer Tests =====================
+// These tests run the compiled binary under valgrind (memcheck) or with
+// AddressSanitizer. They are #[ignore] by default — run with:
+//   cargo test e2e_valgrind -- --ignored
+//   cargo test e2e_asan     -- --ignored
+
+fn can_valgrind() -> bool {
+    std::process::Command::new("valgrind").arg("--version").output().is_ok()
+}
+
+fn can_asan() -> bool {
+    std::process::Command::new("cc")
+        .args(["-fsanitize=address", "-c", "-x", "c", "/dev/null", "-o", "/dev/null"])
+        .output().is_ok()
+}
+
+#[test]
+#[ignore]
+fn e2e_valgrind_string_ops() {
+    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    if !can_valgrind() { eprintln!("SKIP: valgrind not available"); return; }
+    let stdout = compile_and_run_valgrind(r#"
+        func main() -> i32 {
+            let s = "hello, world!"
+            println(s)
+            let t = s + " more"
+            println(t)
+            0
+        }
+    "#).unwrap();
+    assert_eq!(stdout.trim(), "hello, world!\nhello, world! more");
+}
+
+#[test]
+#[ignore]
+fn e2e_valgrind_list_ops() {
+    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    if !can_valgrind() { eprintln!("SKIP: valgrind not available"); return; }
+    let stdout = compile_and_run_valgrind(r#"
+        func main() -> i32 {
+            let xs: List<i32> = [1, 2, 3, 4, 5]
+            let mut sum = 0
+            for x in xs {
+                sum = sum + x
+                println(x)
+            }
+            println(sum)
+            0
+        }
+    "#).unwrap();
+    assert_eq!(stdout.trim(), "1\n2\n3\n4\n5\n15");
+}
+
+#[test]
+#[ignore]
+fn e2e_valgrind_recursion() {
+    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    if !can_valgrind() { eprintln!("SKIP: valgrind not available"); return; }
+    let stdout = compile_and_run_valgrind(r#"
+        func fib(n: i32) -> i32 {
+            if n <= 1 { n } else { fib(n - 1) + fib(n - 2) }
+        }
+        func main() -> i32 {
+            println(fib(10))
+            0
+        }
+    "#).unwrap();
+    assert_eq!(stdout.trim(), "55");
+}
+
+#[test]
+#[ignore]
+fn e2e_asan_string_ops() {
+    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    if !can_asan() { eprintln!("SKIP: ASAN not supported by compiler"); return; }
+    let stdout = compile_and_run_asan(r#"
+        func main() -> i32 {
+            let s = "hello, world!"
+            println(s)
+            let t = s + " more"
+            println(t)
+            0
+        }
+    "#).unwrap();
+    assert_eq!(stdout.trim(), "hello, world!\nhello, world! more");
+}
+
+#[test]
+#[ignore]
+fn e2e_asan_list_ops() {
+    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    if !can_asan() { eprintln!("SKIP: ASAN not supported by compiler"); return; }
+    let stdout = compile_and_run_asan(r#"
+        func main() -> i32 {
+            let xs: List<i32> = [10, 20, 30]
+            for x in xs { println(x) }
+            0
+        }
+    "#).unwrap();
+    assert_eq!(stdout.trim(), "10\n20\n30");
+}

@@ -142,7 +142,26 @@ pub(crate) fn check_source_strict(src: &str) -> Result<(), Vec<crate::diagnostic
 /// Requires `cc` and `ld` on PATH. Skips test if linker is unavailable.
 static E2E_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
-pub(crate) fn compile_and_run(src: &str) -> Result<String, String> {
+/// Configuration flags for end-to-end codegen test execution.
+pub(crate) struct E2EConfig {
+    pub verify_contracts: bool,
+    pub use_valgrind: bool,
+    pub use_asan: bool,
+    pub valgrind_args: Vec<String>,
+}
+
+impl Default for E2EConfig {
+    fn default() -> Self {
+        Self {
+            verify_contracts: false,
+            use_valgrind: false,
+            use_asan: false,
+            valgrind_args: vec!["--tool=memcheck".into(), "--error-exitcode=1".into(), "--leak-check=full".into()],
+        }
+    }
+}
+
+fn compile_and_run_with_config(src: &str, config: &E2EConfig) -> Result<String, String> {
     use std::process::Command;
 
     let counter = E2E_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -152,6 +171,9 @@ pub(crate) fn compile_and_run(src: &str) -> Result<String, String> {
 
     let context = inkwell::context::Context::create();
     let mut codegen = crate::codegen::CodeGenerator::new(&context, "e2e_test");
+    if config.verify_contracts {
+        codegen.verify_contracts = true;
+    }
     codegen.compile_file(&file).map_err(|e| e.to_string())?;
 
     let tmp_dir = std::env::temp_dir().join(format!("mimi_e2e_{}_{}", std::process::id(), counter));
@@ -164,27 +186,40 @@ pub(crate) fn compile_and_run(src: &str) -> Result<String, String> {
     // Compile the C runtime
     let runtime_c = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/runtime/mimi_runtime.c");
     let runtime_o = tmp_dir.join("mimi_runtime.o");
-    let rt_status = Command::new("cc")
-        .arg("-c").arg(&runtime_c).arg("-o").arg(&runtime_o)
-        .status()
+    let mut cc_compile = Command::new("cc");
+    cc_compile.arg("-c").arg(&runtime_c).arg("-o").arg(&runtime_o);
+    if config.use_asan {
+        cc_compile.arg("-fsanitize=address");
+    }
+    let rt_status = cc_compile.status()
         .map_err(|e| format!("runtime compile: {}", e))?;
     if !rt_status.success() {
         let _ = std::fs::remove_dir_all(&tmp_dir);
         return Err(format!("runtime compile failed with exit code {:?}", rt_status.code()));
     }
 
-    let status = Command::new("cc")
-        .arg("-no-pie").arg(&obj_path).arg(&runtime_o).arg("-o").arg(&bin_path)
-        .status()
+    let mut cc_link = Command::new("cc");
+    cc_link.arg("-no-pie").arg(&obj_path).arg(&runtime_o).arg("-o").arg(&bin_path);
+    if config.use_asan {
+        cc_link.arg("-fsanitize=address");
+    }
+    let status = cc_link.status()
         .map_err(|e| format!("linker: {}", e))?;
     if !status.success() {
         let _ = std::fs::remove_dir_all(&tmp_dir);
         return Err(format!("linker failed with exit code {:?}", status.code()));
     }
 
-    let output = Command::new(&bin_path)
-        .output()
-        .map_err(|e| format!("run: {}", e))?;
+    let output = if config.use_valgrind {
+        let mut cmd = Command::new("valgrind");
+        for arg in &config.valgrind_args {
+            cmd.arg(arg);
+        }
+        cmd.arg(&bin_path);
+        cmd.output().map_err(|e| format!("valgrind run: {}", e))?
+    } else {
+        Command::new(&bin_path).output().map_err(|e| format!("run: {}", e))?
+    };
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
 
     let _ = std::fs::remove_dir_all(&tmp_dir);
@@ -197,61 +232,23 @@ pub(crate) fn compile_and_run(src: &str) -> Result<String, String> {
     Ok(stdout)
 }
 
-/// End-to-end codegen test with contract verification enabled.
-/// Same as compile_and_run but sets verify_contracts = true.
+/// Standard E2E codegen test: compile and run, return stdout.
+pub(crate) fn compile_and_run(src: &str) -> Result<String, String> {
+    compile_and_run_with_config(src, &E2EConfig::default())
+}
+
+/// E2E codegen test with contracts verification enabled.
 pub(crate) fn compile_and_verify_contracts(src: &str) -> Result<String, String> {
-    use std::process::Command;
+    compile_and_run_with_config(src, &E2EConfig { verify_contracts: true, ..Default::default() })
+}
 
-    let counter = E2E_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+/// E2E test running the binary under valgrind memcheck.
+pub(crate) fn compile_and_run_valgrind(src: &str) -> Result<String, String> {
+    compile_and_run_with_config(src, &E2EConfig { use_valgrind: true, ..Default::default() })
+}
 
-    let tokens = crate::lexer::Lexer::new(src).tokenize().map_err(|e| format!("lexer: {}", e))?;
-    let file = crate::parser::Parser::new(tokens).parse_file().map_err(|e| format!("parser: {}", e))?;
-
-    let context = inkwell::context::Context::create();
-    let mut codegen = crate::codegen::CodeGenerator::new(&context, "e2e_test");
-    codegen.verify_contracts = true;
-    codegen.compile_file(&file).map_err(|e| e.to_string())?;
-
-    let tmp_dir = std::env::temp_dir().join(format!("mimi_e2e_{}_{}", std::process::id(), counter));
-    std::fs::create_dir_all(&tmp_dir).map_err(|e| format!("mkdir: {}", e))?;
-    let obj_path = tmp_dir.join("test.o");
-    let bin_path = if cfg!(target_os = "windows") { tmp_dir.join("test.exe") } else { tmp_dir.join("test") };
-
-    codegen.compile_to_object(&obj_path).map_err(|e| e.to_string())?;
-
-    // Compile the C runtime
-    let runtime_c = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/runtime/mimi_runtime.c");
-    let runtime_o = tmp_dir.join("mimi_runtime.o");
-    let rt_status = Command::new("cc")
-        .arg("-c").arg(&runtime_c).arg("-o").arg(&runtime_o)
-        .status()
-        .map_err(|e| format!("runtime compile: {}", e))?;
-    if !rt_status.success() {
-        let _ = std::fs::remove_dir_all(&tmp_dir);
-        return Err(format!("runtime compile failed with exit code {:?}", rt_status.code()));
-    }
-
-    let status = Command::new("cc")
-        .arg("-no-pie").arg(&obj_path).arg(&runtime_o).arg("-o").arg(&bin_path)
-        .status()
-        .map_err(|e| format!("linker: {}", e))?;
-    if !status.success() {
-        let _ = std::fs::remove_dir_all(&tmp_dir);
-        return Err(format!("linker failed with exit code {:?}", status.code()));
-    }
-
-    let output = Command::new(&bin_path)
-        .output()
-        .map_err(|e| format!("run: {}", e))?;
-    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-
-    let _ = std::fs::remove_dir_all(&tmp_dir);
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("exit code {:?}, stderr: {}", output.status.code(), stderr));
-    }
-
-    Ok(stdout)
+/// E2E test compiled with AddressSanitizer and run directly.
+pub(crate) fn compile_and_run_asan(src: &str) -> Result<String, String> {
+    compile_and_run_with_config(src, &E2EConfig { use_asan: true, ..Default::default() })
 }
 
