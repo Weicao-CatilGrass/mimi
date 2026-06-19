@@ -131,7 +131,8 @@ impl<'a> Interpreter<'a> {
         if let Some(extern_func) = self.extern_funcs.get(name).cloned() {
             let contract = self.ffi_contracts.get(name).cloned()
                 .unwrap_or_else(|| FfiContract::from_extern(&extern_func));
-            return self.call_extern(&extern_func, &contract, args);
+            return self.call_extern(&extern_func, &contract, args)
+                .map_err(|e| e.to_string());
         }
 
         if let Some(&arity) = self.constructors.get(name) {

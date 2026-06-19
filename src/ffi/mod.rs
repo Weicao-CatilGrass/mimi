@@ -5,7 +5,9 @@ pub mod c_header;
 pub mod py_bind;
 pub mod runtime;
 pub mod callback;
+pub mod errno;
 
 pub use contract::{FfiArgContract, FfiContract, FfiRetContract};
 pub use runtime::{CAP_TABLE, SHARED_TABLE};
 pub use callback::CALLBACK_TABLE;
+pub use errno::Errno;

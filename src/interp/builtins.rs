@@ -890,7 +890,7 @@ impl<'a> Interpreter<'a> {
     // === JSON ===
     pub(crate) fn builtin_to_json(&self, args: Vec<Value>) -> Result<Value, String> {
         if args.len() != 1 { return Err("to_json expects 1 argument".into()); }
-        let json_val = self.value_to_json(&args[0])?;
+        let json_val = self.value_to_json(&args[0]).map_err(|e| e.to_string())?;
         let json_str = serde_json::to_string(&json_val)
             .map_err(|e| format!("to_json error: {}", e))?;
         Ok(Value::String(json_str))
