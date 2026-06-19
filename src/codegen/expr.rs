@@ -1,5 +1,3 @@
-#![allow(dead_code, deprecated)]
-
 use crate::ast::*;
 use crate::codegen::types;
 use crate::error::{CompileError, MimiResult};
