@@ -286,6 +286,28 @@ impl<'ctx> CodeGenerator<'ctx> {
                 }
             }
 
+            // D: Reject Unsupported FFI contract types at codegen time with a
+            // readable error rather than silently passing void* to C (UB risk).
+            let contract = crate::ffi::FfiContract::from_extern(ef);
+            for (i, arg_contract) in contract.args.iter().enumerate() {
+                if let crate::ffi::contract::FfiArgContract::Unsupported(ty) = arg_contract {
+                    return Err(CompileError::LlvmError(format!(
+                        "codegen does not yet support extern parameter type '{}' for '{}' \
+                         (param {}). Use `mimi run` (interpreter) for JSON-serialized FFI, \
+                         or convert to a #[repr(C)] record type.",
+                        ty, ef.name, i
+                    )));
+                }
+            }
+            if let crate::ffi::contract::FfiRetContract::Unsupported(ty) = &contract.ret {
+                return Err(CompileError::LlvmError(format!(
+                    "codegen does not yet support extern return type '{}' for '{}'. \
+                     Use `mimi run` (interpreter) for JSON-serialized FFI, \
+                     or convert to a #[repr(C)] record type.",
+                    ty, ef.name
+                )));
+            }
+
             let list_struct_sty = self.context.struct_type(&[
                 BasicTypeEnum::IntType(self.context.i64_type()),
                 BasicTypeEnum::PointerType(self.context.i8_type().ptr_type(inkwell::AddressSpace::default())),
@@ -446,6 +468,13 @@ impl<'ctx> CodeGenerator<'ctx> {
             }
 
             // Phase 3: Check requires contract before C call
+            // NOTE: Unlike the interpreter path (interp/ffi_call.rs) which returns
+            // Errno::Generic on contract violation, the codegen path aborts the
+            // process via mimi_runtime_abort. This is a deliberate design choice:
+            // compiled code has no Result-returning convention for extern calls,
+            // so graceful error propagation would require a sweeping API change.
+            // The interp path's `verify_ffi` flag and the codegen path's
+            // `verify_contracts` flag are the respective gates (both default true).
             if self.verify_contracts {
                 if let Some(req_expr) = &ef.requires {
                     let mut contract_vars: HashMap<String, VarEntry<'ctx>> = HashMap::new();
