@@ -4,11 +4,15 @@ use crate::ffi::FfiContract;
 impl<'a> Interpreter<'a> {
     pub(crate) fn call_func(&mut self, func: &FuncDef, args: Vec<Value>) -> Result<Value, String> {
         if func.params.len() != args.len() {
+            let expected_types: Vec<String> = func.params.iter().map(|p| crate::core::fmt_type(&p.ty)).collect();
+            let actual_types: Vec<String> = args.iter().map(|a| crate::interp::value::type_name(a).to_string()).collect();
             return Err(format!(
-                "function {} expects {} arguments, got {}",
+                "function '{}' expects {} arguments [{}], got {} [{}]",
                 func.name,
                 func.params.len(),
-                args.len()
+                expected_types.join(", "),
+                args.len(),
+                actual_types.join(", ")
             ));
         }
         
@@ -291,7 +295,7 @@ impl<'a> Interpreter<'a> {
                         let inner = arc.read().map_err(|e| format!("shared read lock failed: {}", e))?;
                         Ok(inner.clone())
                     }
-                    _ => Err(format!("shared value has no method '{}'", method)),
+                    _ => Err(format!("shared value has no method '{}' (type: {})", method, crate::interp::value::type_name(obj))),
                 }
             }
             Value::LocalShared(rc) => {
@@ -301,7 +305,7 @@ impl<'a> Interpreter<'a> {
                         let inner = rc.0.borrow();
                         Ok(inner.clone())
                     }
-                    _ => Err(format!("local_shared value has no method '{}'", method)),
+                    _ => Err(format!("local_shared value has no method '{}' (type: {})", method, crate::interp::value::type_name(obj))),
                 }
             }
             Value::WeakShared(w) => {
@@ -312,7 +316,7 @@ impl<'a> Interpreter<'a> {
                             None => Ok(Value::Variant("None".into(), vec![])),
                         }
                     }
-                    _ => Err(format!("weak_shared value has no method '{}'", method)),
+                    _ => Err(format!("weak_shared value has no method '{}' (type: {})", method, crate::interp::value::type_name(obj))),
                 }
             }
             Value::WeakLocal(w) => {
@@ -323,7 +327,7 @@ impl<'a> Interpreter<'a> {
                             None => Ok(Value::Variant("None".into(), vec![])),
                         }
                     }
-                    _ => Err(format!("weak_local value has no method '{}'", method)),
+                    _ => Err(format!("weak_local value has no method '{}' (type: {})", method, crate::interp::value::type_name(obj))),
                 }
             }
             Value::Cap(names) => {
@@ -337,7 +341,7 @@ impl<'a> Interpreter<'a> {
                             .collect();
                         Ok(Value::Tuple(tuple))
                     }
-                    _ => Err(format!("cap value has no method '{}'", method)),
+                    _ => Err(format!("cap value has no method '{}' — available: split, consume, is_consumed", method)),
                 }
             }
             Value::Actor(actor_arc) => {
@@ -450,7 +454,10 @@ impl<'a> Interpreter<'a> {
                         let field_list: Vec<Value> = fields.values().cloned().collect();
                         Ok(Value::List(field_list))
                     }
-                    _ => Err(format!("cannot call method '{}' on record", method)),
+                    _ => {
+                        let type_label = type_name.as_deref().unwrap_or("Record");
+                        Err(format!("record '{}' has no method '{}'", type_label, method))
+                    }
                 }
             }
             Value::String(s) => {

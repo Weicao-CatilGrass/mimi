@@ -131,18 +131,46 @@ fn e2e_higher_order_func() {
 }
 
 #[test]
-fn e2e_closure_capture() {
+fn e2e_closure_no_capture() {
     if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    // Known codegen limitation: closures (fn) not supported in codegen.
-    // Test basic function calls and local variables.
     let stdout = compile_and_run(r#"
-        func add_one(x: i32) -> i32 { x + 1 }
         func main() -> i32 {
-            println(add_one(5))
+            let f = fn(x: i32) -> i32 { x + 1 }
+            println(f(5))
             0
         }
     "#).unwrap();
     assert_eq!(stdout.trim(), "6");
+}
+
+#[test]
+fn e2e_closure_capture() {
+    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    let stdout = compile_and_run(r#"
+        func main() -> i32 {
+            let a = 10
+            let f = fn(x: i32) -> i32 { x + a }
+            println(f(5))
+            println(f(20))
+            0
+        }
+    "#).unwrap();
+    assert_eq!(stdout.trim(), "15\n30");
+}
+
+#[test]
+fn e2e_closure_multiple_capture() {
+    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    let stdout = compile_and_run(r#"
+        func main() -> i32 {
+            let a = 3
+            let b = 7
+            let f = fn(x: i32) -> i32 { x * a + b }
+            println(f(10))
+            0
+        }
+    "#).unwrap();
+    assert_eq!(stdout.trim(), "37");
 }
 
 // ===================== Error Handling =====================

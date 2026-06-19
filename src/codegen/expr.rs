@@ -44,7 +44,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                 Err("quote/comptime expressions must be resolved before codegen".into())
             }
             #[allow(unreachable_patterns)]
-            _ => Err(format!("unsupported expression in codegen: {:?}", expr)),
+            _ => Err(format!("unsupported expression in codegen: {:?}", expr))
         }
     }
 
@@ -138,7 +138,15 @@ impl<'ctx> CodeGenerator<'ctx> {
                     Ok(self.builder.build_float_sub(zero, fv, "fneg")
                         .map_err(|e| format!("neg error: {}", e))?.into())
                 } else {
-                    Err("negation requires numeric type".into())
+                    let ty_desc = match v.get_type() {
+                        inkwell::types::BasicTypeEnum::IntType(_) => "int",
+                        inkwell::types::BasicTypeEnum::FloatType(_) => "float",
+                        inkwell::types::BasicTypeEnum::PointerType(_) => "pointer",
+                        inkwell::types::BasicTypeEnum::ArrayType(_) => "array",
+                        inkwell::types::BasicTypeEnum::StructType(_) => "struct",
+                        inkwell::types::BasicTypeEnum::VectorType(_) => "vector",
+                    };
+                    Err(format!("negation requires numeric type, got {}", ty_desc))
                 }
             }
             UnOp::Not => {
@@ -146,7 +154,15 @@ impl<'ctx> CodeGenerator<'ctx> {
                     Ok(self.builder.build_not(iv, "not")
                         .map_err(|e| format!("not error: {}", e))?.into())
                 } else {
-                    Err("not requires boolean type".into())
+                    let ty_desc = match v.get_type() {
+                        inkwell::types::BasicTypeEnum::IntType(_) => "int",
+                        inkwell::types::BasicTypeEnum::FloatType(_) => "float",
+                        inkwell::types::BasicTypeEnum::PointerType(_) => "pointer",
+                        inkwell::types::BasicTypeEnum::ArrayType(_) => "array",
+                        inkwell::types::BasicTypeEnum::StructType(_) => "struct",
+                        inkwell::types::BasicTypeEnum::VectorType(_) => "vector",
+                    };
+                    Err(format!("'not' requires bool, got {}", ty_desc))
                 }
             }
             UnOp::Ref | UnOp::RefMut => {
@@ -173,7 +189,15 @@ impl<'ctx> CodeGenerator<'ctx> {
                     Ok(self.builder.build_load(pointee_ty, ptr, "deref")
                         .map_err(|e| format!("load error: {}", e))?)
                 } else {
-                    Err("deref requires pointer type".into())
+                    let ty_desc = match v.get_type() {
+                        inkwell::types::BasicTypeEnum::IntType(_) => "int",
+                        inkwell::types::BasicTypeEnum::FloatType(_) => "float",
+                        inkwell::types::BasicTypeEnum::PointerType(_) => "pointer",
+                        inkwell::types::BasicTypeEnum::ArrayType(_) => "array",
+                        inkwell::types::BasicTypeEnum::StructType(_) => "struct",
+                        inkwell::types::BasicTypeEnum::VectorType(_) => "vector",
+                    };
+                    Err(format!("dereference requires pointer type, got {}", ty_desc))
                 }
             }
         }
@@ -590,7 +614,69 @@ impl<'ctx> CodeGenerator<'ctx> {
                             .map_err(|e| format!("load error: {}", e))?;
                         Ok(result)
                     }
-                    _ => self.compile_call(name, args, vars)
+                    _ => {
+                        // Check if this is a closure variable call
+                        if let Some(&(alloca, ty)) = vars.get(name.as_str()) {
+                            if let BasicTypeEnum::StructType(st) = ty {
+                                if st.get_field_types().len() == 2 {
+                                    // Closure struct {fn_ptr, env_ptr} — do indirect call
+                                    let closure_val = self.builder.build_load(
+                                        BasicTypeEnum::StructType(st), alloca,
+                                        &format!("{}_closure", name),
+                                    ).map_err(|e| format!("load closure error: {}", e))?;
+                                    let closure_struct = closure_val.into_struct_value();
+                                    let fn_ptr = self.builder.build_extract_value(closure_struct, 0, "fn_ptr")
+                                        .map_err(|e| format!("extract fn_ptr error: {}", e))?
+                                        .into_pointer_value();
+                                    let env_ptr = self.builder.build_extract_value(closure_struct, 1, "env_ptr")
+                                        .map_err(|e| format!("extract env_ptr error: {}", e))?
+                                        .into_pointer_value();
+                                    let mut compiled_args = Vec::new();
+                                    for arg in args {
+                                        compiled_args.push(self.compile_expr(arg, vars)?);
+                                    }
+                                    let i8_ptr = self.context.i8_type().ptr_type(inkwell::AddressSpace::default());
+                                    let env_meta = BasicMetadataTypeEnum::PointerType(i8_ptr);
+                                    let mut all_meta = vec![env_meta];
+                                    for arg in &compiled_args {
+                                        all_meta.push(match arg {
+                                            BasicValueEnum::IntValue(iv) => BasicMetadataTypeEnum::IntType(iv.get_type()),
+                                            BasicValueEnum::FloatValue(fv) => BasicMetadataTypeEnum::FloatType(fv.get_type()),
+                                            BasicValueEnum::PointerValue(pv) => BasicMetadataTypeEnum::PointerType(pv.get_type()),
+                                            BasicValueEnum::StructValue(sv) => BasicMetadataTypeEnum::StructType(sv.get_type()),
+                                            BasicValueEnum::ArrayValue(av) => BasicMetadataTypeEnum::ArrayType(av.get_type()),
+                                            BasicValueEnum::VectorValue(vv) => BasicMetadataTypeEnum::VectorType(vv.get_type()),
+                                        });
+                                    }
+                                    let ret_type = self.context.i64_type();
+                                    let indirect_fn_type = ret_type.fn_type(&all_meta, false);
+                                    let fn_ptr_typed = self.builder.build_pointer_cast(
+                                        fn_ptr,
+                                        indirect_fn_type.ptr_type(inkwell::AddressSpace::default()),
+                                        "fn_typed",
+                                    ).map_err(|e| format!("pointer cast error: {}", e))?;
+                                    let mut call_args = vec![BasicMetadataValueEnum::PointerValue(env_ptr)];
+                                    for arg in &compiled_args {
+                                        call_args.push(match arg {
+                                            BasicValueEnum::IntValue(iv) => BasicMetadataValueEnum::IntValue(*iv),
+                                            BasicValueEnum::FloatValue(fv) => BasicMetadataValueEnum::FloatValue(*fv),
+                                            BasicValueEnum::PointerValue(pv) => BasicMetadataValueEnum::PointerValue(*pv),
+                                            BasicValueEnum::StructValue(sv) => BasicMetadataValueEnum::StructValue(*sv),
+                                            BasicValueEnum::ArrayValue(av) => BasicMetadataValueEnum::ArrayValue(*av),
+                                            BasicValueEnum::VectorValue(vv) => BasicMetadataValueEnum::VectorValue(*vv),
+                                        });
+                                    }
+                                    let call = self.builder.build_indirect_call(
+                                        indirect_fn_type, fn_ptr_typed, &call_args, "closure_call",
+                                    ).map_err(|e| format!("closure call error: {}", e))?;
+                                    return Ok(call.try_as_basic_value().left().unwrap_or(
+                                        self.context.i64_type().const_int(0, false).into()
+                                    ));
+                                }
+                            }
+                        }
+                        self.compile_call(name, args, vars)
+                    }
                 }
             }
             Expr::Field(obj, method_name) => {
@@ -1189,7 +1275,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     return Err(format!("[E0707] cannot access field on type '{}'", obj_type));
                 }
             }
-            _ => return Err(format!("field access requires struct/actor type, got {:?}", obj_val.get_type())),
+            _ => return Err(format!("field access requires a struct or actor type, got {}", obj_val.get_type())),
         };
         let sty = match self.type_llvm.get(&obj_type) {
             Some(BasicTypeEnum::StructType(s)) => *s,
@@ -1871,28 +1957,27 @@ impl<'ctx> CodeGenerator<'ctx> {
         body: &Block,
         vars: &HashMap<String, VarEntry<'ctx>>,
     ) -> Result<BasicValueEnum<'ctx>, String> {
-        // Generate anonymous function with closure capture support
         let param_names: std::collections::HashSet<String> =
             params.iter().map(|p| p.name.clone()).collect();
         let mut free_vars = HashMap::new();
         self.collect_free_vars(body, &param_names, vars, &mut free_vars);
-        // Step 2: Build function type with captured variables as extra parameters
+
         let ret_type = match ret {
             Some(ty) => types::mimi_type_to_llvm(self.context, ty)
                 .unwrap_or(BasicTypeEnum::IntType(self.context.i64_type())),
             None => BasicTypeEnum::IntType(self.context.i64_type()),
         };
-        let mut param_types = Vec::new();
+
+        let i8_ptr = self.context.i8_type().ptr_type(inkwell::AddressSpace::default());
+        // Function type: fn(env_ptr: i8*, params...) -> ret_type
+        let mut param_types_llvm = vec![BasicTypeEnum::PointerType(i8_ptr)];
         for p in params {
             let ty = types::mimi_type_to_llvm(self.context, &p.ty)
                 .unwrap_or(BasicTypeEnum::IntType(self.context.i64_type()));
-            param_types.push(ty);
+            param_types_llvm.push(ty);
         }
-        // Add captured variables as extra parameters (all as i64 for simplicity)
-        for _name in free_vars.keys() {
-            param_types.push(BasicTypeEnum::IntType(self.context.i64_type()));
-        }
-        let metadata_params: Vec<_> = param_types.iter().map(|t| types::basic_to_metadata(self.context, *t)).collect();
+        let metadata_params: Vec<_> = param_types_llvm.iter()
+            .map(|t| types::basic_to_metadata(self.context, *t)).collect();
         let fn_type = match ret_type {
             BasicTypeEnum::IntType(t) => t.fn_type(&metadata_params, false),
             BasicTypeEnum::FloatType(t) => t.fn_type(&metadata_params, false),
@@ -1901,36 +1986,57 @@ impl<'ctx> CodeGenerator<'ctx> {
             BasicTypeEnum::ArrayType(t) => t.fn_type(&metadata_params, false),
             _ => self.context.i64_type().fn_type(&metadata_params, false),
         };
+
         let lambda_name = format!("__lambda_{}_{}", self.spawn_counter, body.len());
         self.spawn_counter += 1;
         let lambda_fn = self.module.add_function(&lambda_name, fn_type, None);
         let entry = self.context.append_basic_block(lambda_fn, "entry");
         let saved_block = self.builder.get_insert_block();
         self.builder.position_at_end(entry);
+
         let mut lambda_vars = vars.clone();
-        let mut param_idx = 0;
-        // Bind regular parameters
+        // Bind env_ptr param (param 0)
+        let env_ptr_param = lambda_fn.get_nth_param(0)
+            .ok_or_else(|| "codegen: lambda env_ptr param index out of range".to_string())?
+            .into_pointer_value();
+
+        // Load captured variables from env struct
+        if !free_vars.is_empty() {
+            let env_field_types: Vec<BasicTypeEnum<'ctx>> =
+                free_vars.values().map(|&(_, ty)| ty).collect();
+            let env_struct_type = self.context.struct_type(&env_field_types, false);
+            let env_struct_ptr = self.builder.build_pointer_cast(
+                env_ptr_param,
+                env_struct_type.ptr_type(inkwell::AddressSpace::default()),
+                "env_struct",
+            ).map_err(|e| format!("pointer cast error: {}", e))?;
+            for (i, (name, &(_, ty))) in free_vars.iter().enumerate() {
+                let field_gep = self.builder.build_struct_gep(
+                    env_struct_type, env_struct_ptr, i as u32, &format!("env_{}_gep", name),
+                ).map_err(|e| format!("gep error: {}", e))?;
+                let field_val = self.builder.build_load(ty, field_gep, &format!("cap_{}", name))
+                    .map_err(|e| format!("load error: {}", e))?;
+                let alloca = self.builder.build_alloca(ty, &format!("cap_{}_alloca", name))
+                    .map_err(|e| format!("alloca error: {}", e))?;
+                self.builder.build_store(alloca, field_val)
+                    .map_err(|e| format!("store error: {}", e))?;
+                lambda_vars.insert(name.clone(), (alloca, ty));
+            }
+        }
+
+        // Bind regular parameters (params start at index 1)
+        let mut param_idx = 1u32;
         for p in params.iter() {
             let ty = types::mimi_type_to_llvm(self.context, &p.ty)
                 .unwrap_or(BasicTypeEnum::IntType(self.context.i64_type()));
             let alloca = self.builder.build_alloca(ty, &p.name)
                 .map_err(|e| format!("alloca error: {}", e))?;
-            self.builder.build_store(alloca, lambda_fn.get_nth_param(param_idx as u32).ok_or_else(|| "codegen: lambda param index out of range".to_string())?)
+            self.builder.build_store(alloca, lambda_fn.get_nth_param(param_idx).ok_or_else(|| "codegen: lambda param index out of range".to_string())?)
                 .map_err(|e| format!("store error: {}", e))?;
             lambda_vars.insert(p.name.clone(), (alloca, ty));
             param_idx += 1;
         }
-        // Bind captured variables
-        for name in free_vars.keys() {
-            let alloca = self.builder.build_alloca(
-                BasicTypeEnum::IntType(self.context.i64_type()),
-                &format!("cap_{}", name),
-            ).map_err(|e| format!("alloca error: {}", e))?;
-            self.builder.build_store(alloca, lambda_fn.get_nth_param(param_idx as u32).ok_or_else(|| "codegen: lambda captured var param index out of range".to_string())?)
-                .map_err(|e| format!("store error: {}", e))?;
-            lambda_vars.insert(name.clone(), (alloca, BasicTypeEnum::IntType(self.context.i64_type())));
-            param_idx += 1;
-        }
+
         // Compile body
         let mut last_val = self.context.i64_type().const_int(0, false).into();
         for stmt in body {
@@ -1962,9 +2068,60 @@ impl<'ctx> CodeGenerator<'ctx> {
         if let Some(bb) = saved_block {
             self.builder.position_at_end(bb);
         }
-        // For now, return the function pointer (closure capture requires runtime support)
-        // TODO: return closure struct { fn_ptr, captured_env } when runtime supports it
-        Ok(lambda_fn.as_global_value().as_pointer_value().into())
+
+        // Build closure struct: { fn_ptr: i8*, env_ptr: i8* } on stack
+        let closure_struct_type = types::closure_struct_type(self.context);
+        let closure_alloca = self.builder.build_alloca(
+            BasicTypeEnum::StructType(closure_struct_type),
+            "closure",
+        ).map_err(|e| format!("alloca error: {}", e))?;
+
+        let fn_ptr = lambda_fn.as_global_value().as_pointer_value();
+        let fn_gep = self.builder.build_struct_gep(
+            closure_struct_type, closure_alloca, 0, "fn_gep",
+        ).map_err(|e| format!("gep error: {}", e))?;
+        self.builder.build_store(fn_gep, fn_ptr)
+            .map_err(|e| format!("store error: {}", e))?;
+
+        if !free_vars.is_empty() {
+            let env_field_types: Vec<BasicTypeEnum<'ctx>> =
+                free_vars.values().map(|&(_, ty)| ty).collect();
+            let env_struct_type = self.context.struct_type(&env_field_types, false);
+            let env_alloca = self.builder.build_alloca(env_struct_type, "env")
+                .map_err(|e| format!("alloca error: {}", e))?;
+            for (i, (name, &(var_alloca, ty))) in free_vars.iter().enumerate() {
+                let val = self.builder.build_load(ty, var_alloca, &format!("cap_val_{}", name))
+                    .map_err(|e| format!("load error: {}", e))?;
+                let field_gep = self.builder.build_struct_gep(
+                    env_struct_type, env_alloca, i as u32, &format!("env_{}_gep", name),
+                ).map_err(|e| format!("gep error: {}", e))?;
+                self.builder.build_store(field_gep, val)
+                    .map_err(|e| format!("store error: {}", e))?;
+            }
+            let env_gep = self.builder.build_struct_gep(
+                closure_struct_type, closure_alloca, 1, "env_gep",
+            ).map_err(|e| format!("gep error: {}", e))?;
+            let env_ptr_i8 = self.builder.build_pointer_cast(
+                env_alloca,
+                i8_ptr,
+                "env_ptr_i8",
+            ).map_err(|e| format!("pointer cast error: {}", e))?;
+            self.builder.build_store(env_gep, env_ptr_i8)
+                .map_err(|e| format!("store error: {}", e))?;
+        } else {
+            let env_gep = self.builder.build_struct_gep(
+                closure_struct_type, closure_alloca, 1, "env_gep",
+            ).map_err(|e| format!("gep error: {}", e))?;
+            self.builder.build_store(env_gep, i8_ptr.const_null())
+                .map_err(|e| format!("store error: {}", e))?;
+        }
+
+        let closure_val = self.builder.build_load(
+            BasicTypeEnum::StructType(closure_struct_type),
+            closure_alloca,
+            "closure_val",
+        ).map_err(|e| format!("load error: {}", e))?;
+        Ok(closure_val)
     }
 
     fn compile_comprehension_expr(
