@@ -638,15 +638,14 @@ impl<'ctx> CodeGenerator<'ctx> {
             }
         }
 
-        let last_val: BasicValueEnum = self.context.i64_type().const_int(0, false).into();
-        self.compile_block(&func.body, &mut vars)?;
+        let last_val = self.compile_block_last_val(&func.body, &mut vars)?;
 
         self.check_unconsumed_caps()?;
         self.pop_cap_scope();
 
         if !self.block_has_terminator() {
-        let last_val = self.adjust_int_val(last_val, ret_type)?;
-        self.builder.build_return(Some(&last_val)).map_err(|e| CompileError::LlvmError(format!("return error: {}", e)))?;
+            let adjusted = self.adjust_int_val(last_val, ret_type)?;
+            self.builder.build_return(Some(&adjusted)).map_err(|e| CompileError::LlvmError(format!("return error: {}", e)))?;
         }
         self.type_map = prev_type_map;
         Ok(())

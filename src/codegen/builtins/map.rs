@@ -253,6 +253,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                 let idx_2 = self.builder.build_int_add(idx, idx, "map_from_list_idx_2")
                     .map_err(|e| format!("add error: {}", e))?;
                 // Safety: build_gep requires valid pointer and index types; the pointer is derived from a valid LLVM-typed allocation and indices are correctly-typed i64 values.
+                // SAFETY: SAFETY: data_ptr is i64* from bitcast; idx_2 is in-bounds (validated by loop).
                 let key_ptr_elem = unsafe { self.builder.build_gep(i64_ty, data_ptr, &[idx_2], "map_from_list_key_elem") }
                     .map_err(|e| format!("gep error: {}", e))?;
                 let key_handle = self.builder.build_load(i64_ty, key_ptr_elem, "map_from_list_key_val")
