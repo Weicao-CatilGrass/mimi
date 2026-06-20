@@ -2378,6 +2378,36 @@ impl<'ctx> CodeGenerator<'ctx> {
                         self.collect_free_vars(eb, &defined, vars, free_vars);
                     }
                 }
+                Stmt::Assign { target, value } => {
+                    self.collect_free_vars_expr(target, &defined, vars, free_vars);
+                    self.collect_free_vars_expr(value, &defined, vars, free_vars);
+                }
+                Stmt::While { cond, body } => {
+                    self.collect_free_vars_expr(cond, &defined, vars, free_vars);
+                    self.collect_free_vars(body, &defined, vars, free_vars);
+                }
+                Stmt::For { iterable, body, .. } => {
+                    self.collect_free_vars_expr(iterable, &defined, vars, free_vars);
+                    self.collect_free_vars(body, &defined, vars, free_vars);
+                }
+                Stmt::Block(block) => {
+                    self.collect_free_vars(block, &defined, vars, free_vars);
+                }
+                Stmt::SharedLet { init, .. } => {
+                    self.collect_free_vars_expr(init, &defined, vars, free_vars);
+                }
+                Stmt::Drop(expr) => {
+                    self.collect_free_vars_expr(expr, &defined, vars, free_vars);
+                }
+                Stmt::OnFailure(block) | Stmt::Arena(block) | Stmt::Unsafe(block) => {
+                    self.collect_free_vars(block, &defined, vars, free_vars);
+                }
+                Stmt::Alloc { body, .. } => {
+                    self.collect_free_vars(body, &defined, vars, free_vars);
+                }
+                Stmt::Parasteps(block) => {
+                    self.collect_free_vars(block, &defined, vars, free_vars);
+                }
                 _ => {}
             }
         }
@@ -2425,6 +2455,48 @@ impl<'ctx> CodeGenerator<'ctx> {
                 if let Some(eb) = else_ {
                     self.collect_free_vars(eb, defined, vars, free_vars);
                 }
+            }
+            Expr::Record { fields, .. } => {
+                for f in fields {
+                    self.collect_free_vars_expr(&f.value, defined, vars, free_vars);
+                }
+            }
+            Expr::Spawn(inner) | Expr::Await(inner) | Expr::Try(inner) | Expr::Old(inner) => {
+                self.collect_free_vars_expr(inner, defined, vars, free_vars);
+            }
+            Expr::Match(scrutinee, arms) => {
+                self.collect_free_vars_expr(scrutinee, defined, vars, free_vars);
+                for arm in arms {
+                    self.collect_free_vars_expr(&arm.body, defined, vars, free_vars);
+                }
+            }
+            Expr::Range { start, end } => {
+                self.collect_free_vars_expr(start, defined, vars, free_vars);
+                self.collect_free_vars_expr(end, defined, vars, free_vars);
+            }
+            Expr::SliceExpr { target, start, end } => {
+                self.collect_free_vars_expr(target, defined, vars, free_vars);
+                if let Some(s) = start { self.collect_free_vars_expr(s, defined, vars, free_vars); }
+                if let Some(e) = end { self.collect_free_vars_expr(e, defined, vars, free_vars); }
+            }
+            Expr::Lambda { body, .. } => {
+                self.collect_free_vars(body, defined, vars, free_vars);
+            }
+            Expr::Comprehension { expr: comp_expr, iter, guard, .. } => {
+                self.collect_free_vars_expr(iter, defined, vars, free_vars);
+                self.collect_free_vars_expr(comp_expr, defined, vars, free_vars);
+                if let Some(g) = guard { self.collect_free_vars_expr(g, defined, vars, free_vars); }
+            }
+            Expr::Turbofish(_, _, args) => {
+                for arg in args {
+                    self.collect_free_vars_expr(arg, defined, vars, free_vars);
+                }
+            }
+            Expr::TupleIndex(inner, _) => {
+                self.collect_free_vars_expr(inner, defined, vars, free_vars);
+            }
+            Expr::TypeOf(inner) => {
+                self.collect_free_vars_expr(inner, defined, vars, free_vars);
             }
             _ => {}
         }
