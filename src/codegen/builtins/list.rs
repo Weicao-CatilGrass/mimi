@@ -895,6 +895,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                 self.builder.position_at_end(inner_body_bb);
                 // Load arr[j] and arr[j+1]
                 // Safety: build_gep requires valid pointer and index types; the pointer is derived from a valid LLVM-typed allocation and indices are correctly-typed i64 values.
+                // SAFETY: SAFETY: data_ptr is i64* from bitcast; j_val is in-bounds (validated by inner loop condition).
                 let elem_j_ptr = unsafe { self.builder.build_gep(i64_ty, data_ptr, &[j_val], "sort_elem_j") }
                     .map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?;
                 let elem_j = self.builder.build_load(i64_ty, elem_j_ptr, "sort_elem_j_val")

@@ -447,6 +447,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                                                 _ => return Err("[E0701] values: unsupported field type".into()),
                                             };
                                             // Safety: build_gep requires valid pointer and index types; the pointer is derived from a valid LLVM-typed allocation and indices are correctly-typed i64 values.
+                                            // SAFETY: SAFETY: values_data_i64 is i64* from malloc; i is in-bounds (small constant index).
                                             let elem_ptr = unsafe { self.builder.build_gep(i64_ty, values_data_i64, &[i64_ty.const_int(i as u64, false)], "values_elem") }
                                                 .map_err(|e| format!("gep error: {}", e))?;
                                             self.builder.build_store(elem_ptr, val_i64)
