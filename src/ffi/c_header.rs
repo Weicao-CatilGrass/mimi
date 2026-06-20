@@ -178,7 +178,11 @@ impl CHeaderGenerator {
         header: &mut String,
         func: &ExternFunc,
     ) -> Result<(), std::fmt::Error> {
-        let contract = FfiContract::from_extern(func);
+        let record_type_names: std::collections::HashSet<String> = self.type_defs.iter()
+            .filter(|(_, td)| matches!(td.kind, crate::ast::TypeDefKind::Record(_)))
+            .map(|(name, _)| name.clone())
+            .collect();
+        let contract = FfiContract::from_extern_with_caps(func, &std::collections::HashSet::new(), &record_type_names);
 
         // Return type
         let ret_type = self.contract_ret_to_c_type(&contract);
@@ -272,7 +276,18 @@ impl CHeaderGenerator {
                 format!("MimiHandle /* {} */", self.mimi_type_to_c_type(inner))
             }
             FfiArgContract::Json => "const char*".to_string(),
-            FfiArgContract::Callback { .. } => "void (*)(...)".to_string(),
+            FfiArgContract::Callback { param_types, ret_type } => {
+                let ret_c = self.mimi_type_to_c_type(ret_type);
+                let params_c: Vec<String> = param_types.iter()
+                    .map(|t| self.mimi_type_to_c_type(t))
+                    .collect();
+                let params_str = if params_c.is_empty() {
+                    "void".to_string()
+                } else {
+                    params_c.join(", ")
+                };
+                format!("{} (*)({})", ret_c, params_str)
+            }
             FfiArgContract::Unsupported(_) => "void*".to_string(),
         }
     }

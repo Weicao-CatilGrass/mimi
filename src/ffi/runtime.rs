@@ -141,7 +141,7 @@ impl SharedHandle {
         self.inner.write().unwrap_or_else(|e| e.into_inner())
     }
 
-/// Retain: increment the C-side strong reference count.
+    /// Retain: increment the C-side strong reference count.
     pub fn retain(&self) {
         self.strong.fetch_add(1, Ordering::Relaxed);
     }

@@ -10,7 +10,7 @@
 //!         -DMIMI_LIB=/path/to/libmimi_runtime.so \
 //!         -B build && cmake --build build
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 
 use crate::ast::{ExternFunc, Type, TypeAttribute, TypeDef, TypeDefKind};
@@ -57,7 +57,7 @@ impl PyBindGenerator {
         writeln!(out)?;
 
         for func in extern_funcs {
-            let contract = FfiContract::from_extern(func);
+            let contract = self.build_contract(func);
             let py_params: Vec<String> = func.params.iter().enumerate()
                 .map(|(i, p)| format!("{}: {}", p.name, self.mimi_type_to_python(&contract, i)))
                 .collect();
@@ -67,6 +67,15 @@ impl PyBindGenerator {
 
         writeln!(out)?;
         Ok(out)
+    }
+
+    /// Build FFI contract with record type name awareness for proper JSON mapping.
+    fn build_contract(&self, func: &ExternFunc) -> FfiContract {
+        let record_type_names: std::collections::HashSet<String> = self.type_defs.iter()
+            .filter(|(_, td)| matches!(td.kind, crate::ast::TypeDefKind::Record(_)))
+            .map(|(name, _)| name.clone())
+            .collect();
+        FfiContract::from_extern_with_caps(func, &HashSet::new(), &record_type_names)
     }
 
     fn mimi_type_to_python(&self, contract: &FfiContract, index: usize) -> String {
@@ -149,7 +158,7 @@ impl PyBindGenerator {
     }
 
     fn write_function(&self, out: &mut String, func: &ExternFunc) -> Result<(), std::fmt::Error> {
-        let contract = FfiContract::from_extern(func);
+        let contract = self.build_contract(func);
         let ret_cpp = self.contract_ret_to_cpp(&contract);
         let func_name = &func.name;
 
@@ -164,7 +173,8 @@ impl PyBindGenerator {
         // Uses exact function name matching (not `contains`) to avoid false
         // positives on wrapper functions like `my_open_wrapper`.
         let check_errno = matches!(func.name.as_str(),
-            "open" | "openat" | "creat" | "fopen" | "fdopen"
+            "errno" | "strerror" | "perror"
+            | "open" | "openat" | "creat" | "fopen" | "fdopen"
             | "read" | "write" | "pread" | "pwrite" | "readv" | "writev"
             | "socket" | "connect" | "bind" | "listen" | "accept" | "accept4"
             | "send" | "recv" | "sendto" | "recvfrom" | "sendmsg" | "recvmsg"
@@ -173,12 +183,27 @@ impl PyBindGenerator {
             | "fork" | "execve" | "wait" | "waitpid" | "waitid"
             | "kill" | "raise" | "signal" | "sigaction" | "sigprocmask"
             | "pipe" | "pipe2" | "mkfifo" | "socketpair"
+            | "getaddrinfo" | "freeaddrinfo" | "getnameinfo"
+            | "gethostbyname" | "gethostbyaddr"
+            | "dlopen" | "dlsym" | "dlerror" | "dlclose"
             | "mmap" | "munmap" | "mprotect" | "msync"
+            | "opendir" | "readdir" | "closedir"
             | "stat" | "fstat" | "lstat" | "access" | "chmod" | "chown"
             | "link" | "unlink" | "rename" | "symlink" | "mkdir" | "rmdir"
             | "mount" | "umount" | "chdir" | "fchdir" | "getcwd"
-            | "connect" | "bind" | "listen" | "accept"
-            | "send" | "recv"
+            | "setjmp" | "longjmp" | "sigsetjmp" | "siglongjmp"
+            | "time" | "ctime" | "localtime" | "gmtime"
+            | "strtol" | "strtoll" | "strtoul" | "strtoull" | "atoi" | "atol"
+            | "malloc" | "calloc" | "realloc" | "posix_memalign"
+            | "pthread_create" | "pthread_join" | "pthread_mutex_lock" | "pthread_mutex_unlock"
+            | "sem_init" | "sem_wait" | "sem_post" | "sem_destroy"
+            | "mq_open" | "mq_send" | "mq_receive" | "mq_close" | "mq_unlink"
+            | "clock_gettime" | "clock_settime" | "timer_create" | "timer_settime"
+            | "getenv" | "setenv" | "unsetenv" | "putenv"
+            | "system" | "popen" | "pclose" | "execl" | "execle" | "execlp" | "execv" | "execve" | "execvp"
+            | "realpath" | "canonicalize_file_name"
+            | "tempnam" | "tmpfile" | "mkstemp" | "mkdtemp"
+            | "getopt" | "getopt_long" | "getopt_long_only"
         );
 
         writeln!(out, "    // {} — {}", func_name, func.name)?;
