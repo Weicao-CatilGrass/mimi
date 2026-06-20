@@ -1,0 +1,15 @@
+extern "C" func add(a: i32, b: i32) -> i32 {
+    a + b
+}
+
+extern "C" func sub(a: i32, b: i32) -> i32 {
+    a - b
+}
+
+extern "C" func mul(a: i32, b: i32) -> i32 {
+    a * b
+}
+
+extern "C" func fact(n: i32) -> i32 {
+    if n <= 1 { 1 } else { n * fact(n - 1) }
+}

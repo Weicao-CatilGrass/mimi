@@ -37,7 +37,7 @@ impl PyBindGenerator {
         self.write_preamble(&mut out)?;
         self.write_include_guard(&mut out)?;
         self.write_includes(&mut out)?;
-        self.write_type_classes(&mut out)?;
+        self.write_c_type_forward_decls(&mut out)?;
         self.write_module_def(&mut out)?;
 
         for func in extern_funcs {
@@ -69,31 +69,21 @@ impl PyBindGenerator {
         writeln!(out, "#include <pybind11/stl.h>")?;
         writeln!(out, "#include <cstdint>")?;
         writeln!(out, "#include <cstddef>")?;
+        writeln!(out, "extern \"C\" {{")?;
         writeln!(out, "#include \"mimi_ffi.h\"")?;
+        writeln!(out, "}}")?;
         writeln!(out, "namespace py = pybind11;")?;
         writeln!(out)?;
         Ok(())
     }
 
-    fn write_type_classes(&self, out: &mut String) -> Result<(), std::fmt::Error> {
-        // MimiHandle — opaque int64_t wrapper
-        writeln!(out, "class MimiHandle {{")?;
-        writeln!(out, "public:")?;
-        writeln!(out, "    int64_t id;")?;
-        writeln!(out, "    MimiHandle(int64_t i = 0) : id(i) {{}}")?;
-        writeln!(out, "    bool operator==(const MimiHandle& o) const {{ return id == o.id; }}")?;
-        writeln!(out, "    bool operator!=(const MimiHandle& o) const {{ return id != o.id; }}")?;
-        writeln!(out, "}};")?;
+    /// Forward-declare Mimi C API types (not defined in the C header).
+    fn write_c_type_forward_decls(&self, out: &mut String) -> Result<(), std::fmt::Error> {
+        writeln!(out, "// Mimi C API types — defined in mimi_ffi.h as typedefs")?;
+        writeln!(out, "// Ensure C++ compatibility:")?;
+        writeln!(out, "using MimiHandle = int64_t;")?;
+        writeln!(out, "using MimiCap = int64_t;")?;
         writeln!(out)?;
-
-        // MimiCap — opaque capability token
-        writeln!(out, "class MimiCap {{")?;
-        writeln!(out, "public:")?;
-        writeln!(out, "    int64_t id;")?;
-        writeln!(out, "    MimiCap(int64_t i = 0) : id(i) {{}}")?;
-        writeln!(out, "}};")?;
-        writeln!(out)?;
-
         Ok(())
     }
 
@@ -126,7 +116,7 @@ impl PyBindGenerator {
             .enumerate()
             .map(|(i, param)| self.arg_to_native(&contract, i, param))
             .collect();
-        let ret_expr = self.ret_to_native(&contract, func_name);
+        let ret_expr = self.ret_to_native(&contract, func_name, &native_args);
 
         if matches!(contract.ret, crate::ffi::contract::FfiRetContract::Unit) {
             writeln!(out, "        {}({});", func_name, native_args.join(", "))?;
@@ -255,17 +245,18 @@ impl PyBindGenerator {
         }
     }
 
-    fn ret_to_native(&self, contract: &FfiContract, func_name: &str) -> String {
+    fn ret_to_native(&self, contract: &FfiContract, func_name: &str, native_args: &[String]) -> String {
+        let args = native_args.join(", ");
         match &contract.ret {
-            crate::ffi::contract::FfiRetContract::Unit => format!("{}(), py::none()", func_name),
+            crate::ffi::contract::FfiRetContract::Unit => format!("{}({}), py::none()", func_name, args),
             crate::ffi::contract::FfiRetContract::String
             | crate::ffi::contract::FfiRetContract::StringOwned => {
-                format!("std::string({}())", func_name)
+                format!("std::string({}({}))", func_name, args)
             }
             crate::ffi::contract::FfiRetContract::Json => {
-                format!("std::string({}())", func_name)
+                format!("std::string({}({}))", func_name, args)
             }
-            _ => format!("{}()", func_name),
+            _ => format!("{}({})", func_name, args),
         }
     }
 }
@@ -375,9 +366,10 @@ mod tests {
         let code = gen.generate(&funcs).unwrap();
 
         assert!(code.contains("#include <pybind11/pybind11.h>"));
+        assert!(code.contains("extern \"C\""));
         assert!(code.contains("#include \"mimi_ffi.h\""));
-        assert!(code.contains("class MimiHandle"));
-        assert!(code.contains("class MimiCap"));
+        assert!(code.contains("using MimiHandle = int64_t;"));
+        assert!(code.contains("using MimiCap = int64_t;"));
     }
 
     #[test]
