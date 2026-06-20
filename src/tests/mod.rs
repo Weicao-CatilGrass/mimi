@@ -72,9 +72,13 @@ pub(crate) mod json_tests;
 pub(crate) mod codegen_e2e;
 pub(crate) mod codegen_ir;
 pub(crate) mod codegen_advanced;
+pub(crate) mod codegen_golden;
 
 // === Fuzz test modules ===
 pub(crate) mod fuzz;
+
+// === Benchmark modules ===
+pub(crate) mod benchmarks;
 
 use crate::{core, interp, lexer, parser};
 

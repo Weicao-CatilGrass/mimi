@@ -386,8 +386,8 @@ fn mms(files: &[PathBuf], show_ast: bool, json: bool, render: bool, latex: bool)
         };
 
         let errors: Vec<MmsJsonError> = result.errors.iter().map(|e| MmsJsonError {
-            line: e.line(),
-            col: e.col(),
+            line: e.line,
+            col: e.col,
             message: e.to_string(),
         }).collect();
 
@@ -432,7 +432,7 @@ fn mms(files: &[PathBuf], show_ast: bool, json: bool, render: bool, latex: bool)
                 let src_ref = Some(source.as_str());
                 let filename = &path.display().to_string();
                 for err in &result.errors {
-                    let span = crate::span::Span::single(err.line(), err.col());
+                    let span = crate::span::Span::single(err.line, err.col);
                     let diag = crate::diagnostic::Diagnostic::error(err.to_string(), span);
                     let formatted = format_diagnostic(&diag, src_ref, filename);
                     if use_color {
