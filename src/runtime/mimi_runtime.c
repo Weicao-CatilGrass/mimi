@@ -1745,11 +1745,26 @@ char* test_greet(int x) { return __mimi_extern_test_greet(x); }
 // callback wrapper
 int    test_callback(int x, int (*cb)(int)) { return __mimi_extern_test_callback(x, cb); }
 
+// Thread-local error handler for contract violations.
+// When set (by pybind11 wrappers), mimi_runtime_abort calls the handler instead of abort().
+// The handler may throw a C++ exception or longjmp to a recovery point.
+static __thread void (*mimi_runtime_error_handler)(const char*) = NULL;
+
+void mimi_runtime_set_error_handler(void (*handler)(const char*)) {
+    mimi_runtime_error_handler = handler;
+}
+
 void mimi_runtime_abort(const char* msg) {
     if (msg) {
         fprintf(stderr, "[FFI contract violation] %s\n", msg);
     } else {
         fprintf(stderr, "[FFI contract violation] (no details)\n");
+    }
+    if (mimi_runtime_error_handler) {
+        void (*handler)(const char*) = mimi_runtime_error_handler;
+        mimi_runtime_error_handler = NULL; // prevent re-entry
+        handler(msg);
+        return;
     }
     fprintf(stderr, "Hint: use --skip-verify-ffi to disable contract checking.\n");
     abort();

@@ -1381,16 +1381,24 @@ fn emit_py_bindings(path: Option<&Path>, output: Option<&Path>, mimi_lib: Option
         .unwrap_or("mimi_module")
         .to_string();
 
-    let bindings = ffi::py_bind::PyBindGenerator::new(type_defs, &pkg_name)
-        .generate(&extern_funcs)
-        .map_err(|e| format!("failed to generate bindings: {}", e))?;
+            let gen = ffi::py_bind::PyBindGenerator::new(type_defs, &pkg_name);
+            let bindings = gen.generate(&extern_funcs)
+                .map_err(|e| format!("failed to generate bindings: {}", e))?;
 
     match output {
         Some(out_path) => {
             std::fs::write(out_path, &bindings)
                 .map_err(|e| format!("failed to write {}: {}", out_path.display(), e))?;
             println!("✓ Generated Python bindings: {}", out_path.display());
+            // Emit .pyi type stub next to the .cpp
+            let pyi_out = out_path.with_extension("pyi");
+            if let Ok(pyi) = gen.generate_pyi(&extern_funcs) {
+                std::fs::write(&pyi_out, &pyi)
+                    .map_err(|e| format!("failed to write {}: {}", pyi_out.display(), e))?;
+                println!("✓ Generated Python type stubs: {}", pyi_out.display());
+            }
             // Also emit a CMakeLists.txt next to the output
+            let cmake_out = out_path.with_extension("cmake");
             let cmake_out = out_path.with_extension("cmake");
             let mimi_lib_str = mimi_lib.map(|p| p.display().to_string()).unwrap_or_default();
             let cmake = ffi::py_bind::generate_cmake_snippet(
