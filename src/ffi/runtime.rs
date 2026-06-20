@@ -342,11 +342,20 @@ pub extern "C" fn mimi_string_as_c_str(mimi_string: *const Value) -> *const std:
     unsafe {
         match &*mimi_string {
             Value::String(s) => {
-                let c_str = std::ffi::CString::new(s.as_str()).unwrap_or_default();
-                let ptr = c_str.as_ptr();
-                // Register for cleanup — caller must call mimi_string_as_c_str_free
-                PENDING_C_STRINGS.lock().unwrap_or_else(|e| e.into_inner()).push(c_str);
-                ptr
+                match std::ffi::CString::new(s.as_str()) {
+                    Ok(c_str) => {
+                        let ptr = c_str.as_ptr();
+                        // Register for cleanup — caller must call mimi_string_as_c_str_free
+                        PENDING_C_STRINGS.lock().unwrap_or_else(|e| e.into_inner()).push(c_str);
+                        ptr
+                    }
+                    Err(_) => {
+                        // Interior null bytes: can't represent as C string.
+                        // Return null to signal the error (caller can free null safely).
+                        eprintln!("mimi_string_as_c_str: string contains interior null bytes, returning null");
+                        std::ptr::null()
+                    }
+                }
             }
             _ => std::ptr::null(),
         }
