@@ -1,4 +1,67 @@
-// Text processing utilities
+// TextExt: Trait for text processing operations on strings.
+trait TextExt {
+    func is_blank() -> bool
+    func is_numeric() -> bool
+    func count_lines() -> i32
+    func slugify() -> string
+    func indent_text(n: i32) -> string
+    func wrap_text(width: i32) -> List<string>
+    func camel_to_snake() -> string
+}
+
+// TextExt implementation for built-in string type.
+impl TextExt for string {
+    func is_blank() -> bool { len(str_trim(self)) == 0 }
+    func is_numeric() -> bool { str_parse_int(self).0 }
+    func count_lines() -> i32 { len(str_split(self, "\n")) }
+    func slugify() -> string {
+        let lower = str_to_lower(self)
+        let sl_parts = str_split(lower, " ")
+        str_join(sl_parts, "-")
+    }
+    func indent_text(n: i32) -> string {
+        let it_lines = str_split(self, "\n")
+        let mut it_res: List<string> = []
+        for it_line in it_lines {
+            push(it_res, str_repeat(" ", n) + it_line)
+        }
+        str_join(it_res, "\n")
+    }
+    func wrap_text(width: i32) -> List<string> {
+        let wt_words = str_split(self, " ")
+        let mut wt_lines: List<string> = []
+        let mut wt_current = ""
+        for wt_word in wt_words {
+            let wt_candidate = if len(wt_current) == 0 { wt_word } else { wt_current + " " + wt_word }
+            if len(wt_candidate) <= width {
+                wt_current = wt_candidate
+            } else {
+                if len(wt_current) > 0 { push(wt_lines, wt_current) }
+                wt_current = wt_word
+            }
+        }
+        if len(wt_current) > 0 { push(wt_lines, wt_current) }
+        wt_lines
+    }
+    func camel_to_snake() -> string {
+        let mut cts_res: List<string> = []
+        let mut cts_word = ""
+        let cts_len = len(self)
+        for cts_i in range(0, cts_len) {
+            let cts_ch = str_char_at(self, cts_i)
+            if str_to_upper(cts_ch) == cts_ch && cts_ch != str_to_lower(cts_ch) {
+                if len(cts_word) > 0 { push(cts_res, str_to_lower(cts_word)) }
+                cts_word = cts_ch
+            } else {
+                cts_word = cts_word + cts_ch
+            }
+        }
+        if len(cts_word) > 0 { push(cts_res, str_to_lower(cts_word)) }
+        str_join(cts_res, "_")
+    }
+}
+
+// Compatibility functions — keep original signatures.
 
 // is_blank: Returns true if s is empty or whitespace-only.
 // Duplicate of strings::is_blank — kept for compatibility.
@@ -8,8 +71,7 @@ pub func is_blank(s: string) -> bool {
 
 // is_numeric: Returns true if s parses as an integer.
 pub func is_numeric(s: string) -> bool {
-    let inn_parsed = str_parse_int(s)
-    inn_parsed.0
+    str_parse_int(s).0
 }
 
 // count_lines: Returns the number of lines in s.
@@ -46,15 +108,11 @@ pub func wrap_text(s: string, width: i32) -> List<string> {
         if len(wt_candidate) <= width {
             wt_current = wt_candidate
         } else {
-            if len(wt_current) > 0 {
-                push(wt_lines, wt_current)
-            }
+            if len(wt_current) > 0 { push(wt_lines, wt_current) }
             wt_current = wt_word
         }
     }
-    if len(wt_current) > 0 {
-        push(wt_lines, wt_current)
-    }
+    if len(wt_current) > 0 { push(wt_lines, wt_current) }
     wt_lines
 }
 
@@ -66,16 +124,12 @@ pub func camel_to_snake(s: string) -> string {
     for cts_i in range(0, cts_len) {
         let cts_ch = str_char_at(s, cts_i)
         if str_to_upper(cts_ch) == cts_ch && cts_ch != str_to_lower(cts_ch) {
-            if len(cts_word) > 0 {
-                push(cts_res, str_to_lower(cts_word))
-            }
+            if len(cts_word) > 0 { push(cts_res, str_to_lower(cts_word)) }
             cts_word = cts_ch
         } else {
             cts_word = cts_word + cts_ch
         }
     }
-    if len(cts_word) > 0 {
-        push(cts_res, str_to_lower(cts_word))
-    }
+    if len(cts_word) > 0 { push(cts_res, str_to_lower(cts_word)) }
     str_join(cts_res, "_")
 }

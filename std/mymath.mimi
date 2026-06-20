@@ -1,3 +1,212 @@
+// IntMath: Trait for integer arithmetic operations on i32.
+trait IntMath {
+    func square() -> i32
+    func cube() -> i32
+    func abs() -> i32
+    func sign() -> i32
+    func factorial() -> i32
+    func fibonacci() -> i32
+    func is_prime() -> bool
+    func mod_pow(exp: i32, modulus: i32) -> i32
+    func is_power_of_two() -> bool
+    func next_power_of_two() -> i32
+    func count_digits() -> i32
+    func digit_at(pos: i32) -> i32
+    func sum_digits() -> i32
+    func reverse_number() -> i32
+    func is_palindrome() -> bool
+    func collatz_steps() -> i32
+    func gcd(other: i32) -> i32
+    func lcm(other: i32) -> i32
+    func is_even() -> bool
+    func is_odd() -> bool
+    func is_divisible_by(d: i32) -> bool
+    func min_val(other: i32) -> i32
+    func max_val(other: i32) -> i32
+    func clamp_int(lo: i32, hi: i32) -> i32
+}
+
+// IntMath implementation for built-in i32 type.
+impl IntMath for i32 {
+    func square() -> i32 { self * self }
+    func cube() -> i32 { self * self * self }
+    func abs() -> i32 { if self < 0 { -self } else { self } }
+    func sign() -> i32 { if self > 0 { 1 } else if self < 0 { -1 } else { 0 } }
+    func factorial() -> i32 {
+        let mut fac_acc = 1
+        let mut fac_k = 2
+        while fac_k <= self {
+            fac_acc *= fac_k
+            fac_k += 1
+        }
+        fac_acc
+    }
+    func fibonacci() -> i32 {
+        if self <= 0 { return 0 }
+        if self == 1 { return 1 }
+        let mut fib_a = 0
+        let mut fib_b = 1
+        let mut fib_k = 2
+        while fib_k <= self {
+            let fib_tmp = fib_a + fib_b
+            fib_a = fib_b
+            fib_b = fib_tmp
+            fib_k += 1
+        }
+        fib_b
+    }
+    func is_prime() -> bool {
+        if self < 2 { return false }
+        if self == 2 { return true }
+        if self % 2 == 0 { return false }
+        let mut prime_d = 3
+        while prime_d * prime_d <= self {
+            if self % prime_d == 0 { return false }
+            prime_d += 2
+        }
+        true
+    }
+    func mod_pow(exp: i32, modulus: i32) -> i32 {
+        let mut mp_acc = 1
+        let mut mp_bv = self % modulus
+        let mut mp_ev = exp
+        while mp_ev > 0 {
+            if mp_ev % 2 == 1 { mp_acc = (mp_acc * mp_bv) % modulus }
+            mp_bv = (mp_bv * mp_bv) % modulus
+            mp_ev = mp_ev / 2
+        }
+        mp_acc
+    }
+    func is_power_of_two() -> bool {
+        if self <= 0 { return false }
+        let mut pot_x = self
+        while pot_x > 1 {
+            if pot_x % 2 != 0 { return false }
+            pot_x = pot_x / 2
+        }
+        true
+    }
+    func next_power_of_two() -> i32 {
+        if self <= 0 { return 1 }
+        let mut np_p = 1
+        while np_p < self { np_p = np_p * 2 }
+        np_p
+    }
+    func count_digits() -> i32 {
+        if self == 0 { return 1 }
+        let mut cd_cnt = 0
+        let mut cd_val = if self < 0 { -self } else { self }
+        while cd_val > 0 {
+            cd_cnt += 1
+            cd_val = cd_val / 10
+        }
+        cd_cnt
+    }
+    func digit_at(pos: i32) -> i32 {
+        let mut da_val = if self < 0 { -self } else { self }
+        let mut da_p = 0
+        while da_p < pos {
+            da_val = da_val / 10
+            da_p += 1
+        }
+        da_val % 10
+    }
+    func sum_digits() -> i32 {
+        let mut sd_acc = 0
+        let mut sd_val = if self < 0 { -self } else { self }
+        while sd_val > 0 {
+            sd_acc += sd_val % 10
+            sd_val = sd_val / 10
+        }
+        sd_acc
+    }
+    func reverse_number() -> i32 {
+        let mut rn_acc = 0
+        let mut rn_val = if self < 0 { -self } else { self }
+        while rn_val > 0 {
+            rn_acc = rn_acc * 10 + rn_val % 10
+            rn_val = rn_val / 10
+        }
+        rn_acc
+    }
+    func is_palindrome() -> bool {
+        if self < 0 { return false }
+        self == self.reverse_number()
+    }
+    func collatz_steps() -> i32 {
+        let mut cs_cnt = 0
+        let mut cs_val = self
+        while cs_val != 1 {
+            if cs_val % 2 == 0 { cs_val = cs_val / 2 } else { cs_val = 3 * cs_val + 1 }
+            cs_cnt += 1
+        }
+        cs_cnt
+    }
+    func gcd(other: i32) -> i32 {
+        let mut g_x = self
+        let mut g_y = other
+        while g_y != 0 {
+            let g_tmp = g_y
+            g_y = g_x % g_y
+            g_x = g_tmp
+        }
+        g_x
+    }
+    func lcm(other: i32) -> i32 {
+        if self == 0 || other == 0 { 0 } else { self * other / self.gcd(other) }
+    }
+    func is_even() -> bool { self % 2 == 0 }
+    func is_odd() -> bool { self % 2 != 0 }
+    func is_divisible_by(d: i32) -> bool { d != 0 && self % d == 0 }
+    func min_val(other: i32) -> i32 { if self < other { self } else { other } }
+    func max_val(other: i32) -> i32 { if self > other { self } else { other } }
+    func clamp_int(lo: i32, hi: i32) -> i32 {
+        if self < lo { lo } else if self > hi { hi } else { self }
+    }
+}
+
+// FloatMath: Trait for floating-point arithmetic operations on f64.
+trait FloatMath {
+    func abs() -> f64
+    func sign() -> f64
+    func deg_to_rad() -> f64
+    func rad_to_deg() -> f64
+    func map_range(in_min: f64, in_max: f64, out_min: f64, out_max: f64) -> f64
+    func power(exp: f64) -> f64
+    func sqrt_val() -> f64
+    func floor_val() -> i64
+    func ceil_val() -> i64
+    func round_val() -> i64
+    func area_circle() -> f64
+    func circumference() -> f64
+    func hypot(other: f64) -> f64
+    func clamp_float(min_val: f64, max_val: f64) -> f64
+}
+
+// FloatMath implementation for built-in f64 type.
+impl FloatMath for f64 {
+    func abs() -> f64 { if self < 0.0 { -self } else { self } }
+    func sign() -> f64 { if self > 0.0 { 1.0 } else if self < 0.0 { -1.0 } else { 0.0 } }
+    func deg_to_rad() -> f64 { self * pi() / 180.0 }
+    func rad_to_deg() -> f64 { self * 180.0 / pi() }
+    func map_range(in_min: f64, in_max: f64, out_min: f64, out_max: f64) -> f64 {
+        out_min + (self - in_min) * (out_max - out_min) / (in_max - in_min)
+    }
+    func power(exp: f64) -> f64 { pow(self, exp) }
+    func sqrt_val() -> f64 { sqrt(self) }
+    func floor_val() -> i64 { floor(self) }
+    func ceil_val() -> i64 { ceil(self) }
+    func round_val() -> i64 { round(self) }
+    func area_circle() -> f64 { pi() * self * self }
+    func circumference() -> f64 { 2.0 * pi() * self }
+    func hypot(other: f64) -> f64 { sqrt(self * self + other * other) }
+    func clamp_float(min_val: f64, max_val: f64) -> f64 {
+        if self < min_val { min_val } else if self > max_val { max_val } else { self }
+    }
+}
+
+// Compatibility functions — keep original signatures.
+
 // square: Returns x * x.
 // Duplicate of prelude::sqr — kept for compatibility.
 pub func square(x: i32) -> i32 {
@@ -73,9 +282,7 @@ pub func is_prime(n: i32) -> bool {
 // random_int: Returns random integer in [lo, hi).
 pub func random_int(lo: i32, hi: i32) -> i32 {
     let ri_span = hi - lo
-    if ri_span <= 0 {
-        return lo
-    }
+    if ri_span <= 0 { return lo }
     to_int(floor(random() * to_float(ri_span))) + lo
 }
 
@@ -85,9 +292,7 @@ pub func mod_pow(base: i32, exp: i32, modulus: i32) -> i32 {
     let mut mp_bv = base % modulus
     let mut mp_ev = exp
     while mp_ev > 0 {
-        if mp_ev % 2 == 1 {
-            mp_acc = (mp_acc * mp_bv) % modulus
-        }
+        if mp_ev % 2 == 1 { mp_acc = (mp_acc * mp_bv) % modulus }
         mp_bv = (mp_bv * mp_bv) % modulus
         mp_ev = mp_ev / 2
     }
@@ -111,14 +316,10 @@ pub func map_range(value: f64, in_min: f64, in_max: f64, out_min: f64, out_max: 
 
 // is_power_of_two: Returns true if n is a power of two (n > 0).
 pub func is_power_of_two(n: i32) -> bool {
-    if n <= 0 {
-        return false
-    }
+    if n <= 0 { return false }
     let mut pot_x = n
     while pot_x > 1 {
-        if pot_x % 2 != 0 {
-            return false
-        }
+        if pot_x % 2 != 0 { return false }
         pot_x = pot_x / 2
     }
     true
@@ -126,13 +327,9 @@ pub func is_power_of_two(n: i32) -> bool {
 
 // next_power_of_two: Returns smallest power of two >= n.
 pub func next_power_of_two(n: i32) -> i32 {
-    if n <= 0 {
-        return 1
-    }
+    if n <= 0 { return 1 }
     let mut np_p = 1
-    while np_p < n {
-        np_p = np_p * 2
-    }
+    while np_p < n { np_p = np_p * 2 }
     np_p
 }
 
@@ -141,10 +338,7 @@ pub func count_digits(n: i32) -> i32 {
     if n == 0 { return 1 }
     let mut cd_cnt = 0
     let mut cd_val = if n < 0 { -n } else { n }
-    while cd_val > 0 {
-        cd_cnt += 1
-        cd_val = cd_val / 10
-    }
+    while cd_val > 0 { cd_cnt += 1; cd_val = cd_val / 10 }
     cd_cnt
 }
 
@@ -152,10 +346,7 @@ pub func count_digits(n: i32) -> i32 {
 pub func digit_at(n: i32, pos: i32) -> i32 {
     let mut da_val = if n < 0 { -n } else { n }
     let mut da_p = 0
-    while da_p < pos {
-        da_val = da_val / 10
-        da_p += 1
-    }
+    while da_p < pos { da_val = da_val / 10; da_p += 1 }
     da_val % 10
 }
 
@@ -163,10 +354,7 @@ pub func digit_at(n: i32, pos: i32) -> i32 {
 pub func sum_digits(n: i32) -> i32 {
     let mut sd_acc = 0
     let mut sd_val = if n < 0 { -n } else { n }
-    while sd_val > 0 {
-        sd_acc += sd_val % 10
-        sd_val = sd_val / 10
-    }
+    while sd_val > 0 { sd_acc += sd_val % 10; sd_val = sd_val / 10 }
     sd_acc
 }
 
@@ -174,10 +362,7 @@ pub func sum_digits(n: i32) -> i32 {
 pub func reverse_number(n: i32) -> i32 {
     let mut rn_acc = 0
     let mut rn_val = if n < 0 { -n } else { n }
-    while rn_val > 0 {
-        rn_acc = rn_acc * 10 + rn_val % 10
-        rn_val = rn_val / 10
-    }
+    while rn_val > 0 { rn_acc = rn_acc * 10 + rn_val % 10; rn_val = rn_val / 10 }
     rn_acc
 }
 
@@ -192,11 +377,7 @@ pub func collatz_steps(n: i32) -> i32 {
     let mut cs_cnt = 0
     let mut cs_val = n
     while cs_val != 1 {
-        if cs_val % 2 == 0 {
-            cs_val = cs_val / 2
-        } else {
-            cs_val = 3 * cs_val + 1
-        }
+        if cs_val % 2 == 0 { cs_val = cs_val / 2 } else { cs_val = 3 * cs_val + 1 }
         cs_cnt += 1
     }
     cs_cnt
@@ -231,13 +412,8 @@ pub func round_val(x: f64) -> i64 {
 
 // gcd: Greatest common divisor of a and b (Euclidean algorithm).
 pub func gcd(a: i32, b: i32) -> i32 {
-    let mut g_x = a
-    let mut g_y = b
-    while g_y != 0 {
-        let g_tmp = g_y
-        g_y = g_x % g_y
-        g_x = g_tmp
-    }
+    let mut g_x = a; let mut g_y = b
+    while g_y != 0 { let g_tmp = g_y; g_y = g_x % g_y; g_x = g_tmp }
     g_x
 }
 

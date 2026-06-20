@@ -1,4 +1,47 @@
-// Datetime operations based on Unix timestamps
+// DateTimeOps: Trait for datetime operations on i64 timestamps.
+trait DateTimeOps {
+    func seconds_to_millis() -> i64
+    func millis_to_seconds() -> i64
+    func format_duration_secs() -> string
+    func format_duration_ms() -> string
+    func is_future() -> bool
+    func is_past() -> bool
+    func time_since() -> i64
+    func time_until() -> i64
+    func elapsed_since() -> i64
+    func sleep_until()
+}
+
+// DateTimeOps implementation for built-in i64 type.
+impl DateTimeOps for i64 {
+    func seconds_to_millis() -> i64 { self * MILLIS_PER_SECOND }
+    func millis_to_seconds() -> i64 { self / MILLIS_PER_SECOND }
+    func format_duration_secs() -> string {
+        let ds_days = self / SECONDS_PER_DAY
+        let ds_rem = self % SECONDS_PER_DAY
+        let ds_hours = ds_rem / SECONDS_PER_HOUR
+        let ds_rem2 = ds_rem % SECONDS_PER_HOUR
+        let ds_minutes = ds_rem2 / SECONDS_PER_MINUTE
+        let ds_seconds = ds_rem2 % SECONDS_PER_MINUTE
+        to_string(ds_days) + "d " + to_string(ds_hours) + "h " + to_string(ds_minutes) + "m " + to_string(ds_seconds) + "s"
+    }
+    func format_duration_ms() -> string {
+        let total_secs = self / MILLIS_PER_SECOND
+        let rem_ms = self % MILLIS_PER_SECOND
+        total_secs.format_duration_secs() + "." + to_string(rem_ms) + "ms"
+    }
+    func is_future() -> bool { self > now() }
+    func is_past() -> bool { self < now() }
+    func time_since() -> i64 { now() - self }
+    func time_until() -> i64 { self - now() }
+    func elapsed_since() -> i64 { now_ms() - self }
+    func sleep_until() {
+        let diff = self - now()
+        if diff > 0 { sleep(to_int(diff * MILLIS_PER_SECOND)) }
+    }
+}
+
+// Compatibility functions — keep original signatures.
 
 // now_secs: Current Unix timestamp in seconds.
 // Duplicate of time::timestamp — kept for compatibility.

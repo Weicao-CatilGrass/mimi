@@ -1,4 +1,18 @@
-// Time operations — wraps compiler builtins
+// TimeOps: Trait for timestamp operations on i64.
+trait TimeOps {
+    func elapsed() -> i64
+    func seconds_since() -> i64
+    func millis_since() -> i64
+}
+
+// TimeOps implementation for built-in i64 type.
+impl TimeOps for i64 {
+    func elapsed() -> i64 { now_ms() - self }
+    func seconds_since() -> i64 { now() - self }
+    func millis_since() -> i64 { now_ms() - self }
+}
+
+// Compatibility functions — keep original signatures.
 
 // timestamp: Current Unix timestamp in seconds.
 pub func timestamp() -> i64 {
