@@ -1715,7 +1715,7 @@ pub fn subst_type_params(ty: &Type, generics: &[GenericParam], type_map: &HashMa
     }
 }
 
-fn same_type(a: &Type, b: &Type) -> bool {
+pub(crate) fn same_type(a: &Type, b: &Type) -> bool {
     // 'unknown' is compatible with any type (inference placeholder)
     if matches!(a, Type::Name(n, _) if n == "unknown") || matches!(b, Type::Name(n, _) if n == "unknown") {
         return true;
@@ -1770,6 +1770,20 @@ fn same_type(a: &Type, b: &Type) -> bool {
         (Type::Slice(a), Type::Slice(b)) => same_type(a, b),
         (Type::ImplTrait(a), Type::ImplTrait(b)) => a == b,
         (Type::DynTrait(a), Type::DynTrait(b)) => a == b,
+        (Type::Nothing, Type::Nothing) => true,
+        (Type::RawString, Type::RawString) => true,
+        (Type::Allocator, Type::Allocator) => true,
+        (Type::ExternFunc(a_args, a_ret), Type::ExternFunc(b_args, b_ret)) => {
+            a_args.len() == b_args.len()
+                && a_args.iter().zip(b_args.iter()).all(|(x, y)| same_type(x, y))
+                && same_type(a_ret, b_ret)
+        }
+        (Type::CBuffer(a), Type::CBuffer(b)) => same_type(a, b),
+        (Type::RawPtr(a), Type::RawPtr(b)) => same_type(a, b),
+        (Type::RawPtrMut(a), Type::RawPtrMut(b)) => same_type(a, b),
+        (Type::CShared(a), Type::CShared(b)) => same_type(a, b),
+        (Type::CBorrow(a), Type::CBorrow(b)) => same_type(a, b),
+        (Type::CBorrowMut(a), Type::CBorrowMut(b)) => same_type(a, b),
         _ => false,
     }
 }
@@ -1782,19 +1796,19 @@ fn is_trait_coercion(declared: &Type, init_ty: &Type) -> bool {
     }
 }
 
-fn is_int(t: &Type) -> bool {
+pub(crate) fn is_int(t: &Type) -> bool {
     matches!(t, Type::Name(n, _) if n == "i32" || n == "i64")
 }
 
-fn is_numeric(t: &Type) -> bool {
+pub(crate) fn is_numeric(t: &Type) -> bool {
     matches!(t, Type::Name(n, _) if n == "i32" || n == "i64" || n == "f64")
 }
 
-fn is_bool(t: &Type) -> bool {
+pub(crate) fn is_bool(t: &Type) -> bool {
     matches!(t, Type::Name(n, _) if n == "bool")
 }
 
-fn is_string(t: &Type) -> bool {
+pub(crate) fn is_string(t: &Type) -> bool {
     matches!(t, Type::Name(n, _) if n == "string")
 }
 
