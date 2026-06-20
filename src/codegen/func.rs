@@ -531,56 +531,14 @@ impl<'ctx> CodeGenerator<'ctx> {
                     self.register_comp(block);
                 }
                 Stmt::Arena(block) => {
-                    let function = self.current_function().ok_or_else(|| CompileError::LlvmError("arena outside function".to_string()))?;
-                    let arena_body_bb = self.context.append_basic_block(function, "arena_body");
-                    let arena_cont_bb = self.context.append_basic_block(function, "arena_cont");
-                    if !self.block_has_terminator() {
-                        self.builder.build_unconditional_branch(arena_body_bb)
-                            .map_err(|e| CompileError::LlvmError(format!("branch to arena: {}", e)))?;
-                    }
-                    self.builder.position_at_end(arena_body_bb);
-                    let saved = self.build_stacksave()?;
-                    let vars_before: std::collections::HashSet<String> = vars.keys().cloned().collect();
-                    self.compile_block(block, &mut vars)?;
-                    for k in vars.keys().cloned().collect::<Vec<_>>() {
-                        if !vars_before.contains(&k) {
-                            vars.remove(&k);
-                        }
-                    }
-                    self.build_stackrestore(saved)?;
-                    if !self.block_has_terminator() {
-                        self.builder.build_unconditional_branch(arena_cont_bb)
-                            .map_err(|e| CompileError::LlvmError(format!("branch after arena: {}", e)))?;
-                    }
-                    self.builder.position_at_end(arena_cont_bb);
+                    self.compile_arena_block(block, &mut vars, "arena")?;
                 }
                 Stmt::Unsafe(block) => {
                     // Unsafe: execute block (no restrictions in codegen)
                     self.compile_block(block, &mut vars)?;
                 }
                 Stmt::Alloc { kind: AllocKind::Arena, body } => {
-                    let function = self.current_function().ok_or_else(|| CompileError::LlvmError("arena outside function".to_string()))?;
-                    let arena_body_bb = self.context.append_basic_block(function, "arena_body");
-                    let arena_cont_bb = self.context.append_basic_block(function, "arena_cont");
-                    if !self.block_has_terminator() {
-                        self.builder.build_unconditional_branch(arena_body_bb)
-                            .map_err(|e| CompileError::LlvmError(format!("branch to alloc(Arena): {}", e)))?;
-                    }
-                    self.builder.position_at_end(arena_body_bb);
-                    let saved = self.build_stacksave()?;
-                    let vars_before: std::collections::HashSet<String> = vars.keys().cloned().collect();
-                    self.compile_block(body, &mut vars)?;
-                    for k in vars.keys().cloned().collect::<Vec<_>>() {
-                        if !vars_before.contains(&k) {
-                            vars.remove(&k);
-                        }
-                    }
-                    self.build_stackrestore(saved)?;
-                    if !self.block_has_terminator() {
-                        self.builder.build_unconditional_branch(arena_cont_bb)
-                            .map_err(|e| CompileError::LlvmError(format!("branch after alloc(Arena): {}", e)))?;
-                    }
-                    self.builder.position_at_end(arena_cont_bb);
+                    self.compile_arena_block(body, &mut vars, "alloc(Arena)")?;
                 }
                 Stmt::Alloc { body, .. } => {
                     // Alloc: execute body sequentially (simplified - no custom allocator in codegen)

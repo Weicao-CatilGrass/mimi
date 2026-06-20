@@ -230,69 +230,7 @@ impl<'a> Interpreter<'a> {
                 }
             }
             Stmt::Arena(block) => {
-                // Arena block: creates a region-based memory scope
-                // All `ref T` allocations inside have lifetime equal to this block
-                let arena_id = self.arenas.len();
-                let arena = Arena {
-                    id: arena_id,
-                    slots: Vec::new(),
-                };
-                self.arenas.push(arena);
-                self.arena_depth += 1;
-
-                // Push a new scope for arena variables
-                self.push_scope();
-
-                // Evaluate the block
-                let result = self.eval_block(block);
-
-                // Before exiting, check for escape: scan OUTER scope variables
-                // (skip the arena's own scope, which is the last one)
-                // for any ArenaRefs that reference this arena
-                let mut escape_var = None;
-                let outer_count = self.env.len() - 1;
-                for scope in self.env.iter().take(outer_count) {
-                    for (name, val) in scope {
-                        if contains_arena_ref(val, arena_id) {
-                            escape_var = Some(name.clone());
-                            break;
-                        }
-                    }
-                    if escape_var.is_some() {
-                        break;
-                    }
-                }
-                if let Some(name) = escape_var {
-                    self.arena_depth -= 1;
-                    self.pop_scope();
-                    self.arenas.pop();
-                    return Err(format!(
-                        "arena escape: variable '{}' holds a reference to arena {} that is about to be freed",
-                        name, arena_id
-                    ));
-                }
-
-                // Check if the result itself is an escaping ArenaRef
-                if let Ok(Some(ref v)) = result {
-                    if contains_arena_ref(v, arena_id) {
-                        self.arena_depth -= 1;
-                        self.pop_scope();
-                        self.arenas.pop();
-                        return Err(format!(
-                            "arena escape: returning a reference to arena {} that is about to be freed",
-                            arena_id
-                        ));
-                    }
-                }
-
-                self.arena_depth -= 1;
-                self.pop_scope();
-
-                // Arena is automatically reclaimed when block exits
-                // (the Arena struct is dropped here)
-                self.arenas.pop();
-
-                return result;
+                return self.eval_arena_block(block);
             }
             Stmt::Unsafe(block) => {
                 // Unsafe block: execute body with no restrictions
@@ -302,51 +240,7 @@ impl<'a> Interpreter<'a> {
             Stmt::Alloc { kind, body } => {
                 // alloc(Kind) block: uses the specified allocator
                 return match kind {
-                    AllocKind::Arena => {
-                        // Same as arena block
-                        let arena_id = self.arenas.len();
-                        let arena = Arena { id: arena_id, slots: Vec::new() };
-                        self.arenas.push(arena);
-                        self.arena_depth += 1;
-                        self.push_scope();
-                        let result = self.eval_block(body);
-                        // Check for escape
-                        let mut escape_var = None;
-                        let outer_count = self.env.len() - 1;
-                        for scope in self.env.iter().take(outer_count) {
-                            for (name, val) in scope {
-                                if contains_arena_ref(val, arena_id) {
-                                    escape_var = Some(name.clone());
-                                    break;
-                                }
-                            }
-                            if escape_var.is_some() { break; }
-                        }
-                        if let Some(name) = escape_var {
-                            self.arena_depth -= 1;
-                            self.pop_scope();
-                            self.arenas.pop();
-                            return Err(format!(
-                                "arena escape: variable '{}' holds a reference to arena {} that is about to be freed",
-                                name, arena_id
-                            ));
-                        }
-                        if let Ok(Some(ref v)) = result {
-                            if contains_arena_ref(v, arena_id) {
-                                self.arena_depth -= 1;
-                                self.pop_scope();
-                                self.arenas.pop();
-                                return Err(format!(
-                                    "arena escape: returning a reference to arena {} that is about to be freed",
-                                    arena_id
-                                ));
-                            }
-                        }
-                        self.arena_depth -= 1;
-                        self.pop_scope();
-                        self.arenas.pop();
-                        result
-                    }
+                    AllocKind::Arena => self.eval_arena_block(body),
                     AllocKind::Bump => {
                         let arena_id = self.arenas.len();
                         let arena = Arena { id: arena_id, slots: Vec::new() };
@@ -390,7 +284,7 @@ impl<'a> Interpreter<'a> {
                             Value::LocalShared(rc) => {
                                 *rc.borrow_mut() = v;
                             }
-                            _ => return Err(format!("cannot assign through non-mutable reference (type: {})", Self::type_name(&ref_val))),
+                            _ => return Err(format!("cannot assign through non-mutable reference (type: {})", type_name(&ref_val))),
                         }
                     }
                     Expr::Field(obj, field) => {
@@ -430,7 +324,7 @@ impl<'a> Interpreter<'a> {
                                             return Err(format!("field '{}' not found in shared record", field));
                                         }
                                     }
-                                    _ => return Err(format!("cannot assign to field of non-record shared value (type: {})", Self::type_name(&inner))),
+                                    _ => return Err(format!("cannot assign to field of non-record shared value (type: {})", type_name(&inner))),
                                 }
                             }
                             Value::LocalShared(rc) => {
@@ -445,10 +339,10 @@ impl<'a> Interpreter<'a> {
                                             return Err(format!("field '{}' not found in local_shared record", field));
                                         }
                                     }
-                                    _ => return Err(format!("cannot assign to field of non-record local_shared value (type: {})", Self::type_name(&inner))),
+                                    _ => return Err(format!("cannot assign to field of non-record local_shared value (type: {})", type_name(&inner))),
                                 }
                             }
-                            _ => return Err(format!("cannot assign to field of non-record/non-actor value (type: {})", Self::type_name(&obj_val))),
+                            _ => return Err(format!("cannot assign to field of non-record/non-actor value (type: {})", type_name(&obj_val))),
                         }
                     }
                     Expr::Index(obj, idx) => {
@@ -457,7 +351,7 @@ impl<'a> Interpreter<'a> {
                         let idx_val = self.eval_expr(idx)?;
                         let index = match idx_val {
                             Value::Int(i) => i as usize,
-                            _ => return Err(format!("list index must be an integer, got {}", Self::type_name(&idx_val))),
+                            _ => return Err(format!("list index must be an integer, got {}", type_name(&idx_val))),
                         };
                         match list_val {
                             Value::List(mut items) => {
@@ -480,7 +374,7 @@ impl<'a> Interpreter<'a> {
                                     }
                                 }
                             }
-                            _ => return Err(format!("cannot index-assign to non-list value (type: {})", Self::type_name(&list_val))),
+                            _ => return Err(format!("cannot index-assign to non-list value (type: {})", type_name(&list_val))),
                         }
                     }
                     _ => return Err("assignment target must be a variable".into()),
@@ -719,31 +613,9 @@ impl<'a> Interpreter<'a> {
                         // Evaluate callee - could be a closure or other expression
                         let callee_val = self.eval_expr(callee)?;
                         match callee_val {
-                            Value::Closure { params, ret: _, body, captured } => {
-                                if params.len() != vals.len() {
-                                    return Err(format!(
-                                        "closure expects {} arguments, got {}",
-                                        params.len(),
-                                        vals.len()
-                                    ));
-                                }
-                                self.push_scope();
-                                // Restore captured environment
-                                for (name, val) in &captured {
-                                    self.bind(name, val.clone())?;
-                                }
-                                // Bind parameters
-                                for (p, a) in params.iter().zip(vals) {
-                                    self.bind(&p.name, a)?;
-                                }
-                                let result = self.eval_block(&body);
-                                self.pop_scope();
-                                if let Some(val) = self.early_return.take() {
-                                    return Ok(val);
-                                }
-                                result.map(|v| v.unwrap_or(Value::Unit))
-                            }
-                            _ => Err(format!("cannot call {}: expected a function or closure", Self::type_name(&callee_val))),
+                            Value::Closure { params, ret: _, body, captured } =>
+                                self.apply_closure_inner(&params, &body, &captured, vals),
+                            _ => Err(format!("cannot call {}: expected a function or closure", type_name(&callee_val))),
                         }
                     }
                 }
@@ -779,7 +651,7 @@ impl<'a> Interpreter<'a> {
                 let iter_val = self.eval_expr(iter)?;
                 let items = match iter_val {
                     Value::List(l) => l,
-                    _ => return Err(format!("comprehension requires a list, got {}", Self::type_name(&iter_val))),
+                    _ => return Err(format!("comprehension requires a list, got {}", type_name(&iter_val))),
                 };
                 let mut result = Vec::new();
                 for item in items {
@@ -927,7 +799,7 @@ impl<'a> Interpreter<'a> {
                             _ => Err("field access on non-record local_shared value".into()),
                         }
                     }
-                    _ => Err(format!("cannot access field '{}' on {}", field, Self::type_name(&obj_val))),
+                    _ => Err(format!("cannot access field '{}' on {}", field, type_name(&obj_val))),
                 }
             }
             Expr::Record { ty, fields } => {
@@ -974,7 +846,7 @@ impl<'a> Interpreter<'a> {
                         }
                         Ok(Value::String(s.chars().nth(i as usize).unwrap().to_string()))
                     }
-                    _ => Err(format!("cannot index {} with {}", Self::type_name(&obj), Self::type_name(&idx))),
+                    _ => Err(format!("cannot index {} with {}", type_name(&obj), type_name(&idx))),
                 }
             }
             Expr::SliceExpr { target, start, end } => {
@@ -1239,7 +1111,7 @@ impl<'a> Interpreter<'a> {
                         .map(Value::Int)
                 }
                 Value::Float(x) => Ok(Value::Float(-x)),
-                _ => Err(format!("cannot negate {}", Self::type_name(&v))),
+                _ => Err(format!("cannot negate {}", type_name(&v))),
             },
             UnOp::Not => Ok(Value::Bool(!is_truthy(&v))),
             UnOp::Ref => Ok(Value::Ref(Arc::new(RwLock::new(v)))),
@@ -1248,7 +1120,7 @@ impl<'a> Interpreter<'a> {
                 Value::Ref(rc) | Value::RefMut(rc) => Ok(rc.read().map_err(|e| format!("read lock failed: {}", e))?.clone()),
                 Value::Shared(arc) => Ok(arc.read().map_err(|e| format!("shared read lock failed: {}", e))?.clone()),
                 Value::LocalShared(rc) => Ok(rc.borrow().clone()),
-                _ => Err(format!("cannot dereference {}", Self::type_name(&v))),
+                _ => Err(format!("cannot dereference {}", type_name(&v))),
             },
         }
     }
@@ -1283,7 +1155,7 @@ impl<'a> Interpreter<'a> {
                         .map(Value::Int)
                 }
                 (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a + b)),
-                _ => Err(format!("cannot apply '+' to {} and {}", Self::type_name(&left), Self::type_name(&right))),
+                _ => Err(format!("cannot apply '+' to {} and {}", type_name(&left), type_name(&right))),
             },
             BinOp::Sub => match (&left, &right) {
                 (Value::Int(a), Value::Int(b)) => {
@@ -1292,7 +1164,7 @@ impl<'a> Interpreter<'a> {
                         .map(Value::Int)
                 }
                 (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a - b)),
-                _ => Err(format!("cannot apply '-' to {} and {}", Self::type_name(&left), Self::type_name(&right))),
+                _ => Err(format!("cannot apply '-' to {} and {}", type_name(&left), type_name(&right))),
             },
             BinOp::Mul => match (&left, &right) {
                 (Value::Int(a), Value::Int(b)) => {
@@ -1301,7 +1173,7 @@ impl<'a> Interpreter<'a> {
                         .map(Value::Int)
                 }
                 (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a * b)),
-                _ => Err(format!("cannot apply '*' to {} and {}", Self::type_name(&left), Self::type_name(&right))),
+                _ => Err(format!("cannot apply '*' to {} and {}", type_name(&left), type_name(&right))),
             },
             BinOp::Div => match (&left, &right) {
                 (Value::Int(_), Value::Int(0)) => Err("division by zero".into()),
@@ -1312,7 +1184,7 @@ impl<'a> Interpreter<'a> {
                         .map(Value::Int)
                 }
                 (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a / b)),
-                _ => Err(format!("cannot apply '/' to {} and {}", Self::type_name(&left), Self::type_name(&right))),
+                _ => Err(format!("cannot apply '/' to {} and {}", type_name(&left), type_name(&right))),
             },
             BinOp::Mod => match (&left, &right) {
                 (Value::Int(_), Value::Int(0)) => Err("modulo by zero".into()),
@@ -1321,7 +1193,7 @@ impl<'a> Interpreter<'a> {
                         .ok_or_else(|| format!("integer overflow in modulo: {} % {}", a, b))
                         .map(Value::Int)
                 }
-                _ => Err(format!("cannot apply '%' to {} and {}", Self::type_name(&left), Self::type_name(&right))),
+                _ => Err(format!("cannot apply '%' to {} and {}", type_name(&left), type_name(&right))),
             },
             BinOp::Pow => match (&left, &right) {
                 (Value::Int(_), Value::Int(b)) if *b < 0 => Err("negative exponent not supported for integers".into()),
@@ -1331,7 +1203,7 @@ impl<'a> Interpreter<'a> {
                         .map(Value::Int)
                 }
                 (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a.powf(*b))),
-                _ => Err(format!("cannot apply '^' to {} and {}", Self::type_name(&left), Self::type_name(&right))),
+                _ => Err(format!("cannot apply '^' to {} and {}", type_name(&left), type_name(&right))),
             },
             BinOp::EqCmp => Ok(Value::Bool(values_equal(&left, &right))),
             BinOp::NeCmp => Ok(Value::Bool(!values_equal(&left, &right))),
@@ -1341,67 +1213,81 @@ impl<'a> Interpreter<'a> {
             BinOp::Ge => compare_op(left, right, |o| o != std::cmp::Ordering::Less),
             BinOp::BitAnd => match (&left, &right) {
                 (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a & b)),
-                _ => Err(format!("cannot apply '&' to {} and {}", Self::type_name(&left), Self::type_name(&right))),
+                _ => Err(format!("cannot apply '&' to {} and {}", type_name(&left), type_name(&right))),
             },
             BinOp::BitOr => match (&left, &right) {
                 (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a | b)),
-                _ => Err(format!("cannot apply '|' to {} and {}", Self::type_name(&left), Self::type_name(&right))),
+                _ => Err(format!("cannot apply '|' to {} and {}", type_name(&left), type_name(&right))),
             },
             BinOp::BitXor => match (&left, &right) {
                 (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a ^ b)),
-                _ => Err(format!("cannot apply '^' to {} and {}", Self::type_name(&left), Self::type_name(&right))),
+                _ => Err(format!("cannot apply '^' to {} and {}", type_name(&left), type_name(&right))),
             },
             BinOp::Shl => match (&left, &right) {
                 (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a << b)),
-                _ => Err(format!("cannot apply '<<' to {} and {}", Self::type_name(&left), Self::type_name(&right))),
+                _ => Err(format!("cannot apply '<<' to {} and {}", type_name(&left), type_name(&right))),
             },
             BinOp::Shr => match (&left, &right) {
                 (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a >> b)),
-                _ => Err(format!("cannot apply '>>' to {} and {}", Self::type_name(&left), Self::type_name(&right))),
+                _ => Err(format!("cannot apply '>>' to {} and {}", type_name(&left), type_name(&right))),
             },
             BinOp::Range => match (&left, &right) {
                 (Value::Int(a), Value::Int(b)) => Ok(Value::Range { start: *a, end: *b }),
-                _ => Err(format!("cannot apply '..' to {} and {}", Self::type_name(&left), Self::type_name(&right))),
+                _ => Err(format!("cannot apply '..' to {} and {}", type_name(&left), type_name(&right))),
             },
             BinOp::Assign => Err("assignment as expression not supported".into()),
             BinOp::And | BinOp::Or => unreachable!(),
         }
     }
 
-    /// Get a human-readable type name for a value (standalone, no interpreter state needed).
-    fn type_name(val: &Value) -> &'static str {
-        match val {
-            Value::Int(_) => "int",
-            Value::Float(_) => "float",
-            Value::Bool(_) => "bool",
-            Value::String(_) => "string",
-            Value::Unit => "unit",
-            Value::List(_) => "list",
-            Value::Array(_) => "array",
-            Value::Tuple(_) => "tuple",
-            Value::Variant(_, _) => "variant",
-            Value::Record(_, _) => "record",
-            Value::Error(_) => "error",
-            Value::Newtype(_) => "newtype",
-            Value::Type(_) => "type",
-            Value::Closure { .. } => "closure",
-            Value::QuoteAst(_) => "AST",
-            Value::Shared(_) => "shared",
-            Value::LocalShared(_) => "local_shared",
-            Value::Ref(_) => "ref",
-            Value::RefMut(_) => "ref_mut",
-            Value::Cap(_) => "cap",
-            Value::Actor(_) => "actor",
-            Value::Future(_) => "future",
-            Value::ArenaRef(_, _) => "arena_ref",
-            Value::ArenaBlock(_) => "arena_block",
-            Value::WeakShared(_) | Value::WeakLocal(_) => "weak",
-            Value::Allocator(_) => "allocator",
-            Value::Slice { .. } => "slice",
-            Value::Range { .. } => "range",
-            Value::CBuffer(_) => "c_buffer",
-            Value::DynTrait { .. } => "dyn_trait",
+    /// Evaluate an arena block: create arena, push scope, eval block, check escape.
+    /// Shared by Stmt::Arena and Stmt::Alloc { kind: AllocKind::Arena }.
+    fn eval_arena_block(&mut self, block: &Block) -> Result<Option<Value>, String> {
+        let arena_id = self.arenas.len();
+        self.arenas.push(Arena { id: arena_id, slots: Vec::new() });
+        self.arena_depth += 1;
+        self.push_scope();
+        let result = self.eval_block(block);
+
+        // Check for escape in outer scopes
+        let outer_count = self.env.len() - 1;
+        let mut escape_var = None;
+        for scope in self.env.iter().take(outer_count) {
+            for (name, val) in scope {
+                if contains_arena_ref(val, arena_id) {
+                    escape_var = Some(name.clone());
+                    break;
+                }
+            }
+            if escape_var.is_some() { break; }
         }
+        if let Some(name) = escape_var {
+            self.arena_depth -= 1;
+            self.pop_scope();
+            self.arenas.pop();
+            return Err(format!(
+                "arena escape: variable '{}' holds a reference to arena {} that is about to be freed",
+                name, arena_id
+            ));
+        }
+
+        // Check if the result itself contains an ArenaRef
+        if let Ok(Some(ref v)) = result {
+            if contains_arena_ref(v, arena_id) {
+                self.arena_depth -= 1;
+                self.pop_scope();
+                self.arenas.pop();
+                return Err(format!(
+                    "arena escape: returning a reference to arena {} that is about to be freed",
+                    arena_id
+                ));
+            }
+        }
+
+        self.arena_depth -= 1;
+        self.pop_scope();
+        self.arenas.pop();
+        result
     }
 }
 
