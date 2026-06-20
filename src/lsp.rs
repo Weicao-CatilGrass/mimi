@@ -1,5 +1,5 @@
-use crate::{core, lexer, parser};
-use crate::ast::Item;
+use crate::{core, lexer, parser, fmt};
+use crate::ast::{Item, Expr, Stmt, FuncDef, TypeDef};
 use std::collections::HashMap;
 use std::io::{self, BufRead, Read, Write};
 
@@ -96,7 +96,10 @@ impl LspServer {
                             "interFileDependencies": false,
                             "workspaceDiagnostics": false
                         },
-                        "foldingRangeProvider": true
+                        "foldingRangeProvider": true,
+                        "documentFormattingProvider": true,
+                        "documentHighlightProvider": true,
+                        "inlayHintProvider": true
                     }
                 });
                 Some(serde_json::json!({
@@ -315,6 +318,57 @@ impl LspServer {
                     "jsonrpc": "2.0",
                     "id": id,
                     "result": ranges
+                }))
+            }
+            "textDocument/formatting" => {
+                let uri = msg.get("params")?
+                    .get("textDocument")?
+                    .get("uri")?
+                    .as_str()?;
+                let text = self.documents.get(uri)?;
+                let formatted = fmt::Formatter::new().format(text);
+                let line_count = text.lines().count();
+                let last_line_len = text.lines().last().map(|l| l.len()).unwrap_or(0);
+                Some(serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "result": [{
+                        "range": {
+                            "start": { "line": 0, "character": 0 },
+                            "end": { "line": (line_count - 1).max(0), "character": last_line_len }
+                        },
+                        "newText": formatted
+                    }]
+                }))
+            }
+            "textDocument/documentHighlight" => {
+                let uri = msg.get("params")?
+                    .get("textDocument")?
+                    .get("uri")?
+                    .as_str()?;
+                let position = msg.get("params")?
+                    .get("position")?;
+                let line = position.get("line")?.as_u64()? as usize;
+                let character = position.get("character")?.as_u64()? as usize;
+                let text = self.documents.get(uri)?;
+                let highlights = self.compute_document_highlight(text, line, character);
+                Some(serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "result": highlights
+                }))
+            }
+            "textDocument/inlayHint" => {
+                let uri = msg.get("params")?
+                    .get("textDocument")?
+                    .get("uri")?
+                    .as_str()?;
+                let text = self.documents.get(uri)?;
+                let hints = self.compute_inlay_hints(text);
+                Some(serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "result": hints
                 }))
             }
             "shutdown" => {
@@ -1070,6 +1124,269 @@ impl LspServer {
         }
 
         tokens
+    }
+
+    /// Compute document highlights for the symbol at the given position
+    pub fn compute_document_highlight(&self, text: &str, line: usize, character: usize) -> Vec<serde_json::Value> {
+        let word = self.get_word_at(text, line, character);
+        if word.is_empty() {
+            return Vec::new();
+        }
+
+        let mut highlights = Vec::new();
+        let mut def_line: Option<usize> = None;
+        let mut def_col: Option<usize> = None;
+        let lines: Vec<&str> = text.lines().collect();
+
+        // Find definition location
+        if let Some(file) = self.parse_with_recovery(text) {
+            for item in &file.items {
+                match item {
+                    Item::Func(f) if f.name == word => {
+                        def_line = text.lines().position(|l| l.contains(&format!("func {}", word)));
+                        def_col = def_line.and_then(|l| lines.get(l).map(|line| line.find(&format!("func {}", word)).unwrap_or(0) + 5));
+                        break;
+                    }
+                    Item::Type(t) if t.name == word => {
+                        def_line = text.lines().position(|l| l.contains(&format!("type {}", word)));
+                        def_col = def_line.and_then(|l| lines.get(l).map(|line| line.find(&format!("type {}", word)).unwrap_or(0) + 5));
+                        break;
+                    }
+                    Item::Module(m) if m.name == word => {
+                        def_line = text.lines().position(|l| l.contains(&format!("module {}", word)));
+                        def_col = def_line.and_then(|l| lines.get(l).map(|line| line.find(&format!("module {}", word)).unwrap_or(0) + 7));
+                        break;
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        // Add definition as Write highlight
+        if let (Some(dl), Some(dc)) = (def_line, def_col) {
+            highlights.push(serde_json::json!({
+                "range": {
+                    "start": { "line": dl, "character": dc },
+                    "end": { "line": dl, "character": dc + word.len() }
+                },
+                "kind": 3 // Write
+            }));
+        }
+
+        // Find all usages as Text highlights
+        for (i, line_text) in lines.iter().enumerate() {
+            let mut start = 0;
+            while let Some(pos) = line_text[start..].find(word.as_str()) {
+                let abs_pos = start + pos;
+                let before = abs_pos > 0 && line_text.chars().nth(abs_pos - 1).map(|c| c.is_alphanumeric() || c == '_').unwrap_or(false);
+                let after = line_text.chars().nth(abs_pos + word.len()).map(|c| c.is_alphanumeric() || c == '_').unwrap_or(false);
+
+                if !before && !after {
+                    // Skip definition location
+                    if let (Some(dl), Some(dc)) = (def_line, def_col) {
+                        if i == dl && dc == abs_pos {
+                            start = abs_pos + 1;
+                            continue;
+                        }
+                    }
+                    highlights.push(serde_json::json!({
+                        "range": {
+                            "start": { "line": i, "character": abs_pos },
+                            "end": { "line": i, "character": abs_pos + word.len() }
+                        },
+                        "kind": 1 // Text
+                    }));
+                }
+                start = abs_pos + 1;
+            }
+        }
+
+        highlights
+    }
+
+    /// Compute inlay hints for the document: type hints for let bindings
+    /// and parameter name hints for function calls.
+    pub fn compute_inlay_hints(&self, text: &str) -> Vec<serde_json::Value> {
+        let mut hints = Vec::new();
+        let file = match self.parse_with_recovery(text) {
+            Some(f) => f,
+            None => return hints,
+        };
+
+        // Pre-build param name lookup from all functions
+        let mut func_params: HashMap<String, Vec<String>> = HashMap::new();
+        for item in &file.items {
+            if let Item::Func(f) = item {
+                func_params.insert(f.name.clone(), f.params.iter().map(|p| p.name.clone()).collect());
+            }
+        }
+
+        // Walk all function definitions looking for let statements and calls
+        for item in &file.items {
+            if let Item::Func(f) = item {
+                self.collect_hints_from_block(&f.body, text, &mut hints, &func_params);
+            }
+        }
+
+        hints
+    }
+
+    /// Recursively collect inlay hints from statements in a block
+    fn collect_hints_from_block(
+        &self,
+        stmts: &[Stmt],
+        text: &str,
+        hints: &mut Vec<serde_json::Value>,
+        func_params: &HashMap<String, Vec<String>>,
+    ) {
+        for stmt in stmts {
+            match stmt {
+                Stmt::Let { pat, init, .. } => {
+                    // Type hint for `let x = <literal>` — show the inferred type
+                    if let Some(init_expr) = init {
+                        let type_str = match init_expr {
+                            Expr::Literal(lit) => match lit {
+                                crate::ast::Lit::Int(_) => "i64",
+                                crate::ast::Lit::Float(_) => "f64",
+                                crate::ast::Lit::Bool(_) => "bool",
+                                crate::ast::Lit::String(_) | crate::ast::Lit::FString(_) => "string",
+                                crate::ast::Lit::Unit => "()",
+                            },
+                            _ => "",
+                        };
+                        if !type_str.is_empty() {
+                            // Find the `=` position on the let line
+                            let lines: Vec<&str> = text.lines().collect();
+                            let pat_name = match pat {
+                                crate::ast::Pattern::Variable(n) => n.as_str(),
+                                _ => "",
+                            };
+                            if let Some(let_line) = lines.iter().position(|l| {
+                                l.trim().starts_with("let") && pat_name.len() > 0 && l.contains(pat_name)
+                            }) {
+                                let line_text = lines[let_line];
+                                if let Some(eq_pos) = line_text.find('=') {
+                                    hints.push(serde_json::json!({
+                                        "position": {
+                                            "line": let_line,
+                                            "character": eq_pos + 1
+                                        },
+                                        "label": format!(": {}", type_str),
+                                        "kind": 1,  // Type
+                                        "paddingLeft": true
+                                    }));
+                                }
+                            }
+                        }
+                    }
+                }
+                Stmt::Expr(expr) | Stmt::Return(Some(expr)) => {
+                    // Parameter name hints for function calls
+                    self.collect_param_hints(expr, text, hints, func_params);
+                }
+                Stmt::If { cond: _, then_, else_ } => {
+                    self.collect_hints_from_block(then_, text, hints, func_params);
+                    if let Some(els) = else_ {
+                        self.collect_hints_from_block(els, text, hints, func_params);
+                    }
+                }
+                Stmt::While { cond: _, body } => {
+                    self.collect_hints_from_block(body, text, hints, func_params);
+                }
+                Stmt::For { var: _, iterable: _, body } => {
+                    self.collect_hints_from_block(body, text, hints, func_params);
+                }
+                _ => {}
+            }
+        }
+    }
+
+    /// Collect parameter name hints for function calls
+    fn collect_param_hints(
+        &self,
+        expr: &Expr,
+        text: &str,
+        hints: &mut Vec<serde_json::Value>,
+        func_params: &HashMap<String, Vec<String>>,
+    ) {
+        match expr {
+            Expr::Call(callee, args) => {
+                // Extract function name from callee
+                let func_name = match callee.as_ref() {
+                    Expr::Ident(n) => n.as_str(),
+                    _ => return,
+                };
+                let param_names = match func_params.get(func_name) {
+                    Some(p) => p,
+                    None => return,
+                };
+                // Find the call line
+                let call_line = text.lines().position(|l| {
+                    l.contains(func_name) && l.contains('(')
+                });
+                let cl = match call_line {
+                    Some(l) => l,
+                    None => return,
+                };
+                let line_text: Vec<&str> = text.lines().collect();
+                let line_content = match line_text.get(cl) {
+                    Some(l) => l,
+                    None => return,
+                };
+                // Find opening paren position
+                let paren_pos = match line_content.find('(') {
+                    Some(p) => p,
+                    None => return,
+                };
+                // For each argument that is non-trivial, add a param hint
+                let mut depth = 0i32;
+                let mut arg_start = paren_pos + 1;
+                let mut arg_idx = 0;
+                for (ch_idx, ch) in line_content.chars().enumerate() {
+                    if ch_idx < paren_pos + 1 { continue; }
+                    match ch {
+                        '(' | '[' | '{' => depth += 1,
+                        ')' | ']' | '}' => depth -= 1,
+                        ',' if depth == 0 => {
+                            if arg_idx < args.len() && arg_idx < param_names.len() {
+                                let arg_str = line_content[arg_start..ch_idx].trim();
+                                if !arg_str.is_empty() && !arg_str.chars().all(|c| c.is_alphanumeric() || c == '_') {
+                                    hints.push(serde_json::json!({
+                                        "position": {
+                                            "line": cl,
+                                            "character": arg_start as u64
+                                        },
+                                        "label": format!("{}:", param_names[arg_idx]),
+                                        "kind": 2,  // Parameter
+                                        "paddingRight": true
+                                    }));
+                                }
+                            }
+                            arg_start = ch_idx + 1;
+                            arg_idx += 1;
+                        }
+                        _ => {}
+                    }
+                }
+                // Last argument
+                if arg_idx < args.len() && arg_idx < param_names.len() {
+                    let end_pos = line_content.rfind(')').unwrap_or(line_content.len());
+                    let arg_str = line_content[arg_start..end_pos].trim();
+                    if !arg_str.is_empty() && !arg_str.chars().all(|c| c.is_alphanumeric() || c == '_') {
+                        hints.push(serde_json::json!({
+                            "position": {
+                                "line": cl,
+                                "character": arg_start as u64
+                            },
+                            "label": format!("{}:", param_names[arg_idx]),
+                            "kind": 2,
+                            "paddingRight": true
+                        }));
+                    }
+                }
+            }
+            _ => {}
+        }
     }
 
     /// Helper: get the word at a given position
