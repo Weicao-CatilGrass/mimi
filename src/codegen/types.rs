@@ -142,6 +142,7 @@ pub fn mimi_type_to_llvm_extern<'ctx>(ctx: &'ctx Context, ty: &Type) -> Option<B
     match ty {
         Type::Name(name, _args) => match name.as_str() {
             "i32" => Some(BasicTypeEnum::IntType(ctx.i32_type())),
+            "bool" => Some(BasicTypeEnum::IntType(ctx.i8_type())),
             _ => mimi_type_to_llvm(ctx, ty),
         },
         // For extern FFI, references are just pointers (no struct wrapping)

@@ -590,15 +590,29 @@ impl<'ctx> CodeGenerator<'ctx> {
             return Ok(());
         }
 
-        // Substitute generic params in ret type and param types
-        let ret_type = match &func.ret {
-            Some(ty) => {
-                let resolved = self.resolve_type(ty);
-                types::mimi_type_to_llvm(self.context, &resolved)
-                    .unwrap_or(BasicTypeEnum::IntType(self.context.i64_type()))
-            }
-            None => BasicTypeEnum::IntType(self.context.i64_type()),
+        // Delegate async generic funcs to compile_async_func
+        if func.is_async {
+            return self.compile_async_func(func);
+        }
+
+        // For impl Trait return types, determine the concrete type from the body
+        let effective_ret_override = if let Some(Type::ImplTrait(_)) = &func.ret {
+            Self::concrete_return_type_for_impl_trait(&func.body)
+                .and_then(|tn| self.type_llvm.get(&tn).cloned())
+        } else {
+            None
         };
+
+        // Substitute generic params in ret type and param types
+        let ret_type = effective_ret_override.or_else(|| {
+            match &func.ret {
+                Some(ty) => {
+                    let resolved = self.resolve_type(ty);
+                    types::mimi_type_to_llvm(self.context, &resolved)
+                }
+                None => None,
+            }
+        }).unwrap_or(BasicTypeEnum::IntType(self.context.i64_type()));
 
         let mut param_types = Vec::new();
         for param in &func.params {
@@ -636,8 +650,39 @@ impl<'ctx> CodeGenerator<'ctx> {
                 self.builder.build_store(alloca, function.get_nth_param(i as u32).ok_or_else(|| CompileError::LlvmError("param index matches".to_string()))?)
                     .map_err(|e| CompileError::LlvmError(format!("store error: {}", e)))?;
                 vars.insert(param.name.clone(), (alloca, ty));
+                
+                // Track type name for method dispatch
+                let resolved_param = self.resolve_type(&param.ty);
+                if let Type::Name(tn, _) = &resolved_param {
+                    self.var_type_names.insert(param.name.clone(), tn.clone());
+                }
+                if let Type::DynTrait(_) = &resolved_param {
+                    self.var_type_names.insert(param.name.clone(), crate::core::fmt_type(&resolved_param));
+                }
+                if let Type::ImplTrait(_) = &resolved_param {
+                    self.var_type_names.insert(param.name.clone(), crate::core::fmt_type(&resolved_param));
+                }
+                
                 if matches!(&param.ty, Type::Cap(_)) {
                     self.register_cap(&param.name, alloca);
+                }
+            }
+        }
+
+        // Collect ensures contracts for runtime checking at return points
+        self.ensures_stmts = if self.verify_contracts {
+            func.body.iter().filter_map(|s| {
+                if let Stmt::Ensures(expr, _) = s { Some(Box::new(expr.clone())) } else { None }
+            }).collect()
+        } else {
+            Vec::new()
+        };
+
+        // Compile requires contracts as runtime asserts when verify_contracts is enabled
+        if self.verify_contracts {
+            for stmt in &func.body {
+                if let Stmt::Requires(expr, _) = stmt {
+                    self.compile_contract_assert(expr, &vars, &format!("requires violation in '{}'", func.name))?;
                 }
             }
         }
@@ -651,6 +696,10 @@ impl<'ctx> CodeGenerator<'ctx> {
         self.pop_cap_scope();
 
         if !self.block_has_terminator() {
+            let ensures = self.ensures_stmts.clone();
+            for ensures_expr in &ensures {
+                self.compile_contract_assert(ensures_expr, &vars, &format!("ensures violation in '{}'", func.name))?;
+            }
             let adjusted = self.adjust_int_val(last_val, ret_type)?;
             self.builder.build_return(Some(&adjusted)).map_err(|e| CompileError::LlvmError(format!("return error: {}", e)))?;
         }
