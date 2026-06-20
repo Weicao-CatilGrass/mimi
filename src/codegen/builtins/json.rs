@@ -17,7 +17,21 @@ impl<'ctx> CodeGenerator<'ctx> {
                     .ok_or_else(|| "sprintf not declared".to_string())?;
                 let strcpy_fn = self.module.get_function("strcpy")
                     .ok_or_else(|| "strcpy not declared".to_string())?;
-                let alloc_size = i64_ty.const_int(64, false);
+                let alloc_size = match &args[0] {
+                    BasicMetadataValueEnum::StructValue(sv) => {
+                        let str_len = self.builder.build_extract_value(*sv, 1, "str_len")
+                            .map_err(|e| format!("extract str_len error: {}", e))?;
+                        let three = i64_ty.const_int(3, false);
+                        match str_len {
+                            BasicValueEnum::IntValue(iv) =>
+                                self.builder.build_int_add(iv, three, "buf_size")
+                                    .map_err(|e| format!("add error: {}", e))?,
+                            _ => return Err(CompileError::Generic(
+                                "string length field is not i64".into())),
+                        }
+                    }
+                    _ => i64_ty.const_int(64, false),
+                };
                 let buf = self.builder.build_call(malloc_fn, &[
                     BasicMetadataValueEnum::IntValue(alloc_size),
                 ], "json_malloc")
@@ -25,7 +39,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     .try_as_basic_value_opt()
                     .ok_or("malloc returned void")?
                     .into_pointer_value();
-                self.register_heap_alloc(buf);
+                // NOTE: not registered — returned value owns the allocation
                 match args[0] {
                     BasicMetadataValueEnum::FloatValue(fv) => {
                         let fmt = self.builder.build_global_string_ptr("%f", "json_float_fmt")

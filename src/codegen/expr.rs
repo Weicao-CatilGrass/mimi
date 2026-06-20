@@ -2282,6 +2282,12 @@ impl<'ctx> CodeGenerator<'ctx> {
             .map_err(|e| format!("extract_value error: {}", e))?;
         let payload = self.builder.build_extract_value(sv, 1, "payload")
             .map_err(|e| format!("extract_value error: {}", e))?;
+        let err_val = if is_result {
+            self.builder.build_extract_value(sv, 2, "err_val")
+                .map_err(|e| format!("extract_value error: {}", e))?
+        } else {
+            payload
+        };
 
         // Compare discriminant != 0 (Ok/Some = 1, Err/None = 0)
         let disc_int = disc.into_int_value();
@@ -2307,7 +2313,7 @@ impl<'ctx> CodeGenerator<'ctx> {
         let try_exit_fn = self.module.get_function("mimi_try_exit")
             .ok_or("mimi_try_exit not declared")?;
         self.builder.build_call(try_exit_fn, &[
-            BasicMetadataValueEnum::IntValue(payload.into_int_value()),
+            BasicMetadataValueEnum::IntValue(err_val.into_int_value()),
         ], "try_exit")
             .map_err(|e| format!("try_exit error: {}", e))?;
         let unreachable = self.context.append_basic_block(function, "unreachable");
@@ -3327,11 +3333,11 @@ impl<'ctx> CodeGenerator<'ctx> {
                 if lw == rw {
                     (lhs, rhs)
                 } else if lw < rw {
-                    let ext = self.builder.build_int_z_extend(l, r.get_type(), "promote")
+                    let ext = self.builder.build_int_s_extend(l, r.get_type(), "promote")
                         .map_err(|e| format!("int promote error: {}", e))?;
                     (ext.into(), rhs)
                 } else {
-                    let ext = self.builder.build_int_z_extend(r, l.get_type(), "promote")
+                    let ext = self.builder.build_int_s_extend(r, l.get_type(), "promote")
                         .map_err(|e| format!("int promote error: {}", e))?;
                     (lhs, ext.into())
                 }
@@ -3535,7 +3541,7 @@ impl<'ctx> CodeGenerator<'ctx> {
             },
             BinOp::Shr => match (lhs, rhs) {
                 (BasicValueEnum::IntValue(l), BasicValueEnum::IntValue(r)) =>
-                    Ok(self.builder.build_right_shift(l, r, false, "shr").map_err(|e| format!("shr error: {}", e))?.into()),
+                    Ok(self.builder.build_right_shift(l, r, true, "shr").map_err(|e| format!("shr error: {}", e))?.into()),
                 _ => Err("shr requires integer types".into()),
             },
             _ => Err(format!("unsupported binary operator {:?}", op)),
