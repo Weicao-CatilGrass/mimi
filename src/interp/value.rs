@@ -1,4 +1,5 @@
 use crate::ast::*;
+use crate::interp::error::InterpError;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::{Rc, Weak as RcWeak};
@@ -77,7 +78,7 @@ pub enum Value {
     Tuple(Vec<Value>),
     Variant(String, Vec<Value>),
     Record(Option<String>, HashMap<String, Value>),
-    Future(std::sync::Arc<std::sync::Mutex<std::sync::mpsc::Receiver<Result<Value, String>>>>),
+    Future(std::sync::Arc<std::sync::Mutex<std::sync::mpsc::Receiver<Result<Value, InterpError>>>>),
     Error(String),
     ArenaRef(usize, usize),
     ArenaBlock(usize),
@@ -475,25 +476,25 @@ pub(crate) fn numeric_op(
     b: Value,
     int_op: fn(i64, i64) -> i64,
     float_op: fn(f64, f64) -> f64,
-) -> Result<Value, String> {
+) -> Result<Value, InterpError> {
     match (a, b) {
         (Value::Int(a), Value::Int(b)) => Ok(Value::Int(int_op(a, b))),
         (Value::Float(a), Value::Float(b)) => Ok(Value::Float(float_op(a, b))),
         (Value::Int(a), Value::Float(b)) => Ok(Value::Float(float_op(a as f64, b))),
         (Value::Float(a), Value::Int(b)) => Ok(Value::Float(float_op(a, b as f64))),
-        _ => Err("arithmetic requires numbers".into()),
+        _ => Err(InterpError::new("arithmetic requires numbers")),
     }
 }
 
-pub(crate) fn compare_op<F>(a: Value, b: Value, f: F) -> Result<Value, String>
+pub(crate) fn compare_op<F>(a: Value, b: Value, f: F) -> Result<Value, InterpError>
 where
     F: Fn(std::cmp::Ordering) -> bool,
 {
     let ord = match (&a, &b) {
         (Value::Int(a), Value::Int(b)) => a.cmp(b),
-        (Value::Float(a), Value::Float(b)) => a.partial_cmp(b).ok_or("cannot compare NaN with float")?,
+        (Value::Float(a), Value::Float(b)) => a.partial_cmp(b).ok_or_else(|| InterpError::new("cannot compare NaN with float"))?,
         (Value::String(a), Value::String(b)) => a.cmp(b),
-        _ => return Err(format!("cannot compare {} with {}", type_name(&a), type_name(&b))),
+        _ => return Err(InterpError::new(format!("cannot compare {} with {}", type_name(&a), type_name(&b)))),
     };
     Ok(Value::Bool(f(ord)))
 }

@@ -8,6 +8,7 @@
 
 use crate::ast::{File, Item, FuncDef, Stmt, Commitment};
 use crate::diagnostic::{Diagnostic, Severity};
+use crate::diagnostic::codes::{W001, W002, W003, W004};
 use crate::span::Span;
 
 pub struct Linter;
@@ -34,7 +35,7 @@ impl Linter {
                     if !is_followed_by_impl(&file.items, idx) {
                         // TODO: Item::Desc lacks a pos field; add one to propagate real span
                         diagnostics.push(Diagnostic::warning_code(
-                            "W001",
+                            W001,
                             format!("standalone `desc` has no associated implementation"),
                             Span::single(0, 0),
                         ));
@@ -44,7 +45,7 @@ impl Linter {
                     if !is_followed_by_impl(&file.items, idx) {
                         // TODO: Item::Rule lacks a pos field; add one to propagate real span
                         diagnostics.push(Diagnostic::warning_code(
-                            "W001",
+                            W001,
                             format!("standalone `rule` has no associated implementation"),
                             Span::single(0, 0),
                         ));
@@ -59,7 +60,7 @@ impl Linter {
             let trimmed = line.trim();
             if trimmed == "..." {
                 diagnostics.push(Diagnostic::warning_code(
-                    "W003",
+                    W003,
                     "placeholder `...` residual in .mimi file",
                     Span::single(line_idx + 1, 1),
                 ));
@@ -73,7 +74,7 @@ impl Linter {
         // W004: Check function naming convention (snake_case)
         if !func.name.is_empty() && !is_snake_case(&func.name) && !is_operator(&func.name) {
             diagnostics.push(Diagnostic::warning_code(
-                "W004",
+                W004,
                 format!("function `{}` should use snake_case naming", func.name),
                 Span::single(func.pos.0, func.pos.1),
             ));
@@ -82,7 +83,7 @@ impl Linter {
         // W002: Check for locked fragments with empty body
         if func.commitment.is_locked() && func.body.is_empty() {
             diagnostics.push(Diagnostic::warning_code(
-                "W002",
+                W002,
                 format!("locked function `{}` has empty implementation", func.name),
                 Span::single(func.pos.0, func.pos.1),
             ));
@@ -138,7 +139,7 @@ mod tests {
         let file = parse_source(src);
         let linter = Linter::new();
         let result = linter.lint(&file, src);
-        assert!(result.diagnostics.iter().any(|d| d.code.as_deref() == Some("W004")),
+        assert!(result.diagnostics.iter().any(|d| d.code.as_deref() == Some(W004)),
             "should detect non-snake_case function name");
     }
 

@@ -1,7 +1,7 @@
 use super::*;
 
 impl<'a> Interpreter<'a> {
-    pub(crate) fn spawn_actor(&mut self, actor_name: &str, _args: Vec<Value>) -> Result<Value, String> {
+    pub(crate) fn spawn_actor(&mut self, actor_name: &str, _args: Vec<Value>) -> Result<Value, InterpError> {
         let actor_def = self.find_actor(actor_name)
             .ok_or_else(|| format!("actor '{}' not found", actor_name))?;
 

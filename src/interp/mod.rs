@@ -13,6 +13,9 @@ pub(crate) mod pool;
 pub use value::*;
 pub use error::InterpError;
 
+/// Alias for interpreter results.
+pub type InterpResult<T> = std::result::Result<T, InterpError>;
+
 use crate::ast::*;
 use crate::ffi::FfiContract;
 use std::collections::HashMap;
@@ -160,12 +163,12 @@ impl<'a> Interpreter<'a> {
     // 768 frames × 2KB = 1.5MB, leaving ~0.5MB headroom.
     const MAX_RECURSION_DEPTH: usize = 768;
 
-    fn with_depth_check<F, T>(&mut self, f: F) -> Result<T, String>
+    fn with_depth_check<F, T>(&mut self, f: F) -> Result<T, InterpError>
     where
-        F: FnOnce(&mut Self) -> Result<T, String>,
+        F: FnOnce(&mut Self) -> Result<T, InterpError>,
     {
         if self.recursion_depth >= Self::MAX_RECURSION_DEPTH {
-            return Err("recursion limit exceeded (possible infinite recursion)".into());
+            return Err(InterpError::new("recursion limit exceeded (possible infinite recursion)"));
         }
         self.recursion_depth += 1;
         let result = f(self);
@@ -181,9 +184,9 @@ impl<'a> Interpreter<'a> {
         body: &Block,
         captured: &HashMap<String, Value>,
         args: Vec<Value>,
-    ) -> Result<Value, String> {
+    ) -> Result<Value, InterpError> {
         if params.len() != args.len() {
-            return Err(format!("closure expects {} arguments, got {}", params.len(), args.len()));
+            return Err(InterpError::new(format!("closure expects {} arguments, got {}", params.len(), args.len())));
         }
         self.push_scope();
         for (n, v) in captured {
@@ -556,7 +559,7 @@ impl<'a> Interpreter<'a> {
     }
 
     /// Get type info for a type name
-    fn type_info_for(&self, type_name: &str) -> Result<Value, String> {
+    fn type_info_for(&self, type_name: &str) -> Result<Value, InterpError> {
         if let Some(type_def) = self.type_defs.get(type_name) {
             let mut fields_map = HashMap::new();
             match &type_def.kind {
@@ -599,21 +602,19 @@ impl<'a> Interpreter<'a> {
             info.insert("fields".into(), Value::List(fields_map.into_values().collect()));
             Ok(Value::Record(None, info))
         } else {
-            Err(format!("unknown type '{}'", type_name))
+            Err(InterpError::new(format!("unknown type '{}'", type_name)))
         }
     }
 
     pub fn run(&mut self) -> Result<Value, InterpError> {
-        // Evaluate comptime functions (no-arg) at startup
-        self.eval_comptime_funcs().map_err(|e| self.interp_err(e))?;
+        self.eval_comptime_funcs()?;
         let main = self.find_function("main")
-            .ok_or_else(|| self.interp_err("no main() function found".into()))?;
+            .ok_or_else(|| InterpError::new("no main() function found"))?;
         self.call_func(&main, vec![])
-            .map_err(|e| self.interp_err(e))
     }
 
     /// Evaluate comptime functions with no arguments at startup
-    fn eval_comptime_funcs(&mut self) -> Result<(), String> {
+    fn eval_comptime_funcs(&mut self) -> Result<(), InterpError> {
         let funcs: Vec<FuncDef> = self.file.items.iter().filter_map(|item| {
             match item {
                 Item::Func(f) if f.is_comptime && f.params.is_empty() => Some(f.clone()),
@@ -706,7 +707,7 @@ impl<'a> Interpreter<'a> {
         InterpError::with_op(msg, op).with_call_stack(self.call_stack.clone())
     }
 
-    fn bind(&mut self, name: &str, value: Value) -> Result<(), String> {
+    fn bind(&mut self, name: &str, value: Value) -> Result<(), InterpError> {
         let env = self.env.last_mut().ok_or("internal error: scope stack empty in bind")?;
         env.insert(name.into(), value);
         self.moved_vars.last_mut().ok_or("internal error: scope stack empty in bind")?.insert(name.into(), false);
@@ -715,7 +716,7 @@ impl<'a> Interpreter<'a> {
         Ok(())
     }
 
-    fn bind_mut(&mut self, name: &str, value: Value) -> Result<(), String> {
+    fn bind_mut(&mut self, name: &str, value: Value) -> Result<(), InterpError> {
         self.env.last_mut().ok_or("internal error: scope stack empty in bind_mut")?.insert(name.into(), value);
         self.moved_vars.last_mut().ok_or("internal error: scope stack empty in bind_mut")?.insert(name.into(), false);
         self.mut_vars.last_mut().ok_or("internal error: scope stack empty in bind_mut")?.insert(name.into(), true);
@@ -752,14 +753,14 @@ impl<'a> Interpreter<'a> {
         }
     }
 
-    fn assign(&mut self, name: &str, value: Value) -> Result<(), String> {
+    fn assign(&mut self, name: &str, value: Value) -> Result<(), InterpError> {
         for (scope, moved) in self.env.iter_mut().zip(self.moved_vars.iter_mut()).rev() {
             if scope.contains_key(name) {
                 // Check if variable is mutable
                 for mut_scope in self.mut_vars.iter().rev() {
                     if let Some(&is_mut) = mut_scope.get(name) {
                         if !is_mut {
-                            return Err(format!("cannot assign to immutable variable '{}'", name));
+                            return Err(InterpError::new(format!("cannot assign to immutable variable '{}'", name)));
                         }
                         break;
                     }
@@ -769,7 +770,7 @@ impl<'a> Interpreter<'a> {
                 return Ok(());
             }
         }
-        Err(format!("undefined variable '{}' in assignment", name))
+        Err(InterpError::new(format!("undefined variable '{}' in assignment", name)))
     }
 
     /// Push a new compensation scope level

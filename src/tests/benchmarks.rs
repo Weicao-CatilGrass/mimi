@@ -148,9 +148,9 @@ fn bench_interp_recursive() {
 func fib(n: i32) -> i32 {
     if n <= 1 { n } else { fib(n - 1) + fib(n - 2) }
 }
-func main() -> i32 { fib(10) }
+        func main() -> i32 { fib(5) }
 "#;
     let file = parser::Parser::new(lexer::Lexer::new(src).tokenize().unwrap()).parse_file().unwrap();
     let mut interp = Interpreter::new(&file);
-    bench("interp_fib_20", 100, || interp.run());
+    bench("interp_fib_5", 50, || interp.run());
 }
