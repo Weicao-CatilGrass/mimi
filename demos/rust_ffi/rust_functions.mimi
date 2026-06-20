@@ -1,0 +1,12 @@
+extern "C" {
+    func rust_fib(n: i64) -> i64
+    func rust_sum_squares(n: i64) -> i64
+}
+
+extern "C" func mimi_fib(n: i64) -> i64 {
+    rust_fib(n)
+}
+
+extern "C" func mimi_sum_squares(n: i64) -> i64 {
+    rust_sum_squares(n)
+}
