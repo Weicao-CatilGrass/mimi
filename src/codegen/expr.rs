@@ -107,6 +107,28 @@ impl<'ctx> CodeGenerator<'ctx> {
         }
     }
 
+    /// Compile an expression, falling back to a function reference if the name is a module function.
+    fn compile_expr_or_func_ref(
+        &mut self,
+        expr: &Expr,
+        vars: &HashMap<String, VarEntry<'ctx>>,
+    ) -> Result<BasicValueEnum<'ctx>, String> {
+        match self.compile_expr(expr, vars) {
+            Ok(val) => Ok(val),
+            Err(_) => {
+                // Try to resolve as a module function
+                if let Expr::Ident(name) = expr {
+                    if let Some(func) = self.module.get_function(name) {
+                        let fn_ptr = func.as_global_value().as_pointer_value();
+                        return Ok(BasicValueEnum::PointerValue(fn_ptr));
+                    }
+                }
+                // Re-compile to get the original error
+                self.compile_expr(expr, vars)
+            }
+        }
+    }
+
     fn compile_binary_expr(
         &mut self,
         op: BinOp,
@@ -1468,11 +1490,12 @@ impl<'ctx> CodeGenerator<'ctx> {
                             .map_err(|e| format!("load error: {}", e))
                     }
                     "map" | "and_then" => {
-                        // Apply closure: if Ok(v) call closure(v), else propagate
+                        // Apply closure/function: if Ok(v) call f(v), else propagate
                         if args.is_empty() {
                             return Err(format!("{} requires a function argument", method));
                         }
-                        let closure_val = self.compile_expr(&args[0], vars)?;
+                        // Try to compile the function argument - could be a variable holding a closure, or a bare function name
+                        let closure_val = self.compile_expr_or_func_ref(&args[0], vars)?;
                         let ok_bb = self.context.append_basic_block(function, "variant_map_ok");
                         let done_bb = self.context.append_basic_block(function, "variant_map_done");
                         let result_alloca = self.builder.build_alloca(BasicTypeEnum::IntType(i64_ty), "variant_map_result")
@@ -1503,7 +1526,57 @@ impl<'ctx> CodeGenerator<'ctx> {
                                 let fn_ptr = self.builder.build_extract_value(sv, 0, "fn_ptr")
                                     .map_err(|e| format!("extract fn_ptr error: {}", e))?.into_pointer_value();
                                 let env_ptr = self.builder.build_extract_value(sv, 1, "env_ptr")
-                                    .map_err(|e| format!("extract env_ptr error: {}", e))?.into_pointer_value();
+                                    .map_err(|e| format!("extract fn_ptr error: {}", e))?.into_pointer_value();
+                                let i8_ptr = self.context.i8_type().ptr_type(inkwell::AddressSpace::default());
+                                let fn_type = i64_ty.fn_type(&[
+                                    BasicMetadataTypeEnum::PointerType(i8_ptr),
+                                    BasicMetadataTypeEnum::IntType(i64_ty),
+                                ], false);
+                                let fn_typed = self.builder.build_pointer_cast(
+                                    fn_ptr, fn_type.ptr_type(inkwell::AddressSpace::default()), "fn_typed"
+                                ).map_err(|e| format!("pointer cast error: {}", e))?;
+                                let call = self.builder.build_indirect_call(
+                                    fn_type, fn_typed, &[
+                                        BasicMetadataValueEnum::PointerValue(env_ptr),
+                                        BasicMetadataValueEnum::IntValue(payload.into_int_value()),
+                                    ], "variant_map_call"
+                                ).map_err(|e| format!("indirect call error: {}", e))?;
+                                let mapped = call.try_as_basic_value().left()
+                                    .unwrap_or(BasicValueEnum::IntValue(i64_ty.const_int(0, false)));
+                                self.builder.build_store(result_alloca, mapped)
+                                    .map_err(|e| format!("store error: {}", e))?;
+                            }
+                            BasicValueEnum::PointerValue(pv) => {
+                                // Check if this is a named function pointer (not a closure struct)
+                                if let Expr::Ident(fn_name) = &args[0] {
+                                    if let Some(func) = self.module.get_function(fn_name) {
+                                        // Plain function call: func(payload)
+                                        let call = self.builder.build_call(func, &[
+                                            BasicMetadataValueEnum::IntValue(payload.into_int_value()),
+                                        ], "variant_map_call")
+                                            .map_err(|e| format!("call error: {}", e))?;
+                                        let mapped = call.try_as_basic_value().left()
+                                            .unwrap_or(BasicValueEnum::IntValue(i64_ty.const_int(0, false)));
+                                        self.builder.build_store(result_alloca, mapped)
+                                            .map_err(|e| format!("store error: {}", e))?;
+                                        self.builder.build_unconditional_branch(done_bb)
+                                            .map_err(|e| format!("branch error: {}", e))?;
+                                        self.builder.position_at_end(done_bb);
+                                        return self.builder.build_load(BasicTypeEnum::IntType(i64_ty), result_alloca, "variant_map_val")
+                                            .map_err(|e| format!("load error: {}", e));
+                                    }
+                                }
+                                // Closure loaded from memory — load the struct first
+                                let closure_struct_ty = self.context.struct_type(&[
+                                    BasicTypeEnum::PointerType(self.context.i8_type().ptr_type(inkwell::AddressSpace::default())),
+                                    BasicTypeEnum::PointerType(self.context.i8_type().ptr_type(inkwell::AddressSpace::default())),
+                                ], false);
+                                let loaded = self.builder.build_load(BasicTypeEnum::StructType(closure_struct_ty), pv, "closure_loaded")
+                                    .map_err(|e| format!("load closure error: {}", e))?.into_struct_value();
+                                let fn_ptr = self.builder.build_extract_value(loaded, 0, "fn_ptr")
+                                    .map_err(|e| format!("extract fn_ptr error: {}", e))?.into_pointer_value();
+                                let env_ptr = self.builder.build_extract_value(loaded, 1, "env_ptr")
+                                    .map_err(|e| format!("extract fn_ptr error: {}", e))?.into_pointer_value();
                                 let i8_ptr = self.context.i8_type().ptr_type(inkwell::AddressSpace::default());
                                 let fn_type = i64_ty.fn_type(&[
                                     BasicMetadataTypeEnum::PointerType(i8_ptr),
@@ -1570,7 +1643,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                         if !is_result {
                             return Err("map_err is only available on Result types".into());
                         }
-                        let closure_val = self.compile_expr(&args[0], vars)?;
+                        let closure_val = self.compile_expr_or_func_ref(&args[0], vars)?;
                         let ok_bb = self.context.append_basic_block(function, "map_err_ok");
                         let done_bb = self.context.append_basic_block(function, "map_err_done");
                         let result_alloca = self.builder.build_alloca(BasicTypeEnum::IntType(i64_ty), "map_err_result")
