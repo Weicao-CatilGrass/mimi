@@ -1,4 +1,34 @@
-// Filesystem operations
+// FsOps: Trait for filesystem operations on string paths.
+trait FsOps {
+    func exists() -> bool
+    func read() -> Result<string, string>
+    func write(content: string) -> Result<unit, string>
+    func read_lines() -> Result<List<string>, string>
+    func file_size() -> Result<i32, string>
+    func write_lines(xs: List<string>) -> Result<unit, string>
+}
+
+// FsOps implementation for built-in string type.
+impl FsOps for string {
+    func exists() -> bool { file_exists(self) }
+    func read() -> Result<string, string> { read_file(self) }
+    func write(content: string) -> Result<unit, string> { write_file(self, content) }
+    func read_lines() -> Result<List<string>, string> {
+        let result = read_file(self)
+        if result.is_ok() { Result::Ok(str_split(result.unwrap(), "\n")) }
+        else { result.map_err(|e| "read_lines(" + self + "): " + e) }
+    }
+    func file_size() -> Result<i32, string> {
+        let result = read_file(self)
+        if result.is_ok() { Result::Ok(len(result.unwrap())) }
+        else { result.map_err(|e| "file_size(" + self + "): " + e) }
+    }
+    func write_lines(xs: List<string>) -> Result<unit, string> {
+        write_file(self, str_join(xs, "\n"))
+    }
+}
+
+// Compatibility functions — keep original signatures.
 
 // exists: Returns true if path exists on disk.
 pub func exists(path: string) -> bool {

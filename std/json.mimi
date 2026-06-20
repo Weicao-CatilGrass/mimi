@@ -1,4 +1,54 @@
-// JSON operations — wraps compiler builtins
+// JsonExt: Trait for JSON string operations.
+trait JsonExt {
+    func from_json() -> string
+    func get_string(key: string) -> string
+    func get_int(key: string) -> i64
+    func get_element(index: i32) -> string
+    func get_bool(key: string) -> Result<bool, string>
+    func get_float(key: string) -> f64
+    func has_key(key: string) -> bool
+    func is_valid() -> bool
+    func to_string_pretty() -> string
+    func get_object(key: string) -> string
+    func get_array(key: string) -> string
+    func array_length() -> i32
+}
+
+// JsonExt implementation for built-in string type.
+impl JsonExt for string {
+    func from_json() -> string { from_json(self) }
+    func get_string(key: string) -> string { json_get_string(self, key) }
+    func get_int(key: string) -> i64 { json_get_int(self, key) }
+    func get_element(index: i32) -> string { json_get_element(self, index) }
+    func get_bool(key: string) -> Result<bool, string> {
+        let v = json_get_string(self, key)
+        if v == "" { Result::Err("key not found") }
+        else if v == "true" { Result::Ok(true) }
+        else if v == "false" { Result::Ok(false) }
+        else { Result::Err("not a boolean") }
+    }
+    func get_float(key: string) -> f64 {
+        let v = json_get_string(self, key)
+        let parsed = str_parse_float(v)
+        if parsed.0 { parsed.1 } else { 0.0 }
+    }
+    func has_key(key: string) -> bool { json_get_string(self, key) != "" }
+    func is_valid() -> bool { json_is_valid(self) }
+    func to_string_pretty() -> string { self }
+    func get_object(key: string) -> string { json_get_string(self, key) }
+    func get_array(key: string) -> string { json_get_string(self, key) }
+    func array_length() -> i32 {
+        let mut al_i = 0
+        let mut al_found = true
+        while al_found {
+            let elem = json_get_element(self, al_i)
+            if elem == "" { al_found = false } else { al_i += 1 }
+        }
+        al_i
+    }
+}
+
+// Compatibility functions — keep original signatures.
 
 // to_json: Serializes a value to a JSON string.
 pub func to_json(value: Any) -> string {
@@ -29,15 +79,10 @@ pub func get_element(json: string, index: i32) -> string {
 // Returns Result::Ok(true/false) if key exists, Result::Err if key missing or not boolean.
 pub func get_bool(json: string, key: string) -> Result<bool, string> {
     let v = json_get_string(json, key)
-    if v == "" {
-        Result::Err("key not found")
-    } else if v == "true" {
-        Result::Ok(true)
-    } else if v == "false" {
-        Result::Ok(false)
-    } else {
-        Result::Err("not a boolean")
-    }
+    if v == "" { Result::Err("key not found") }
+    else if v == "true" { Result::Ok(true) }
+    else if v == "false" { Result::Ok(false) }
+    else { Result::Err("not a boolean") }
 }
 
 // get_float: Gets a float field from a JSON object by key.
@@ -59,7 +104,6 @@ pub func is_valid_json(s: string) -> bool {
 
 // to_string_pretty: Pretty-prints a JSON string with indentation.
 // Currently a placeholder — returns input unchanged.
-// TODO: implement JSON pretty-printing when the runtime supports it.
 pub func to_string_pretty(json: string) -> string {
     json
 }
@@ -80,11 +124,7 @@ pub func array_length(json: string) -> i32 {
     let mut al_found = true
     while al_found {
         let elem = json_get_element(json, al_i)
-        if elem == "" {
-            al_found = false
-        } else {
-            al_i += 1
-        }
+        if elem == "" { al_found = false } else { al_i += 1 }
     }
     al_i
 }

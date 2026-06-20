@@ -37,12 +37,22 @@ impl<'ctx> CodeGenerator<'ctx> {
                     // Build function: prepend self: &type_name as first param
                     let mut impl_method = method.clone();
                     impl_method.name = mangled;
-                    // Prepend self param: self: &type_name
+                    // Prepend self param: self: &type_name (or self: type_name for value types)
+                    let self_ty = match type_name.as_str() {
+                        "i32" | "i64" | "f64" | "bool" => {
+                            // Value types: pass self by value so arithmetic works
+                            crate::ast::Type::Name(type_name.clone(), vec![])
+                        }
+                        _ => {
+                            // Compound types: pass self by reference
+                            crate::ast::Type::Ref(None, Box::new(
+                                crate::ast::Type::Name(type_name.clone(), vec![])
+                            ))
+                        }
+                    };
                     impl_method.params.insert(0, crate::ast::Param {
                         name: "self".into(),
-                        ty: crate::ast::Type::Ref(None, Box::new(
-                            crate::ast::Type::Name(type_name.clone(), vec![])
-                        )),
+                        ty: self_ty,
                         mut_: false,
                     });
                     self.compile_func(&impl_method)?;
