@@ -20,7 +20,7 @@ impl Parser {
                         self.advance();
                     }
                 }
-                self.expect(TokenKind::Gt, "`>`")?;
+                self.expect_gt("`>`")?;
                 if let Type::Name(name, _) = ty {
                     ty = Type::Name(name, args);
                 } else {
@@ -53,7 +53,7 @@ impl Parser {
                 self.advance();
                 self.expect(TokenKind::Lt, "`<`")?;
                 let inner = self.parse_type()?;
-                self.expect(TokenKind::Gt, "`>`")?;
+                self.expect_gt("`>`")?;
                 Ok(Type::CBuffer(Box::new(inner)))
             }
             TokenKind::Ident(ref name) if name == "_" => {

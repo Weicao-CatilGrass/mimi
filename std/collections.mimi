@@ -17,7 +17,7 @@ trait ListExt<T> {
     func any(pred: func(T) -> bool) -> bool
     func all(pred: func(T) -> bool) -> bool
     func partition(pred: func(T) -> bool) -> (List<T>, List<T>)
-    func chunks(size: i32) -> List<List<T> >
+    func chunks(size: i32) -> List<List<T>>
     func intersperse(sep: T) -> List<T>
     func filter(pred: func(T) -> bool) -> List<T>
     func min_index() -> i32
@@ -97,8 +97,8 @@ impl<T> ListExt<T> for List<T> {
         }
         (pt_yes, pt_no)
     }
-    func chunks(size: i32) -> List<List<T> > {
-        let mut ch_result: List<List<T> > = []
+    func chunks(size: i32) -> List<List<T>> {
+        let mut ch_result: List<List<T>> = []
         let mut ch_i = 0
         let n = len(self)
         while ch_i < n {
@@ -293,7 +293,7 @@ pub func sum_float(xs: List<f64>) -> f64 {
 }
 
 // flatten: Flattens a list of lists into a single list.
-pub func flatten<T>(xss: List<List<T> >) -> List<T> {
+pub func flatten<T>(xss: List<List<T>>) -> List<T> {
     let mut result: List<T> = []
     for xs in xss {
         result = concat(result, xs)
@@ -362,7 +362,7 @@ pub func group_by<T, K>(xs: List<T>, key_fn: func(T) -> K) -> Record {
 }
 
 // chunks: Splits xs into chunks of size (last chunk may be smaller).
-pub func chunks<T>(xs: List<T>, size: i32) -> List<List<T> > {
+pub func chunks<T>(xs: List<T>, size: i32) -> List<List<T>> {
     xs.chunks(size)
 }
 

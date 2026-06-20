@@ -158,6 +158,31 @@ impl Parser {
         }
     }
 
+    /// Expect `>` or `>>` when closing generic angle brackets.
+    /// `>>` is split into two `>` tokens so nested generics like `List<List<T>>` work.
+    fn expect_gt(&mut self, expected: &str) -> Result<&Token, ParseError> {
+        if self.at(&TokenKind::Gt) {
+            Ok(self.advance())
+        } else if self.at(&TokenKind::Shr) {
+            self.tokens[self.pos].kind = TokenKind::Gt;
+            let extra = Token {
+                kind: TokenKind::Gt,
+                commitment: self.tokens[self.pos].commitment,
+                line: self.tokens[self.pos].line,
+                col: self.tokens[self.pos].col,
+            };
+            self.tokens.insert(self.pos + 1, extra);
+            Ok(self.advance())
+        } else {
+            let tok = self.peek();
+            Err(ParseError::new(
+                format!("expected {}, found {}", expected, tok.kind),
+                tok.line,
+                tok.col,
+            ))
+        }
+    }
+
     fn expect_keyword(&mut self, kind: TokenKind) -> Result<Commitment, ParseError> {
         let tok = self.expect(kind, "keyword")?;
         Ok(tok.commitment)
@@ -537,7 +562,7 @@ impl Parser {
                     self.advance();
                 }
             }
-            self.expect(TokenKind::Gt, "`>`")?;
+            self.expect_gt("`>`")?;
             args
         } else {
             Vec::new()
@@ -859,7 +884,7 @@ impl Parser {
                 self.advance();
             }
         }
-        self.expect(TokenKind::Gt, "`>`")?;
+        self.expect_gt("`>`")?;
         Ok(params)
     }
 

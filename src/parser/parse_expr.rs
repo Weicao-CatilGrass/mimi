@@ -279,7 +279,7 @@ impl Parser {
                                 self.advance();
                             }
                         }
-                        self.expect(TokenKind::Gt, "`>`")?;
+                        self.expect_gt("`>`")?;
                         self.expect(TokenKind::LParen, "`(`")?;
                         let args = self.parse_args()?;
                         self.expect(TokenKind::RParen, "`)`")?;
