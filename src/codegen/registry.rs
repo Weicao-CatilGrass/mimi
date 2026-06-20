@@ -738,11 +738,14 @@ impl<'ctx> CodeGenerator<'ctx> {
                     let payload_ty = BasicTypeEnum::IntType(self.context.i64_type());
                     let enum_ty = BasicTypeEnum::StructType(self.context.struct_type(&[tag_ty, payload_ty], false));
                     // Register constructor functions for each variant
+                    let struct_ty = self.context.struct_type(&[
+                        BasicTypeEnum::IntType(self.context.i32_type()),
+                        BasicTypeEnum::IntType(self.context.i64_type()),
+                    ], false);
                     for (ordinal, v) in variants.iter().enumerate() {
                         let ctor_name = format!("{}_{}", t.name, v.name);
                         if self.module.get_function(&ctor_name).is_none() {
-                            let payload_ptr_ty = self.context.i64_type().ptr_type(inkwell::AddressSpace::default());
-                            let fn_type = self.context.i64_type().fn_type(&[
+                            let fn_type = struct_ty.fn_type(&[
                                 inkwell::types::BasicMetadataTypeEnum::IntType(self.context.i64_type()),
                             ], false);
                             let ctor = self.module.add_function(&ctor_name, fn_type, Some(inkwell::module::Linkage::Internal));
@@ -750,11 +753,6 @@ impl<'ctx> CodeGenerator<'ctx> {
                             let prev_block = self.builder.get_insert_block();
                             self.builder.position_at_end(entry);
                             let payload = ctor.get_nth_param(0).ok_or_else(|| CompileError::LlvmError("missing payload param".to_string()))?;
-                            // Build struct { i32 tag, i64 payload }
-                            let struct_ty = self.context.struct_type(&[
-                                BasicTypeEnum::IntType(self.context.i32_type()),
-                                BasicTypeEnum::IntType(self.context.i64_type()),
-                            ], false);
                             let alloca = self.builder.build_alloca(struct_ty, &ctor_name)
                                 .map_err(|e| CompileError::LlvmError(format!("alloca error: {}", e)))?;
                             let tag_gep = self.builder.build_struct_gep(struct_ty, alloca, 0, "tag")
