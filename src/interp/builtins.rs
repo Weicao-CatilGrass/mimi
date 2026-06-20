@@ -2,19 +2,19 @@ use super::*;
 
 impl<'a> Interpreter<'a> {
     // === I/O ===
-    pub(crate) fn builtin_println(&self, args: Vec<Value>) -> Result<Value, String> {
+    pub(crate) fn builtin_println(&self, args: Vec<Value>) -> Result<Value, InterpError> {
         let parts: Vec<String> = args.iter().map(|v| v.to_string()).collect();
         println!("{}", parts.join(" "));
         Ok(Value::Unit)
     }
 
-    pub(crate) fn builtin_print(&self, args: Vec<Value>) -> Result<Value, String> {
+    pub(crate) fn builtin_print(&self, args: Vec<Value>) -> Result<Value, InterpError> {
         let parts: Vec<String> = args.iter().map(|v| v.to_string()).collect();
         print!("{}", parts.join(" "));
         Ok(Value::Unit)
     }
 
-    pub(crate) fn builtin_input(&mut self, args: Vec<Value>) -> Result<Value, String> {
+    pub(crate) fn builtin_input(&mut self, args: Vec<Value>) -> Result<Value, InterpError> {
         use std::io::{self, BufRead};
         let mut line = String::new();
         match io::stdin().lock().read_line(&mut line) {
@@ -28,56 +28,56 @@ impl<'a> Interpreter<'a> {
     }
 
     // === Assertions ===
-    pub(crate) fn builtin_assert(&self, args: Vec<Value>) -> Result<Value, String> {
+    pub(crate) fn builtin_assert(&self, args: Vec<Value>) -> Result<Value, InterpError> {
         if args.len() != 1 {
-            return Err("assert expects 1 argument".into());
+            return Err(InterpError::new("assert expects 1 argument"));
         }
         if !is_truthy(&args[0]) {
-            return Err(format!("assertion failed: {}", args[0]));
+            return Err(InterpError::new(format!("assertion failed: {}", args[0])));
         }
         Ok(Value::Unit)
     }
 
-    pub(crate) fn builtin_assert_eq(&self, args: Vec<Value>) -> Result<Value, String> {
+    pub(crate) fn builtin_assert_eq(&self, args: Vec<Value>) -> Result<Value, InterpError> {
         if args.len() != 2 {
-            return Err("assert_eq expects 2 arguments".into());
+            return Err(InterpError::new("assert_eq expects 2 arguments"));
         }
         if !values_equal(&args[0], &args[1]) {
-            return Err(format!("assertion failed: {} != {}", args[0], args[1]));
+            return Err(InterpError::new(format!("assertion failed: {} != {}", args[0], args[1])));
         }
         Ok(Value::Unit)
     }
 
-    pub(crate) fn builtin_assert_ne(&self, args: Vec<Value>) -> Result<Value, String> {
+    pub(crate) fn builtin_assert_ne(&self, args: Vec<Value>) -> Result<Value, InterpError> {
         if args.len() != 2 {
-            return Err("assert_ne expects 2 arguments".into());
+            return Err(InterpError::new("assert_ne expects 2 arguments"));
         }
         if values_equal(&args[0], &args[1]) {
-            return Err(format!("assertion failed: {} == {}", args[0], args[1]));
+            return Err(InterpError::new(format!("assertion failed: {} == {}", args[0], args[1])));
         }
         Ok(Value::Unit)
     }
 
-    pub(crate) fn builtin_assert_approx_eq(&self, args: Vec<Value>) -> Result<Value, String> {
+    pub(crate) fn builtin_assert_approx_eq(&self, args: Vec<Value>) -> Result<Value, InterpError> {
         if args.len() != 2 {
-            return Err("assert_approx_eq expects 2 arguments".into());
+            return Err(InterpError::new("assert_approx_eq expects 2 arguments"));
         }
         match (&args[0], &args[1]) {
             (Value::Float(a), Value::Float(b)) => {
                 if (a - b).abs() > f64::EPSILON {
-                    return Err(format!("assertion failed: {} != {} (difference: {})", a, b, (a - b).abs()));
+                    return Err(InterpError::new(format!("assertion failed: {} != {} (difference: {})", a, b, (a - b).abs())));
                 }
                 Ok(Value::Unit)
             }
             (Value::Int(a), Value::Int(b)) => {
                 if a != b {
-                    return Err(format!("assertion failed: {} != {}", a, b));
+                    return Err(InterpError::new(format!("assertion failed: {} != {}", a, b)));
                 }
                 Ok(Value::Unit)
             }
             _ => {
                 if !values_equal(&args[0], &args[1]) {
-                    return Err(format!("assertion failed: {} != {}", args[0], args[1]));
+                    return Err(InterpError::new(format!("assertion failed: {} != {}", args[0], args[1])));
                 }
                 Ok(Value::Unit)
             }
@@ -85,88 +85,88 @@ impl<'a> Interpreter<'a> {
     }
 
     // === Arithmetic ===
-    pub(crate) fn builtin_sqrt(&self, args: Vec<Value>) -> Result<Value, String> {
+    pub(crate) fn builtin_sqrt(&self, args: Vec<Value>) -> Result<Value, InterpError> {
         if args.len() != 1 {
-            return Err("sqrt expects 1 argument".into());
+            return Err(InterpError::new("sqrt expects 1 argument"));
         }
         match &args[0] {
             Value::Int(v) => Ok(Value::Float((*v as f64).sqrt())),
             Value::Float(v) => Ok(Value::Float(v.sqrt())),
-            _ => Err("sqrt expects a number".into()),
+            _ => Err(InterpError::new("sqrt expects a number")),
         }
     }
 
-    pub(crate) fn builtin_abs(&self, args: Vec<Value>) -> Result<Value, String> {
+    pub(crate) fn builtin_abs(&self, args: Vec<Value>) -> Result<Value, InterpError> {
         if args.len() != 1 {
-            return Err("abs expects 1 argument".into());
+            return Err(InterpError::new("abs expects 1 argument"));
         }
         match &args[0] {
             Value::Int(v) => Ok(Value::Int(v.abs())),
             Value::Float(v) => Ok(Value::Float(v.abs())),
-            _ => Err("abs expects a number".into()),
+            _ => Err(InterpError::new("abs expects a number")),
         }
     }
 
-    pub(crate) fn builtin_pow(&self, args: Vec<Value>) -> Result<Value, String> {
-        if args.len() != 2 { return Err("pow expects 2 arguments (base, exp)".into()); }
+    pub(crate) fn builtin_pow(&self, args: Vec<Value>) -> Result<Value, InterpError> {
+        if args.len() != 2 { return Err(InterpError::new("pow expects 2 arguments (base, exp)")); }
         match (&args[0], &args[1]) {
             (Value::Int(b), Value::Int(e)) => Ok(Value::Int(b.pow(*e as u32))),
             (Value::Float(b), Value::Int(e)) => Ok(Value::Float(b.powf(*e as f64))),
             (Value::Float(b), Value::Float(e)) => Ok(Value::Float(b.powf(*e))),
-            _ => Err("pow expects numbers".into()),
+            _ => Err(InterpError::new("pow expects numbers")),
         }
     }
 
-    pub(crate) fn builtin_floor(&self, args: Vec<Value>) -> Result<Value, String> {
-        if args.len() != 1 { return Err("floor expects 1 argument".into()); }
+    pub(crate) fn builtin_floor(&self, args: Vec<Value>) -> Result<Value, InterpError> {
+        if args.len() != 1 { return Err(InterpError::new("floor expects 1 argument")); }
         match &args[0] {
             Value::Float(v) => Ok(Value::Float(v.floor())),
             Value::Int(v) => Ok(Value::Int(*v)),
-            _ => Err("floor expects a number".into()),
+            _ => Err(InterpError::new("floor expects a number")),
         }
     }
 
-    pub(crate) fn builtin_ceil(&self, args: Vec<Value>) -> Result<Value, String> {
-        if args.len() != 1 { return Err("ceil expects 1 argument".into()); }
+    pub(crate) fn builtin_ceil(&self, args: Vec<Value>) -> Result<Value, InterpError> {
+        if args.len() != 1 { return Err(InterpError::new("ceil expects 1 argument")); }
         match &args[0] {
             Value::Float(v) => Ok(Value::Float(v.ceil())),
             Value::Int(v) => Ok(Value::Int(*v)),
-            _ => Err("ceil expects a number".into()),
+            _ => Err(InterpError::new("ceil expects a number")),
         }
     }
 
-    pub(crate) fn builtin_round(&self, args: Vec<Value>) -> Result<Value, String> {
-        if args.len() != 1 { return Err("round expects 1 argument".into()); }
+    pub(crate) fn builtin_round(&self, args: Vec<Value>) -> Result<Value, InterpError> {
+        if args.len() != 1 { return Err(InterpError::new("round expects 1 argument")); }
         match &args[0] {
             Value::Float(v) => Ok(Value::Float(v.round())),
             Value::Int(v) => Ok(Value::Int(*v)),
-            _ => Err("round expects a number".into()),
+            _ => Err(InterpError::new("round expects a number")),
         }
     }
 
-    pub(crate) fn builtin_min(&self, args: Vec<Value>) -> Result<Value, String> {
+    pub(crate) fn builtin_min(&self, args: Vec<Value>) -> Result<Value, InterpError> {
         if args.len() != 2 {
-            return Err("min expects 2 arguments".into());
+            return Err(InterpError::new("min expects 2 arguments"));
         }
         match (&args[0], &args[1]) {
             (Value::Int(a), Value::Int(b)) => Ok(Value::Int(*a.min(b))),
             (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a.min(*b))),
-            _ => Err("min expects two numbers of the same type".into()),
+            _ => Err(InterpError::new("min expects two numbers of the same type")),
         }
     }
 
-    pub(crate) fn builtin_max(&self, args: Vec<Value>) -> Result<Value, String> {
+    pub(crate) fn builtin_max(&self, args: Vec<Value>) -> Result<Value, InterpError> {
         if args.len() != 2 {
-            return Err("max expects 2 arguments".into());
+            return Err(InterpError::new("max expects 2 arguments"));
         }
         match (&args[0], &args[1]) {
             (Value::Int(a), Value::Int(b)) => Ok(Value::Int(*a.max(b))),
             (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a.max(*b))),
-            _ => Err("max expects two numbers of the same type".into()),
+            _ => Err(InterpError::new("max expects two numbers of the same type")),
         }
     }
 
-    pub(crate) fn builtin_random(&self, args: Vec<Value>) -> Result<Value, String> {
+    pub(crate) fn builtin_random(&self, args: Vec<Value>) -> Result<Value, InterpError> {
         use std::collections::hash_map::RandomState;
         use std::hash::{BuildHasher, Hasher};
         let s = RandomState::new();
@@ -179,43 +179,43 @@ impl<'a> Interpreter<'a> {
         Ok(Value::Float((bits as f64) / (u64::MAX as f64)))
     }
 
-    pub(crate) fn builtin_pi(&self, args: Vec<Value>) -> Result<Value, String> {
+    pub(crate) fn builtin_pi(&self, args: Vec<Value>) -> Result<Value, InterpError> {
         Ok(Value::Float(std::f64::consts::PI))
     }
 
     // === List operations ===
-    pub(crate) fn builtin_range(&self, args: Vec<Value>) -> Result<Value, String> {
+    pub(crate) fn builtin_range(&self, args: Vec<Value>) -> Result<Value, InterpError> {
         if args.len() != 2 {
-            return Err("range expects 2 arguments".into());
+            return Err(InterpError::new("range expects 2 arguments"));
         }
         let start = match &args[0] {
             Value::Int(v) => *v,
-            _ => return Err("range start must be integer".into()),
+            _ => return Err(InterpError::new("range start must be integer")),
         };
         let end = match &args[1] {
             Value::Int(v) => *v,
-            _ => return Err("range end must be integer".into()),
+            _ => return Err(InterpError::new("range end must be integer")),
         };
         let list: Vec<Value> = (start..end).map(Value::Int).collect();
         Ok(Value::List(list))
     }
 
-    pub(crate) fn builtin_len(&self, args: Vec<Value>) -> Result<Value, String> {
+    pub(crate) fn builtin_len(&self, args: Vec<Value>) -> Result<Value, InterpError> {
         if args.len() != 1 {
-            return Err("len expects 1 argument".into());
+            return Err(InterpError::new("len expects 1 argument"));
         }
         match &args[0] {
             Value::String(s) => Ok(Value::Int(s.chars().count() as i64)),
             Value::List(l) => Ok(Value::Int(l.len() as i64)),
             Value::Array(a) => Ok(Value::Int(a.len() as i64)),
             Value::Slice { start, end, .. } => Ok(Value::Int((end - start) as i64)),
-            other => Err(format!("len: argument must be a string, list, array, or slice, found {}", super::value::type_name(other))),
+            other => Err(InterpError::new(format!("len: argument must be a string, list, array, or slice, found {}", super::value::type_name(other)))),
         }
     }
 
-    pub(crate) fn builtin_push(&self, args: Vec<Value>) -> Result<Value, String> {
+    pub(crate) fn builtin_push(&self, args: Vec<Value>) -> Result<Value, InterpError> {
         if args.len() != 2 {
-            return Err("push expects 2 arguments (list, elem)".into());
+            return Err(InterpError::new("push expects 2 arguments (list, elem)"));
         }
         match &args[0] {
             Value::List(l) => {
@@ -223,30 +223,30 @@ impl<'a> Interpreter<'a> {
                 new_list.push(args[1].clone());
                 Ok(Value::List(new_list))
             }
-            other => Err(format!("push: first argument must be a list, found {}", super::value::type_name(other))),
+            other => Err(InterpError::new(format!("push: first argument must be a list, found {}", super::value::type_name(other)))),
         }
     }
 
-    pub(crate) fn builtin_pop(&self, args: Vec<Value>) -> Result<Value, String> {
+    pub(crate) fn builtin_pop(&self, args: Vec<Value>) -> Result<Value, InterpError> {
         if args.len() != 1 {
-            return Err("pop expects 1 argument (list)".into());
+            return Err(InterpError::new("pop expects 1 argument (list)"));
         }
         match &args[0] {
             Value::List(l) => {
                 if l.is_empty() {
-                    return Err("pop from empty list".into());
+                    return Err(InterpError::new("pop from empty list"));
                 }
                 let mut new_list = l.clone();
                 let popped = new_list.pop().expect("checked non-empty above");
                 Ok(Value::Tuple(vec![popped, Value::List(new_list)]))
             }
-            other => Err(format!("pop: argument must be a list, found {}", super::value::type_name(other))),
+            other => Err(InterpError::new(format!("pop: argument must be a list, found {}", super::value::type_name(other)))),
         }
     }
 
-    pub(crate) fn builtin_contains(&self, args: Vec<Value>) -> Result<Value, String> {
+    pub(crate) fn builtin_contains(&self, args: Vec<Value>) -> Result<Value, InterpError> {
         if args.len() != 2 {
-            return Err("contains expects 2 arguments (container, elem)".into());
+            return Err(InterpError::new("contains expects 2 arguments (container, elem)"));
         }
         match &args[0] {
             Value::List(l) => {
@@ -256,21 +256,21 @@ impl<'a> Interpreter<'a> {
             Value::String(s) => {
                 match &args[1] {
                     Value::String(sub) => Ok(Value::Bool(s.contains(sub.as_str()))),
-                    other => Err(format!("contains on string expects a string needle, found {}", super::value::type_name(other))),
+                    other => Err(InterpError::new(format!("contains on string expects a string needle, found {}", super::value::type_name(other)))),
                 }
             }
-            other => Err(format!("contains: first argument must be a list or string, found {}", super::value::type_name(other))),
+            other => Err(InterpError::new(format!("contains: first argument must be a list or string, found {}", super::value::type_name(other)))),
         }
     }
 
-    pub(crate) fn builtin_map(&mut self, args: Vec<Value>) -> Result<Value, String> {
+    pub(crate) fn builtin_map(&mut self, args: Vec<Value>) -> Result<Value, InterpError> {
         if args.len() != 2 {
-            return Err("map expects 2 arguments (list, closure)".into());
+            return Err(InterpError::new("map expects 2 arguments (list, closure)"));
         }
         match (&args[0], &args[1]) {
             (Value::List(l), Value::Closure { params, body, captured, .. }) => {
                 if params.len() != 1 {
-                    return Err("map closure must take 1 argument".into());
+                    return Err(InterpError::new("map closure must take 1 argument"));
                 }
                 let mut result = Vec::new();
                 for item in l {
@@ -287,18 +287,18 @@ impl<'a> Interpreter<'a> {
                 }
                 Ok(Value::List(result))
             }
-            _ => Err("map expects (list, closure)".into()),
+            _ => Err(InterpError::new("map expects (list, closure)")),
         }
     }
 
-    pub(crate) fn builtin_filter(&mut self, args: Vec<Value>) -> Result<Value, String> {
+    pub(crate) fn builtin_filter(&mut self, args: Vec<Value>) -> Result<Value, InterpError> {
         if args.len() != 2 {
-            return Err("filter expects 2 arguments (list, closure)".into());
+            return Err(InterpError::new("filter expects 2 arguments (list, closure)"));
         }
         match (&args[0], &args[1]) {
             (Value::List(l), Value::Closure { params, body, captured, .. }) => {
                 if params.len() != 1 {
-                    return Err("filter closure must take 1 argument".into());
+                    return Err(InterpError::new("filter closure must take 1 argument"));
                 }
                 let mut result = Vec::new();
                 for item in l {
@@ -317,18 +317,18 @@ impl<'a> Interpreter<'a> {
                 }
                 Ok(Value::List(result))
             }
-            _ => Err("filter expects (list, closure)".into()),
+            _ => Err(InterpError::new("filter expects (list, closure)")),
         }
     }
 
-    pub(crate) fn builtin_reduce(&mut self, args: Vec<Value>) -> Result<Value, String> {
+    pub(crate) fn builtin_reduce(&mut self, args: Vec<Value>) -> Result<Value, InterpError> {
         if args.len() != 3 {
-            return Err("reduce expects 3 arguments (list, closure, initial)".into());
+            return Err(InterpError::new("reduce expects 3 arguments (list, closure, initial)"));
         }
         match (&args[0], &args[1]) {
             (Value::List(l), Value::Closure { params, body, captured, .. }) => {
                 if params.len() != 2 {
-                    return Err("reduce closure must take 2 arguments (acc, elem)".into());
+                    return Err(InterpError::new("reduce closure must take 2 arguments (acc, elem)"));
                 }
                 let mut acc = args[2].clone();
                 for item in l {
@@ -346,13 +346,13 @@ impl<'a> Interpreter<'a> {
                 }
                 Ok(acc)
             }
-            _ => Err("reduce expects (list, closure, initial)".into()),
+            _ => Err(InterpError::new("reduce expects (list, closure, initial)")),
         }
     }
 
-    pub(crate) fn builtin_sort(&self, args: Vec<Value>) -> Result<Value, String> {
+    pub(crate) fn builtin_sort(&self, args: Vec<Value>) -> Result<Value, InterpError> {
         if args.len() != 1 {
-            return Err("sort expects 1 argument (list)".into());
+            return Err(InterpError::new("sort expects 1 argument (list)"));
         }
         match &args[0] {
             Value::List(l) => {
@@ -367,13 +367,13 @@ impl<'a> Interpreter<'a> {
                 });
                 Ok(Value::List(sorted))
             }
-            _ => Err("sort expects a list".into()),
+            _ => Err(InterpError::new("sort expects a list")),
         }
     }
 
-    pub(crate) fn builtin_reverse(&self, args: Vec<Value>) -> Result<Value, String> {
+    pub(crate) fn builtin_reverse(&self, args: Vec<Value>) -> Result<Value, InterpError> {
         if args.len() != 1 {
-            return Err("reverse expects 1 argument (list)".into());
+            return Err(InterpError::new("reverse expects 1 argument (list)"));
         }
         match &args[0] {
             Value::List(l) => {
@@ -381,13 +381,13 @@ impl<'a> Interpreter<'a> {
                 reversed.reverse();
                 Ok(Value::List(reversed))
             }
-            _ => Err("reverse expects a list".into()),
+            _ => Err(InterpError::new("reverse expects a list")),
         }
     }
 
-    pub(crate) fn builtin_flatten(&self, args: Vec<Value>) -> Result<Value, String> {
+    pub(crate) fn builtin_flatten(&self, args: Vec<Value>) -> Result<Value, InterpError> {
         if args.len() != 1 {
-            return Err("flatten expects 1 argument (list of lists)".into());
+            return Err(InterpError::new("flatten expects 1 argument (list of lists)"));
         }
         match &args[0] {
             Value::List(l) => {
@@ -400,13 +400,13 @@ impl<'a> Interpreter<'a> {
                 }
                 Ok(Value::List(result))
             }
-            _ => Err("flatten expects a list".into()),
+            _ => Err(InterpError::new("flatten expects a list")),
         }
     }
 
-    pub(crate) fn builtin_zip(&self, args: Vec<Value>) -> Result<Value, String> {
+    pub(crate) fn builtin_zip(&self, args: Vec<Value>) -> Result<Value, InterpError> {
         if args.len() != 2 {
-            return Err("zip expects 2 arguments (list, list)".into());
+            return Err(InterpError::new("zip expects 2 arguments (list, list)"));
         }
         match (&args[0], &args[1]) {
             (Value::List(a), Value::List(b)) => {
@@ -416,13 +416,13 @@ impl<'a> Interpreter<'a> {
                     .collect();
                 Ok(Value::List(result))
             }
-            _ => Err("zip expects two lists".into()),
+            _ => Err(InterpError::new("zip expects two lists")),
         }
     }
 
-    pub(crate) fn builtin_enumerate(&self, args: Vec<Value>) -> Result<Value, String> {
+    pub(crate) fn builtin_enumerate(&self, args: Vec<Value>) -> Result<Value, InterpError> {
         if args.len() != 1 {
-            return Err("enumerate expects 1 argument (list)".into());
+            return Err(InterpError::new("enumerate expects 1 argument (list)"));
         }
         match &args[0] {
             Value::List(l) => {
@@ -432,13 +432,13 @@ impl<'a> Interpreter<'a> {
                     .collect();
                 Ok(Value::List(result))
             }
-            _ => Err("enumerate expects a list".into()),
+            _ => Err(InterpError::new("enumerate expects a list")),
         }
     }
 
-    pub(crate) fn builtin_sum(&self, args: Vec<Value>) -> Result<Value, String> {
+    pub(crate) fn builtin_sum(&self, args: Vec<Value>) -> Result<Value, InterpError> {
         if args.len() != 1 {
-            return Err("sum expects 1 argument (list)".into());
+            return Err(InterpError::new("sum expects 1 argument (list)"));
         }
         match &args[0] {
             Value::List(l) => {
@@ -449,7 +449,7 @@ impl<'a> Interpreter<'a> {
                     match v {
                         Value::Int(n) => total_int += n,
                         Value::Float(n) => { total_float += n; is_float = true; }
-                        _ => return Err("sum expects a list of numbers".into()),
+                        _ => return Err(InterpError::new("sum expects a list of numbers")),
                     }
                 }
                 if is_float {
@@ -458,29 +458,29 @@ impl<'a> Interpreter<'a> {
                     Ok(Value::Int(total_int))
                 }
             }
-            _ => Err("sum expects a list".into()),
+            _ => Err(InterpError::new("sum expects a list")),
         }
     }
 
     // === Type utilities ===
-    pub(crate) fn builtin_to_string(&self, args: Vec<Value>) -> Result<Value, String> {
+    pub(crate) fn builtin_to_string(&self, args: Vec<Value>) -> Result<Value, InterpError> {
         if args.len() != 1 {
-            return Err("to_string expects 1 argument".into());
+            return Err(InterpError::new("to_string expects 1 argument"));
         }
         Ok(Value::String(args[0].to_string()))
     }
 
-    pub(crate) fn builtin_type_name(&self, args: Vec<Value>) -> Result<Value, String> {
+    pub(crate) fn builtin_type_name(&self, args: Vec<Value>) -> Result<Value, InterpError> {
         if args.len() != 1 {
-            return Err("type_name expects 1 argument (a value)".into());
+            return Err(InterpError::new("type_name expects 1 argument (a value)"));
         }
         let type_name = self.value_type_name(&args[0]);
         Ok(Value::String(type_name))
     }
 
-    pub(crate) fn builtin_type_fields(&self, args: Vec<Value>) -> Result<Value, String> {
+    pub(crate) fn builtin_type_fields(&self, args: Vec<Value>) -> Result<Value, InterpError> {
         if args.len() != 1 {
-            return Err("type_fields expects 1 argument (a type name string)".into());
+            return Err(InterpError::new("type_fields expects 1 argument (a type name string)"));
         }
         match &args[0] {
             Value::String(name) => {
@@ -501,7 +501,7 @@ impl<'a> Interpreter<'a> {
                         _ => Ok(Value::List(vec![])),
                     }
                 } else {
-                    Err(format!("unknown type '{}'", name))
+                    Err(InterpError::new(format!("unknown type '{}'", name)))
                 }
             }
             Value::Type(name) => {
@@ -522,16 +522,16 @@ impl<'a> Interpreter<'a> {
                         _ => Ok(Value::List(vec![])),
                     }
                 } else {
-                    Err(format!("unknown type '{}'", name))
+                    Err(InterpError::new(format!("unknown type '{}'", name)))
                 }
             }
-            _ => Err("type_fields expects a type name string or Type value".into()),
+            _ => Err(InterpError::new("type_fields expects a type name string or Type value")),
         }
     }
 
-    pub(crate) fn builtin_type_variants(&self, args: Vec<Value>) -> Result<Value, String> {
+    pub(crate) fn builtin_type_variants(&self, args: Vec<Value>) -> Result<Value, InterpError> {
         if args.len() != 1 {
-            return Err("type_variants expects 1 argument (a type name string)".into());
+            return Err(InterpError::new("type_variants expects 1 argument (a type name string)"));
         }
         match &args[0] {
             Value::String(name) => {
@@ -546,7 +546,7 @@ impl<'a> Interpreter<'a> {
                         _ => Ok(Value::List(vec![])),
                     }
                 } else {
-                    Err(format!("unknown type '{}'", name))
+                    Err(InterpError::new(format!("unknown type '{}'", name)))
                 }
             }
             Value::Type(name) => {
@@ -561,121 +561,121 @@ impl<'a> Interpreter<'a> {
                         _ => Ok(Value::List(vec![])),
                     }
                 } else {
-                    Err(format!("unknown type '{}'", name))
+                    Err(InterpError::new(format!("unknown type '{}'", name)))
                 }
             }
-            _ => Err("type_variants expects a type name string or Type value".into()),
+            _ => Err(InterpError::new("type_variants expects a type name string or Type value")),
         }
     }
 
-    pub(crate) fn builtin_to_int(&self, args: Vec<Value>) -> Result<Value, String> {
-        if args.len() != 1 { return Err("to_int expects 1 argument".into()); }
+    pub(crate) fn builtin_to_int(&self, args: Vec<Value>) -> Result<Value, InterpError> {
+        if args.len() != 1 { return Err(InterpError::new("to_int expects 1 argument")); }
         match &args[0] {
             Value::Int(v) => Ok(Value::Int(*v)),
             Value::Float(v) => Ok(Value::Int(*v as i64)),
             Value::String(s) => s.parse::<i64>()
                 .map(Value::Int)
-                .map_err(|e| format!("to_int parse error: {}", e)),
+                .map_err(|e| InterpError::new(format!("to_int parse error: {}", e))),
             Value::Bool(b) => Ok(Value::Int(*b as i64)),
-            _ => Err("to_int cannot convert this type".into()),
+            _ => Err(InterpError::new("to_int cannot convert this type")),
         }
     }
 
-    pub(crate) fn builtin_to_float(&self, args: Vec<Value>) -> Result<Value, String> {
-        if args.len() != 1 { return Err("to_float expects 1 argument".into()); }
+    pub(crate) fn builtin_to_float(&self, args: Vec<Value>) -> Result<Value, InterpError> {
+        if args.len() != 1 { return Err(InterpError::new("to_float expects 1 argument")); }
         match &args[0] {
             Value::Float(v) => Ok(Value::Float(*v)),
             Value::Int(v) => Ok(Value::Float(*v as f64)),
             Value::String(s) => s.parse::<f64>()
                 .map(Value::Float)
-                .map_err(|e| format!("to_float parse error: {}", e)),
-            _ => Err("to_float cannot convert this type".into()),
+                .map_err(|e| InterpError::new(format!("to_float parse error: {}", e))),
+            _ => Err(InterpError::new("to_float cannot convert this type")),
         }
     }
 
-    pub(crate) fn builtin_keys(&self, args: Vec<Value>) -> Result<Value, String> {
-        if args.len() != 1 { return Err("keys expects 1 argument (record)".into()); }
+    pub(crate) fn builtin_keys(&self, args: Vec<Value>) -> Result<Value, InterpError> {
+        if args.len() != 1 { return Err(InterpError::new("keys expects 1 argument (record)")); }
         match &args[0] {
             Value::Record(_, fields) => {
                 let keys: Vec<Value> = fields.keys().map(|k| Value::String(k.clone())).collect();
                 Ok(Value::List(keys))
             }
-            _ => Err("keys expects a record".into()),
+            _ => Err(InterpError::new("keys expects a record")),
         }
     }
 
-    pub(crate) fn builtin_values(&self, args: Vec<Value>) -> Result<Value, String> {
-        if args.len() != 1 { return Err("values expects 1 argument (record)".into()); }
+    pub(crate) fn builtin_values(&self, args: Vec<Value>) -> Result<Value, InterpError> {
+        if args.len() != 1 { return Err(InterpError::new("values expects 1 argument (record)")); }
         match &args[0] {
             Value::Record(_, fields) => {
                 Ok(Value::List(fields.values().cloned().collect()))
             }
-            _ => Err("values expects a record".into()),
+            _ => Err(InterpError::new("values expects a record")),
         }
     }
 
-    pub(crate) fn builtin_has_key(&self, args: Vec<Value>) -> Result<Value, String> {
-        if args.len() != 2 { return Err("has_key expects 2 arguments (record, key)".into()); }
+    pub(crate) fn builtin_has_key(&self, args: Vec<Value>) -> Result<Value, InterpError> {
+        if args.len() != 2 { return Err(InterpError::new("has_key expects 2 arguments (record, key)")); }
         match (&args[0], &args[1]) {
             (Value::Record(_, fields), Value::String(key)) => {
                 Ok(Value::Bool(fields.contains_key(key.as_str())))
             }
-            _ => Err("has_key expects (record, string)".into()),
+            _ => Err(InterpError::new("has_key expects (record, string)")),
         }
     }
 
     // === String operations ===
-    pub(crate) fn builtin_str_char_at(&self, args: Vec<Value>) -> Result<Value, String> {
-        if args.len() != 2 { return Err("str_char_at expects 2 arguments (string, index)".into()); }
+    pub(crate) fn builtin_str_char_at(&self, args: Vec<Value>) -> Result<Value, InterpError> {
+        if args.len() != 2 { return Err(InterpError::new("str_char_at expects 2 arguments (string, index)")); }
         match (&args[0], &args[1]) {
             (Value::String(s), Value::Int(idx)) => {
                 let i = *idx as usize;
                 s.chars().nth(i)
                     .map(|c| Value::String(c.to_string()))
-                    .ok_or_else(|| format!("str_char_at: index {} out of bounds (len {})", i, s.chars().count()))
+                    .ok_or_else(|| InterpError::new(format!("str_char_at: index {} out of bounds (len {})", i, s.chars().count())))
             }
-            _ => Err("str_char_at expects (string, int)".into()),
+            _ => Err(InterpError::new("str_char_at expects (string, int)")),
         }
     }
 
-    pub(crate) fn builtin_str_substring(&self, args: Vec<Value>) -> Result<Value, String> {
-        if args.len() != 3 { return Err("str_substring expects 3 arguments (string, start, end)".into()); }
+    pub(crate) fn builtin_str_substring(&self, args: Vec<Value>) -> Result<Value, InterpError> {
+        if args.len() != 3 { return Err(InterpError::new("str_substring expects 3 arguments (string, start, end)")); }
         match (&args[0], &args[1], &args[2]) {
             (Value::String(s), Value::Int(start), Value::Int(end)) => {
                 let chars: Vec<char> = s.chars().collect();
                 let s_idx = (*start as usize).min(chars.len());
                 let e_idx = (*end as usize).min(chars.len());
                 if s_idx > e_idx {
-                    return Err("str_substring: start > end".into());
+                    return Err(InterpError::new("str_substring: start > end"));
                 }
                 Ok(Value::String(chars[s_idx..e_idx].iter().collect()))
             }
-            _ => Err("str_substring expects (string, int, int)".into()),
+            _ => Err(InterpError::new("str_substring expects (string, int, int)")),
         }
     }
 
-    pub(crate) fn builtin_str_parse_int(&self, args: Vec<Value>) -> Result<Value, String> {
-        if args.len() != 1 { return Err("str_parse_int expects 1 argument".into()); }
+    pub(crate) fn builtin_str_parse_int(&self, args: Vec<Value>) -> Result<Value, InterpError> {
+        if args.len() != 1 { return Err(InterpError::new("str_parse_int expects 1 argument")); }
         match &args[0] {
             Value::String(s) => Ok(s.trim().parse::<i64>()
                 .map(|n| Value::Tuple(vec![Value::Bool(true), Value::Int(n)]))
                 .unwrap_or_else(|_| Value::Tuple(vec![Value::Bool(false), Value::Int(0)]))),
-            _ => Err("str_parse_int expects a string".into()),
+            _ => Err(InterpError::new("str_parse_int expects a string")),
         }
     }
 
-    pub(crate) fn builtin_str_parse_float(&self, args: Vec<Value>) -> Result<Value, String> {
-        if args.len() != 1 { return Err("str_parse_float expects 1 argument".into()); }
+    pub(crate) fn builtin_str_parse_float(&self, args: Vec<Value>) -> Result<Value, InterpError> {
+        if args.len() != 1 { return Err(InterpError::new("str_parse_float expects 1 argument")); }
         match &args[0] {
             Value::String(s) => Ok(s.trim().parse::<f64>()
                 .map(|n| Value::Tuple(vec![Value::Bool(true), Value::Float(n)]))
                 .unwrap_or_else(|_| Value::Tuple(vec![Value::Bool(false), Value::Float(0.0)]))),
-            _ => Err("str_parse_float expects a string".into()),
+            _ => Err(InterpError::new("str_parse_float expects a string")),
         }
     }
 
-    pub(crate) fn builtin_str_split(&self, args: Vec<Value>) -> Result<Value, String> {
-        if args.len() != 2 { return Err("str_split expects 2 arguments (string, delimiter)".into()); }
+    pub(crate) fn builtin_str_split(&self, args: Vec<Value>) -> Result<Value, InterpError> {
+        if args.len() != 2 { return Err(InterpError::new("str_split expects 2 arguments (string, delimiter)")); }
         match (&args[0], &args[1]) {
             (Value::String(s), Value::String(delimiter)) => {
                 let mut parts = Vec::new();
@@ -684,104 +684,104 @@ impl<'a> Interpreter<'a> {
                 }
                 Ok(Value::List(parts))
             }
-            _ => Err("str_split expects (string, string)".into()),
+            _ => Err(InterpError::new("str_split expects (string, string)")),
         }
     }
 
-    pub(crate) fn builtin_str_join(&self, args: Vec<Value>) -> Result<Value, String> {
-        if args.len() != 2 { return Err("str_join expects 2 arguments (list, separator)".into()); }
+    pub(crate) fn builtin_str_join(&self, args: Vec<Value>) -> Result<Value, InterpError> {
+        if args.len() != 2 { return Err(InterpError::new("str_join expects 2 arguments (list, separator)")); }
         match (&args[0], &args[1]) {
             (Value::List(parts), Value::String(sep)) => {
                 let mut strings = Vec::new();
                 for p in parts {
                     match p {
                         Value::String(s) => strings.push(s.clone()),
-                        _ => return Err("str_join: list elements must be strings".into()),
+                        _ => return Err(InterpError::new("str_join: list elements must be strings")),
                     }
                 }
                 Ok(Value::String(strings.join(sep)))
             }
-            _ => Err("str_join expects (list, string)".into()),
+            _ => Err(InterpError::new("str_join expects (list, string)")),
         }
     }
 
-    pub(crate) fn builtin_str_trim(&self, args: Vec<Value>) -> Result<Value, String> {
-        if args.len() != 1 { return Err("str_trim expects 1 argument".into()); }
+    pub(crate) fn builtin_str_trim(&self, args: Vec<Value>) -> Result<Value, InterpError> {
+        if args.len() != 1 { return Err(InterpError::new("str_trim expects 1 argument")); }
         match &args[0] {
             Value::String(s) => Ok(Value::String(s.trim().to_string())),
-            _ => Err("str_trim expects a string".into()),
+            _ => Err(InterpError::new("str_trim expects a string")),
         }
     }
 
-    pub(crate) fn builtin_str_starts_with(&self, args: Vec<Value>) -> Result<Value, String> {
-        if args.len() != 2 { return Err("str_starts_with expects 2 arguments".into()); }
+    pub(crate) fn builtin_str_starts_with(&self, args: Vec<Value>) -> Result<Value, InterpError> {
+        if args.len() != 2 { return Err(InterpError::new("str_starts_with expects 2 arguments")); }
         match (&args[0], &args[1]) {
             (Value::String(s), Value::String(prefix)) => {
                 Ok(Value::Bool(s.starts_with(prefix.as_str())))
             }
-            _ => Err("str_starts_with expects (string, string)".into()),
+            _ => Err(InterpError::new("str_starts_with expects (string, string)")),
         }
     }
 
-    pub(crate) fn builtin_str_ends_with(&self, args: Vec<Value>) -> Result<Value, String> {
-        if args.len() != 2 { return Err("str_ends_with expects 2 arguments".into()); }
+    pub(crate) fn builtin_str_ends_with(&self, args: Vec<Value>) -> Result<Value, InterpError> {
+        if args.len() != 2 { return Err(InterpError::new("str_ends_with expects 2 arguments")); }
         match (&args[0], &args[1]) {
             (Value::String(s), Value::String(suffix)) => {
                 Ok(Value::Bool(s.ends_with(suffix.as_str())))
             }
-            _ => Err("str_ends_with expects (string, string)".into()),
+            _ => Err(InterpError::new("str_ends_with expects (string, string)")),
         }
     }
 
-    pub(crate) fn builtin_str_replace(&self, args: Vec<Value>) -> Result<Value, String> {
-        if args.len() != 3 { return Err("str_replace expects 3 arguments".into()); }
+    pub(crate) fn builtin_str_replace(&self, args: Vec<Value>) -> Result<Value, InterpError> {
+        if args.len() != 3 { return Err(InterpError::new("str_replace expects 3 arguments")); }
         match (&args[0], &args[1], &args[2]) {
             (Value::String(s), Value::String(from), Value::String(to)) => {
                 Ok(Value::String(s.replace(from.as_str(), to.as_str())))
             }
-            _ => Err("str_replace expects (string, string, string)".into()),
+            _ => Err(InterpError::new("str_replace expects (string, string, string)")),
         }
     }
 
-    pub(crate) fn builtin_str_to_upper(&self, args: Vec<Value>) -> Result<Value, String> {
-        if args.len() != 1 { return Err("str_to_upper expects 1 argument".into()); }
+    pub(crate) fn builtin_str_to_upper(&self, args: Vec<Value>) -> Result<Value, InterpError> {
+        if args.len() != 1 { return Err(InterpError::new("str_to_upper expects 1 argument")); }
         match &args[0] {
             Value::String(s) => Ok(Value::String(s.to_uppercase())),
-            _ => Err("str_to_upper expects a string".into()),
+            _ => Err(InterpError::new("str_to_upper expects a string")),
         }
     }
 
-    pub(crate) fn builtin_str_to_lower(&self, args: Vec<Value>) -> Result<Value, String> {
-        if args.len() != 1 { return Err("str_to_lower expects 1 argument".into()); }
+    pub(crate) fn builtin_str_to_lower(&self, args: Vec<Value>) -> Result<Value, InterpError> {
+        if args.len() != 1 { return Err(InterpError::new("str_to_lower expects 1 argument")); }
         match &args[0] {
             Value::String(s) => Ok(Value::String(s.to_lowercase())),
-            _ => Err("str_to_lower expects a string".into()),
+            _ => Err(InterpError::new("str_to_lower expects a string")),
         }
     }
 
-    pub(crate) fn builtin_str_repeat(&self, args: Vec<Value>) -> Result<Value, String> {
-        if args.len() != 2 { return Err("str_repeat expects 2 arguments".into()); }
+    pub(crate) fn builtin_str_repeat(&self, args: Vec<Value>) -> Result<Value, InterpError> {
+        if args.len() != 2 { return Err(InterpError::new("str_repeat expects 2 arguments")); }
         match (&args[0], &args[1]) {
             (Value::String(s), Value::Int(n)) => {
-                if *n < 0 { return Err("str_repeat: count must be non-negative".into()); }
+                if *n < 0 { return Err(InterpError::new("str_repeat: count must be non-negative")); }
                 Ok(Value::String(s.repeat(*n as usize)))
             }
-            _ => Err("str_repeat expects (string, int)".into()),
+            _ => Err(InterpError::new("str_repeat expects (string, int)")),
         }
     }
 
-    pub(crate) fn builtin_str_contains(&self, args: Vec<Value>) -> Result<Value, String> {
-        if args.len() != 2 { return Err("str_contains expects 2 arguments".into()); }
+    pub(crate) fn builtin_str_contains(&self, args: Vec<Value>) -> Result<Value, InterpError> {
+        if args.len() != 2 { return Err(InterpError::new("str_contains expects 2 arguments")); }
         match (&args[0], &args[1]) {
             (Value::String(s), Value::String(sub)) => {
                 Ok(Value::Bool(s.contains(sub.as_str())))
             }
-            _ => Err("str_contains expects (string, string)".into()),
+            _ => Err(InterpError::new("str_contains expects (string, string)")),
         }
     }
 
-    pub(crate) fn builtin_str_index_of(&self, args: Vec<Value>) -> Result<Value, String> {
-        if args.len() != 2 { return Err("str_index_of expects 2 arguments".into()); }
+    pub(crate) fn builtin_str_index_of(&self, args: Vec<Value>) -> Result<Value, InterpError> {
+        if args.len() != 2 { return Err(InterpError::new("str_index_of expects 2 arguments")); }
         match (&args[0], &args[1]) {
             (Value::String(s), Value::String(sub)) => {
                 match s.find(sub.as_str()) {
@@ -789,17 +789,17 @@ impl<'a> Interpreter<'a> {
                     None => Ok(Value::Tuple(vec![Value::Bool(false), Value::Int(-1)])),
                 }
             }
-            _ => Err("str_index_of expects (string, string)".into()),
+            _ => Err(InterpError::new("str_index_of expects (string, string)")),
         }
     }
 
     // === Map/Record utilities ===
-    pub(crate) fn builtin_map_new(&self, args: Vec<Value>) -> Result<Value, String> {
+    pub(crate) fn builtin_map_new(&self, args: Vec<Value>) -> Result<Value, InterpError> {
         Ok(Value::Record(None, std::collections::HashMap::new()))
     }
 
-    pub(crate) fn builtin_map_get(&self, args: Vec<Value>) -> Result<Value, String> {
-        if args.len() != 2 { return Err("map_get expects 2 arguments (map, key)".into()); }
+    pub(crate) fn builtin_map_get(&self, args: Vec<Value>) -> Result<Value, InterpError> {
+        if args.len() != 2 { return Err(InterpError::new("map_get expects 2 arguments (map, key)")); }
         match (&args[0], &args[1]) {
             (Value::Record(_, fields), Value::String(key)) => {
                 match fields.get(key.as_str()) {
@@ -807,44 +807,44 @@ impl<'a> Interpreter<'a> {
                     None => Ok(Value::Tuple(vec![Value::Bool(false), Value::Unit])),
                 }
             }
-            _ => Err("map_get expects (record, string)".into()),
+            _ => Err(InterpError::new("map_get expects (record, string)")),
         }
     }
 
-    pub(crate) fn builtin_map_set(&self, args: Vec<Value>) -> Result<Value, String> {
-        if args.len() != 3 { return Err("map_set expects 3 arguments (map, key, value)".into()); }
+    pub(crate) fn builtin_map_set(&self, args: Vec<Value>) -> Result<Value, InterpError> {
+        if args.len() != 3 { return Err(InterpError::new("map_set expects 3 arguments (map, key, value)")); }
         match (&args[0], &args[1]) {
             (Value::Record(type_name, fields), Value::String(key)) => {
                 let mut new_fields = fields.clone();
                 new_fields.insert(key.clone(), args[2].clone());
                 Ok(Value::Record(type_name.clone(), new_fields))
             }
-            _ => Err("map_set expects (record, string, value)".into()),
+            _ => Err(InterpError::new("map_set expects (record, string, value)")),
         }
     }
 
-    pub(crate) fn builtin_map_remove(&self, args: Vec<Value>) -> Result<Value, String> {
-        if args.len() != 2 { return Err("map_remove expects 2 arguments (map, key)".into()); }
+    pub(crate) fn builtin_map_remove(&self, args: Vec<Value>) -> Result<Value, InterpError> {
+        if args.len() != 2 { return Err(InterpError::new("map_remove expects 2 arguments (map, key)")); }
         match (&args[0], &args[1]) {
             (Value::Record(type_name, fields), Value::String(key)) => {
                 let mut new_fields = fields.clone();
                 new_fields.remove(key.as_str());
                 Ok(Value::Record(type_name.clone(), new_fields))
             }
-            _ => Err("map_remove expects (record, string)".into()),
+            _ => Err(InterpError::new("map_remove expects (record, string)")),
         }
     }
 
-    pub(crate) fn builtin_map_size(&self, args: Vec<Value>) -> Result<Value, String> {
-        if args.len() != 1 { return Err("map_size expects 1 argument".into()); }
+    pub(crate) fn builtin_map_size(&self, args: Vec<Value>) -> Result<Value, InterpError> {
+        if args.len() != 1 { return Err(InterpError::new("map_size expects 1 argument")); }
         match &args[0] {
             Value::Record(_, fields) => Ok(Value::Int(fields.len() as i64)),
-            _ => Err("map_size expects a record".into()),
+            _ => Err(InterpError::new("map_size expects a record")),
         }
     }
 
-    pub(crate) fn builtin_map_from_list(&self, args: Vec<Value>) -> Result<Value, String> {
-        if args.len() != 1 { return Err("map_from_list expects 1 argument (list of (key, value) tuples)".into()); }
+    pub(crate) fn builtin_map_from_list(&self, args: Vec<Value>) -> Result<Value, InterpError> {
+        if args.len() != 1 { return Err(InterpError::new("map_from_list expects 1 argument (list of (key, value) tuples)")); }
         match &args[0] {
             Value::List(pairs) => {
                 let mut fields = std::collections::HashMap::new();
@@ -854,22 +854,22 @@ impl<'a> Interpreter<'a> {
                             if let Value::String(key) = &vec[0] {
                                 fields.insert(key.clone(), vec[1].clone());
                             } else {
-                                return Err("map_from_list: keys must be strings".into());
+                                return Err(InterpError::new("map_from_list: keys must be strings"));
                             }
                         }
-                        _ => return Err("map_from_list: elements must be (string, value) tuples".into()),
+                        _ => return Err(InterpError::new("map_from_list: elements must be (string, value) tuples")),
                     }
                 }
                 Ok(Value::Record(None, fields))
             }
-            _ => Err("map_from_list expects a list".into()),
+            _ => Err(InterpError::new("map_from_list expects a list")),
         }
     }
 
     // === Meta ===
-    pub(crate) fn builtin_ast_dump(&self, args: Vec<Value>) -> Result<Value, String> {
+    pub(crate) fn builtin_ast_dump(&self, args: Vec<Value>) -> Result<Value, InterpError> {
         if args.len() != 1 {
-            return Err("ast_dump expects 1 argument (a quoted AST)".into());
+            return Err(InterpError::new("ast_dump expects 1 argument (a quoted AST)"));
         }
         match &args[0] {
             Value::QuoteAst(q) => Ok(Value::String(format!("{:?}", q))),
@@ -877,141 +877,141 @@ impl<'a> Interpreter<'a> {
         }
     }
 
-    pub(crate) fn builtin_ast_eval(&mut self, args: Vec<Value>) -> Result<Value, String> {
+    pub(crate) fn builtin_ast_eval(&mut self, args: Vec<Value>) -> Result<Value, InterpError> {
         if args.len() != 1 {
-            return Err("ast_eval expects 1 argument (a quoted AST)".into());
+            return Err(InterpError::new("ast_eval expects 1 argument (a quoted AST)"));
         }
         match &args[0] {
             Value::QuoteAst(q) => self.eval_quoted_ast(q),
-            other => Err(format!("ast_eval expects a QuoteAst, got {}", other)),
+            other => Err(InterpError::new(format!("ast_eval expects a QuoteAst, got {}", other))),
         }
     }
 
     // === JSON ===
-    pub(crate) fn builtin_to_json(&self, args: Vec<Value>) -> Result<Value, String> {
-        if args.len() != 1 { return Err("to_json expects 1 argument".into()); }
-        let json_val = self.value_to_json(&args[0]).map_err(|e| e.to_string())?;
+    pub(crate) fn builtin_to_json(&self, args: Vec<Value>) -> Result<Value, InterpError> {
+        if args.len() != 1 { return Err(InterpError::new("to_json expects 1 argument")); }
+        let json_val = self.value_to_json(&args[0]).map_err(|e| InterpError::new(e.to_string()))?;
         let json_str = serde_json::to_string(&json_val)
-            .map_err(|e| format!("to_json error: {}", e))?;
+            .map_err(|e| InterpError::new(format!("to_json error: {}", e)))?;
         Ok(Value::String(json_str))
     }
 
-    pub(crate) fn builtin_json_is_valid(&self, args: Vec<Value>) -> Result<Value, String> {
-        if args.len() != 1 { return Err("json_is_valid expects 1 argument (json string)".into()); }
+    pub(crate) fn builtin_json_is_valid(&self, args: Vec<Value>) -> Result<Value, InterpError> {
+        if args.len() != 1 { return Err(InterpError::new("json_is_valid expects 1 argument (json string)")); }
         match &args[0] {
             Value::String(s) => {
                 let valid = serde_json::from_str::<serde_json::Value>(s).is_ok();
                 Ok(Value::Bool(valid))
             }
-            _ => Err("json_is_valid expects a string".into()),
+            _ => Err(InterpError::new("json_is_valid expects a string")),
         }
     }
 
-    pub(crate) fn builtin_from_json(&self, args: Vec<Value>) -> Result<Value, String> {
-        if args.len() != 1 { return Err("from_json expects 1 argument (json string)".into()); }
+    pub(crate) fn builtin_from_json(&self, args: Vec<Value>) -> Result<Value, InterpError> {
+        if args.len() != 1 { return Err(InterpError::new("from_json expects 1 argument (json string)")); }
         match &args[0] {
             Value::String(s) => {
                 // Validate JSON and return the string as-is (matches codegen behavior)
                 let _: serde_json::Value = serde_json::from_str(s)
-                    .map_err(|e| format!("from_json parse error: {}", e))?;
+                    .map_err(|e| InterpError::new(format!("from_json parse error: {}", e)))?;
                 Ok(Value::String(s.clone()))
             }
-            _ => Err("from_json expects a string".into()),
+            _ => Err(InterpError::new("from_json expects a string")),
         }
     }
 
-    pub(crate) fn builtin_json_get_string(&self, args: Vec<Value>) -> Result<Value, String> {
-        if args.len() != 2 { return Err("json_get_string expects 2 arguments".into()); }
+    pub(crate) fn builtin_json_get_string(&self, args: Vec<Value>) -> Result<Value, InterpError> {
+        if args.len() != 2 { return Err(InterpError::new("json_get_string expects 2 arguments")); }
         match (&args[0], &args[1]) {
             (Value::String(json), Value::String(key)) => {
                 let jv: serde_json::Value = serde_json::from_str(json)
-                    .map_err(|e| format!("json_get_string parse error: {}", e))?;
+                    .map_err(|e| InterpError::new(format!("json_get_string parse error: {}", e)))?;
                 match jv.get(key) {
                     Some(serde_json::Value::String(s)) => Ok(Value::String(s.clone())),
                     Some(serde_json::Value::Bool(b)) => Ok(Value::String(if *b { "true".into() } else { "false".into() })),
                     Some(serde_json::Value::Number(n)) => Ok(Value::String(n.to_string())),
                     Some(serde_json::Value::Null) => Ok(Value::String("null".into())),
                     Some(serde_json::Value::Array(_)) => {
-                        Err(format!("json_get_string: key '{}' is an array, not a string", key))
+                        Err(InterpError::new(format!("json_get_string: key '{}' is an array, not a string", key)))
                     }
                     Some(serde_json::Value::Object(_)) => {
-                        Err(format!("json_get_string: key '{}' is an object, not a string", key))
+                        Err(InterpError::new(format!("json_get_string: key '{}' is an object, not a string", key)))
                     }
-                    None => Err(format!("json_get_string: key '{}' not found", key)),
+                    None => Err(InterpError::new(format!("json_get_string: key '{}' not found", key))),
                 }
             }
-            _ => Err("json_get_string expects (string, string)".into()),
+            _ => Err(InterpError::new("json_get_string expects (string, string)")),
         }
     }
 
-    pub(crate) fn builtin_json_get_int(&self, args: Vec<Value>) -> Result<Value, String> {
-        if args.len() != 2 { return Err("json_get_int expects 2 arguments".into()); }
+    pub(crate) fn builtin_json_get_int(&self, args: Vec<Value>) -> Result<Value, InterpError> {
+        if args.len() != 2 { return Err(InterpError::new("json_get_int expects 2 arguments")); }
         match (&args[0], &args[1]) {
             (Value::String(json), Value::String(key)) => {
                 let jv: serde_json::Value = serde_json::from_str(json)
-                    .map_err(|e| format!("json_get_int parse error: {}", e))?;
+                    .map_err(|e| InterpError::new(format!("json_get_int parse error: {}", e)))?;
                 match jv.get(key) {
                     Some(serde_json::Value::Number(n)) => {
                         n.as_i64().map(Value::Int)
-                            .ok_or_else(|| format!("json_get_int: value for key '{}' is not an integer", key))
+                            .ok_or_else(|| InterpError::new(format!("json_get_int: value for key '{}' is not an integer", key)))
                     }
-                    Some(_) => Err(format!("json_get_int: key '{}' is not a number", key)),
-                    None => Err(format!("json_get_int: key '{}' not found", key)),
+                    Some(_) => Err(InterpError::new(format!("json_get_int: key '{}' is not a number", key))),
+                    None => Err(InterpError::new(format!("json_get_int: key '{}' not found", key))),
                 }
             }
-            _ => Err("json_get_int expects (string, string)".into()),
+            _ => Err(InterpError::new("json_get_int expects (string, string)")),
         }
     }
 
-    pub(crate) fn builtin_json_get_element(&self, args: Vec<Value>) -> Result<Value, String> {
-        if args.len() != 2 { return Err("json_get_element expects 2 arguments".into()); }
+    pub(crate) fn builtin_json_get_element(&self, args: Vec<Value>) -> Result<Value, InterpError> {
+        if args.len() != 2 { return Err(InterpError::new("json_get_element expects 2 arguments")); }
         match (&args[0], &args[1]) {
             (Value::String(json), Value::Int(idx)) => {
                 let jv: serde_json::Value = serde_json::from_str(json)
-                    .map_err(|e| format!("json_get_element parse error: {}", e))?;
+                    .map_err(|e| InterpError::new(format!("json_get_element parse error: {}", e)))?;
                 let index = *idx as usize;
                 match jv.get(index) {
                     Some(val) => Ok(Value::String(val.to_string())),
-                    None => Err(format!("json_get_element: index {} out of bounds", index)),
+                    None => Err(InterpError::new(format!("json_get_element: index {} out of bounds", index))),
                 }
             }
-            _ => Err("json_get_element expects (string, int)".into()),
+            _ => Err(InterpError::new("json_get_element expects (string, int)")),
         }
     }
 
     // === Time ===
-    pub(crate) fn builtin_now(&self, args: Vec<Value>) -> Result<Value, String> {
-        if !args.is_empty() { return Err("now/timestamp expects 0 arguments".into()); }
+    pub(crate) fn builtin_now(&self, args: Vec<Value>) -> Result<Value, InterpError> {
+        if !args.is_empty() { return Err(InterpError::new("now/timestamp expects 0 arguments")); }
         let ts = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .map_err(|e| format!("time error: {}", e))?
+            .map_err(|e| InterpError::new(format!("time error: {}", e)))?
             .as_secs() as i64;
         Ok(Value::Int(ts))
     }
 
-    pub(crate) fn builtin_now_ms(&self, args: Vec<Value>) -> Result<Value, String> {
-        if !args.is_empty() { return Err("now_ms/timestamp_ms expects 0 arguments".into()); }
+    pub(crate) fn builtin_now_ms(&self, args: Vec<Value>) -> Result<Value, InterpError> {
+        if !args.is_empty() { return Err(InterpError::new("now_ms/timestamp_ms expects 0 arguments")); }
         let ts = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .map_err(|e| format!("time error: {}", e))?
+            .map_err(|e| InterpError::new(format!("time error: {}", e)))?
             .as_millis() as i64;
         Ok(Value::Int(ts))
     }
 
-    pub(crate) fn builtin_sleep(&self, args: Vec<Value>) -> Result<Value, String> {
-        if args.len() != 1 { return Err("sleep expects 1 argument (milliseconds)".into()); }
+    pub(crate) fn builtin_sleep(&self, args: Vec<Value>) -> Result<Value, InterpError> {
+        if args.len() != 1 { return Err(InterpError::new("sleep expects 1 argument (milliseconds)")); }
         match &args[0] {
             Value::Int(ms) => {
                 std::thread::sleep(std::time::Duration::from_millis(*ms as u64));
                 Ok(Value::Unit)
             }
-            _ => Err("sleep expects an integer (milliseconds)".into()),
+            _ => Err(InterpError::new("sleep expects an integer (milliseconds)")),
         }
     }
 
     // === Environment ===
-    pub(crate) fn builtin_getenv(&self, args: Vec<Value>) -> Result<Value, String> {
-        if args.len() != 1 { return Err("getenv expects 1 argument (name)".into()); }
+    pub(crate) fn builtin_getenv(&self, args: Vec<Value>) -> Result<Value, InterpError> {
+        if args.len() != 1 { return Err(InterpError::new("getenv expects 1 argument (name)")); }
         match &args[0] {
             Value::String(name) => {
                 match std::env::var(name) {
@@ -1019,12 +1019,12 @@ impl<'a> Interpreter<'a> {
                     Err(_) => Ok(Value::Variant("Err".into(), vec![Value::String(format!("env var '{}' not set", name))])),
                 }
             }
-            _ => Err("getenv expects a string name".into()),
+            _ => Err(InterpError::new("getenv expects a string name")),
         }
     }
 
-    pub(crate) fn builtin_args(&self, args: Vec<Value>) -> Result<Value, String> {
-        if !args.is_empty() { return Err("args expects 0 arguments".into()); }
+    pub(crate) fn builtin_args(&self, args: Vec<Value>) -> Result<Value, InterpError> {
+        if !args.is_empty() { return Err(InterpError::new("args expects 0 arguments")); }
         let cli_args: Vec<Value> = std::env::args()
             .skip(1) // skip program name
             .map(|a| Value::String(a))
@@ -1033,8 +1033,8 @@ impl<'a> Interpreter<'a> {
     }
 
     // === File I/O ===
-    pub(crate) fn builtin_read_file(&self, args: Vec<Value>) -> Result<Value, String> {
-        if args.len() != 1 { return Err("read_file expects 1 argument (path)".into()); }
+    pub(crate) fn builtin_read_file(&self, args: Vec<Value>) -> Result<Value, InterpError> {
+        if args.len() != 1 { return Err(InterpError::new("read_file expects 1 argument (path)")); }
         match &args[0] {
             Value::String(path) => {
                 match std::fs::read_to_string(path) {
@@ -1042,12 +1042,12 @@ impl<'a> Interpreter<'a> {
                     Err(e) => Ok(Value::Variant("Err".into(), vec![Value::String(format!("read_file error: {}", e))])),
                 }
             }
-            _ => Err("read_file expects a string path".into()),
+            _ => Err(InterpError::new("read_file expects a string path")),
         }
     }
 
-    pub(crate) fn builtin_write_file(&self, args: Vec<Value>) -> Result<Value, String> {
-        if args.len() != 2 { return Err("write_file expects 2 arguments (path, content)".into()); }
+    pub(crate) fn builtin_write_file(&self, args: Vec<Value>) -> Result<Value, InterpError> {
+        if args.len() != 2 { return Err(InterpError::new("write_file expects 2 arguments (path, content)")); }
         match (&args[0], &args[1]) {
             (Value::String(path), Value::String(content)) => {
                 match std::fs::write(path, content) {
@@ -1055,35 +1055,35 @@ impl<'a> Interpreter<'a> {
                     Err(e) => Ok(Value::Variant("Err".into(), vec![Value::String(format!("write_file error: {}", e))])),
                 }
             }
-            _ => Err("write_file expects (string, string)".into()),
+            _ => Err(InterpError::new("write_file expects (string, string)")),
         }
     }
 
-    pub(crate) fn builtin_file_exists(&self, args: Vec<Value>) -> Result<Value, String> {
-        if args.len() != 1 { return Err("file_exists expects 1 argument".into()); }
+    pub(crate) fn builtin_file_exists(&self, args: Vec<Value>) -> Result<Value, InterpError> {
+        if args.len() != 1 { return Err(InterpError::new("file_exists expects 1 argument")); }
         match &args[0] {
             Value::String(path) => Ok(Value::Bool(std::path::Path::new(path).exists())),
-            _ => Err("file_exists expects a string path".into()),
+            _ => Err(InterpError::new("file_exists expects a string path")),
         }
     }
 
     // === Allocator ===
-    pub(crate) fn builtin_allocator_system(&self, args: Vec<Value>) -> Result<Value, String> {
+    pub(crate) fn builtin_allocator_system(&self, args: Vec<Value>) -> Result<Value, InterpError> {
         Ok(Value::Allocator(AllocatorKind::System))
     }
 
-    pub(crate) fn builtin_allocator_arena(&self, args: Vec<Value>) -> Result<Value, String> {
+    pub(crate) fn builtin_allocator_arena(&self, args: Vec<Value>) -> Result<Value, InterpError> {
         Ok(Value::Allocator(AllocatorKind::Arena))
     }
 
-    pub(crate) fn builtin_allocator_bump(&self, args: Vec<Value>) -> Result<Value, String> {
+    pub(crate) fn builtin_allocator_bump(&self, args: Vec<Value>) -> Result<Value, InterpError> {
         Ok(Value::Allocator(AllocatorKind::Bump))
     }
 
-    pub(crate) fn builtin_alloc(&mut self, args: Vec<Value>) -> Result<Value, String> {
+    pub(crate) fn builtin_alloc(&mut self, args: Vec<Value>) -> Result<Value, InterpError> {
         // alloc(allocator, value) - allocate a value with the given allocator
         if args.len() != 2 {
-            return Err("alloc expects 2 arguments (allocator, value)".into());
+            return Err(InterpError::new("alloc expects 2 arguments (allocator, value)"));
         }
         let alloc_val = &args[0];
         let value = &args[1];
@@ -1096,7 +1096,7 @@ impl<'a> Interpreter<'a> {
                 AllocatorKind::Arena => {
                     // Arena allocator: allocate in current arena if available
                     if self.arenas.is_empty() {
-                        return Err("alloc: no arena available (use arena block)".into());
+                        return Err(InterpError::new("alloc: no arena available (use arena block)"));
                     }
                     let arena_id = self.arenas.len() - 1;
                     let idx = self.arenas[arena_id].slots.len();
@@ -1106,7 +1106,7 @@ impl<'a> Interpreter<'a> {
                 AllocatorKind::Bump => {
                     // Bump allocator: same as arena (monotonic allocation)
                     if self.arenas.is_empty() {
-                        return Err("alloc: no arena available (use alloc(Bump) block)".into());
+                        return Err(InterpError::new("alloc: no arena available (use alloc(Bump) block)"));
                     }
                     let arena_id = self.arenas.len() - 1;
                     let idx = self.arenas[arena_id].slots.len();
@@ -1114,11 +1114,11 @@ impl<'a> Interpreter<'a> {
                     Ok(Value::ArenaRef(arena_id, idx))
                 }
             },
-            _ => Err("alloc first argument must be an Allocator value".into()),
+            _ => Err(InterpError::new("alloc first argument must be an Allocator value")),
         }
     }
 
-    pub(crate) fn builtin_arena_reset(&mut self, args: Vec<Value>) -> Result<Value, String> {
+    pub(crate) fn builtin_arena_reset(&mut self, args: Vec<Value>) -> Result<Value, InterpError> {
         // arena_reset() - reset all arena allocations
         if !self.arenas.is_empty() {
             let arena_id = self.arenas.len() - 1;
@@ -1127,7 +1127,7 @@ impl<'a> Interpreter<'a> {
         Ok(Value::Unit)
     }
 
-    pub(crate) fn builtin_bump_used(&self, args: Vec<Value>) -> Result<Value, String> {
+    pub(crate) fn builtin_bump_used(&self, args: Vec<Value>) -> Result<Value, InterpError> {
         // bump_used() - return the number of bump allocations
         if self.arenas.is_empty() {
             return Ok(Value::Int(0));
@@ -1137,26 +1137,26 @@ impl<'a> Interpreter<'a> {
     }
 
     // === C interop ===
-    pub(crate) fn builtin_str_to_c_str(&self, args: Vec<Value>) -> Result<Value, String> {
+    pub(crate) fn builtin_str_to_c_str(&self, args: Vec<Value>) -> Result<Value, InterpError> {
         if args.len() != 1 {
-            return Err("str_to_c_str expects 1 argument (string)".into());
+            return Err(InterpError::new("str_to_c_str expects 1 argument (string)"));
         }
         match &args[0] {
             Value::String(s) => {
                 // Return a tuple (pointer, length) for C compatibility
                 // The pointer is the raw pointer to the CString data
                 let c_str = std::ffi::CString::new(s.as_str())
-                    .map_err(|e| format!("failed to create C string: {}", e))?;
+                    .map_err(|e| InterpError::new(format!("failed to create C string: {}", e)))?;
                 let ptr = c_str.into_raw() as i64;
                 Ok(Value::Tuple(vec![Value::Int(ptr), Value::Int(s.len() as i64)]))
             }
-            other => Err(format!("str_to_c_str: argument must be a string, found {}", super::value::type_name(other))),
+            other => Err(InterpError::new(format!("str_to_c_str: argument must be a string, found {}", super::value::type_name(other)))),
         }
     }
 
-    pub(crate) fn builtin_c_str_to_string(&self, args: Vec<Value>) -> Result<Value, String> {
+    pub(crate) fn builtin_c_str_to_string(&self, args: Vec<Value>) -> Result<Value, InterpError> {
         if args.len() != 1 {
-            return Err("c_str_to_string expects 1 argument (pointer)".into());
+            return Err(InterpError::new("c_str_to_string expects 1 argument (pointer)"));
         }
         match &args[0] {
             Value::Int(ptr) => {
@@ -1167,13 +1167,13 @@ impl<'a> Interpreter<'a> {
                 let c_str = unsafe { std::ffi::CStr::from_ptr(*ptr as *const i8) };
                 Ok(Value::String(c_str.to_string_lossy().into_owned()))
             }
-            other => Err(format!("c_str_to_string: argument must be a pointer (int), found {}", super::value::type_name(other))),
+            other => Err(InterpError::new(format!("c_str_to_string: argument must be a pointer (int), found {}", super::value::type_name(other)))),
         }
     }
 
     // === MimiSpec runtime ===
-    pub(crate) fn builtin_lexer(&self, args: Vec<Value>) -> Result<Value, String> {
-        if args.len() != 1 { return Err("lexer expects 1 argument (source string)".into()); }
+    pub(crate) fn builtin_lexer(&self, args: Vec<Value>) -> Result<Value, InterpError> {
+        if args.len() != 1 { return Err(InterpError::new("lexer expects 1 argument (source string)")); }
         match &args[0] {
             Value::String(source) => {
                 match mimispec::tokenize(source) {
@@ -1189,15 +1189,15 @@ impl<'a> Interpreter<'a> {
                         }).collect();
                         Ok(Value::List(token_values))
                     }
-                    Err(e) => Err(format!("lexer error: {}", e)),
+                    Err(e) => Err(InterpError::new(format!("lexer error: {}", e))),
                 }
             }
-            _ => Err("lexer expects a string source".into()),
+            _ => Err(InterpError::new("lexer expects a string source")),
         }
     }
 
-    pub(crate) fn builtin_parse(&self, args: Vec<Value>) -> Result<Value, String> {
-        if args.len() != 1 { return Err("parse expects 1 argument (source string)".into()); }
+    pub(crate) fn builtin_parse(&self, args: Vec<Value>) -> Result<Value, InterpError> {
+        if args.len() != 1 { return Err(InterpError::new("parse expects 1 argument (source string)")); }
         match &args[0] {
             Value::String(source) => {
                 let result = mimispec::parse(source);
@@ -1221,108 +1221,108 @@ impl<'a> Interpreter<'a> {
                     Ok(Value::Tuple(vec![Value::Bool(false), Value::List(errors)]))
                 }
             }
-            _ => Err("parse expects a string source".into()),
+            _ => Err(InterpError::new("parse expects a string source")),
         }
     }
 
-    pub(crate) fn builtin_from_int(&self, args: Vec<Value>) -> Result<Value, String> {
+    pub(crate) fn builtin_from_int(&self, args: Vec<Value>) -> Result<Value, InterpError> {
         if args.len() < 1 {
-            return Err("from_int expects at least 1 argument (int)".into());
+            return Err(InterpError::new("from_int expects at least 1 argument (int)"));
         }
         match &args[0] {
             Value::Int(n) => Ok(Value::Int(*n)),
-            _ => Err("from_int: first arg must be an integer".into()),
+            _ => Err(InterpError::new("from_int: first arg must be an integer")),
         }
     }
 
     // === I/O (stderr) ===
-    pub(crate) fn builtin_eprintln(&self, args: Vec<Value>) -> Result<Value, String> {
+    pub(crate) fn builtin_eprintln(&self, args: Vec<Value>) -> Result<Value, InterpError> {
         let parts: Vec<String> = args.iter().map(|v| v.to_string()).collect();
         eprintln!("{}", parts.join(" "));
         Ok(Value::Unit)
     }
 
     // === Process control ===
-    pub(crate) fn builtin_exit(&self, args: Vec<Value>) -> Result<Value, String> {
+    pub(crate) fn builtin_exit(&self, args: Vec<Value>) -> Result<Value, InterpError> {
         let code = if args.is_empty() {
             0
         } else {
             match &args[0] {
                 Value::Int(n) => *n as i32,
-                _ => return Err("exit expects an integer exit code".into()),
+                _ => return Err(InterpError::new("exit expects an integer exit code")),
             }
         };
         std::process::exit(code)
     }
 
     // === Network builtins (stub implementations for interpreter) ===
-    pub(crate) fn builtin_socket(&self, args: Vec<Value>) -> Result<Value, String> {
+    pub(crate) fn builtin_socket(&self, args: Vec<Value>) -> Result<Value, InterpError> {
         if args.len() != 3 {
-            return Err("socket expects 3 arguments (domain, type, protocol)".into());
+            return Err(InterpError::new("socket expects 3 arguments (domain, type, protocol)"));
         }
-        Err("socket: network functions are not available in interpreter mode".into())
+        Err(InterpError::new("socket: network functions are not available in interpreter mode"))
     }
 
-    pub(crate) fn builtin_connect(&self, args: Vec<Value>) -> Result<Value, String> {
+    pub(crate) fn builtin_connect(&self, args: Vec<Value>) -> Result<Value, InterpError> {
         if args.len() != 3 {
-            return Err("connect expects 3 arguments (fd, host, port)".into());
+            return Err(InterpError::new("connect expects 3 arguments (fd, host, port)"));
         }
-        Err("connect: network functions are not available in interpreter mode".into())
+        Err(InterpError::new("connect: network functions are not available in interpreter mode"))
     }
 
-    pub(crate) fn builtin_bind(&self, args: Vec<Value>) -> Result<Value, String> {
+    pub(crate) fn builtin_bind(&self, args: Vec<Value>) -> Result<Value, InterpError> {
         if args.len() != 2 {
-            return Err("bind expects 2 arguments (fd, port)".into());
+            return Err(InterpError::new("bind expects 2 arguments (fd, port)"));
         }
-        Err("bind: network functions are not available in interpreter mode".into())
+        Err(InterpError::new("bind: network functions are not available in interpreter mode"))
     }
 
-    pub(crate) fn builtin_listen(&self, args: Vec<Value>) -> Result<Value, String> {
+    pub(crate) fn builtin_listen(&self, args: Vec<Value>) -> Result<Value, InterpError> {
         if args.len() != 2 {
-            return Err("listen expects 2 arguments (fd, backlog)".into());
+            return Err(InterpError::new("listen expects 2 arguments (fd, backlog)"));
         }
-        Err("listen: network functions are not available in interpreter mode".into())
+        Err(InterpError::new("listen: network functions are not available in interpreter mode"))
     }
 
-    pub(crate) fn builtin_accept(&self, args: Vec<Value>) -> Result<Value, String> {
+    pub(crate) fn builtin_accept(&self, args: Vec<Value>) -> Result<Value, InterpError> {
         if args.len() != 1 {
-            return Err("accept expects 1 argument (fd)".into());
+            return Err(InterpError::new("accept expects 1 argument (fd)"));
         }
-        Err("accept: network functions are not available in interpreter mode".into())
+        Err(InterpError::new("accept: network functions are not available in interpreter mode"))
     }
 
-    pub(crate) fn builtin_send(&self, args: Vec<Value>) -> Result<Value, String> {
+    pub(crate) fn builtin_send(&self, args: Vec<Value>) -> Result<Value, InterpError> {
         if args.len() != 2 {
-            return Err("send expects 2 arguments (fd, data)".into());
+            return Err(InterpError::new("send expects 2 arguments (fd, data)"));
         }
-        Err("send: network functions are not available in interpreter mode".into())
+        Err(InterpError::new("send: network functions are not available in interpreter mode"))
     }
 
-    pub(crate) fn builtin_recv(&self, args: Vec<Value>) -> Result<Value, String> {
+    pub(crate) fn builtin_recv(&self, args: Vec<Value>) -> Result<Value, InterpError> {
         if args.len() != 2 {
-            return Err("recv expects 2 arguments (fd, buf_size)".into());
+            return Err(InterpError::new("recv expects 2 arguments (fd, buf_size)"));
         }
-        Err("recv: network functions are not available in interpreter mode".into())
+        Err(InterpError::new("recv: network functions are not available in interpreter mode"))
     }
 
-    pub(crate) fn builtin_close_fd(&self, args: Vec<Value>) -> Result<Value, String> {
+    pub(crate) fn builtin_close_fd(&self, args: Vec<Value>) -> Result<Value, InterpError> {
         if args.len() != 1 {
-            return Err("close_fd expects 1 argument (fd)".into());
+            return Err(InterpError::new("close_fd expects 1 argument (fd)"));
         }
-        Err("close_fd: network functions are not available in interpreter mode".into())
+        Err(InterpError::new("close_fd: network functions are not available in interpreter mode"))
     }
 
-    pub(crate) fn builtin_http_get(&self, args: Vec<Value>) -> Result<Value, String> {
+    pub(crate) fn builtin_http_get(&self, args: Vec<Value>) -> Result<Value, InterpError> {
         if args.len() != 1 {
-            return Err("http_get expects 1 argument (url)".into());
+            return Err(InterpError::new("http_get expects 1 argument (url)"));
         }
-        Err("http_get: network functions are not available in interpreter mode".into())
+        Err(InterpError::new("http_get: network functions are not available in interpreter mode"))
     }
 
-    pub(crate) fn builtin_http_post(&self, args: Vec<Value>) -> Result<Value, String> {
+    pub(crate) fn builtin_http_post(&self, args: Vec<Value>) -> Result<Value, InterpError> {
         if args.len() != 2 {
-            return Err("http_post expects 2 arguments (url, body)".into());
+            return Err(InterpError::new("http_post expects 2 arguments (url, body)"));
         }
-        Err("http_post: network functions are not available in interpreter mode".into())
+        Err(InterpError::new("http_post: network functions are not available in interpreter mode"))
     }
 }

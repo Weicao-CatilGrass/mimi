@@ -793,7 +793,7 @@ impl<'a> Interpreter<'a> {
     pub(crate) fn apply_closure_ffi(&mut self, closure: &Value, args: Vec<Value>) -> Result<Value, Errno> {
         match closure {
             Value::Closure { params, body, captured, .. } =>
-                self.apply_closure_inner(params, body, captured, args).map_err(Errno::from),
+                self.apply_closure_inner(params, body, captured, args).map_err(|e| Errno::from(e.to_string())),
             _ => Err(Errno::Generic(format!("expected a closure, found {}", closure))),
         }
     }

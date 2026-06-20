@@ -1,7 +1,7 @@
 use super::*;
 
 impl<'a> Interpreter<'a> {
-    pub(crate) fn quote_block(&mut self, block: &Block) -> Result<QuotedAst, String> {
+    pub(crate) fn quote_block(&mut self, block: &Block) -> Result<QuotedAst, InterpError> {
         let mut quoted_stmts = Vec::new();
         for stmt in block {
             if let Some(q) = self.quote_stmt(stmt)? {
@@ -12,7 +12,7 @@ impl<'a> Interpreter<'a> {
     }
 
     /// Convert a single statement into a quoted AST (None for desc/rule/etc)
-    fn quote_stmt(&mut self, stmt: &Stmt) -> Result<Option<QuotedAst>, String> {
+    fn quote_stmt(&mut self, stmt: &Stmt) -> Result<Option<QuotedAst>, InterpError> {
         match stmt {
             Stmt::Let { pat, init, .. } => {
                 let name = match pat {
@@ -101,7 +101,7 @@ impl<'a> Interpreter<'a> {
     }
 
     /// Convert an expression into a quoted AST
-    fn quote_expr(&mut self, expr: &Expr) -> Result<QuotedAst, String> {
+    fn quote_expr(&mut self, expr: &Expr) -> Result<QuotedAst, InterpError> {
         match expr {
             Expr::Literal(l) => Ok(QuotedAst::Literal(l.clone())),
             Expr::Ident(name) => Ok(QuotedAst::Ident(name.clone())),
@@ -135,7 +135,7 @@ impl<'a> Interpreter<'a> {
                 let iter_val = self.eval_expr(iter)?;
                 let items = match iter_val {
                     Value::List(l) => l,
-                    _ => return Err("comprehension requires a list".into()),
+                    _ => return Err(InterpError::new("comprehension requires a list")),
                 };
                 let mut result = Vec::new();
                 for item in items {
@@ -173,7 +173,7 @@ impl<'a> Interpreter<'a> {
                 Ok(quoted)
             }
             Expr::Record { ty, fields } => {
-                let q_fields: Result<Vec<RecordFieldExprQuoted>, String> = fields.iter().map(|f| {
+                let q_fields: Result<Vec<RecordFieldExprQuoted>, InterpError> = fields.iter().map(|f| {
                     Ok(RecordFieldExprQuoted {
                         name: f.name.clone(),
                         value: self.quote_expr(&f.value)?,
@@ -183,7 +183,7 @@ impl<'a> Interpreter<'a> {
             }
             Expr::Match(subject, arms) => {
                 let q_subject = Box::new(self.quote_expr(subject)?);
-                let q_arms: Result<Vec<MatchArmQuoted>, String> = arms.iter().map(|arm| {
+                let q_arms: Result<Vec<MatchArmQuoted>, InterpError> = arms.iter().map(|arm| {
                     Ok(MatchArmQuoted {
                         pat: arm.pat.clone(),
                         guard: arm.guard.as_ref().map(|g| self.quote_expr(g)).transpose()?,
@@ -258,7 +258,7 @@ impl<'a> Interpreter<'a> {
         }
     }
 
-    pub(crate) fn eval_quoted_ast(&mut self, qa: &QuotedAst) -> Result<Value, String> {
+    pub(crate) fn eval_quoted_ast(&mut self, qa: &QuotedAst) -> Result<Value, InterpError> {
         match qa {
             QuotedAst::Literal(l) => Ok(match l {
                 Lit::Int(v) => Value::Int(*v),
@@ -279,7 +279,7 @@ impl<'a> Interpreter<'a> {
                         captured: HashMap::new(),
                     })
                 } else {
-                    Err(format!("undefined variable '{}' in quoted AST", name))
+                    Err(InterpError::new(format!("undefined variable '{}' in quoted AST", name)))
                 }
             }
             QuotedAst::Binary(op, l, r) => {
@@ -291,31 +291,31 @@ impl<'a> Interpreter<'a> {
                             (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a + b)),
                             (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a + b)),
                             (Value::String(a), Value::String(b)) => Ok(Value::String(format!("{}{}", a, b))),
-                            _ => Err(format!("unsupported + for {} and {}", lv, rv)),
+                            _ => Err(InterpError::new(format!("unsupported + for {} and {}", lv, rv))),
                         }
                     }
                     BinOp::Sub => {
                         match (&lv, &rv) {
                             (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a - b)),
                             (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a - b)),
-                            _ => Err(format!("unsupported - for {} and {}", lv, rv)),
+                            _ => Err(InterpError::new(format!("unsupported - for {} and {}", lv, rv))),
                         }
                     }
                     BinOp::Mul => {
                         match (&lv, &rv) {
                             (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a * b)),
                             (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a * b)),
-                            _ => Err(format!("unsupported * for {} and {}", lv, rv)),
+                            _ => Err(InterpError::new(format!("unsupported * for {} and {}", lv, rv))),
                         }
                     }
                     BinOp::Div => {
                         match (&lv, &rv) {
                             (Value::Int(a), Value::Int(b)) => {
-                                if *b == 0 { return Err("division by zero".into()); }
+                                if *b == 0 { return Err(InterpError::new("division by zero")); }
                                 Ok(Value::Int(a / b))
                             }
                             (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a / b)),
-                            _ => Err(format!("unsupported / for {} and {}", lv, rv)),
+                            _ => Err(InterpError::new(format!("unsupported / for {} and {}", lv, rv))),
                         }
                     }
                     BinOp::EqCmp => Ok(Value::Bool(values_equal(&lv, &rv))),
@@ -324,17 +324,17 @@ impl<'a> Interpreter<'a> {
                         match (&lv, &rv) {
                             (Value::Int(a), Value::Int(b)) => Ok(Value::Bool(a < b)),
                             (Value::Float(a), Value::Float(b)) => Ok(Value::Bool(a < b)),
-                            _ => Err(format!("unsupported < for {} and {}", lv, rv)),
+                            _ => Err(InterpError::new(format!("unsupported < for {} and {}", lv, rv))),
                         }
                     }
                     BinOp::Gt => {
                         match (&lv, &rv) {
                             (Value::Int(a), Value::Int(b)) => Ok(Value::Bool(a > b)),
                             (Value::Float(a), Value::Float(b)) => Ok(Value::Bool(a > b)),
-                            _ => Err(format!("unsupported > for {} and {}", lv, rv)),
+                            _ => Err(InterpError::new(format!("unsupported > for {} and {}", lv, rv))),
                         }
                     }
-                    _ => Err("unsupported binary op in quoted AST".into()),
+                    _ => Err(InterpError::new("unsupported binary op in quoted AST")),
                 }
             }
             QuotedAst::Unary(op, e) => {
@@ -343,13 +343,13 @@ impl<'a> Interpreter<'a> {
                     UnOp::Neg => match v {
                         Value::Int(n) => Ok(Value::Int(-n)),
                         Value::Float(n) => Ok(Value::Float(-n)),
-                        _ => Err(format!("unsupported neg for {}", v)),
+                        _ => Err(InterpError::new(format!("unsupported neg for {}", v))),
                     },
                     UnOp::Not => match v {
                         Value::Bool(b) => Ok(Value::Bool(!b)),
-                        _ => Err(format!("unsupported not for {}", v)),
+                        _ => Err(InterpError::new(format!("unsupported not for {}", v))),
                     },
-                    _ => Err("unsupported unary op in quoted AST".into()),
+                    _ => Err(InterpError::new("unsupported unary op in quoted AST")),
                 }
             }
             QuotedAst::Interpolate(v) => Ok(*v.clone()),
@@ -416,7 +416,7 @@ impl<'a> Interpreter<'a> {
                 let iter = self.eval_quoted_ast(iterable)?;
                 let list = match iter {
                     Value::List(l) => l,
-                    other => return Err(format!("cannot iterate over {}", other)),
+                    other => return Err(InterpError::new(format!("cannot iterate over {}", other))),
                 };
                 for item in list {
                     self.bind(var, item)?;
@@ -440,7 +440,7 @@ impl<'a> Interpreter<'a> {
                 let v = self.eval_quoted_ast(value)?;
                 match target.as_ref() {
                     QuotedAst::Ident(name) => self.assign(name, v)?,
-                    _ => return Err("assign target must be an identifier in quoted AST".into()),
+                    _ => return Err(InterpError::new("assign target must be an identifier in quoted AST")),
                 }
                 Ok(Value::Unit)
             }
@@ -465,11 +465,11 @@ impl<'a> Interpreter<'a> {
                     SharedKind::Weak => match v {
                         Value::Shared(arc) => Value::WeakShared(Arc::downgrade(&arc)),
                         Value::LocalShared(rc) => Value::WeakLocal(rc.downgrade()),
-                        _ => return Err(format!("weak requires a shared or local_shared value, got {}", v)),
+                        _ => return Err(InterpError::new(format!("weak requires a shared or local_shared value, got {}", v))),
                     },
                     SharedKind::WeakLocal => match v {
                         Value::LocalShared(rc) => Value::WeakLocal(rc.downgrade()),
-                        _ => return Err(format!("weak_local requires a local_shared value, got {}", v)),
+                        _ => return Err(InterpError::new(format!("weak_local requires a local_shared value, got {}", v))),
                     },
                 };
                 self.bind(name, shared_val)?;
@@ -507,10 +507,10 @@ impl<'a> Interpreter<'a> {
                 match func_val {
                     Value::Closure { params, ret: _, body, captured } =>
                         self.apply_closure_inner(&params, &body, &captured, arg_vals),
-                    _ => Err("cannot call non-closure in quoted AST".into()),
+                    _ => Err(InterpError::new("cannot call non-closure in quoted AST")),
                 }
             }
-            _ => Err(format!("unsupported quoted AST node: {:?}", qa)),
+            _ => Err(InterpError::new(format!("unsupported quoted AST node: {:?}", qa))),
         }
     }
 }

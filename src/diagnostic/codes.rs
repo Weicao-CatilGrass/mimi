@@ -110,14 +110,20 @@ pub const E0411: &str = "E0411"; // weak requires a shared value
 pub const E0500: &str = "E0500"; // cannot modify $-locked fragment
 pub const E0501: &str = "E0501"; // strict mode: contract modifications not allowed
 
-/// Warning codes (E06xx)
-pub const E0600: &str = "E0600"; // variable shadows outer variable (warning)
+/// Warning codes (W0xxx)
+pub const W001: &str = "W001"; // standalone desc/rule has no implementation
+pub const W002: &str = "W002"; // locked fragment ($/$$) with no implementation body
+pub const W003: &str = "W003"; // `...` placeholder residual in .mimi files
+pub const W004: &str = "W004"; // function naming convention (snake_case)
+
+/// Warning codes (E06xx) — kept for backward compatibility
+pub const E0600: &str = "E0600"; // variable shadows outer variable
 pub const E0601: &str = "E0601"; // unused variable
 pub const E0602: &str = "E0602"; // unused import
 
 /// Builtin function / miscellaneous error codes (E0242-E0259)
 pub const E0242: &str = "E0242"; // builtin function error (argument count/type)
-pub const E0243: &str = "E0243"; // tuple index out of bounds
+pub const E0243: &str = "E0243"; // index out of bounds
 pub const E0244: &str = "E0244"; // cannot index non-tuple type
 pub const E0245: &str = "E0245"; // await requires Future type
 pub const E0246: &str = "E0246"; // type has no variant
@@ -134,6 +140,8 @@ pub const E0256: &str = "E0256"; // linear capability not consumed
 pub const E0257: &str = "E0257"; // function argument count mismatch
 pub const E0258: &str = "E0258"; // shared binding type mismatch
 pub const E0259: &str = "E0259"; // non-expr assignment target
+pub const E0741: &str = "E0741"; // FFI wrapper error
+pub const E0742: &str = "E0742"; // value is not callable
 
 /// Codegen error codes (E07xx)
 pub const E0700: &str = "E0700"; // codegen internal error
@@ -157,9 +165,13 @@ pub const E0717: &str = "E0717"; // spawn/await compilation error
 pub const E0718: &str = "E0718"; // capability compilation error
 pub const E0719: &str = "E0719"; // compensation block error
 pub const E0720: &str = "E0720"; // generic instantiation error
+pub const E0721: &str = "E0721"; // unsupported binary operator
+pub const E0722: &str = "E0722"; // unsupported expression in codegen
 
 /// File/resource error codes (E07xx)
 pub const E0750: &str = "E0750"; // requires libc or I/O error
+
+/// Lint warning codes (W0xxx)
 
 /// Get a human-readable description for an error code.
 pub fn describe(code: &str) -> &'static str {
@@ -225,7 +237,7 @@ pub fn describe(code: &str) -> &'static str {
         E0228 => "variant argument count mismatch",
         E0229 => "list element type mismatch",
         E0230 => "comprehension guard must be bool",
-        E0231 => "unknown type",
+        E0231 => "unknown type (overlaps E0407; E0407 preferred for undefined types)",
         E0232 => "list element type mismatch",
         E0233 => "cannot assign through non-mutable reference",
         E0234 => "missing return value",
@@ -237,7 +249,7 @@ pub fn describe(code: &str) -> &'static str {
         E0240 => "where constraint violated",
         E0241 => "effect not available",
         E0242 => "builtin function error",
-        E0243 => "tuple index out of bounds",
+        E0243 => "index out of bounds",
         E0244 => "cannot index non-tuple type",
         E0245 => "await requires Future type",
         E0246 => "type has no variant",
@@ -249,11 +261,13 @@ pub fn describe(code: &str) -> &'static str {
         E0252 => "missing method in trait impl",
         E0253 => "where constraint violated",
         E0254 => "effect not available in scope",
-        E0255 => "function does not return on all paths",
+        E0255 => "function does not return on all paths (deprecated: use E0235)",
         E0256 => "linear capability not consumed",
         E0257 => "function argument count mismatch",
         E0258 => "shared binding type mismatch",
         E0259 => "non-expr assignment target",
+        E0741 => "FFI wrapper error",
+        E0742 => "value is not callable",
 
         E0300 => "cannot borrow as mutable because already immutably borrowed",
         E0301 => "cannot borrow as mutable because already mutably borrowed",
@@ -285,6 +299,8 @@ pub fn describe(code: &str) -> &'static str {
         E0700 => "codegen internal error",
         E0701 => "unsupported expression in codegen",
         E0702 => "unsupported statement in codegen",
+        E0741 => "FFI wrapper error",
+        E0742 => "value is not callable",
         E0703 => "type not representable in LLVM",
         E0704 => "function not found in codegen",
         E0705 => "actor not found in codegen",
@@ -303,8 +319,15 @@ pub fn describe(code: &str) -> &'static str {
         E0718 => "capability compilation error",
         E0719 => "compensation block error",
         E0720 => "generic instantiation error",
+        E0721 => "unsupported binary operator",
+        E0722 => "unsupported expression in codegen",
 
         E0750 => "requires libc or I/O error",
+
+        W001 => "standalone desc/rule has no implementation",
+        W002 => "locked fragment ($/$$) with no implementation body",
+        W003 => "`...` placeholder residual in .mimi files",
+        W004 => "function naming convention (snake_case)",
 
         _ => "unknown error",
     }

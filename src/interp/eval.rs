@@ -1,15 +1,14 @@
 use super::*;
 
 impl<'a> Interpreter<'a> {
-    pub(crate) fn eval_block(&mut self, block: &Block) -> Result<Option<Value>, String> {
+    pub(crate) fn eval_block(&mut self, block: &Block) -> Result<Option<Value>, InterpError> {
         self.push_compensation_scope();
         let result = self.eval_block_inner(block);
-        // Pop compensation scope: if error, run compensations; if ok, discard
         self.pop_compensation_scope(result.is_err() || self.early_return.is_some());
         result
     }
 
-    fn eval_block_inner(&mut self, block: &Block) -> Result<Option<Value>, String> {
+    fn eval_block_inner(&mut self, block: &Block) -> Result<Option<Value>, InterpError> {
         for (i, stmt) in block.iter().enumerate() {
             let is_last = i == block.len() - 1;
             match stmt {
@@ -17,7 +16,7 @@ impl<'a> Interpreter<'a> {
                     let result = self.eval_expr(e);
                     match result {
                         Ok(Value::Error(msg)) => {
-                            return Err(msg);
+                            return Err(InterpError::new(msg));
                         }
                         Ok(v) => return Ok(Some(v)),
                         Err(e) => {
@@ -29,7 +28,7 @@ impl<'a> Interpreter<'a> {
                     let result = self.eval_expr(e);
                     match result {
                         Ok(Value::Error(msg)) => {
-                            return Err(msg);
+                            return Err(InterpError::new(msg));
                         }
                         Ok(_) => {}
                         Err(e) => {
@@ -51,7 +50,7 @@ impl<'a> Interpreter<'a> {
         Ok(None)
     }
 
-    pub(crate) fn eval_stmt(&mut self, stmt: &Stmt) -> Result<Option<Value>, String> {
+    pub(crate) fn eval_stmt(&mut self, stmt: &Stmt) -> Result<Option<Value>, InterpError> {
         match stmt {
             Stmt::Let { pat, init, mut_, ref_, ty } => {
                 let v = match init {
@@ -59,12 +58,12 @@ impl<'a> Interpreter<'a> {
                         let result = self.eval_expr(e);
                         match result {
                             Ok(Value::Error(msg)) => {
-                                return Err(msg);
+                                return Err(InterpError::new(msg));
                             }
                             Ok(v) => v,
-                            Err(e) => {
-                                return Err(e);
-                            }
+                        Err(e) => {
+                            return Err(e);
+                        }
                         }
                     }
                     None => Value::Unit,
@@ -74,9 +73,8 @@ impl<'a> Interpreter<'a> {
                 let v = match (ty, &v) {
                     (Some(Type::Array(_, size)), Value::List(list)) => {
                         if list.len() != *size {
-                            return Err(format!(
-                                "array size mismatch: expected [{}; {}], found list of length {}",
-                                size, size, list.len()
+                            return Err(InterpError::new(
+                                format!("array size mismatch: expected [{}; {}], found list of length {}", size, size, list.len())
                             ));
                         }
                         Value::Array(list.clone())
@@ -119,7 +117,7 @@ impl<'a> Interpreter<'a> {
                         }
                     }
                 } else {
-                    return Err(format!("let pattern did not match value {}", v));
+                    return Err(InterpError::new(format!("let pattern did not match value {}", v)));
                 }
             }
             Stmt::Return(e) => {
@@ -131,10 +129,10 @@ impl<'a> Interpreter<'a> {
                 if self.arena_depth > 0 {
                     for arena in &self.arenas {
                         if contains_arena_ref(&v, arena.id) {
-                            return Err(format!(
+                            return Err(InterpError::new(format!(
                                 "arena escape: returning a reference to arena {} that is still active",
                                 arena.id
-                            ));
+                            )));
                         }
                     }
                 }
@@ -154,7 +152,7 @@ impl<'a> Interpreter<'a> {
             }
             Stmt::Expr(e) => {
                 if let Value::Error(msg) = self.eval_expr(e)? {
-                    return Err(msg);
+                    return Err(InterpError::new(msg));
                 }
             }
             Stmt::If { cond, then_, else_ } => {
@@ -203,7 +201,7 @@ impl<'a> Interpreter<'a> {
                         }
                         items
                     }
-                    other => return Err(format!("cannot iterate over {}", other)),
+                    other => return Err(InterpError::new(format!("cannot iterate over {}", other))),
                 };
                 for item in list {
                     self.bind(var, item)?;
@@ -276,15 +274,15 @@ impl<'a> Interpreter<'a> {
                         let ref_val = self.eval_expr(inner)?;
                         match ref_val {
                             Value::RefMut(rc) => {
-                                *rc.write().map_err(|e| format!("write lock failed: {}", e))? = v;
+                                *rc.write().map_err(|e| InterpError::new(format!("write lock failed: {}", e)))? = v;
                             }
                             Value::Shared(arc) => {
-                                *arc.write().map_err(|e| format!("shared write lock failed: {}", e))? = v;
+                                *arc.write().map_err(|e| InterpError::new(format!("shared write lock failed: {}", e)))? = v;
                             }
                             Value::LocalShared(rc) => {
                                 *rc.borrow_mut() = v;
                             }
-                            _ => return Err(format!("cannot assign through non-mutable reference (type: {})", type_name(&ref_val))),
+                            _ => return Err(InterpError::new(format!("cannot assign through non-mutable reference (type: {})", type_name(&ref_val)))),
                         }
                     }
                     Expr::Field(obj, field) => {
@@ -293,7 +291,7 @@ impl<'a> Interpreter<'a> {
                             if name == "self" {
                                 // Find the actor handle in scope and update its field
                                 if let Some(Value::Actor(handle)) = self.lookup("self") {
-                                    handle.inner.write().map_err(|e| format!("actor lock failed: {}", e))?.fields.insert(field.clone(), v);
+                                    handle.inner.write().map_err(|e| InterpError::new(format!("actor lock failed: {}", e)))?.fields.insert(field.clone(), v);
                                     return Ok(None);
                                 }
                             }
@@ -306,14 +304,14 @@ impl<'a> Interpreter<'a> {
                                         e.insert(v);
                                     }
                                 } else {
-                                    return Err(format!("field '{}' not found in record", field));
+                                    return Err(InterpError::new(format!("field '{}' not found in record", field)));
                                 }
                             }
                             Value::Actor(handle) => {
-                                handle.inner.write().map_err(|e| format!("actor lock failed: {}", e))?.fields.insert(field.clone(), v);
+                                handle.inner.write().map_err(|e| InterpError::new(format!("actor lock failed: {}", e)))?.fields.insert(field.clone(), v);
                             }
                             Value::Shared(arc) => {
-                                let mut inner = arc.write().map_err(|e| format!("shared write lock failed: {}", e))?;
+                                let mut inner = arc.write().map_err(|e| InterpError::new(format!("shared write lock failed: {}", e)))?;
                                 match &mut *inner {
                                     Value::Record(_, fields) => {
                                         if fields.contains_key(field.as_str()) {
@@ -321,10 +319,10 @@ impl<'a> Interpreter<'a> {
                                                 e.insert(v);
                                             }
                                         } else {
-                                            return Err(format!("field '{}' not found in shared record", field));
+                                            return Err(InterpError::new(format!("field '{}' not found in shared record", field)));
                                         }
                                     }
-                                    _ => return Err(format!("cannot assign to field of non-record shared value (type: {})", type_name(&inner))),
+                                    _ => return Err(InterpError::new(format!("cannot assign to field of non-record shared value (type: {})", type_name(&inner)))),
                                 }
                             }
                             Value::LocalShared(rc) => {
@@ -336,13 +334,13 @@ impl<'a> Interpreter<'a> {
                                                 e.insert(v);
                                             }
                                         } else {
-                                            return Err(format!("field '{}' not found in local_shared record", field));
+                                            return Err(InterpError::new(format!("field '{}' not found in local_shared record", field)));
                                         }
                                     }
-                                    _ => return Err(format!("cannot assign to field of non-record local_shared value (type: {})", type_name(&inner))),
+                                    _ => return Err(InterpError::new(format!("cannot assign to field of non-record local_shared value (type: {})", type_name(&inner)))),
                                 }
                             }
-                            _ => return Err(format!("cannot assign to field of non-record/non-actor value (type: {})", type_name(&obj_val))),
+                            _ => return Err(InterpError::new(format!("cannot assign to field of non-record/non-actor value (type: {})", type_name(&obj_val)))),
                         }
                     }
                     Expr::Index(obj, idx) => {
@@ -351,12 +349,12 @@ impl<'a> Interpreter<'a> {
                         let idx_val = self.eval_expr(idx)?;
                         let index = match idx_val {
                             Value::Int(i) => i as usize,
-                            _ => return Err(format!("list index must be an integer, got {}", type_name(&idx_val))),
+                            _ => return Err(InterpError::new(format!("list index must be an integer, got {}", type_name(&idx_val)))),
                         };
                         match list_val {
                             Value::List(mut items) => {
                                 if index >= items.len() {
-                                    return Err(format!("list index {} out of bounds (len {})", index, items.len()));
+                                    return Err(InterpError::new(format!("list index {} out of bounds (len {})", index, items.len())));
                                 }
                                 items[index] = v;
                                 // Update the binding
@@ -370,14 +368,14 @@ impl<'a> Interpreter<'a> {
                                         }
                                     }
                                     if !found {
-                                        return Err(format!("variable '{}' not found", name));
+                                        return Err(InterpError::new(format!("variable '{}' not found", name)));
                                     }
                                 }
                             }
-                            _ => return Err(format!("cannot index-assign to non-list value (type: {})", type_name(&list_val))),
+                            _ => return Err(InterpError::new(format!("cannot index-assign to non-list value (type: {})", type_name(&list_val)))),
                         }
                     }
-                    _ => return Err("assignment target must be a variable".into()),
+                    _ => return Err(InterpError::new("assignment target must be a variable")),
                 }
             }
             Stmt::Desc(_) | Stmt::Requires(_, _) | Stmt::Ensures(_, _) | Stmt::Ellipsis | Stmt::MmsBlock { .. } => {}
@@ -406,13 +404,13 @@ impl<'a> Interpreter<'a> {
                         match v {
                             Value::Shared(arc) => Value::WeakShared(Arc::downgrade(&arc)),
                             Value::LocalShared(rc) => Value::WeakLocal(rc.downgrade()),
-                            _ => return Err(format!("weak requires a shared or local_shared value, got {}", v)),
+                            _ => return Err(InterpError::new(format!("weak requires a shared or local_shared value, got {}", v))),
                         }
                     }
                     SharedKind::WeakLocal => {
                         match v {
                             Value::LocalShared(rc) => Value::WeakLocal(rc.downgrade()),
-                            _ => return Err(format!("weak_local requires a local_shared value, got {}", v)),
+                            _ => return Err(InterpError::new(format!("weak_local requires a local_shared value, got {}", v))),
                         }
                     }
                 };
@@ -432,12 +430,12 @@ impl<'a> Interpreter<'a> {
                 for scope in &self.env {
                     for val in scope.values() {
                         if crate::interp::value::contains_local_shared(val) {
-                            return Err("parasteps: local_shared values cannot cross thread boundary".into());
+                            return Err(InterpError::new("parasteps: local_shared values cannot cross thread boundary"));
                         }
                     }
                 }
                 let mut last_value = None;
-                type SpawnReceiver = std::sync::Arc<std::sync::Mutex<std::sync::mpsc::Receiver<Result<Value, String>>>>;
+                type SpawnReceiver = std::sync::Arc<std::sync::Mutex<std::sync::mpsc::Receiver<Result<Value, InterpError>>>>;
                 let mut futures: Vec<SpawnReceiver> = Vec::new();
                 let mut spawn_bindings: HashMap<String, SpawnReceiver> = HashMap::new();
 
@@ -446,7 +444,7 @@ impl<'a> Interpreter<'a> {
                         Stmt::Expr(Expr::Spawn(expr)) => {
                             // Runtime assertion: no LocalShared values cross thread boundaries
                             if crate::interp::value::contains_local_shared(&self.eval_expr(expr)?) {
-                                return Err("parasteps: local_shared values cannot cross thread boundary".into());
+                                return Err(InterpError::new("parasteps: local_shared values cannot cross thread boundary"));
                             }
                             let (tx, rx) = std::sync::mpsc::channel();
                             let expr = expr.clone();
@@ -501,7 +499,7 @@ impl<'a> Interpreter<'a> {
 
                 // Wait for all futures and check for errors
                 for rx in futures {
-                    let rx = rx.lock().map_err(|e| format!("await failed: {}", e))?;
+                    let rx = rx.lock().map_err(|e| InterpError::new(format!("await failed: {}", e)))?;
                     if let Ok(Err(e)) = rx.recv() {
                         return Err(e);
                     }
@@ -509,8 +507,8 @@ impl<'a> Interpreter<'a> {
 
                 // If last_value is a Future, await it
                 if let Some(Value::Future(rx)) = last_value {
-                    let rx = rx.lock().map_err(|e| format!("await failed: {}", e))?;
-                    last_value = Some(rx.recv().map_err(|e| format!("await failed: {}", e))??);
+                    let rx = rx.lock().map_err(|e| InterpError::new(format!("await failed: {}", e)))?;
+                    last_value = Some(rx.recv().map_err(|e| InterpError::new(format!("await failed: {}", e)))??);
                 }
 
                 return Ok(last_value);
@@ -519,7 +517,7 @@ impl<'a> Interpreter<'a> {
         Ok(None)
     }
 
-    pub(crate) fn eval_expr(&mut self, expr: &Expr) -> Result<Value, String> {
+    pub(crate) fn eval_expr(&mut self, expr: &Expr) -> Result<Value, InterpError> {
         match expr {
             Expr::Literal(l) => Ok(match l {
                 Lit::Int(v) => Value::Int(*v),
@@ -545,7 +543,7 @@ impl<'a> Interpreter<'a> {
                 if let Some(v) = self.lookup(name) {
                     Ok(v)
                 } else if self.is_moved(name) {
-                    Err(format!("use of moved value '{}'", name))
+                    Err(InterpError::new(format!("use of moved value '{}'", name)))
                 } else if let Some(components) = self.cap_defs.get(name.as_str()) {
                     // Cap definition: return as Value::Cap
                     Ok(Value::Cap(components.clone()))
@@ -559,12 +557,12 @@ impl<'a> Interpreter<'a> {
                     })
                 } else if let Some(&arity) = self.constructors.get(name.as_str()) {
                     if arity == 0 {
-                        if self.newtype_constructors.get(name.as_str()).copied().unwrap_or(false) {
-                            return Err(format!("newtype '{}' requires exactly one argument", name));
-                        }
+                    if self.newtype_constructors.get(name.as_str()).copied().unwrap_or(false) {
+                        return Err(InterpError::new(format!("newtype '{}' requires exactly one argument", name)));
+                    }
                         Ok(Value::Variant(name.clone(), vec![]))
                     } else {
-                        Err(format!("constructor '{}' requires {} arguments", name, arity))
+                        Err(InterpError::new(format!("constructor '{}' requires {} arguments", name, arity)))
                     }
                 } else {
                     // Try to suggest a similar name
@@ -586,9 +584,9 @@ impl<'a> Interpreter<'a> {
                     candidates.sort();
                     candidates.dedup();
                     if let Some(suggestion) = candidates.first() {
-                        Err(format!("undefined variable '{}' — did you mean '{}'?", name, suggestion))
+                        Err(InterpError::new(format!("undefined variable '{}' — did you mean '{}'?", name, suggestion)))
                     } else {
-                        Err(format!("undefined variable '{}'", name))
+                        Err(InterpError::new(format!("undefined variable '{}'", name)))
                     }
                 }
             }
@@ -626,7 +624,7 @@ impl<'a> Interpreter<'a> {
                         match callee_val {
                             Value::Closure { params, ret: _, body, captured } =>
                                 self.apply_closure_inner(&params, &body, &captured, vals),
-                            _ => Err(format!("cannot call {}: expected a function or closure", type_name(&callee_val))),
+                            _ => Err(InterpError::new(format!("cannot call {}: expected a function or closure", type_name(&callee_val)))),
                         }
                     }
                 }
@@ -645,10 +643,10 @@ impl<'a> Interpreter<'a> {
                         if *idx < items.len() {
                             Ok(items[*idx].clone())
                         } else {
-                            Err(format!("tuple index {} out of bounds (len {})", idx, items.len()))
+                            Err(InterpError::new(format!("tuple index {} out of bounds (len {})", idx, items.len())))
                         }
                     }
-                    _ => Err(format!("cannot index non-tuple value with .{}", idx)),
+                    _ => Err(InterpError::new(format!("cannot index non-tuple value with .{}", idx))),
                 }
             }
             Expr::List(elems) => {
@@ -662,7 +660,7 @@ impl<'a> Interpreter<'a> {
                 let iter_val = self.eval_expr(iter)?;
                 let items = match iter_val {
                     Value::List(l) => l,
-                    _ => return Err(format!("comprehension requires a list, got {}", type_name(&iter_val))),
+                    _ => return Err(InterpError::new(format!("comprehension requires a list, got {}", type_name(&iter_val)))),
                 };
                 let mut result = Vec::new();
                 for item in items {
@@ -718,7 +716,7 @@ impl<'a> Interpreter<'a> {
                         return result;
                     }
                 }
-                Err("non-exhaustive match".into())
+                Err(InterpError::new("non-exhaustive match"))
             }
             Expr::Field(obj, field) => {
                 // Special case: module-qualified access (Module::func or Module::Sub::func)
@@ -763,11 +761,11 @@ impl<'a> Interpreter<'a> {
                     if name == "self" {
                         // Look up self from scope
                         if let Some(Value::Actor(handle)) = self.lookup("self") {
-                            let actor = handle.inner.read().map_err(|e| format!("actor lock failed: {}", e))?;
+                            let actor = handle.inner.read().map_err(|e| InterpError::new(format!("actor lock failed: {}", e)))?;
                             if let Some(value) = actor.fields.get(field.as_str()) {
                                 return Ok(value.clone());
                             }
-                            return Err(format!("actor field '{}' not found", field));
+                            return Err(InterpError::new(format!("actor field '{}' not found", field)));
                         }
                         // For non-actor self values (records, etc.), fall through to normal field access
                     }
@@ -778,39 +776,39 @@ impl<'a> Interpreter<'a> {
                         fields
                             .get(field)
                             .cloned()
-                            .ok_or_else(|| {
+                            .ok_or_else(|| InterpError::new({
                                 let available: Vec<&str> = fields.keys().map(|s| s.as_str()).collect();
                                 if available.is_empty() {
                                     format!("field '{}' not found in record (record is empty)", field)
                                 } else {
                                     format!("field '{}' not found in record — available fields: {}", field, available.join(", "))
                                 }
-                            })
+                            }))
                     }
                     Value::Actor(handle) => {
                         // Actor field access using read lock
-                        let actor = handle.inner.read().map_err(|e| format!("actor lock failed: {}", e))?;
+                        let actor = handle.inner.read().map_err(|e| InterpError::new(format!("actor lock failed: {}", e)))?;
                         actor.fields.get(field.as_str())
                             .cloned()
-                            .ok_or_else(|| format!("actor field '{}' not found", field))
+                            .ok_or_else(|| InterpError::new(format!("actor field '{}' not found", field)))
                     }
                     Value::Shared(arc) => {
-                        let inner = arc.read().map_err(|e| format!("shared read lock failed: {}", e))?;
+                        let inner = arc.read().map_err(|e| InterpError::new(format!("shared read lock failed: {}", e)))?;
                         match &*inner {
                             Value::Record(_, fields) => fields.get(field.as_str()).cloned()
-                                .ok_or_else(|| format!("field '{}' not found in shared record", field)),
-                            _ => Err("field access on non-record shared value".into()),
+                                .ok_or_else(|| InterpError::new(format!("field '{}' not found in shared record", field))),
+                            _ => Err(InterpError::new("field access on non-record shared value")),
                         }
                     }
                     Value::LocalShared(rc) => {
                         let inner = rc.borrow();
                         match &*inner {
                             Value::Record(_, fields) => fields.get(field.as_str()).cloned()
-                                .ok_or_else(|| format!("field '{}' not found in local_shared record", field)),
-                            _ => Err("field access on non-record local_shared value".into()),
+                                .ok_or_else(|| InterpError::new(format!("field '{}' not found in local_shared record", field))),
+                            _ => Err(InterpError::new("field access on non-record local_shared value")),
                         }
                     }
-                    _ => Err(format!("cannot access field '{}' on {}", field, type_name(&obj_val))),
+                    _ => Err(InterpError::new(format!("cannot access field '{}' on {}", field, type_name(&obj_val)))),
                 }
             }
             Expr::Record { ty, fields } => {
@@ -829,7 +827,7 @@ impl<'a> Interpreter<'a> {
                         let len = list.len() as i64;
                         let i = if *i < 0 { len + *i } else { *i };
                         if i < 0 || i >= len {
-                            return Err(format!("index out of bounds: index {} is not valid for list of length {}", i, len));
+                            return Err(InterpError::new(format!("index out of bounds: index {} is not valid for list of length {}", i, len)));
                         }
                         Ok(list[i as usize].clone())
                     }
@@ -837,7 +835,7 @@ impl<'a> Interpreter<'a> {
                         let len = arr.len() as i64;
                         let i = if *i < 0 { len + *i } else { *i };
                         if i < 0 || i >= len {
-                            return Err(format!("index out of bounds: index {} is not valid for array of length {}", i, len));
+                            return Err(InterpError::new(format!("index out of bounds: index {} is not valid for array of length {}", i, len)));
                         }
                         Ok(arr[i as usize].clone())
                     }
@@ -845,7 +843,7 @@ impl<'a> Interpreter<'a> {
                         let slice_len = (*end - *start) as i64;
                         let i = if *i < 0 { slice_len + *i } else { *i };
                         if i < 0 || i >= slice_len {
-                            return Err(format!("index out of bounds: index {} is not valid for slice of length {}", i, slice_len));
+                            return Err(InterpError::new(format!("index out of bounds: index {} is not valid for slice of length {}", i, slice_len)));
                         }
                         Ok(source[*start + i as usize].clone())
                     }
@@ -853,11 +851,11 @@ impl<'a> Interpreter<'a> {
                         let len = s.chars().count() as i64;
                         let i = if *i < 0 { len + *i } else { *i };
                         if i < 0 || i >= len {
-                            return Err(format!("index out of bounds: index {} is not valid for string of length {}", i, len));
+                            return Err(InterpError::new(format!("index out of bounds: index {} is not valid for string of length {}", i, len)));
                         }
                         Ok(Value::String(s.chars().nth(i as usize).unwrap().to_string()))
                     }
-                    _ => Err(format!("cannot index {} with {}", type_name(&obj), type_name(&idx))),
+                    _ => Err(InterpError::new(format!("cannot index {} with {}", type_name(&obj), type_name(&idx)))),
                 }
             }
             Expr::SliceExpr { target, start, end } => {
@@ -867,7 +865,7 @@ impl<'a> Interpreter<'a> {
                     Value::Array(a) => a.len(),
                     Value::Slice { source: _, start: s, end: e } => e - s,
                     Value::String(s) => s.len(),
-                    _ => return Err("cannot slice non-sequence value".into()),
+                    _ => return Err(InterpError::new("cannot slice non-sequence value")),
                 };
                 let start_idx = match start {
                     Some(e) => {
@@ -875,10 +873,10 @@ impl<'a> Interpreter<'a> {
                         match v {
                             Value::Int(i) => {
                                 let i = if i < 0 { len as i64 + i } else { i } as usize;
-                                if i > len { return Err("slice start out of bounds".into()); }
+                                if i > len { return Err(InterpError::new("slice start out of bounds")); }
                                 i
                             }
-                            _ => return Err("slice index must be integer".into()),
+                            _ => return Err(InterpError::new("slice index must be integer")),
                         }
                     }
                     None => 0,
@@ -889,16 +887,16 @@ impl<'a> Interpreter<'a> {
                         match v {
                             Value::Int(i) => {
                                 let i = if i < 0 { len as i64 + i } else { i } as usize;
-                                if i > len { return Err("slice end out of bounds".into()); }
+                                if i > len { return Err(InterpError::new("slice end out of bounds")); }
                                 i
                             }
-                            _ => return Err("slice index must be integer".into()),
+                            _ => return Err(InterpError::new("slice index must be integer")),
                         }
                     }
                     None => len,
                 };
                 if start_idx > end_idx {
-                    return Err("slice start > end".into());
+                    return Err(InterpError::new("slice start > end"));
                 }
                 match obj {
                     Value::List(l) => Ok(Value::Slice { source: l, start: start_idx, end: end_idx }),
@@ -1002,7 +1000,7 @@ impl<'a> Interpreter<'a> {
                                 let _ = tx.send(result);
                             });
                             // Wait for the result
-                            let result = rx.recv().map_err(|e| format!("await failed: {}", e))?;
+                            let result = rx.recv().map_err(|e| InterpError::new(format!("await failed: {}", e)))?;
                             return result;
                         }
                     }
@@ -1011,8 +1009,8 @@ impl<'a> Interpreter<'a> {
                 let v = self.eval_expr(expr)?;
                 match v {
                     Value::Future(rx) => {
-                        let rx = rx.lock().map_err(|e| format!("await failed: {}", e))?;
-                        rx.recv().map_err(|e| format!("await failed: {}", e))?
+                    let rx = rx.lock().map_err(|e| InterpError::new(format!("await failed: {}", e)))?;
+                        rx.recv().map_err(|e| InterpError::new(format!("await failed: {}", e)))?
                     }
                     other => Ok(other),
                 }
@@ -1062,7 +1060,7 @@ impl<'a> Interpreter<'a> {
                 // Turbofish: func::<Type>(args) — evaluate args and call the function
                 // Type arguments are ignored at runtime (monomorphization happens at compile time)
                 let func = self.find_function(name)
-                    .ok_or_else(|| format!("undefined function '{}'", name))?;
+                    .ok_or_else(|| InterpError::new(format!("undefined function '{}'", name)))?;
                 let mut arg_vals = Vec::new();
                 for arg in args {
                     arg_vals.push(self.eval_expr(arg)?);
@@ -1106,37 +1104,37 @@ impl<'a> Interpreter<'a> {
                 let end_val = self.eval_expr(end)?;
                 match (start_val, end_val) {
                     (Value::Int(s), Value::Int(e)) => Ok(Value::Range { start: s, end: e }),
-                    _ => Err("range requires integer operands".into()),
+                    _ => Err(InterpError::new("range requires integer operands")),
                 }
             }
         }
     }
 
-    fn eval_unary(&mut self, op: UnOp, e: &Expr) -> Result<Value, String> {
+    fn eval_unary(&mut self, op: UnOp, e: &Expr) -> Result<Value, InterpError> {
         let v = self.eval_expr(e)?;
         match op {
             UnOp::Neg => match v {
                 Value::Int(x) => {
                     crate::safe_arith::checked_neg(x)
-                        .ok_or_else(|| format!("integer overflow in negation: -{}", x))
+                        .ok_or_else(|| InterpError::new(format!("integer overflow in negation: -{}", x)))
                         .map(Value::Int)
                 }
                 Value::Float(x) => Ok(Value::Float(-x)),
-                _ => Err(format!("cannot negate {}", type_name(&v))),
+                _ => Err(InterpError::new(format!("cannot negate {}", type_name(&v)))),
             },
             UnOp::Not => Ok(Value::Bool(!is_truthy(&v))),
             UnOp::Ref => Ok(Value::Ref(Arc::new(RwLock::new(v)))),
             UnOp::RefMut => Ok(Value::RefMut(Arc::new(RwLock::new(v)))),
             UnOp::Deref => match v {
-                Value::Ref(rc) | Value::RefMut(rc) => Ok(rc.read().map_err(|e| format!("read lock failed: {}", e))?.clone()),
-                Value::Shared(arc) => Ok(arc.read().map_err(|e| format!("shared read lock failed: {}", e))?.clone()),
+                Value::Ref(rc) | Value::RefMut(rc) => Ok(rc.read().map_err(|e| InterpError::new(format!("read lock failed: {}", e)))?.clone()),
+                Value::Shared(arc) => Ok(arc.read().map_err(|e| InterpError::new(format!("shared read lock failed: {}", e)))?.clone()),
                 Value::LocalShared(rc) => Ok(rc.borrow().clone()),
-                _ => Err(format!("cannot dereference {}", type_name(&v))),
+                _ => Err(InterpError::new(format!("cannot dereference {}", type_name(&v)))),
             },
         }
     }
 
-    fn eval_binary(&mut self, op: BinOp, l: &Expr, r: &Expr) -> Result<Value, String> {
+    fn eval_binary(&mut self, op: BinOp, l: &Expr, r: &Expr) -> Result<Value, InterpError> {
         // short-circuit logic
         match op {
             BinOp::And => {
@@ -1162,59 +1160,59 @@ impl<'a> Interpreter<'a> {
                 (Value::String(a), Value::String(b)) => Ok(Value::String(format!("{}{}", a, b))),
                 (Value::Int(a), Value::Int(b)) => {
                     crate::safe_arith::checked_add(*a, *b)
-                        .ok_or_else(|| format!("integer overflow in addition: {} + {}", a, b))
+                        .ok_or_else(|| InterpError::new(format!("integer overflow in addition: {} + {}", a, b)))
                         .map(Value::Int)
                 }
                 (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a + b)),
-                _ => Err(format!("cannot apply '+' to {} and {}", type_name(&left), type_name(&right))),
+                _ => Err(InterpError::new(format!("cannot apply '+' to {} and {}", type_name(&left), type_name(&right)))),
             },
             BinOp::Sub => match (&left, &right) {
                 (Value::Int(a), Value::Int(b)) => {
                     crate::safe_arith::checked_sub(*a, *b)
-                        .ok_or_else(|| format!("integer overflow in subtraction: {} - {}", a, b))
+                        .ok_or_else(|| InterpError::new(format!("integer overflow in subtraction: {} - {}", a, b)))
                         .map(Value::Int)
                 }
                 (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a - b)),
-                _ => Err(format!("cannot apply '-' to {} and {}", type_name(&left), type_name(&right))),
+                _ => Err(InterpError::new(format!("cannot apply '-' to {} and {}", type_name(&left), type_name(&right)))),
             },
             BinOp::Mul => match (&left, &right) {
                 (Value::Int(a), Value::Int(b)) => {
                     crate::safe_arith::checked_mul(*a, *b)
-                        .ok_or_else(|| format!("integer overflow in multiplication: {} * {}", a, b))
+                        .ok_or_else(|| InterpError::new(format!("integer overflow in multiplication: {} * {}", a, b)))
                         .map(Value::Int)
                 }
                 (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a * b)),
-                _ => Err(format!("cannot apply '*' to {} and {}", type_name(&left), type_name(&right))),
+                _ => Err(InterpError::new(format!("cannot apply '*' to {} and {}", type_name(&left), type_name(&right)))),
             },
             BinOp::Div => match (&left, &right) {
-                (Value::Int(_), Value::Int(0)) => Err("division by zero".into()),
-                (Value::Float(_), Value::Float(b)) if *b == 0.0 => Err("division by zero".into()),
+                (Value::Int(_), Value::Int(0)) => Err(InterpError::new("division by zero")),
+                (Value::Float(_), Value::Float(b)) if *b == 0.0 => Err(InterpError::new("division by zero")),
                 (Value::Int(a), Value::Int(b)) => {
                     crate::safe_arith::checked_div(*a, *b)
-                        .ok_or_else(|| format!("integer overflow in division: {} / {}", a, b))
+                        .ok_or_else(|| InterpError::new(format!("integer overflow in division: {} / {}", a, b)))
                         .map(Value::Int)
                 }
                 (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a / b)),
-                _ => Err(format!("cannot apply '/' to {} and {}", type_name(&left), type_name(&right))),
+                _ => Err(InterpError::new(format!("cannot apply '/' to {} and {}", type_name(&left), type_name(&right)))),
             },
             BinOp::Mod => match (&left, &right) {
-                (Value::Int(_), Value::Int(0)) => Err("modulo by zero".into()),
+                (Value::Int(_), Value::Int(0)) => Err(InterpError::new("modulo by zero")),
                 (Value::Int(a), Value::Int(b)) => {
                     crate::safe_arith::checked_rem(*a, *b)
-                        .ok_or_else(|| format!("integer overflow in modulo: {} % {}", a, b))
+                        .ok_or_else(|| InterpError::new(format!("integer overflow in modulo: {} % {}", a, b)))
                         .map(Value::Int)
                 }
-                _ => Err(format!("cannot apply '%' to {} and {}", type_name(&left), type_name(&right))),
+                _ => Err(InterpError::new(format!("cannot apply '%' to {} and {}", type_name(&left), type_name(&right)))),
             },
             BinOp::Pow => match (&left, &right) {
-                (Value::Int(_), Value::Int(b)) if *b < 0 => Err("negative exponent not supported for integers".into()),
+                (Value::Int(_), Value::Int(b)) if *b < 0 => Err(InterpError::new("negative exponent not supported for integers")),
                 (Value::Int(a), Value::Int(b)) => {
                     crate::safe_arith::checked_pow(*a, *b as u32)
-                        .ok_or_else(|| format!("integer overflow in power: {} ^ {}", a, b))
+                        .ok_or_else(|| InterpError::new(format!("integer overflow in power: {} ^ {}", a, b)))
                         .map(Value::Int)
                 }
                 (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a.powf(*b))),
-                _ => Err(format!("cannot apply '^' to {} and {}", type_name(&left), type_name(&right))),
+                _ => Err(InterpError::new(format!("cannot apply '^' to {} and {}", type_name(&left), type_name(&right)))),
             },
             BinOp::EqCmp => Ok(Value::Bool(values_equal(&left, &right))),
             BinOp::NeCmp => Ok(Value::Bool(!values_equal(&left, &right))),
@@ -1224,36 +1222,36 @@ impl<'a> Interpreter<'a> {
             BinOp::Ge => compare_op(left, right, |o| o != std::cmp::Ordering::Less),
             BinOp::BitAnd => match (&left, &right) {
                 (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a & b)),
-                _ => Err(format!("cannot apply '&' to {} and {}", type_name(&left), type_name(&right))),
+                _ => Err(InterpError::new(format!("cannot apply '&' to {} and {}", type_name(&left), type_name(&right)))),
             },
             BinOp::BitOr => match (&left, &right) {
                 (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a | b)),
-                _ => Err(format!("cannot apply '|' to {} and {}", type_name(&left), type_name(&right))),
+                _ => Err(InterpError::new(format!("cannot apply '|' to {} and {}", type_name(&left), type_name(&right)))),
             },
             BinOp::BitXor => match (&left, &right) {
                 (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a ^ b)),
-                _ => Err(format!("cannot apply '^' to {} and {}", type_name(&left), type_name(&right))),
+                _ => Err(InterpError::new(format!("cannot apply '^' to {} and {}", type_name(&left), type_name(&right)))),
             },
             BinOp::Shl => match (&left, &right) {
                 (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a << b)),
-                _ => Err(format!("cannot apply '<<' to {} and {}", type_name(&left), type_name(&right))),
+                _ => Err(InterpError::new(format!("cannot apply '<<' to {} and {}", type_name(&left), type_name(&right)))),
             },
             BinOp::Shr => match (&left, &right) {
                 (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a >> b)),
-                _ => Err(format!("cannot apply '>>' to {} and {}", type_name(&left), type_name(&right))),
+                _ => Err(InterpError::new(format!("cannot apply '>>' to {} and {}", type_name(&left), type_name(&right)))),
             },
             BinOp::Range => match (&left, &right) {
                 (Value::Int(a), Value::Int(b)) => Ok(Value::Range { start: *a, end: *b }),
-                _ => Err(format!("cannot apply '..' to {} and {}", type_name(&left), type_name(&right))),
+                _ => Err(InterpError::new(format!("cannot apply '..' to {} and {}", type_name(&left), type_name(&right)))),
             },
-            BinOp::Assign => Err("assignment as expression not supported".into()),
+            BinOp::Assign => Err(InterpError::new("assignment as expression not supported")),
             BinOp::And | BinOp::Or => unreachable!(),
         }
     }
 
     /// Evaluate an arena block: create arena, push scope, eval block, check escape.
     /// Shared by Stmt::Arena and Stmt::Alloc { kind: AllocKind::Arena }.
-    fn eval_arena_block(&mut self, block: &Block) -> Result<Option<Value>, String> {
+    fn eval_arena_block(&mut self, block: &Block) -> Result<Option<Value>, InterpError> {
         let arena_id = self.arenas.len();
         self.arenas.push(Arena { id: arena_id, slots: Vec::new() });
         self.arena_depth += 1;
@@ -1276,10 +1274,10 @@ impl<'a> Interpreter<'a> {
             self.arena_depth -= 1;
             self.pop_scope();
             self.arenas.pop();
-            return Err(format!(
-                "arena escape: variable '{}' holds a reference to arena {} that is about to be freed",
-                name, arena_id
-            ));
+            return Err(InterpError::new(
+                format!("arena escape: variable '{}' holds a reference to arena {} that is about to be freed",
+                    name, arena_id
+                )));
         }
 
         // Check if the result itself contains an ArenaRef
@@ -1288,10 +1286,10 @@ impl<'a> Interpreter<'a> {
                 self.arena_depth -= 1;
                 self.pop_scope();
                 self.arenas.pop();
-                return Err(format!(
-                    "arena escape: returning a reference to arena {} that is about to be freed",
-                    arena_id
-                ));
+                return Err(InterpError::new(
+                    format!("arena escape: returning a reference to arena {} that is about to be freed",
+                        arena_id
+                    )));
             }
         }
 
