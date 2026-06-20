@@ -378,7 +378,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     .try_as_basic_value_opt()
                     .ok_or("malloc returned void")?
                     .into_pointer_value();
-                self.register_heap_alloc(buf);
+                // NOTE: not registered — returned value owns the allocation
                 // fgets(buf, 4096, stdin)
                 let i8_ptr_ty = self.context.i8_type().ptr_type(inkwell::AddressSpace::default());
                 let stdin_global = self.module.add_global(
@@ -592,7 +592,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     .try_as_basic_value_opt()
                     .ok_or("malloc returned void")?
                     .into_pointer_value();
-                self.register_heap_alloc(buf);
+                // NOTE: not registered — returned value owns the allocation
                 // fread(buf, 1, file_size, file)
                 let fread_fn = self.module.get_function("fread")
                     .unwrap_or_else(|| {

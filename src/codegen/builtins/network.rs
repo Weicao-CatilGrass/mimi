@@ -156,8 +156,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     .try_as_basic_value_opt()
                     .ok_or("mimi_recv returned void")?
                     .into_pointer_value();
-                // NEW-2: register returned malloc'd buffer for scope-exit free
-                self.register_heap_alloc(result);
+                // NOTE: not registered — returned value owns the allocation
                 // Build Mimi string struct {i8*, i64}
                 let string_ty = self.context.struct_type(&[
                     BasicTypeEnum::PointerType(i8_ptr_ty),
@@ -213,8 +212,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     .try_as_basic_value_opt()
                     .ok_or("mimi_http_get returned void")?
                     .into_pointer_value();
-                // NEW-2: register returned malloc'd buffer for scope-exit free
-                self.register_heap_alloc(result);
+                // NOTE: not registered — returned value owns the allocation
                 // Build Mimi string struct {i8*, i64}
                 let i8_ptr_ty = self.context.i8_type().ptr_type(inkwell::AddressSpace::default());
                 let string_ty = self.context.struct_type(&[
@@ -260,8 +258,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     .try_as_basic_value_opt()
                     .ok_or("mimi_http_post returned void")?
                     .into_pointer_value();
-                // NEW-2: register returned malloc'd buffer for scope-exit free
-                self.register_heap_alloc(result);
+                // NOTE: not registered — returned value owns the allocation
                 // Build Mimi string struct {i8*, i64}
                 let i8_ptr_ty = self.context.i8_type().ptr_type(inkwell::AddressSpace::default());
                 let string_ty = self.context.struct_type(&[
