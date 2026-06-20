@@ -219,9 +219,9 @@ impl<'ctx> CodeGenerator<'ctx> {
                     last_val = self.adjust_int_val(last_val, ret_type)?;
                 }
                 Stmt::Return(Some(expr)) => {
-                    self.pop_comp_scope();
-                    self.free_heap_allocs()?;
                     self.pop_shared_scope()?;
+                    self.free_heap_allocs()?;
+                    self.pop_comp_scope();
                     self.pop_cap_scope();
                     let val = self.compile_expr(expr, &vars)?;
                     let val = self.adjust_int_val(val, ret_type)?;
@@ -233,9 +233,9 @@ impl<'ctx> CodeGenerator<'ctx> {
                     return Ok(());
                 }
                 Stmt::Return(None) => {
-                    self.pop_comp_scope();
-                    self.free_heap_allocs()?;
                     self.pop_shared_scope()?;
+                    self.free_heap_allocs()?;
+                    self.pop_comp_scope();
                     self.pop_cap_scope();
                     let ensures = self.ensures_stmts.clone();
                     for ensures_expr in &ensures {
@@ -559,9 +559,9 @@ impl<'ctx> CodeGenerator<'ctx> {
         self.check_unconsumed_caps()?;
         
         // Pop scopes (discard compensations on normal exit)
-        self.pop_comp_scope();
-        self.free_heap_allocs()?;
         self.release_all_shared()?;
+        self.free_heap_allocs()?;
+        self.pop_comp_scope();
         self.pop_cap_scope();
 
         if !self.block_has_terminator() {
@@ -623,6 +623,8 @@ impl<'ctx> CodeGenerator<'ctx> {
         self.builder.position_at_end(entry);
 
         self.push_cap_scope();
+        self.push_comp_scope();
+        self.push_heap_scope();
 
         let mut vars: HashMap<String, VarEntry<'ctx>> = HashMap::new();
         for (i, param) in func.params.iter().enumerate() {
@@ -642,6 +644,9 @@ impl<'ctx> CodeGenerator<'ctx> {
         let last_val = self.compile_block_last_val(&func.body, &mut vars)?;
 
         self.check_unconsumed_caps()?;
+        self.pop_comp_scope();
+        self.free_heap_allocs()?;
+        self.release_all_shared()?;
         self.pop_cap_scope();
 
         if !self.block_has_terminator() {
