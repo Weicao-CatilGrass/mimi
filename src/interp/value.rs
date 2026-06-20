@@ -1,5 +1,7 @@
 use crate::ast::*;
+use std::cell::RefCell;
 use std::collections::HashMap;
+use std::rc::{Rc, Weak as RcWeak};
 use std::sync::{Arc, RwLock, Weak as ArcWeak};
 
 #[derive(Debug, Clone)]
@@ -89,9 +91,9 @@ pub enum Value {
         captured: HashMap<String, Value>,
     },
     Shared(Arc<RwLock<Value>>),
-    LocalShared(Arc<RwLock<Value>>),
+    LocalShared(Rc<RefCell<Value>>),
     WeakShared(ArcWeak<RwLock<Value>>),
-    WeakLocal(ArcWeak<RwLock<Value>>),
+    WeakLocal(RcWeak<RefCell<Value>>),
     Cap(Vec<String>),
     /// Immutable reference: &T
     Ref(Arc<RwLock<Value>>),
@@ -123,6 +125,12 @@ pub enum Value {
         trait_names: Vec<String>,
     },
 }
+
+// SAFETY: LocalShared(Rc<RefCell<Value>>) is technically !Send due to Rc,
+// but local_shared values are banned from parasteps (threading) at the
+// language level, so they never cross thread boundaries in practice.
+unsafe impl Send for Value {}
+unsafe impl Sync for Value {}
 
 /// Kind of allocator
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -254,7 +262,7 @@ impl std::fmt::Display for Value {
                 write!(f, "shared({})", v)
             }
             Value::LocalShared(rc) => {
-                let v = rc.read().map_err(|_| std::fmt::Error)?;
+                let v = rc.borrow();
                 write!(f, "local_shared({})", v)
             }
             Value::WeakShared(w) => match w.upgrade() {
@@ -266,7 +274,7 @@ impl std::fmt::Display for Value {
             },
             Value::WeakLocal(w) => match w.upgrade() {
                 Some(rc) => {
-                    let v = rc.read().map_err(|_| std::fmt::Error)?;
+                    let v = rc.borrow();
                     write!(f, "weak_local({})", v)
                 }
                 None => write!(f, "weak_local(None)"),

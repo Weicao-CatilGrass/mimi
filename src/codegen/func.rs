@@ -899,6 +899,19 @@ impl<'ctx> CodeGenerator<'ctx> {
         val: BasicValueEnum<'ctx>,
         vars: &HashMap<String, VarEntry<'ctx>>,
     ) -> MimiResult<()> {
+        // Check if obj is a shared variable — use heap pointer directly
+        if let Expr::Ident(name) = obj {
+            if self.shared_var_names.contains(name.as_str()) {
+                if let Some(&(alloca, ty)) = vars.get(name.as_str()) {
+                    let ptr_ty = ty.ptr_type(inkwell::AddressSpace::default());
+                    let heap_ptr = self.builder.build_load(ptr_ty, alloca, &format!("{}_heap_ptr", name))
+                        .map_err(|e| CompileError::LlvmError(format!("shared heap ptr load: {}", e)))?
+                        .into_pointer_value();
+                    let obj_type = self.infer_object_type(obj, vars);
+                    return self.compile_store_field(heap_ptr, &obj_type, field_name, val);
+                }
+            }
+        }
         let obj_val = self.compile_expr(obj, vars)?;
         let obj_type = self.infer_object_type(obj, vars);
         let field_ptr = match obj_val {
@@ -939,6 +952,44 @@ impl<'ctx> CodeGenerator<'ctx> {
         }
         if let Ok(idx) = field_name.parse::<u32>() {
             let gep = self.builder.build_struct_gep(sty, field_ptr, idx, field_name)
+                .map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?;
+            self.builder.build_store(gep, val)
+                .map_err(|e| CompileError::LlvmError(format!("store error: {}", e)))?;
+            return Ok(());
+        }
+        Err(CompileError::LlvmError(
+            format!("field '{}' not found on type '{}'", field_name, obj_type)
+        ))
+    }
+
+    /// Store a value into a struct field given a struct pointer and field name.
+    /// Shared helper used by compile_field_assign and shared var field assignment.
+    fn compile_store_field(
+        &mut self,
+        struct_ptr: inkwell::values::PointerValue<'ctx>,
+        obj_type: &str,
+        field_name: &str,
+        val: BasicValueEnum<'ctx>,
+    ) -> MimiResult<()> {
+        let sty = match self.type_llvm.get(obj_type) {
+            Some(BasicTypeEnum::StructType(s)) => *s,
+            _ => return Err(CompileError::LlvmError(
+                format!("type '{}' is not a struct", obj_type)
+            )),
+        };
+        if let Some(td) = self.type_defs.get(obj_type) {
+            if let TypeDefKind::Record(fields) = &td.kind {
+                if let Some(idx) = fields.iter().position(|f| f.name == *field_name) {
+                    let gep = self.builder.build_struct_gep(sty, struct_ptr, idx as u32, field_name)
+                        .map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?;
+                    self.builder.build_store(gep, val)
+                        .map_err(|e| CompileError::LlvmError(format!("store error: {}", e)))?;
+                    return Ok(());
+                }
+            }
+        }
+        if let Ok(idx) = field_name.parse::<u32>() {
+            let gep = self.builder.build_struct_gep(sty, struct_ptr, idx, field_name)
                 .map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?;
             self.builder.build_store(gep, val)
                 .map_err(|e| CompileError::LlvmError(format!("store error: {}", e)))?;
@@ -999,6 +1050,20 @@ impl<'ctx> CodeGenerator<'ctx> {
         val: BasicValueEnum<'ctx>,
         vars: &HashMap<String, VarEntry<'ctx>>,
     ) -> MimiResult<()> {
+        // Check if inner is a shared variable — use heap pointer directly
+        if let Expr::Ident(name) = inner {
+            if self.shared_var_names.contains(name.as_str()) {
+                if let Some(&(alloca, ty)) = vars.get(name.as_str()) {
+                    let ptr_ty = ty.ptr_type(inkwell::AddressSpace::default());
+                    let heap_ptr = self.builder.build_load(ptr_ty, alloca, &format!("{}_heap_ptr", name))
+                        .map_err(|e| CompileError::LlvmError(format!("shared heap ptr load: {}", e)))?
+                        .into_pointer_value();
+                    self.builder.build_store(heap_ptr, val)
+                        .map_err(|e| CompileError::LlvmError(format!("deref shared store error: {}", e)))?;
+                    return Ok(());
+                }
+            }
+        }
         let ptr_val = self.compile_expr(inner, vars)?;
         let ptr = match ptr_val {
             BasicValueEnum::PointerValue(pv) => pv,

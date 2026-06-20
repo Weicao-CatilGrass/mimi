@@ -1,4 +1,6 @@
 use super::*;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 impl<'a> Interpreter<'a> {
     pub(crate) fn eval_block(&mut self, block: &Block) -> Result<Option<Value>, String> {
@@ -378,11 +380,17 @@ impl<'a> Interpreter<'a> {
                 match target {
                     Expr::Ident(name) => self.assign(name, v)?,
                     Expr::Unary(UnOp::Deref, inner) => {
-                        // *r = value: assign through mutable reference
+                        // *r = value: assign through mutable reference or shared pointer
                         let ref_val = self.eval_expr(inner)?;
                         match ref_val {
                             Value::RefMut(rc) => {
                                 *rc.write().map_err(|e| format!("write lock failed: {}", e))? = v;
+                            }
+                            Value::Shared(arc) => {
+                                *arc.write().map_err(|e| format!("shared write lock failed: {}", e))? = v;
+                            }
+                            Value::LocalShared(rc) => {
+                                *rc.borrow_mut() = v;
                             }
                             _ => return Err(format!("cannot assign through non-mutable reference (type: {})", Self::type_name(&ref_val))),
                         }
@@ -411,6 +419,36 @@ impl<'a> Interpreter<'a> {
                             }
                             Value::Actor(handle) => {
                                 handle.inner.write().map_err(|e| format!("actor lock failed: {}", e))?.fields.insert(field.clone(), v);
+                            }
+                            Value::Shared(arc) => {
+                                let mut inner = arc.write().map_err(|e| format!("shared write lock failed: {}", e))?;
+                                match &mut *inner {
+                                    Value::Record(_, fields) => {
+                                        if fields.contains_key(field.as_str()) {
+                                            if let std::collections::hash_map::Entry::Occupied(mut e) = fields.entry(field.clone()) {
+                                                e.insert(v);
+                                            }
+                                        } else {
+                                            return Err(format!("field '{}' not found in shared record", field));
+                                        }
+                                    }
+                                    _ => return Err(format!("cannot assign to field of non-record shared value (type: {})", Self::type_name(&inner))),
+                                }
+                            }
+                            Value::LocalShared(rc) => {
+                                let mut inner = rc.borrow_mut();
+                                match &mut *inner {
+                                    Value::Record(_, fields) => {
+                                        if fields.contains_key(field.as_str()) {
+                                            if let std::collections::hash_map::Entry::Occupied(mut e) = fields.entry(field.clone()) {
+                                                e.insert(v);
+                                            }
+                                        } else {
+                                            return Err(format!("field '{}' not found in local_shared record", field));
+                                        }
+                                    }
+                                    _ => return Err(format!("cannot assign to field of non-record local_shared value (type: {})", Self::type_name(&inner))),
+                                }
                             }
                             _ => return Err(format!("cannot assign to field of non-record/non-actor value (type: {})", Self::type_name(&obj_val))),
                         }
@@ -470,18 +508,18 @@ impl<'a> Interpreter<'a> {
                 let v = self.eval_expr(init)?;
                 let shared_val = match kind {
                     SharedKind::Shared => Value::Shared(Arc::new(RwLock::new(v))),
-                    SharedKind::LocalShared => Value::LocalShared(Arc::new(RwLock::new(v))),
+                    SharedKind::LocalShared => Value::LocalShared(Rc::new(RefCell::new(v))),
                     SharedKind::Weak => {
                         // Auto-detect: if init is Shared → WeakShared, if LocalShared → WeakLocal
                         match v {
                             Value::Shared(arc) => Value::WeakShared(Arc::downgrade(&arc)),
-                            Value::LocalShared(rc) => Value::WeakLocal(Arc::downgrade(&rc)),
+                            Value::LocalShared(rc) => Value::WeakLocal(Rc::downgrade(&rc)),
                             _ => return Err(format!("weak requires a shared or local_shared value, got {}", v)),
                         }
                     }
                     SharedKind::WeakLocal => {
                         match v {
-                            Value::LocalShared(rc) => Value::WeakLocal(Arc::downgrade(&rc)),
+                            Value::LocalShared(rc) => Value::WeakLocal(Rc::downgrade(&rc)),
                             _ => return Err(format!("weak_local requires a local_shared value, got {}", v)),
                         }
                     }
@@ -884,7 +922,7 @@ impl<'a> Interpreter<'a> {
                         }
                     }
                     Value::LocalShared(rc) => {
-                        let inner = rc.read().map_err(|e| format!("read lock failed: {}", e))?;
+                        let inner = rc.borrow();
                         match &*inner {
                             Value::Record(_, fields) => fields.get(field.as_str()).cloned()
                                 .ok_or_else(|| format!("field '{}' not found in local_shared record", field)),
@@ -1210,6 +1248,8 @@ impl<'a> Interpreter<'a> {
             UnOp::RefMut => Ok(Value::RefMut(Arc::new(RwLock::new(v)))),
             UnOp::Deref => match v {
                 Value::Ref(rc) | Value::RefMut(rc) => Ok(rc.read().map_err(|e| format!("read lock failed: {}", e))?.clone()),
+                Value::Shared(arc) => Ok(arc.read().map_err(|e| format!("shared read lock failed: {}", e))?.clone()),
+                Value::LocalShared(rc) => Ok(rc.borrow().clone()),
                 _ => Err(format!("cannot dereference {}", Self::type_name(&v))),
             },
         }

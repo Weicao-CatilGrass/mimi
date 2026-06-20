@@ -376,3 +376,131 @@ func main() -> i32 {
     let v = run_source(src);
     assert_eq!(v, interp::Value::Int(30));
 }
+
+#[test]
+fn shared_deref_assign() {
+    let src = r#"
+func main() -> i32 {
+    shared x = 42;
+    *x = 100;
+    x.deref()
+}
+"#;
+    let v = run_source(src);
+    assert_eq!(v, interp::Value::Int(100));
+}
+
+#[test]
+fn shared_field_assign() {
+    let src = r#"
+type Point {
+    x: i32
+    y: i32
+}
+
+func main() -> i32 {
+    shared p = Point { x: 10, y: 20 };
+    p.x = 99;
+    p.x
+}
+"#;
+    let v = run_source(src);
+    assert_eq!(v, interp::Value::Int(99));
+}
+
+#[test]
+fn local_shared_deref_assign() {
+    let src = r#"
+func main() -> i32 {
+    local_shared x = 42;
+    *x = 200;
+    x.inner()
+}
+"#;
+    let v = run_source(src);
+    assert_eq!(v, interp::Value::Int(200));
+}
+
+#[test]
+fn local_shared_field_assign() {
+    let src = r#"
+type Point {
+    x: i32
+    y: i32
+}
+
+func main() -> i32 {
+    local_shared p = Point { x: 10, y: 20 };
+    p.y = 77;
+    p.y
+}
+"#;
+    let v = run_source(src);
+    assert_eq!(v, interp::Value::Int(77));
+}
+
+#[test]
+fn shared_field_assign_after_read() {
+    let src = r#"
+type Point {
+    x: i32
+    y: i32
+}
+
+func main() -> i32 {
+    shared p = Point { x: 1, y: 2 };
+    let first = p.x;
+    p.x = first + 10;
+    p.x
+}
+"#;
+    let v = run_source(src);
+    assert_eq!(v, interp::Value::Int(11));
+}
+
+#[test]
+fn shared_mutation_visible_through_clone() {
+    // Mutation through a shared pointer is visible through another
+    // shared pointer that was cloned from the same source.
+    let src = r#"
+func main() -> i32 {
+    shared a = 5;
+    let b = a.clone();
+    *a = 42;
+    b.deref()
+}
+"#;
+    let v = run_source(src);
+    assert_eq!(v, interp::Value::Int(42));
+}
+
+#[test]
+fn shared_mut_via_deref_expr() {
+    // *shared_var as a read expression returns the inner value
+    let src = r#"
+func main() -> i32 {
+    shared x = 99;
+    *x
+}
+"#;
+    let v = run_source(src);
+    assert_eq!(v, interp::Value::Int(99));
+}
+
+#[test]
+fn shared_field_assign_then_read_other_field() {
+    let src = r#"
+type Pair {
+    a: i32
+    b: i32
+}
+
+func main() -> i32 {
+    shared p = Pair { a: 1, b: 2 };
+    p.a = 10;
+    p.b
+}
+"#;
+    let v = run_source(src);
+    assert_eq!(v, interp::Value::Int(2));
+}
