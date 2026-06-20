@@ -5,7 +5,7 @@ use crate::codegen::types;
 
 use inkwell::types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum};
 use inkwell::values::{BasicMetadataValueEnum, BasicValueEnum};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use super::CodeGenerator;
 use super::VarEntry;
@@ -1971,7 +1971,7 @@ impl<'ctx> CodeGenerator<'ctx> {
         self.spawn_counter += 1;
         
         // Collect free variables from the spawn expression (capture by value)
-        let mut free_vars: HashMap<String, (inkwell::values::PointerValue<'ctx>, BasicTypeEnum<'ctx>)> = HashMap::new();
+        let mut free_vars: BTreeMap<String, (inkwell::values::PointerValue<'ctx>, BasicTypeEnum<'ctx>)> = BTreeMap::new();
         let empty_defined = std::collections::HashSet::new();
         self.collect_free_vars_expr(expr, &empty_defined, vars, &mut free_vars);
         
@@ -2595,7 +2595,7 @@ impl<'ctx> CodeGenerator<'ctx> {
     ) -> Result<BasicValueEnum<'ctx>, String> {
         let param_names: std::collections::HashSet<String> =
             params.iter().map(|p| p.name.clone()).collect();
-        let mut free_vars = HashMap::new();
+        let mut free_vars = BTreeMap::new();
         self.collect_free_vars(body, &param_names, vars, &mut free_vars);
 
         let ret_type = match ret {
@@ -2989,7 +2989,7 @@ impl<'ctx> CodeGenerator<'ctx> {
         block: &Block,
         param_names: &std::collections::HashSet<String>,
         vars: &HashMap<String, VarEntry<'ctx>>,
-        free_vars: &mut HashMap<String, (inkwell::values::PointerValue<'ctx>, BasicTypeEnum<'ctx>)>,
+        free_vars: &mut BTreeMap<String, (inkwell::values::PointerValue<'ctx>, BasicTypeEnum<'ctx>)>,
     ) {
         let mut defined = param_names.clone();
         for stmt in block {
@@ -3049,7 +3049,7 @@ impl<'ctx> CodeGenerator<'ctx> {
         expr: &Expr,
         defined: &std::collections::HashSet<String>,
         vars: &HashMap<String, VarEntry<'ctx>>,
-        free_vars: &mut HashMap<String, (inkwell::values::PointerValue<'ctx>, BasicTypeEnum<'ctx>)>,
+        free_vars: &mut BTreeMap<String, (inkwell::values::PointerValue<'ctx>, BasicTypeEnum<'ctx>)>,
     ) {
         match expr {
             Expr::Ident(name) => {
@@ -3110,8 +3110,12 @@ impl<'ctx> CodeGenerator<'ctx> {
                 if let Some(s) = start { self.collect_free_vars_expr(s, defined, vars, free_vars); }
                 if let Some(e) = end { self.collect_free_vars_expr(e, defined, vars, free_vars); }
             }
-            Expr::Lambda { body, .. } => {
-                self.collect_free_vars(body, defined, vars, free_vars);
+            Expr::Lambda { params, body, .. } => {
+                let param_names: std::collections::HashSet<String> =
+                    params.iter().map(|p| p.name.clone()).collect();
+                let mut extended_defined = defined.clone();
+                extended_defined.extend(param_names);
+                self.collect_free_vars(body, &extended_defined, vars, free_vars);
             }
             Expr::Comprehension { expr: comp_expr, iter, guard, .. } => {
                 self.collect_free_vars_expr(iter, defined, vars, free_vars);
@@ -3793,8 +3797,32 @@ impl<'ctx> CodeGenerator<'ctx> {
                 self.context.i64_type().const_int(0, false).into()
             ))
         } else {
-            // Try mangled name with current type_map
-            let mangled = Self::mangle_name(name, &self.type_map);
+            // Not found by direct name — must be a generic function.
+            // Build a callee-specific type_map by inferring generic bindings
+            // from the argument types at the call site, instead of using the
+            // caller's type_map (which has different generic param names).
+            let mangled = if let Some(fdef) = self.func_defs.get(name) {
+                if !fdef.generics.is_empty() {
+                    let mut callee_map: HashMap<String, Type> = HashMap::new();
+                    for gp in &fdef.generics {
+                        // Find the first callee param whose type references this generic
+                        for (i, param) in fdef.params.iter().enumerate() {
+                            if i < args.len() && Self::type_references_generic(&param.ty, &gp.name) {
+                                if let Some(arg_type) = self.expr_type_of(&args[i], vars) {
+                                    callee_map.insert(gp.name.clone(), arg_type);
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    Self::mangle_name(name, &callee_map)
+                } else {
+                    Self::mangle_name(name, &self.type_map)
+                }
+            } else {
+                Self::mangle_name(name, &self.type_map)
+            };
+
             if let Some(function) = self.module.get_function(&mangled) {
                 let call = self.builder.build_call(function, &metadata_args, "call")
                     .map_err(|e| format!("call error: {}", e))?;
@@ -3804,6 +3832,58 @@ impl<'ctx> CodeGenerator<'ctx> {
             } else {
                 Err(format!("undefined function '{}' in codegen", name))
             }
+        }
+    }
+
+    /// Determine the Mimi Type of an expression by resolving through the
+    /// caller's type_map. Used to infer callee generic bindings at call sites.
+    fn expr_type_of(&self, expr: &Expr, vars: &HashMap<String, VarEntry<'ctx>>) -> Option<Type> {
+        match expr {
+            Expr::Ident(name) => {
+                if let Some(tn) = self.var_type_names.get(name) {
+                    let raw = Type::Name(tn.clone(), vec![]);
+                    Some(self.resolve_type(&raw))
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
+    }
+
+    /// Check whether a Type contains a reference to a generic parameter name.
+    fn type_references_generic(ty: &Type, generic_name: &str) -> bool {
+        match ty {
+            Type::Name(name, args) => {
+                if name == generic_name {
+                    return true;
+                }
+                args.iter().any(|a| Self::type_references_generic(a, generic_name))
+            }
+            Type::Ref(_, inner) | Type::RefMut(_, inner) => Self::type_references_generic(inner, generic_name),
+            Type::Option(inner) => Self::type_references_generic(inner, generic_name),
+            Type::Result(ok, err) => {
+                Self::type_references_generic(ok, generic_name)
+                    || Self::type_references_generic(err, generic_name)
+            }
+            Type::Tuple(elems) => elems.iter().any(|e| Self::type_references_generic(e, generic_name)),
+            Type::Func(args, ret) => {
+                args.iter().any(|a| Self::type_references_generic(a, generic_name))
+                    || Self::type_references_generic(ret, generic_name)
+            }
+            Type::Shared(inner) | Type::LocalShared(inner) | Type::Weak(inner) | Type::WeakLocal(inner)
+            | Type::RawPtr(inner) | Type::RawPtrMut(inner) | Type::CShared(inner)
+            | Type::CBorrow(inner) | Type::CBorrowMut(inner) | Type::Slice(inner)
+            | Type::CBuffer(inner) | Type::Array(inner, _) => {
+                Self::type_references_generic(inner, generic_name)
+            }
+            Type::Newtype(_, inner) => Self::type_references_generic(inner, generic_name),
+            Type::ExternFunc(args, ret) => {
+                args.iter().any(|a| Self::type_references_generic(a, generic_name))
+                    || Self::type_references_generic(ret, generic_name)
+            }
+            Type::Cap(_) | Type::Nothing | Type::Allocator | Type::Infer
+            | Type::ImplTrait(_) | Type::DynTrait(_) | Type::RawString => false,
         }
     }
 

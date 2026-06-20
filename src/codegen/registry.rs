@@ -185,11 +185,11 @@ impl<'ctx> CodeGenerator<'ctx> {
         // Build thunk function type matching callback signature
         let mut thunk_param_tys = Vec::new();
         for pt in cb_params {
-            let llvm_ty = types::mimi_type_to_llvm(self.context, pt)
+            let llvm_ty = types::mimi_type_to_llvm_extern(self.context, pt)
                 .unwrap_or(BasicTypeEnum::IntType(self.context.i64_type()));
             thunk_param_tys.push(types::basic_to_metadata(self.context, llvm_ty));
         }
-        let thunk_ret_llvm = types::mimi_type_to_llvm(self.context, cb_ret)
+        let thunk_ret_llvm = types::mimi_type_to_llvm_extern(self.context, cb_ret)
             .unwrap_or(BasicTypeEnum::IntType(self.context.i64_type()));
 
         let thunk_fn_type = match thunk_ret_llvm {
@@ -363,6 +363,9 @@ impl<'ctx> CodeGenerator<'ctx> {
                         BasicTypeEnum::PointerType(i8_ptr_ty)
                     // F7: Tuple return — C returns JSON string (i8*)
                     } else if matches!(ty, crate::ast::Type::Tuple(_)) {
+                        BasicTypeEnum::PointerType(i8_ptr_ty)
+                    // BUG 1 fix: C functions return string as char* (i8*)
+                    } else if matches!(ty, crate::ast::Type::Name(n, _) if n == "string") {
                         BasicTypeEnum::PointerType(i8_ptr_ty)
                     } else {
                         self.type_to_llvm_for_extern(ty)
@@ -964,6 +967,37 @@ impl<'ctx> CodeGenerator<'ctx> {
                     self.builder.build_return(Some(&ret_val))
                         .map_err(|e| CompileError::LlvmError(format!("return error: {}", e)))?;
                 }
+            } else if ef.ret.as_ref().map_or(false, |t| matches!(t, crate::ast::Type::Name(n, _) if n == "string")) {
+                // BUG 1 fix: convert char* (i8*) from C to {i8*, i64} Mimi string struct
+                let ret = call_try_basic_value(&call)
+                    .ok_or_else(|| CompileError::LlvmError("extern call returned void".to_string()))?;
+                let raw_ptr = match ret {
+                    BasicValueEnum::PointerValue(pv) => pv,
+                    _ => return Err(CompileError::LlvmError("string return must be pointer".to_string())),
+                };
+                let strlen_fn = self.module.get_function("strlen")
+                    .ok_or_else(|| CompileError::LlvmError("strlen not declared".to_string()))?;
+                let len = self.builder.build_call(strlen_fn, &[BasicMetadataValueEnum::PointerValue(raw_ptr)], "strlen")
+                    .map_err(|e| CompileError::LlvmError(format!("strlen: {}", e)))?
+                    .try_as_basic_value_opt()
+                    .ok_or(CompileError::LlvmError("strlen returned void".to_string()))?
+                    .into_int_value();
+                // Build {i8*, i64} string struct
+                let struct_ty = wrapper_ret_ty;
+                let alloca = self.builder.build_alloca(struct_ty, "string_ret")
+                    .map_err(|e| CompileError::LlvmError(format!("alloca: {}", e)))?;
+                let ptr_gep = self.builder.build_struct_gep(struct_ty, alloca, 0, "str_ptr_gep")
+                    .map_err(|e| CompileError::LlvmError(format!("gep: {}", e)))?;
+                self.builder.build_store(ptr_gep, raw_ptr)
+                    .map_err(|e| CompileError::LlvmError(format!("store: {}", e)))?;
+                let len_gep = self.builder.build_struct_gep(struct_ty, alloca, 1, "str_len_gep")
+                    .map_err(|e| CompileError::LlvmError(format!("gep: {}", e)))?;
+                self.builder.build_store(len_gep, len)
+                    .map_err(|e| CompileError::LlvmError(format!("store: {}", e)))?;
+                let ret_val = self.builder.build_load(struct_ty, alloca, "string_ret_val")
+                    .map_err(|e| CompileError::LlvmError(format!("load: {}", e)))?;
+                self.builder.build_return(Some(&ret_val))
+                    .map_err(|e| CompileError::LlvmError(format!("return: {}", e)))?;
             } else if wrapper_fn_type.get_return_type().is_some() {
                 let ret = call_try_basic_value(&call).ok_or_else(|| CompileError::LlvmError("extern wrapper call did not return a value".to_string()))?;
                 self.builder.build_return(Some(&ret))
