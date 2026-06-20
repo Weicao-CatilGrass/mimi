@@ -130,6 +130,12 @@ fn verify_rules_in_block(block: &[Stmt], errors: &mut Vec<String>, context: &str
             }
         }
     }
+    if last_was_rule {
+        errors.push(format!(
+            "orphan rule without attached contract at end of '{}': '{}'",
+            context, rule_pos
+        ));
+    }
 }
 
 /// Track borrow state with location information for precise diagnostics.
