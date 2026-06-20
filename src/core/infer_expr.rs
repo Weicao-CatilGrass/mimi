@@ -595,7 +595,11 @@ impl<'a> Checker<'a> {
 
     fn infer_field_access(&mut self, obj: &Expr, field: &str, scopes: &mut Vec<HashMap<String, Type>>) -> Type {
         let obj_ty = self.infer_expr(obj, scopes);
-        match &obj_ty {
+        self.infer_field_access_on_type(&obj_ty, field, scopes)
+    }
+
+    fn infer_field_access_on_type(&mut self, obj_ty: &Type, field: &str, scopes: &mut Vec<HashMap<String, Type>>) -> Type {
+        match obj_ty {
             Type::Name(name, _) => {
                 if let Some(actor_def) = self.file.items.iter().find_map(|item| {
                     if let Item::Actor(a) = item {
@@ -710,11 +714,7 @@ impl<'a> Checker<'a> {
     }
 
     fn infer_field_deref(&mut self, inner: &Type, field: &str, scopes: &mut Vec<HashMap<String, Type>>) -> Type {
-        self.infer_field_access(
-            &Expr::Unary(UnOp::Deref, Box::new(Expr::Ident("_".into()))),
-            field,
-            scopes,
-        )
+        self.infer_field_access_on_type(inner, field, scopes)
     }
 
     fn infer_record_expr(&mut self, ty: &Option<String>, fields: &[RecordFieldExpr], scopes: &mut Vec<HashMap<String, Type>>) -> Type {
@@ -829,9 +829,7 @@ impl<'a> Checker<'a> {
         let then_ty = self.infer_block_expr(then_, scopes);
         if let Some(eb) = else_ {
             let else_ty = self.infer_block_expr(eb, scopes);
-            let then_name = format!("{:?}", then_ty);
-            let else_name = format!("{:?}", else_ty);
-            if then_name == else_name { then_ty } else { Type::Name("unknown".into(), vec![]) }
+            if same_type(&then_ty, &else_ty) { then_ty } else { Type::Name("unknown".into(), vec![]) }
         } else {
             then_ty
         }

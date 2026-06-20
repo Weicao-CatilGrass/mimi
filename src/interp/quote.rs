@@ -288,7 +288,9 @@ impl<'a> Interpreter<'a> {
                 match op {
                     BinOp::Add => {
                         match (&lv, &rv) {
-                            (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a + b)),
+                            (Value::Int(a), Value::Int(b)) => crate::safe_arith::checked_add(*a, *b)
+                                .ok_or_else(|| InterpError::new(format!("integer overflow in addition: {} + {}", a, b)))
+                                .map(Value::Int),
                             (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a + b)),
                             (Value::String(a), Value::String(b)) => Ok(Value::String(format!("{}{}", a, b))),
                             _ => Err(InterpError::new(format!("unsupported + for {} and {}", lv, rv))),
@@ -296,24 +298,27 @@ impl<'a> Interpreter<'a> {
                     }
                     BinOp::Sub => {
                         match (&lv, &rv) {
-                            (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a - b)),
+                            (Value::Int(a), Value::Int(b)) => crate::safe_arith::checked_sub(*a, *b)
+                                .ok_or_else(|| InterpError::new(format!("integer overflow in subtraction: {} - {}", a, b)))
+                                .map(Value::Int),
                             (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a - b)),
                             _ => Err(InterpError::new(format!("unsupported - for {} and {}", lv, rv))),
                         }
                     }
                     BinOp::Mul => {
                         match (&lv, &rv) {
-                            (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a * b)),
+                            (Value::Int(a), Value::Int(b)) => crate::safe_arith::checked_mul(*a, *b)
+                                .ok_or_else(|| InterpError::new(format!("integer overflow in multiplication: {} * {}", a, b)))
+                                .map(Value::Int),
                             (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a * b)),
                             _ => Err(InterpError::new(format!("unsupported * for {} and {}", lv, rv))),
                         }
                     }
                     BinOp::Div => {
                         match (&lv, &rv) {
-                            (Value::Int(a), Value::Int(b)) => {
-                                if *b == 0 { return Err(InterpError::new("division by zero")); }
-                                Ok(Value::Int(a / b))
-                            }
+                            (Value::Int(a), Value::Int(b)) => crate::safe_arith::checked_div(*a, *b)
+                                .ok_or_else(|| InterpError::new(format!("integer overflow or division by zero: {} / {}", a, b)))
+                                .map(Value::Int),
                             (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a / b)),
                             _ => Err(InterpError::new(format!("unsupported / for {} and {}", lv, rv))),
                         }
@@ -341,7 +346,9 @@ impl<'a> Interpreter<'a> {
                 let v = self.eval_quoted_ast(e)?;
                 match op {
                     UnOp::Neg => match v {
-                        Value::Int(n) => Ok(Value::Int(-n)),
+                        Value::Int(n) => crate::safe_arith::checked_neg(n)
+                            .ok_or_else(|| InterpError::new(format!("integer overflow in negation: -{}", n)))
+                            .map(Value::Int),
                         Value::Float(n) => Ok(Value::Float(-n)),
                         _ => Err(InterpError::new(format!("unsupported neg for {}", v))),
                     },

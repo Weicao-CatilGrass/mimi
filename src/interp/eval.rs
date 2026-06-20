@@ -1234,11 +1234,15 @@ impl<'a> Interpreter<'a> {
                 _ => Err(InterpError::new(format!("cannot apply '^' to {} and {}", type_name(&left), type_name(&right)))),
             },
             BinOp::Shl => match (&left, &right) {
-                (Value::Int(a), Value::Int(b)) => match a.checked_shl(*b as u32) { Some(v) => Ok(Value::Int(v)), None => Err(InterpError::new(format!("shift left overflow: {} << {}", a, b))) },
+                (Value::Int(a), Value::Int(b)) => crate::safe_arith::checked_shl(*a, *b as u32)
+                    .ok_or_else(|| InterpError::new(format!("shift left overflow: {} << {}", a, b)))
+                    .map(Value::Int),
                 _ => Err(InterpError::new(format!("cannot apply '<<' to {} and {}", type_name(&left), type_name(&right)))),
             },
             BinOp::Shr => match (&left, &right) {
-                (Value::Int(a), Value::Int(b)) => match a.checked_shr(*b as u32) { Some(v) => Ok(Value::Int(v)), None => Err(InterpError::new(format!("shift right overflow: {} >> {}", a, b))) },
+                (Value::Int(a), Value::Int(b)) => crate::safe_arith::checked_shr(*a, *b as u32)
+                    .ok_or_else(|| InterpError::new(format!("shift right overflow: {} >> {}", a, b)))
+                    .map(Value::Int),
                 _ => Err(InterpError::new(format!("cannot apply '>>' to {} and {}", type_name(&left), type_name(&right)))),
             },
             BinOp::Range => match (&left, &right) {

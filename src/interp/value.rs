@@ -136,10 +136,13 @@ pub enum Value {
 #[derive(Debug, Clone)]
 pub(crate) struct LocalSharedInner(pub Rc<RefCell<Value>>);
 
-// SAFETY: LocalSharedInner wraps Rc<RefCell<Value>> which is !Send/!Sync by default, but all accesses
-// are single-threaded (only used within the interpreter which is single-threaded per instance).
+// SAFETY: LocalSharedInner wraps Rc<RefCell<Value>> which is !Send/!Sync by default,
+// but all accesses are single-threaded (only used within the interpreter which is
+// single-threaded per instance). The language bans local_shared from crossing thread
+// boundaries (parasteps), so this is sound.
 unsafe impl Send for LocalSharedInner {}
-// SAFETY: Same reasoning as Send—single-threaded access only.
+// SAFETY: Same reasoning as Send — single-threaded access only, guaranteed by the
+// language-level restriction on local_shared in concurrent contexts.
 unsafe impl Sync for LocalSharedInner {}
 
 impl std::ops::Deref for LocalSharedInner {
@@ -165,10 +168,12 @@ impl LocalSharedInner {
 #[derive(Debug, Clone)]
 pub(crate) struct WeakLocalInner(pub RcWeak<RefCell<Value>>);
 
-// SAFETY: WeakLocalInner wraps RcWeak<RefCell<Value>> which is !Send/!Sync by default, but all
-// accesses are single-threaded (only used within the interpreter which is single-threaded per instance).
+// SAFETY: WeakLocalInner wraps RcWeak<RefCell<Value>> which is !Send/!Sync by default,
+// but all accesses are single-threaded (only used within the interpreter which is
+// single-threaded per instance). WeakLocal is always paired with LocalShared, which
+// is already restricted to single-threaded use.
 unsafe impl Send for WeakLocalInner {}
-// SAFETY: Same reasoning as Send—single-threaded access only.
+// SAFETY: Same reasoning as Send — single-threaded access only.
 unsafe impl Sync for WeakLocalInner {}
 
 impl WeakLocalInner {
@@ -192,9 +197,12 @@ pub(crate) struct CBufferInner {
 }
 
 // SAFETY: CBufferInner owns a heap-allocated buffer via raw pointer; ownership is exclusive
-// and the buffer is only accessed through safe methods that validate the pointer.
+// (implemented via Arc, so the buffer is only accessed through safe methods that validate
+// the pointer before reading/writing). The underlying memory is always properly aligned
+// and sized according to the CBuffer creation path.
 unsafe impl Send for CBufferInner {}
-// SAFETY: Same reasoning as Send—exclusive ownership guarantees safe shared access.
+// SAFETY: Same reasoning as Send — exclusive ownership per Arc instance guarantees that
+// concurrent reads do not race with writes. Arc<RwLock<CBufferInner>> is used externally.
 unsafe impl Sync for CBufferInner {}
 
 impl Drop for CBufferInner {

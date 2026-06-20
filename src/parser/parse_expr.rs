@@ -651,12 +651,17 @@ fn is_keyword_token(kind: &TokenKind) -> bool {
         TokenKind::Module | TokenKind::Type | TokenKind::Func | TokenKind::Fn |
         TokenKind::Actor | TokenKind::Newtype | TokenKind::Let | TokenKind::Mut |
         TokenKind::Ref | TokenKind::Shared | TokenKind::LocalShared | TokenKind::Weak |
-        TokenKind::Arena | TokenKind::Cap | TokenKind::Trait | TokenKind::Impl |
-        TokenKind::Where | TokenKind::Extern | TokenKind::Use | TokenKind::Pub |
+        TokenKind::WeakLocal | TokenKind::CShared | TokenKind::CBorrow |
+        TokenKind::CBorrowMut | TokenKind::RawString |
+        TokenKind::Arena | TokenKind::Alloc | TokenKind::Cap | TokenKind::Trait | TokenKind::Impl |
+        TokenKind::Dyn | TokenKind::Where | TokenKind::Extern | TokenKind::Unsafe |
+        TokenKind::Use | TokenKind::Pub | TokenKind::In |
         TokenKind::Drop | TokenKind::Steps | TokenKind::Parasteps | TokenKind::Failure |
         TokenKind::Requires | TokenKind::Ensures | TokenKind::Math | TokenKind::Desc |
         TokenKind::Rule | TokenKind::Mms | TokenKind::With | TokenKind::And |
-        TokenKind::Or | TokenKind::Not | TokenKind::I32 | TokenKind::I64 |
+        TokenKind::Or | TokenKind::Not | TokenKind::Async | TokenKind::Comptime |
+        TokenKind::Spawn | TokenKind::Await | TokenKind::Quote | TokenKind::Old |
+        TokenKind::I32 | TokenKind::I64 |
         TokenKind::F64 | TokenKind::Bool | TokenKind::StringKw | TokenKind::Nothing |
         TokenKind::True | TokenKind::False | TokenKind::Unit
     )
