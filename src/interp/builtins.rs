@@ -1213,8 +1213,8 @@ impl<'a> Interpreter<'a> {
                         Value::Record(None, {
                             let mut fields = std::collections::HashMap::new();
                             fields.insert("message".into(), Value::String(e.to_string()));
-                            fields.insert("line".into(), Value::Int(e.line() as i64));
-                            fields.insert("col".into(), Value::Int(e.col() as i64));
+                            fields.insert("line".into(), Value::Int(e.line as i64));
+                            fields.insert("col".into(), Value::Int(e.col as i64));
                             fields
                         })
                     }).collect();

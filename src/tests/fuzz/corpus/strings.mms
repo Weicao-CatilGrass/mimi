@@ -1,6 +1,4 @@
-func main() -> i32 {
+func main() -> string {
     let s = "hello";
-    let t = " world";
-    println(len(s + t));
-    0
+    s + " world"
 }

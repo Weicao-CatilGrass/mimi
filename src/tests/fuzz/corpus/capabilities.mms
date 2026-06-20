@@ -1,5 +1,5 @@
-cap ReadCap;
-
-func main() -> i32 {
-    42
+cap FileReadCap
+func read_file(path: string) -> string @FileReadCap {
+    path
 }
+func main() -> string { read_file("test.txt") }

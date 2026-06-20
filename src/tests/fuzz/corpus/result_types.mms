@@ -1,4 +1,7 @@
 func main() -> i32 {
-    let ok: Result<i32, string> = Ok(42);
-    ok.unwrap_or(0)
+    let x = Ok(42);
+    match x {
+        Ok(v) => v,
+        Err(_) => 0,
+    }
 }
