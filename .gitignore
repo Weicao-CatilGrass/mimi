@@ -1,2 +1,15 @@
 # Rust build output
 target/
+
+# CMake build artifacts
+build/
+**/build/CMakeCache.txt
+**/build/CMakeFiles/
+**/build/Makefile
+**/build/cmake_install.cmake
+**/build/*.cmake
+**/build/*.so
+**/build/*.o
+
+# pybind11 extension modules
+**/*.cpython-*.so
