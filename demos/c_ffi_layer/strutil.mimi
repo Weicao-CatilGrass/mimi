@@ -1,0 +1,22 @@
+extern "C" {
+    func c_reverse(n: i64) -> i64
+    func c_count_digits(n: i64) -> i64
+    func c_is_palindrome(n: i64) -> bool
+    func c_gcd(a: i64, b: i64) -> i64
+}
+
+extern "C" func reverse(n: i64) -> i64 {
+    c_reverse(n)
+}
+
+extern "C" func count_digits(n: i64) -> i64 {
+    c_count_digits(n)
+}
+
+extern "C" func is_palindrome(n: i64) -> bool {
+    c_is_palindrome(n)
+}
+
+extern "C" func gcd(a: i64, b: i64) -> i64 {
+    c_gcd(a, b)
+}

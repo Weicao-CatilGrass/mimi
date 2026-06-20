@@ -1,0 +1,10 @@
+extern "C" func factorial(n: i32) -> i32 {
+    requires: n >= 0
+    if n <= 1 { 1 }
+    else { n * factorial(n - 1) }
+}
+
+extern "C" func divide_safe(a: i32, b: i32) -> i32 {
+    requires: b != 0
+    a / b
+}

@@ -1137,6 +1137,7 @@ fn build(path: Option<&Path>, output: Option<&Path>, emit_ir: bool, strict: bool
     codegen.strict = strict;
     codegen.no_std = no_std;
     codegen.verify_contracts = verify_contracts;
+    codegen.shared = shared;
 
     codegen.compile_file(&merged_file).map_err(|e| e.to_string())?;
 
