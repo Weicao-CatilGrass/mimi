@@ -119,7 +119,7 @@ impl<'a> Interpreter<'a> {
 
         // Handle Actor.spawn() calls
         if let Some(actor_name) = name.strip_suffix(".spawn") {
-            return self.spawn_actor(actor_name, args);
+            return self.spawn_actor(actor_name);
         }
 
         // Handle extern function calls via their FFI contract (wrapper layer).
