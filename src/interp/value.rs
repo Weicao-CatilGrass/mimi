@@ -91,9 +91,9 @@ pub enum Value {
         captured: HashMap<String, Value>,
     },
     Shared(Arc<RwLock<Value>>),
-    LocalShared(Rc<RefCell<Value>>),
+    LocalShared(LocalSharedInner),
     WeakShared(ArcWeak<RwLock<Value>>),
-    WeakLocal(RcWeak<RefCell<Value>>),
+    WeakLocal(WeakLocalInner),
     Cap(Vec<String>),
     /// Immutable reference: &T
     Ref(Arc<RwLock<Value>>),
@@ -126,11 +126,49 @@ pub enum Value {
     },
 }
 
-// SAFETY: LocalShared(Rc<RefCell<Value>>) is technically !Send due to Rc,
-// but local_shared values are banned from parasteps (threading) at the
-// language level, so they never cross thread boundaries in practice.
-unsafe impl Send for Value {}
-unsafe impl Sync for Value {}
+/// Wrapper around Rc<RefCell<Value>> for LocalShared.
+///
+/// SAFETY: Rc<RefCell<Value>> is technically !Send due to Rc's non-atomic
+/// reference counting, but local_shared values are banned from parasteps
+/// (threading) at the language level, so they never cross thread boundaries
+/// in practice. This wrapper narrows the unsafe scope to only this variant.
+#[derive(Debug, Clone)]
+pub(crate) struct LocalSharedInner(pub Rc<RefCell<Value>>);
+
+unsafe impl Send for LocalSharedInner {}
+unsafe impl Sync for LocalSharedInner {}
+
+impl std::ops::Deref for LocalSharedInner {
+    type Target = RefCell<Value>;
+    fn deref(&self) -> &RefCell<Value> {
+        &self.0
+    }
+}
+
+impl LocalSharedInner {
+    pub fn new(v: Value) -> Self {
+        LocalSharedInner(Rc::new(RefCell::new(v)))
+    }
+    pub fn downgrade(&self) -> WeakLocalInner {
+        WeakLocalInner(Rc::downgrade(&self.0))
+    }
+    pub fn clone_rc(this: &Self) -> Self {
+        LocalSharedInner(Rc::clone(&this.0))
+    }
+}
+
+/// Wrapper around RcWeak<RefCell<Value>> for WeakLocal.
+#[derive(Debug, Clone)]
+pub(crate) struct WeakLocalInner(pub RcWeak<RefCell<Value>>);
+
+unsafe impl Send for WeakLocalInner {}
+unsafe impl Sync for WeakLocalInner {}
+
+impl WeakLocalInner {
+    pub fn upgrade(&self) -> Option<LocalSharedInner> {
+        self.0.upgrade().map(LocalSharedInner)
+    }
+}
 
 /// Kind of allocator
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

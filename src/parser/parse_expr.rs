@@ -316,7 +316,7 @@ impl Parser {
                             self.advance();
                             e = Expr::TupleIndex(Box::new(e), idx);
                         } else {
-                            let field = if self.at(&TokenKind::Ident("".into())) {
+                            let field = if matches!(self.peek_kind(), TokenKind::Ident(_)) {
                                 self.expect_ident()
                             } else if self.at(&TokenKind::Spawn) {
                                 self.advance();

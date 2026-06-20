@@ -1529,6 +1529,25 @@ impl<'a> Checker<'a> {
         }
     }
 
+    /// Check if a type variable name occurs within a type (occurs check).
+    /// Prevents infinite types like `T = List<T>`.
+    fn occurs_check(name: &str, ty: &Type) -> bool {
+        match ty {
+            Type::Name(n, args) => n == name || args.iter().any(|a| Self::occurs_check(name, a)),
+            Type::Ref(_, inner) | Type::RefMut(_, inner) => Self::occurs_check(name, inner),
+            Type::Option(inner) => Self::occurs_check(name, inner),
+            Type::Result(ok, err) => Self::occurs_check(name, ok) || Self::occurs_check(name, err),
+            Type::Tuple(elems) => elems.iter().any(|e| Self::occurs_check(name, e)),
+            Type::Func(args, ret) => args.iter().any(|a| Self::occurs_check(name, a)) || Self::occurs_check(name, ret),
+            Type::Shared(inner) | Type::LocalShared(inner) | Type::Weak(inner) | Type::WeakLocal(inner) => Self::occurs_check(name, inner),
+            Type::Newtype(_, inner) => Self::occurs_check(name, inner),
+            Type::Array(inner, _) | Type::Slice(inner) => Self::occurs_check(name, inner),
+            Type::ExternFunc(args, ret) => args.iter().any(|a| Self::occurs_check(name, a)) || Self::occurs_check(name, ret),
+            Type::CBuffer(inner) | Type::RawPtr(inner) | Type::RawPtrMut(inner) | Type::CShared(inner) | Type::CBorrow(inner) | Type::CBorrowMut(inner) => Self::occurs_check(name, inner),
+            _ => false,
+        }
+    }
+
     /// Infer type parameter bindings from a parameter type and actual argument type
     fn infer_type_params(
         &self,
@@ -1539,11 +1558,15 @@ impl<'a> Checker<'a> {
     ) {
         match param {
             Type::Name(name, _) if is_type_param(name, generics) => {
-                type_map.entry(name.clone()).or_insert_with(|| actual.clone());
+                if !Self::occurs_check(name, actual) {
+                    type_map.entry(name.clone()).or_insert_with(|| actual.clone());
+                }
             }
             Type::Name(name, p_args) => {
                 if is_type_param(name, generics) {
-                    type_map.entry(name.clone()).or_insert_with(|| actual.clone());
+                    if !Self::occurs_check(name, actual) {
+                        type_map.entry(name.clone()).or_insert_with(|| actual.clone());
+                    }
                 } else if !p_args.is_empty() {
                     if let Type::Name(_, a_args) = actual {
                         if p_args.len() == a_args.len() {
@@ -1763,7 +1786,7 @@ pub(crate) fn same_type(a: &Type, b: &Type) -> bool {
             n == n2
         }
         (Type::Allocator, Type::Allocator) => true,
-        (Type::Infer, _) | (_, Type::Infer) => true,
+        (Type::Infer, Type::Infer) => true,
         (Type::Array(a_inner, a_size), Type::Array(b_inner, b_size)) => {
             a_size == b_size && same_type(a_inner, b_inner)
         }

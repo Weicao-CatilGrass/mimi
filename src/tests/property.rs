@@ -80,12 +80,19 @@ proptest! {
         prop_assert_eq!(core::same_type(&a, &b), core::same_type(&b, &a));
     }
 
-    /// Infer is compatible with any type.
+    /// Infer is only compatible with itself, not with arbitrary types.
+    /// This prevents Infer from leaking as a soundness hole where any type check passes.
+    /// Note: Name("unknown", _) is a separate special placeholder that remains universally compatible.
     #[test]
-    fn infer_compatible_with_any(t in arb_type()) {
+    fn infer_only_compatible_with_itself(t in arb_type()) {
         let infer = Type::Infer;
-        prop_assert!(core::same_type(&infer, &t), "Infer should be compatible with {:?}", t);
-        prop_assert!(core::same_type(&t, &infer), "{:?} should be compatible with Infer", t);
+        let also_infer = Type::Infer;
+        prop_assert!(core::same_type(&infer, &also_infer), "Infer should be compatible with itself");
+        // Infer should NOT be compatible with non-Infer types (except the "unknown" placeholder)
+        let is_infer_or_unknown = matches!(&t, Type::Infer) || matches!(&t, Type::Name(n, _) if n == "unknown");
+        if !is_infer_or_unknown {
+            prop_assert!(!core::same_type(&infer, &t), "Infer should NOT be universally compatible with {:?}", t);
+        }
     }
 
     /// unknown is compatible with any type.

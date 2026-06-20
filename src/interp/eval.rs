@@ -1,6 +1,4 @@
 use super::*;
-use std::cell::RefCell;
-use std::rc::Rc;
 
 impl<'a> Interpreter<'a> {
     pub(crate) fn eval_block(&mut self, block: &Block) -> Result<Option<Value>, String> {
@@ -508,18 +506,18 @@ impl<'a> Interpreter<'a> {
                 let v = self.eval_expr(init)?;
                 let shared_val = match kind {
                     SharedKind::Shared => Value::Shared(Arc::new(RwLock::new(v))),
-                    SharedKind::LocalShared => Value::LocalShared(Rc::new(RefCell::new(v))),
+                    SharedKind::LocalShared => Value::LocalShared(LocalSharedInner::new(v)),
                     SharedKind::Weak => {
                         // Auto-detect: if init is Shared → WeakShared, if LocalShared → WeakLocal
                         match v {
                             Value::Shared(arc) => Value::WeakShared(Arc::downgrade(&arc)),
-                            Value::LocalShared(rc) => Value::WeakLocal(Rc::downgrade(&rc)),
+                            Value::LocalShared(rc) => Value::WeakLocal(rc.downgrade()),
                             _ => return Err(format!("weak requires a shared or local_shared value, got {}", v)),
                         }
                     }
                     SharedKind::WeakLocal => {
                         match v {
-                            Value::LocalShared(rc) => Value::WeakLocal(Rc::downgrade(&rc)),
+                            Value::LocalShared(rc) => Value::WeakLocal(rc.downgrade()),
                             _ => return Err(format!("weak_local requires a local_shared value, got {}", v)),
                         }
                     }
