@@ -106,6 +106,7 @@ pub struct TraitMethod {
 pub struct ImplDef {
     pub generics: Vec<GenericParam>,
     pub trait_name: String,
+    pub trait_args: Vec<Type>,
     pub type_name: String,
     pub type_args: Vec<Type>,
     pub methods: Vec<FuncDef>,

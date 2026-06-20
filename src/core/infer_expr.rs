@@ -105,12 +105,17 @@ impl<'a> Checker<'a> {
                         // Method call: obj.method(args) or Type.spawn(args)
                         let obj_ty = self.infer_expr(obj, scopes);
                         if let Type::Name(type_name, type_args) = &obj_ty {
-                            // Check built-in Result/Option methods via Name type
+                            // Check built-in Option/Result methods; fall through to trait dispatch for unknown methods
                             if type_name == "Option" && type_args.len() == 1 {
-                                return self.check_option_method(method_name, &type_args[0], args, scopes);
-                            }
-                            if type_name == "Result" && type_args.len() == 2 {
-                                return self.check_result_method(method_name, &type_args[0], &type_args[1], args, scopes);
+                                let known = ["unwrap", "expect", "unwrap_or", "is_some", "is_none", "ok_or", "map", "and_then", "map_err"];
+                                if known.contains(&method_name.as_str()) {
+                                    return self.check_option_method(method_name, &type_args[0], args, scopes);
+                                }
+                            } else if type_name == "Result" && type_args.len() == 2 {
+                                let known = ["unwrap", "expect", "unwrap_or", "is_ok", "is_err", "map", "and_then", "map_err", "ok_or"];
+                                if known.contains(&method_name.as_str()) {
+                                    return self.check_result_method(method_name, &type_args[0], &type_args[1], args, scopes);
+                                }
                             }
                             // Check if it's an actor spawn call (Type.spawn)
                             if method_name == "spawn" {
@@ -200,8 +205,8 @@ impl<'a> Checker<'a> {
                             if type_name == "string" {
                                 return self.check_string_method(method_name, args, scopes);
                             }
-                            // Check list methods
-                            if type_name == "List" {
+                            // Check list methods (built-in only: len; others via trait dispatch)
+                            if type_name == "List" && method_name == "len" {
                                 return self.check_list_method(method_name, args, scopes);
                             }
                             let mut method_candidates: Vec<String> = self.type_methods.get(type_name)
@@ -1813,6 +1818,7 @@ impl<'a> Checker<'a> {
             "and_then" => Type::Name("unknown".into(), vec![]),
             "map_err" => Type::Option(Box::new((*inner).clone())),
             _ => {
+                // Unknown methods are handled by the caller via trait dispatch; this is a fallback
                 self.emit_code(crate::diagnostic::codes::E0242, format!("Option<{}> has no method '{}'", fmt_type(inner), method));
                 Type::Name("unknown".into(), vec![])
             }
@@ -1844,6 +1850,7 @@ impl<'a> Checker<'a> {
             "and_then" => Type::Name("unknown".into(), vec![]),
             "map_err" => Type::Result(Box::new((*ok_ty).clone()), Box::new(Type::Name("unknown".into(), vec![]))),
             _ => {
+                // Unknown methods are handled by the caller via trait dispatch; this is a fallback
                 self.emit_code(crate::diagnostic::codes::E0242, format!("Result<{}, {}> has no method '{}'", fmt_type(ok_ty), fmt_type(err_ty), method));
                 Type::Name("unknown".into(), vec![])
             }

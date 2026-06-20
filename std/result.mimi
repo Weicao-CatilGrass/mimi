@@ -1,5 +1,29 @@
 // Result type utilities
 
+// ResultExt: Trait for Result operations.
+trait ResultExt<T, E> {
+    func is_ok() -> bool
+    func is_err() -> bool
+    func unwrap() -> T
+    func unwrap_or(default: T) -> T
+    func expect(msg: string) -> T
+    func map<U>(f: func(T) -> U) -> Result<U, E>
+    func map_err<F>(f: func(E) -> F) -> Result<T, F>
+}
+
+// ResultExt implementation for built-in Result<T, E> type.
+impl<T, E> ResultExt<T, E> for Result<T, E> {
+    func is_ok() -> bool { self.is_ok() }
+    func is_err() -> bool { self.is_err() }
+    func unwrap() -> T { self.unwrap() }
+    func unwrap_or(default: T) -> T { if self.is_ok() { self.unwrap() } else { default } }
+    func expect(msg: string) -> T { self.expect(msg) }
+    func map<U>(f: func(T) -> U) -> Result<U, E> {
+        if self.is_ok() { Result::Ok(f(self.unwrap())) } else { self }
+    }
+    func map_err<F>(f: func(E) -> F) -> Result<T, F> { self.map_err(f) }
+}
+
 // is_ok_result: Returns true if result is Ok.
 pub func is_ok_result<T, E>(result: Result<T, E>) -> bool {
     result.is_ok()
