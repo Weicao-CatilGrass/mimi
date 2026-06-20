@@ -1,6 +1,7 @@
 use crate::ast::*;
 use crate::diagnostic::Diagnostic;
 use crate::lexer::{Token, TokenKind};
+use std::cell::Cell;
 use crate::span::Span;
 
 mod parse_type;
@@ -57,6 +58,7 @@ pub struct Parser {
     pos: usize,
     mode: ParseMode,
     recovery_mode: bool,
+    recursion_depth: Cell<usize>,
 }
 
 impl Parser {
@@ -69,14 +71,29 @@ impl Parser {
     }
 
     fn with_mode(tokens: Vec<Token>, mode: ParseMode) -> Self {
-        Self { tokens, pos: 0, mode, recovery_mode: false }
+        Self { tokens, pos: 0, mode, recovery_mode: false, recursion_depth: Cell::new(0) }
     }
 
     /// Create a parser in recovery mode: statement-level errors are caught and skipped.
     #[allow(dead_code)]
     pub fn new_with_recovery(tokens: Vec<Token>) -> Self {
-        Self { tokens, pos: 0, mode: ParseMode::Production, recovery_mode: true }
+        Self { tokens, pos: 0, mode: ParseMode::Production, recovery_mode: true, recursion_depth: Cell::new(0) }
     }
+
+    /// Guard against deep recursion. Returns Err if depth exceeds limit.
+    fn check_depth(&self) -> Result<(), ParseError> {
+        const MAX: usize = 256;
+        if self.recursion_depth.get() >= MAX {
+            let tok = self.peek();
+            return Err(ParseError::new(
+                format!("recursion limit exceeded (> {} nested)", MAX), tok.line, tok.col,
+            ));
+        }
+        Ok(())
+    }
+
+    fn inc_depth(&self) { self.recursion_depth.set(self.recursion_depth.get() + 1); }
+    fn dec_depth(&self) { let d = self.recursion_depth.get(); if d > 0 { self.recursion_depth.set(d - 1); } }
 
     /// Skip tokens until we reach a synchronization point.
     /// Returns true if we found a sync point, false if we reached EOF.

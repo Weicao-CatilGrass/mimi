@@ -342,7 +342,7 @@ impl<'a> Interpreter<'a> {
                         let f = match arg_val {
                             Value::Float(f) => *f,
                             Value::Int(n) => *n as f64,
-                            _ => unreachable!("FFI contract ensures float arg is float or int"),
+                            _ => return Err(Errno::Generic("FFI contract violation: expected float or int".to_string())),
                         };
                         typed_storage.push(Box::new(f));
                         let last = typed_storage.last().ok_or_else(|| "FFI call: typed_storage is empty after push (impossible)".to_string())?;

@@ -138,7 +138,7 @@ impl CompileError {
             Self::BuiltinError(_) => E0709,
             Self::ExternNotDeclared(_) => E0710,
             Self::FfiWrapper(_) => E0741,
-            Self::AssertionFailed(_) => E0600,
+            Self::AssertionFailed(_) => E0751,
             Self::OutOfBounds { .. } => E0243,
             Self::DivByZero => E0237,
             Self::ModByZero => E0238,
