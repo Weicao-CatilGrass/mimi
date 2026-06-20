@@ -212,7 +212,8 @@ impl CHeaderGenerator {
     fn mimi_type_to_c_type(&self, ty: &Type) -> String {
         match ty {
             Type::Name(name, _) => match name.as_str() {
-                "i32" | "i64" => "int64_t".to_string(),
+                "i32" => "int32_t".to_string(),
+                "i64" => "int64_t".to_string(),
                 "f64" => "double".to_string(),
                 "bool" => "bool".to_string(),
                 "string" => "const char*".to_string(),

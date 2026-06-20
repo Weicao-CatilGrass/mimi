@@ -132,7 +132,9 @@ impl FfiContract {
             .unwrap_or(FfiRetContract::Unit);
 
         // Auto-enable errno checking if return type is Result-like
-        // (convention: negative return values indicate errors)
+        // (convention: negative return values indicate errors).
+        // Uses exact function name matching (not `contains`) to avoid false
+        // positives on wrapper functions like `my_open_wrapper`.
         let check_errno = matches!(&func.ret, Some(Type::Name(name, _)) if name == "i32" || name == "i64")
             && matches!(func.name.as_str(),
                 "errno" | "strerror" | "perror"

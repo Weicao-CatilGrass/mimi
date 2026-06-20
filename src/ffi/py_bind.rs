@@ -160,14 +160,26 @@ impl PyBindGenerator {
             param_decls.push(format!("{} {}", cpp_type, param.name));
         }
 
-        let check_errno = func.name.contains("open") || func.name.contains("read")
-            || func.name.contains("write") || func.name.contains("socket")
-            || func.name.contains("fork") || func.name.contains("mmap")
-            || func.name.contains("close") || func.name.contains("stat")
-            || func.name.contains("ioctl") || func.name.contains("fcntl")
-            || func.name.contains("connect") || func.name.contains("bind")
-            || func.name.contains("listen") || func.name.contains("accept")
-            || func.name.contains("send") || func.name.contains("recv");
+        // Auto-enable errno checking if return type is Result-like.
+        // Uses exact function name matching (not `contains`) to avoid false
+        // positives on wrapper functions like `my_open_wrapper`.
+        let check_errno = matches!(func.name.as_str(),
+            "open" | "openat" | "creat" | "fopen" | "fdopen"
+            | "read" | "write" | "pread" | "pwrite" | "readv" | "writev"
+            | "socket" | "connect" | "bind" | "listen" | "accept" | "accept4"
+            | "send" | "recv" | "sendto" | "recvfrom" | "sendmsg" | "recvmsg"
+            | "close" | "shutdown" | "dup" | "dup2" | "dup3"
+            | "fcntl" | "ioctl" | "poll" | "select" | "epoll_create" | "epoll_ctl" | "epoll_wait"
+            | "fork" | "execve" | "wait" | "waitpid" | "waitid"
+            | "kill" | "raise" | "signal" | "sigaction" | "sigprocmask"
+            | "pipe" | "pipe2" | "mkfifo" | "socketpair"
+            | "mmap" | "munmap" | "mprotect" | "msync"
+            | "stat" | "fstat" | "lstat" | "access" | "chmod" | "chown"
+            | "link" | "unlink" | "rename" | "symlink" | "mkdir" | "rmdir"
+            | "mount" | "umount" | "chdir" | "fchdir" | "getcwd"
+            | "connect" | "bind" | "listen" | "accept"
+            | "send" | "recv"
+        );
 
         writeln!(out, "    // {} — {}", func_name, func.name)?;
         writeln!(out, "    m.def(\"{}\", []({}) -> {} {{", func_name, param_decls.join(", "), ret_cpp)?;
@@ -247,7 +259,8 @@ impl PyBindGenerator {
     fn mimi_type_to_cpp(&self, ty: &Type) -> String {
         match ty {
             Type::Name(name, _) => match name.as_str() {
-                "i32" | "i64" => "int64_t".to_string(),
+                "i32" => "int32_t".to_string(),
+                "i64" => "int64_t".to_string(),
                 "f64" => "double".to_string(),
                 "bool" => "bool".to_string(),
                 "string" => "std::string".to_string(),
@@ -347,10 +360,11 @@ impl PyBindGenerator {
             crate::ffi::contract::FfiRetContract::Unit => format!("{}({}), py::none()", func_name, args),
             crate::ffi::contract::FfiRetContract::String
             | crate::ffi::contract::FfiRetContract::StringOwned => {
-                format!("std::string({}({}))", func_name, args)
+                // Safe nullptr handling: lambda captures result once, checks before constructing string
+                format!("[&]() -> std::string {{ const char* _r = {}({}); return _r ? std::string(_r) : std::string(); }}()", func_name, args)
             }
             crate::ffi::contract::FfiRetContract::Json => {
-                format!("std::string({}({}))", func_name, args)
+                format!("[&]() -> std::string {{ const char* _r = {}({}); return _r ? std::string(_r) : std::string(); }}()", func_name, args)
             }
             _ => format!("{}({})", func_name, args),
         }
