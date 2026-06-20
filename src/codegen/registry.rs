@@ -450,20 +450,20 @@ impl<'ctx> CodeGenerator<'ctx> {
                             &format!("{}\0", cap_name), &format!("cap_name_{}", i))
                             .map_err(|e| CompileError::LlvmError(format!("string global error: {}", e)))?;
                         let cap_name_ptr = cap_name_global.as_pointer_value();
-                        let check_result = self.builder.build_call(check_fn, &[
-                            BasicMetadataValueEnum::IntValue(param.into_int_value()),
-                            BasicMetadataValueEnum::PointerValue(cap_name_ptr),
-                        ], &format!("cap_check_{}", i))
-                            .map_err(|e| CompileError::LlvmError(format!("cap_check error: {}", e)))?
-                            .try_as_basic_value_opt()
-                            .ok_or_else(|| CompileError::LlvmError("cap_check returned void".to_string()))?
-                            .into_int_value();
-                        // If cap_check returns false (0), abort
-                        let is_valid = self.builder.build_int_compare(
-                            inkwell::IntPredicate::NE, check_result,
-                            self.context.bool_type().const_int(0, false),
-                            "cap_valid")
-                            .map_err(|e| CompileError::LlvmError(format!("compare error: {}", e)))?;
+                    let check_result = self.builder.build_call(check_fn, &[
+                        BasicMetadataValueEnum::IntValue(param.into_int_value()),
+                        BasicMetadataValueEnum::PointerValue(cap_name_ptr),
+                    ], &format!("cap_check_{}", i))
+                        .map_err(|e| CompileError::LlvmError(format!("cap_check error: {}", e)))?
+                        .try_as_basic_value_opt()
+                        .ok_or_else(|| CompileError::LlvmError("cap_check returned void".to_string()))?
+                        .into_int_value();
+                    // If cap_check returns false (0), abort
+                    let zero_i32 = self.context.i32_type().const_int(0, false);
+                    let is_valid = self.builder.build_int_compare(
+                        inkwell::IntPredicate::NE, check_result, zero_i32,
+                        "cap_valid")
+                        .map_err(|e| CompileError::LlvmError(format!("compare error: {}", e)))?;
                         let function = self.current_function()
                             .ok_or_else(|| CompileError::LlvmError("codegen: no current function for cap check in extern block".to_string()))?;
                         let ok_bb = self.context.append_basic_block(function, &format!("cap_ok_{}", i));
@@ -736,7 +736,7 @@ impl<'ctx> CodeGenerator<'ctx> {
 
             // Phase 4: Release c_shared/c_borrow/c_borrow_mut params after C call
             // F2: Matches Phase 1 — retain/release pairs for all shared passport types.
-            for (i, _param) in &shared_params {
+            for (i, _) in &shared_params {
                 if let Some(release_fn) = self.module.get_function("mimi_shared_release") {
                     let orig_param = wrapper_fn.get_nth_param(*i as u32)
                         .ok_or_else(|| CompileError::LlvmError(format!("missing param {}", i)))?;
@@ -1004,7 +1004,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                             let entry = self.context.append_basic_block(ctor, "entry");
                             let prev_block = self.builder.get_insert_block();
                             self.builder.position_at_end(entry);
-                            let ret = self.builder.build_return(Some(&self.context.i32_type().const_int(ordinal as u64, false)))
+                            self.builder.build_return(Some(&self.context.i32_type().const_int(ordinal as u64, false)))
                                 .map_err(|e| CompileError::LlvmError(format!("ctor return error: {}", e)))?;
                             if let Some(prev) = prev_block { self.builder.position_at_end(prev); }
                         }

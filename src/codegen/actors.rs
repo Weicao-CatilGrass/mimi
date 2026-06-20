@@ -218,9 +218,9 @@ impl<'ctx> CodeGenerator<'ctx> {
                     last_val = self.adjust_int_val(last_val, ret_type)?;
                 }
                 Stmt::Return(Some(expr)) => {
-                    self.pop_comp_scope();
-                    self.free_heap_allocs()?;
                     self.pop_shared_scope()?;
+                    self.free_heap_allocs()?;
+                    self.pop_comp_scope();
                     self.pop_cap_scope();
                     let mut val = self.compile_expr(expr, &vars)?;
                     val = self.adjust_int_val(val, self.current_fn_ret_type())?;
@@ -232,9 +232,9 @@ impl<'ctx> CodeGenerator<'ctx> {
                     return Ok(());
                 }
                 Stmt::Return(None) => {
-                    self.pop_comp_scope();
-                    self.free_heap_allocs()?;
                     self.pop_shared_scope()?;
+                    self.free_heap_allocs()?;
+                    self.pop_comp_scope();
                     self.pop_cap_scope();
                     let ensures = self.ensures_stmts.clone();
                     for ensures_expr in &ensures {
@@ -344,56 +344,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     self.builder.position_at_end(merge_bb);
                 }
                 Stmt::For { var, iterable, body } => {
-                    let function = self.current_function()
-                        .ok_or_else(|| CompileError::LlvmError("codegen: no current function for for loop in actor method".to_string()))?;
-                    if let Expr::Binary(BinOp::Range, start_expr, end_expr) = iterable {
-                        let start_val = self.compile_expr(start_expr, &vars)?;
-                        let end_val = self.compile_expr(end_expr, &vars)?;
-                        let start_iv = if let BasicValueEnum::IntValue(iv) = start_val { iv } else { return Err(CompileError::TypeMismatch("range start must be i64".to_string())); };
-                        let end_iv = if let BasicValueEnum::IntValue(iv) = end_val { iv } else { return Err(CompileError::TypeMismatch("range end must be i64".to_string())); };
-                        let idx_alloca = self.builder.build_alloca(self.context.i64_type(), "idx")
-                            .map_err(|e| CompileError::LlvmError(format!("alloca error: {}", e)))?;
-                        self.builder.build_store(idx_alloca, start_iv)
-                            .map_err(|e| CompileError::LlvmError(format!("store error: {}", e)))?;
-                        let loop_bb = self.context.append_basic_block(function, "forloop");
-                        let body_bb = self.context.append_basic_block(function, "forbody");
-                        let merge_bb = self.context.append_basic_block(function, "forcont");
-                        self.builder.build_unconditional_branch(loop_bb)
-                            .map_err(|e| CompileError::LlvmError(format!("branch error: {}", e)))?;
-                        self.builder.position_at_end(loop_bb);
-                        let idx_val = self.builder.build_load(BasicTypeEnum::IntType(self.context.i64_type()), idx_alloca, "idx")
-                            .map_err(|e| CompileError::LlvmError(format!("load error: {}", e)))?;
-                        let idx_iv = if let BasicValueEnum::IntValue(iv) = idx_val { iv } else { return Err(CompileError::TypeMismatch("idx must be i64".to_string())); };
-                        let cmp = self.builder.build_int_compare(inkwell::IntPredicate::SLT, idx_iv, end_iv, "cmp")
-                            .map_err(|e| CompileError::LlvmError(format!("cmp error: {}", e)))?;
-                        self.builder.build_conditional_branch(cmp, body_bb, merge_bb)
-                            .map_err(|e| CompileError::LlvmError(format!("branch error: {}", e)))?;
-                        self.builder.position_at_end(body_bb);
-                        let elem_alloca = self.builder.build_alloca(BasicTypeEnum::IntType(self.context.i64_type()), var)
-                            .map_err(|e| CompileError::LlvmError(format!("alloca error: {}", e)))?;
-                        let old_break = self.loop_break.replace(merge_bb);
-                        let old_continue = self.loop_continue.replace(loop_bb);
-                        self.builder.build_store(elem_alloca, idx_val)
-                            .map_err(|e| CompileError::LlvmError(format!("store error: {}", e)))?;
-                        vars.insert(var.clone(), (elem_alloca, BasicTypeEnum::IntType(self.context.i64_type())));
-                        self.compile_block(body, &mut vars)?;
-                        vars.remove(var);
-                        self.loop_break = old_break;
-                        self.loop_continue = old_continue;
-                        let idx_val = self.builder.build_load(BasicTypeEnum::IntType(self.context.i64_type()), idx_alloca, "idx")
-                            .map_err(|e| CompileError::LlvmError(format!("load error: {}", e)))?;
-                        let idx_iv = if let BasicValueEnum::IntValue(iv) = idx_val { iv } else { return Err(CompileError::TypeMismatch("idx must be i64".to_string())); };
-                        let one = self.context.i64_type().const_int(1, false);
-                        let next_idx = self.builder.build_int_add(idx_iv, one, "next_idx")
-                            .map_err(|e| CompileError::LlvmError(format!("add error: {}", e)))?;
-                        self.builder.build_store(idx_alloca, next_idx)
-                            .map_err(|e| CompileError::LlvmError(format!("store error: {}", e)))?;
-                        self.builder.build_unconditional_branch(loop_bb)
-                            .map_err(|e| CompileError::LlvmError(format!("branch error: {}", e)))?;
-                        self.builder.position_at_end(merge_bb);
-                    } else {
-                        return Err(CompileError::UnsupportedStmt("for loop requires range in codegen".to_string()));
-                    }
+                    self.compile_for_stmt(var, iterable, body, &mut vars)?;
                 }
                 Stmt::While { cond, body } => {
                     let function = self.current_function()
@@ -454,9 +405,9 @@ impl<'ctx> CodeGenerator<'ctx> {
         }
         
         self.check_unconsumed_caps()?;
-        self.pop_comp_scope();
-        self.free_heap_allocs()?;
         self.release_all_shared()?;
+        self.free_heap_allocs()?;
+        self.pop_comp_scope();
         self.pop_cap_scope();
         
         if !self.block_has_terminator() {
