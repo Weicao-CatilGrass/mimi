@@ -911,7 +911,7 @@ impl<'a> Interpreter<'a> {
                         let sliced: String = chars[start_idx..end_idx].iter().collect();
                         Ok(Value::String(sliced))
                     }
-                    _ => unreachable!(),
+                    other => return Err(InterpError::new(format!("unexpected expression type in await: {}", other))),
                 }
             }
             Expr::Try(expr) => {
@@ -994,7 +994,7 @@ impl<'a> Interpreter<'a> {
                                 .collect::<Result<Vec<_>, _>>()?;
                             let actor_arc = match &obj_val {
                                 Value::Actor(h) => h.clone(),
-                                _ => unreachable!(),
+                                other => return Err(InterpError::new(format!("unexpected expression type in await: {}", other))),
                             };
                             let spawned_file = self.file.clone();
                             super::pool::get_pool().execute(move || {
@@ -1123,7 +1123,7 @@ impl<'a> Interpreter<'a> {
                         .ok_or_else(|| InterpError::new(format!("integer overflow in negation: -{}", x)))
                         .map(Value::Int)
                 }
-                Value::Float(x) => Ok(Value::Float(-x)),
+                Value::Float(x) => { let r = -x; if r.is_nan() { Err(InterpError::new(format!("NaN from negation of {}", x))) } else { Ok(Value::Float(r)) } },
                 _ => Err(InterpError::new(format!("cannot negate {}", type_name(&v)))),
             },
             UnOp::Not => Ok(Value::Bool(!is_truthy(&v))),
@@ -1167,7 +1167,7 @@ impl<'a> Interpreter<'a> {
                         .ok_or_else(|| InterpError::new(format!("integer overflow in addition: {} + {}", a, b)))
                         .map(Value::Int)
                 }
-                (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a + b)),
+                (Value::Float(a), Value::Float(b)) => { let r = a + b; if r.is_nan() { Err(InterpError::new(format!("NaN from {} + {}", a, b))) } else { Ok(Value::Float(r)) } },
                 _ => Err(InterpError::new(format!("cannot apply '+' to {} and {}", type_name(&left), type_name(&right)))),
             },
             BinOp::Sub => match (&left, &right) {
@@ -1176,7 +1176,7 @@ impl<'a> Interpreter<'a> {
                         .ok_or_else(|| InterpError::new(format!("integer overflow in subtraction: {} - {}", a, b)))
                         .map(Value::Int)
                 }
-                (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a - b)),
+                (Value::Float(a), Value::Float(b)) => { let r = a - b; if r.is_nan() { Err(InterpError::new(format!("NaN from {} - {}", a, b))) } else { Ok(Value::Float(r)) } },
                 _ => Err(InterpError::new(format!("cannot apply '-' to {} and {}", type_name(&left), type_name(&right)))),
             },
             BinOp::Mul => match (&left, &right) {
@@ -1185,12 +1185,18 @@ impl<'a> Interpreter<'a> {
                         .ok_or_else(|| InterpError::new(format!("integer overflow in multiplication: {} * {}", a, b)))
                         .map(Value::Int)
                 }
-                (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a * b)),
+                (Value::Float(a), Value::Float(b)) => { let r = a * b; if r.is_nan() { Err(InterpError::new(format!("NaN from {} * {}", a, b))) } else { Ok(Value::Float(r)) } },
                 _ => Err(InterpError::new(format!("cannot apply '*' to {} and {}", type_name(&left), type_name(&right)))),
             },
             BinOp::Div => match (&left, &right) {
                 (Value::Int(_), Value::Int(0)) => Err(InterpError::new("division by zero")),
-                (Value::Float(_), Value::Float(b)) if *b == 0.0 => Err(InterpError::new("division by zero")),
+                (Value::Float(a), Value::Float(b)) => {
+                    if *b == 0.0 { return Err(InterpError::new("division by zero")); }
+                    let r = a / b;
+                    if r.is_nan() { Err(InterpError::new(format!("NaN from {} / {}", a, b))) }
+                    else if r.is_infinite() { Err(InterpError::new(format!("infinity from {} / {}", a, b))) }
+                    else { Ok(Value::Float(r)) }
+                }
                 (Value::Int(a), Value::Int(b)) => {
                     crate::safe_arith::checked_div(*a, *b)
                         .ok_or_else(|| InterpError::new(format!("integer overflow in division: {} / {}", a, b)))
@@ -1215,7 +1221,7 @@ impl<'a> Interpreter<'a> {
                         .ok_or_else(|| InterpError::new(format!("integer overflow in power: {} ^ {}", a, b)))
                         .map(Value::Int)
                 }
-                (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a.powf(*b))),
+                (Value::Float(a), Value::Float(b)) => { let r = a.powf(*b); if r.is_nan() { Err(InterpError::new(format!("NaN from pow({}, {})", a, b))) } else { Ok(Value::Float(r)) } },
                 _ => Err(InterpError::new(format!("cannot apply '^' to {} and {}", type_name(&left), type_name(&right)))),
             },
             BinOp::EqCmp => Ok(Value::Bool(values_equal(&left, &right))),
@@ -1253,7 +1259,7 @@ impl<'a> Interpreter<'a> {
                 _ => Err(InterpError::new(format!("cannot apply '..' to {} and {}", type_name(&left), type_name(&right)))),
             },
             BinOp::Assign => Err(InterpError::new("assignment as expression not supported")),
-            BinOp::And | BinOp::Or => unreachable!(),
+            BinOp::And | BinOp::Or => Err(InterpError::new("logical and/or not supported in expression context")),
         }
     }
 

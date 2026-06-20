@@ -170,6 +170,7 @@ pub const E0722: &str = "E0722"; // unsupported expression in codegen
 
 /// File/resource error codes (E07xx)
 pub const E0750: &str = "E0750"; // requires libc or I/O error
+pub const E0751: &str = "E0751"; // assertion failed
 
 /// Lint warning codes (W0xxx)
 
@@ -323,6 +324,7 @@ pub fn describe(code: &str) -> &'static str {
         E0722 => "unsupported expression in codegen",
 
         E0750 => "requires libc or I/O error",
+        E0751 => "assertion failed",
 
         W001 => "standalone desc/rule has no implementation",
         W002 => "locked fragment ($/$$) with no implementation body",

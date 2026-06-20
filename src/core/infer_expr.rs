@@ -943,7 +943,7 @@ impl<'a> Checker<'a> {
                     Type::Name("Range".into(), vec![])
                 }
             }
-            BinOp::And | BinOp::Or => unreachable!("logical operators handled above"),
+            BinOp::And | BinOp::Or => panic!("logical operators should be handled above"),
             BinOp::Assign => {
                 self.emit_code(crate::diagnostic::codes::E0224, "assignment is not a valid expression in v0.2");
                 Type::Name("unknown".into(), vec![])
