@@ -289,16 +289,14 @@ impl<'a> Interpreter<'a> {
             ))?;
 
         // Load library if not already loaded
-        let lib_idx = if let Some(idx) = self.loaded_libs.iter().position(|l| {
-            format!("{:?}", l) == format!("Library({})", lib_path)
-        }) {
+        let lib_idx = if let Some(idx) = self.loaded_libs.iter().position(|(path, _)| path == &lib_path) {
             idx
         } else {
             // SAFETY: libloading::Library::new loads a shared library via FFI; the path is guaranteed valid by environment variable check above.
             unsafe {
                 let lib = libloading::Library::new(&lib_path)
                     .map_err(|e| Errno::Generic(format!("failed to load library '{}': {}", lib_path, e)))?;
-                self.loaded_libs.push(lib);
+                self.loaded_libs.push((lib_path.clone(), lib));
                 self.loaded_libs.len() - 1
             }
         };
@@ -361,7 +359,7 @@ impl<'a> Interpreter<'a> {
                 }
             }
 
-            let lib = &self.loaded_libs[lib_idx];
+            let lib = &self.loaded_libs[lib_idx].1;
             // Get the function pointer as a raw address for libffi
             let raw_fn: libloading::Symbol<*mut std::ffi::c_void> = unsafe {
                 lib.get(func_name.as_bytes())

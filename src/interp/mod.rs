@@ -70,8 +70,8 @@ pub struct Interpreter<'a> {
     type_defs: HashMap<String, TypeDef>,
     /// Pre-computed results for comptime functions (no-arg functions evaluated at startup)
     comptime_results: HashMap<String, Value>,
-    /// Loaded shared libraries: lib_path -> Library handle
-    loaded_libs: Vec<libloading::Library>,
+    /// Loaded shared libraries: (lib_path, Library handle)
+    loaded_libs: Vec<(String, libloading::Library)>,
     /// Default allocator kind (set by --allocator CLI flag)
     pub default_allocator: AllocatorKind,
     /// Current loop control flow action (break/continue signal)
