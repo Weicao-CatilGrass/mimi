@@ -644,8 +644,6 @@ impl<'a> Lexer<'a> {
     }
 
     fn scan_number(&mut self) -> TokenKind {
-        let _start_line = self.line;
-        let _start_col = self.col;
         let mut s = String::new();
         let mut is_float = false;
         // Check for 0x (hex), 0b (binary), 0o (octal) prefix
@@ -725,7 +723,6 @@ impl<'a> Lexer<'a> {
                 break;
             }
         }
-        let _ = (_start_line, _start_col);
         if is_float {
             TokenKind::Float(s)
         } else {

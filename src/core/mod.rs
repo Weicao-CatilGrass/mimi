@@ -1837,7 +1837,6 @@ pub(crate) fn same_type(a: &Type, b: &Type) -> bool {
         (Type::DynTrait(a), Type::DynTrait(b)) => a == b,
         (Type::Nothing, Type::Nothing) => true,
         (Type::RawString, Type::RawString) => true,
-        (Type::Allocator, Type::Allocator) => true,
         (Type::ExternFunc(a_args, a_ret), Type::ExternFunc(b_args, b_ret)) => {
             a_args.len() == b_args.len()
                 && a_args.iter().zip(b_args.iter()).all(|(x, y)| same_type(x, y))
