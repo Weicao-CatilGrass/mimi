@@ -1,94 +1,259 @@
+// ListExt: Trait for collection operations on List<T>.
+trait ListExt<T> {
+    func is_empty() -> bool
+    func first() -> T
+    func first_result() -> Result<T, string>
+    func last() -> T
+    func last_result() -> Result<T, string>
+    func take(n: i32) -> List<T>
+    func drop_n(n: i32) -> List<T>
+    func find(target: T) -> (bool, i32)
+    func count(target: T) -> i32
+    func dedup() -> List<T>
+    func concat(ys: List<T>) -> List<T>
+    func reverse() -> List<T>
+    func remove_at(index: i32) -> List<T>
+    func remove(value: T) -> List<T>
+    func any(pred: func(T) -> bool) -> bool
+    func all(pred: func(T) -> bool) -> bool
+    func partition(pred: func(T) -> bool) -> (List<T>, List<T>)
+    func chunks(size: i32) -> List<List<T> >
+    func intersperse(sep: T) -> List<T>
+    func filter(pred: func(T) -> bool) -> List<T>
+    func min_index() -> i32
+    func max_index() -> i32
+    func map<U>(f: func(T) -> U) -> List<U>
+    func find_map<U>(f: func(T) -> (bool, U)) -> (bool, U)
+    func group_by<K>(key_fn: func(T) -> K) -> Record
+    func reduce<U>(f: func(U, T) -> U, init: U) -> U
+}
+
+// ListExt implementation for built-in List<T> type.
+impl<T> ListExt<T> for List<T> {
+    func is_empty() -> bool { len(self) == 0 }
+    func first() -> T { self[0] }
+    func first_result() -> Result<T, string> {
+        if len(self) > 0 { Result::Ok(self[0]) } else { Result::Err("first_result: empty list") }
+    }
+    func last() -> T { self[len(self) - 1] }
+    func last_result() -> Result<T, string> {
+        if len(self) > 0 { Result::Ok(self[len(self) - 1]) } else { Result::Err("last_result: empty list") }
+    }
+    func take(n: i32) -> List<T> {
+        if n < len(self) { self[0..n] } else { self }
+    }
+    func drop_n(n: i32) -> List<T> {
+        if n < len(self) { self[n..len(self)] } else { [] }
+    }
+    func find(target: T) -> (bool, i32) {
+        for fi_i in range(0, len(self)) {
+            if self[fi_i] == target { return (true, fi_i) }
+        }
+        (false, -1)
+    }
+    func count(target: T) -> i32 {
+        reduce(self, fn(cv_acc: i32, cv_x: T) -> i32 {
+            if cv_x == target { cv_acc + 1 } else { cv_acc }
+        }, 0)
+    }
+    func dedup() -> List<T> {
+        reduce(self, fn(dd_acc: List<T>, dd_x: T) -> List<T> {
+            if contains(dd_acc, dd_x) { dd_acc } else { push(dd_acc, dd_x) }
+        }, [])
+    }
+    func concat(ys: List<T>) -> List<T> {
+        reduce(ys, fn(ct_acc: List<T>, ct_x: T) -> List<T> {
+            push(ct_acc, ct_x)
+        }, self)
+    }
+    func reverse() -> List<T> { reverse(self) }
+    func remove_at(index: i32) -> List<T> {
+        reduce(range(0, len(self)), fn(ra_acc: List<T>, ra_i: i32) -> List<T> {
+            if ra_i != index { push(ra_acc, self[ra_i]) } else { ra_acc }
+        }, [])
+    }
+    func remove(value: T) -> List<T> {
+        reduce(self, fn(rv_acc: List<T>, rv_x: T) -> List<T> {
+            if rv_x != value { push(rv_acc, rv_x) } else { rv_acc }
+        }, [])
+    }
+    func any(pred: func(T) -> bool) -> bool {
+        for a_x in self {
+            if pred(a_x) { return true }
+        }
+        false
+    }
+    func all(pred: func(T) -> bool) -> bool {
+        for al_x in self {
+            if !pred(al_x) { return false }
+        }
+        true
+    }
+    func partition(pred: func(T) -> bool) -> (List<T>, List<T>) {
+        let mut pt_yes: List<T> = []
+        let mut pt_no: List<T> = []
+        for pt_x in self {
+            if pred(pt_x) { push(pt_yes, pt_x) } else { push(pt_no, pt_x) }
+        }
+        (pt_yes, pt_no)
+    }
+    func chunks(size: i32) -> List<List<T> > {
+        let mut ch_result: List<List<T> > = []
+        let mut ch_i = 0
+        let n = len(self)
+        while ch_i < n {
+            let ch_end = ch_i + size
+            if ch_end > n { push(ch_result, self[ch_i..n]) } else { push(ch_result, self[ch_i..ch_end]) }
+            ch_i = ch_end
+        }
+        ch_result
+    }
+    func intersperse(sep: T) -> List<T> {
+        if len(self) <= 1 { return self }
+        let mut is_result: List<T> = [self[0]]
+        let mut is_i = 1
+        while is_i < len(self) {
+            push(is_result, sep)
+            push(is_result, self[is_i])
+            is_i += 1
+        }
+        is_result
+    }
+    func filter(pred: func(T) -> bool) -> List<T> {
+        let mut fl_res: List<T> = []
+        for fl_x in self {
+            if pred(fl_x) { push(fl_res, fl_x) }
+        }
+        fl_res
+    }
+    func min_index() -> i32 {
+        if len(self) == 0 { return -1 }
+        let mut mi_idx = 0
+        let mut mi_min = self[0]
+        for mi_k in range(1, len(self)) {
+            if self[mi_k] < mi_min {
+                mi_min = self[mi_k]
+                mi_idx = mi_k
+            }
+        }
+        mi_idx
+    }
+    func max_index() -> i32 {
+        if len(self) == 0 { return -1 }
+        let mut mi_idx = 0
+        let mut mi_max = self[0]
+        for mi_k in range(1, len(self)) {
+            if self[mi_k] > mi_max {
+                mi_max = self[mi_k]
+                mi_idx = mi_k
+            }
+        }
+        mi_idx
+    }
+    func map<U>(f: func(T) -> U) -> List<U> {
+        reduce(self, fn(ml_acc: List<U>, ml_x: T) -> List<U> {
+            push(ml_acc, f(ml_x))
+        }, [])
+    }
+    func find_map<U>(f: func(T) -> (bool, U)) -> (bool, U) {
+        for fm_x in self {
+            let fm_result = f(fm_x)
+            if fm_result.0 { return fm_result }
+        }
+        (false, unknown)
+    }
+    func group_by<K>(key_fn: func(T) -> K) -> Record {
+        let mut result = map_new()
+        for gb_x in self {
+            let gb_k = key_fn(gb_x)
+            if map_has_key(result, to_string(gb_k)) {
+                let gb_old = map_get(result, to_string(gb_k))
+                let mut gb_list: List<T> = gb_old.1
+                push(gb_list, gb_x)
+                result = map_set(result, to_string(gb_k), gb_list)
+            } else {
+                result = map_set(result, to_string(gb_k), [gb_x])
+            }
+        }
+        result
+    }
+    func reduce<U>(f: func(U, T) -> U, init: U) -> U {
+        let mut rl_acc = init
+        for rl_x in self {
+            rl_acc = f(rl_acc, rl_x)
+        }
+        rl_acc
+    }
+}
+
 // is_empty_list: Returns true if xs has length 0.
 pub func is_empty_list<T>(xs: List<T>) -> bool {
-    len(xs) == 0
+    xs.is_empty()
 }
 
 // first: Returns the first element of xs.
 pub func first<T>(xs: List<T>) -> T {
-    xs[0]
+    xs.first()
 }
 
 // first_result: Returns the first element of xs, or Err if xs is empty.
 pub func first_result<T>(xs: List<T>) -> Result<T, string> {
-    if len(xs) > 0 { Result::Ok(xs[0]) } else { Result::Err("first_result: empty list") }
+    xs.first_result()
 }
 
 // last: Returns the last element of xs.
 pub func last<T>(xs: List<T>) -> T {
-    xs[len(xs) - 1]
+    xs.last()
 }
 
 // last_result: Returns the last element of xs, or Err if xs is empty.
 pub func last_result<T>(xs: List<T>) -> Result<T, string> {
-    if len(xs) > 0 { Result::Ok(xs[len(xs) - 1]) } else { Result::Err("last_result: empty list") }
+    xs.last_result()
 }
 
 // take: Returns the first n elements of xs.
 pub func take<T>(xs: List<T>, n: i32) -> List<T> {
-    if n < len(xs) {
-        xs[0..n]
-    } else {
-        xs
-    }
+    xs.take(n)
 }
 
 // drop_n: Returns xs without the first n elements.
 pub func drop_n<T>(xs: List<T>, n: i32) -> List<T> {
-    if n < len(xs) {
-        xs[n..len(xs)]
-    } else {
-        []
-    }
+    xs.drop_n(n)
 }
 
 // find: Searches for target in xs, returns (found, index).
 pub func find<T>(xs: List<T>, target: T) -> (bool, i32) {
-    for fi_i in range(0, len(xs)) {
-        if xs[fi_i] == target {
-            return (true, fi_i)
-        }
-    }
-    (false, -1)
+    xs.find(target)
 }
 
 // count_val: Counts occurrences of target in xs.
 pub func count_val<T>(xs: List<T>, target: T) -> i32 {
-    reduce(xs, fn(cv_acc: i32, cv_x: T) -> i32 {
-        if cv_x == target { cv_acc + 1 } else { cv_acc }
-    }, 0)
+    xs.count(target)
 }
 
 // dedup: Removes duplicate elements from xs (stable order).
 pub func dedup<T>(xs: List<T>) -> List<T> {
-    reduce(xs, fn(dd_acc: List<T>, dd_x: T) -> List<T> {
-        if contains(dd_acc, dd_x) { dd_acc } else { push(dd_acc, dd_x) }
-    }, [])
+    xs.dedup()
 }
 
 // concat: Appends ys to xs.
 pub func concat<T>(xs: List<T>, ys: List<T>) -> List<T> {
-    reduce(ys, fn(ct_acc: List<T>, ct_x: T) -> List<T> {
-        push(ct_acc, ct_x)
-    }, xs)
+    xs.concat(ys)
 }
 
 // reverse_list: Returns xs in reverse order.
 pub func reverse_list<T>(xs: List<T>) -> List<T> {
-    reverse(xs)
+    xs.reverse()
 }
 
 // remove_at: Returns xs with the element at index removed.
 pub func remove_at<T>(xs: List<T>, index: i32) -> List<T> {
-    reduce(range(0, len(xs)), fn(ra_acc: List<T>, ra_i: i32) -> List<T> {
-        if ra_i != index { push(ra_acc, xs[ra_i]) } else { ra_acc }
-    }, [])
+    xs.remove_at(index)
 }
 
 // remove_value: Returns xs with all occurrences of value removed.
 pub func remove_value<T>(xs: List<T>, value: T) -> List<T> {
-    reduce(xs, fn(rv_acc: List<T>, rv_x: T) -> List<T> {
-        if rv_x != value { push(rv_acc, rv_x) } else { rv_acc }
-    }, [])
+    xs.remove(value)
 }
 
 // fill_list: Creates a list of length n filled with value.
@@ -163,100 +328,47 @@ pub func filter_odds(xs: List<i32>) -> List<i32> {
 
 // map_list: Applies f to each element of xs.
 pub func map_list<T, U>(xs: List<T>, f: func(T) -> U) -> List<U> {
-    reduce(xs, fn(ml_acc: List<U>, ml_x: T) -> List<U> {
-        push(ml_acc, f(ml_x))
-    }, [])
+    xs.map(f)
 }
 
 // unique: Returns xs with duplicate elements removed (alias for dedup).
 pub func unique<T>(xs: List<T>) -> List<T> {
-    dedup(xs)
+    xs.dedup()
 }
 
 // any: Returns true if any element satisfies pred.
 pub func any<T>(xs: List<T>, pred: func(T) -> bool) -> bool {
-    for a_x in xs {
-        if pred(a_x) { return true }
-    }
-    false
+    xs.any(pred)
 }
 
 // all: Returns true if all elements satisfy pred.
 pub func all<T>(xs: List<T>, pred: func(T) -> bool) -> bool {
-    for al_x in xs {
-        if !pred(al_x) { return false }
-    }
-    true
+    xs.all(pred)
 }
 
 // find_map: Finds first element matching f, returns (true, mapped) or (false, unknown).
 pub func find_map<T, U>(xs: List<T>, f: func(T) -> (bool, U)) -> (bool, U) {
-    for fm_x in xs {
-        let fm_result = f(fm_x)
-        if fm_result.0 { return fm_result }
-    }
-    (false, unknown)
+    xs.find_map(f)
 }
 
 // partition: Splits xs into (matching, non-matching) per pred.
 pub func partition<T>(xs: List<T>, pred: func(T) -> bool) -> (List<T>, List<T>) {
-    let mut pt_yes: List<T> = []
-    let mut pt_no: List<T> = []
-    for pt_x in xs {
-        if pred(pt_x) {
-            push(pt_yes, pt_x)
-        } else {
-            push(pt_no, pt_x)
-        }
-    }
-    (pt_yes, pt_no)
+    xs.partition(pred)
 }
 
 // group_by: Groups elements by key_fn into a Record.
 pub func group_by<T, K>(xs: List<T>, key_fn: func(T) -> K) -> Record {
-    let mut result = map_new()
-    for gb_x in xs {
-        let gb_k = key_fn(gb_x)
-        if map_has_key(result, to_string(gb_k)) {
-            let gb_old = map_get(result, to_string(gb_k))
-            let mut gb_list: List<T> = gb_old.1
-            push(gb_list, gb_x)
-            result = map_set(result, to_string(gb_k), gb_list)
-        } else {
-            result = map_set(result, to_string(gb_k), [gb_x])
-        }
-    }
-    result
+    xs.group_by(key_fn)
 }
 
 // chunks: Splits xs into chunks of size (last chunk may be smaller).
 pub func chunks<T>(xs: List<T>, size: i32) -> List<List<T> > {
-    let mut ch_result: List<List<T> > = []
-    let mut ch_i = 0
-    let n = len(xs)
-    while ch_i < n {
-        let ch_end = ch_i + size
-        if ch_end > n {
-            push(ch_result, xs[ch_i..n])
-        } else {
-            push(ch_result, xs[ch_i..ch_end])
-        }
-        ch_i = ch_end
-    }
-    ch_result
+    xs.chunks(size)
 }
 
 // intersperse: Returns xs with sep placed between each element.
 pub func intersperse<T>(xs: List<T>, sep: T) -> List<T> {
-    if len(xs) <= 1 { return xs }
-    let mut is_result: List<T> = [xs[0]]
-    let mut is_i = 1
-    while is_i < len(xs) {
-        push(is_result, sep)
-        push(is_result, xs[is_i])
-        is_i += 1
-    }
-    is_result
+    xs.intersperse(sep)
 }
 
 // min_list: Returns the minimum element of xs (integer).
@@ -301,48 +413,20 @@ pub func max_list_result(xs: List<i32>) -> Result<i32, string> {
 
 // filter_list: Filters xs by predicate (custom implementation).
 pub func filter_list<T>(xs: List<T>, pred: func(T) -> bool) -> List<T> {
-    let mut fl_res: List<T> = []
-    for fl_x in xs {
-        if pred(fl_x) {
-            push(fl_res, fl_x)
-        }
-    }
-    fl_res
+    xs.filter(pred)
 }
 
 // reduce_list: Reduces xs with f and initial value init.
 pub func reduce_list<T, U>(xs: List<T>, f: func(U, T) -> U, init: U) -> U {
-    let mut rl_acc = init
-    for rl_x in xs {
-        rl_acc = f(rl_acc, rl_x)
-    }
-    rl_acc
+    xs.reduce(f, init)
 }
 
 // min_index: Returns the index of the minimum element (-1 if empty).
 pub func min_index<T>(xs: List<T>) -> i32 {
-    if len(xs) == 0 { return -1 }
-    let mut mi_idx = 0
-    let mut mi_min = xs[0]
-    for mi_k in range(1, len(xs)) {
-        if xs[mi_k] < mi_min {
-            mi_min = xs[mi_k]
-            mi_idx = mi_k
-        }
-    }
-    mi_idx
+    xs.min_index()
 }
 
 // max_index: Returns the index of the maximum element (-1 if empty).
 pub func max_index<T>(xs: List<T>) -> i32 {
-    if len(xs) == 0 { return -1 }
-    let mut mi_idx = 0
-    let mut mi_max = xs[0]
-    for mi_k in range(1, len(xs)) {
-        if xs[mi_k] > mi_max {
-            mi_max = xs[mi_k]
-            mi_idx = mi_k
-        }
-    }
-    mi_idx
+    xs.max_index()
 }

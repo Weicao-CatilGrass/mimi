@@ -525,6 +525,23 @@ impl Parser {
         self.expect(TokenKind::Impl, "`impl`")?;
         let generics = self.parse_generic_params()?;
         let trait_name = self.expect_ident()?;
+        let trait_args = if self.at(&TokenKind::Lt) {
+            self.advance();
+            let mut args = Vec::new();
+            if !self.at(&TokenKind::Gt) {
+                loop {
+                    args.push(self.parse_type()?);
+                    if !self.at(&TokenKind::Comma) {
+                        break;
+                    }
+                    self.advance();
+                }
+            }
+            self.expect(TokenKind::Gt, "`>`")?;
+            args
+        } else {
+            Vec::new()
+        };
         self.expect(TokenKind::For, "`for`")?;
         // Parse the type using parse_type() to support List<T>, Result<T,E>, etc.
         let impl_type = self.parse_type()?;
@@ -553,6 +570,7 @@ impl Parser {
         Ok(ImplDef {
             generics,
             trait_name,
+            trait_args,
             type_name,
             type_args,
             methods,
