@@ -220,22 +220,6 @@ impl<'ctx> CodeGenerator<'ctx> {
         self.heap_allocs.borrow_mut().push(Vec::new());
     }
 
-    /// G10: Update a previously registered heap allocation pointer (after realloc).
-    /// Searches all scope levels (innermost first) so that realloc in nested blocks
-    /// correctly updates pointers registered in outer scopes.
-    pub(super) fn update_heap_alloc(&self, old_ptr: inkwell::values::PointerValue<'ctx>, new_ptr: inkwell::values::PointerValue<'ctx>) {
-        for stack in self.heap_allocs.borrow_mut().iter_mut().rev() {
-            for entry in stack.iter_mut() {
-                if let HeapEntry::Ptr(p) = entry {
-                    if *p == old_ptr {
-                        *entry = HeapEntry::Ptr(new_ptr);
-                        return;
-                    }
-                }
-            }
-        }
-    }
-
     /// G10: Pop scope level and emit `free(ptr)` for each registered heap allocation.
     pub(super) fn free_heap_allocs(&mut self) -> Result<(), CompileError> {
         if let Some(scope) = self.heap_allocs.borrow_mut().pop() {

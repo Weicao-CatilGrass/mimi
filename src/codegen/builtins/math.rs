@@ -1,5 +1,5 @@
 use super::CodeGenerator;
-use crate::error::MimiResult;
+use crate::error::{CompileError, MimiResult};
 use inkwell::types::{BasicMetadataTypeEnum, BasicTypeEnum};
 use inkwell::values::{BasicMetadataValueEnum, BasicValueEnum};
 
@@ -70,11 +70,11 @@ impl<'ctx> CodeGenerator<'ctx> {
                 }
                 let a = match args[0] {
                     BasicMetadataValueEnum::IntValue(iv) => iv,
-                    _ => return Err("[E0712] min/max requires integer types".into()),
+                    _ => return Err(CompileError::TypeMismatch("min/max requires integer types".into())),
                 };
                 let b = match args[1] {
                     BasicMetadataValueEnum::IntValue(iv) => iv,
-                    _ => return Err("[E0712] min/max requires integer types".into()),
+                    _ => return Err(CompileError::TypeMismatch("min/max requires integer types".into())),
                 };
                 let pred = if name == "min" {
                     inkwell::IntPredicate::SLT
@@ -126,7 +126,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                         self.builder.build_signed_int_to_float(iv, f64_ty, "a_f64")
                             .map_err(|e| format!("int_to_float error: {}", e))?
                     }
-                    _ => return Err("[E0712] pow requires numeric arguments".into()),
+                    _ => return Err(CompileError::TypeMismatch("pow requires numeric arguments".into())),
                 };
                 let b = match args[1] {
                     BasicMetadataValueEnum::FloatValue(fv) => fv,
@@ -134,7 +134,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                         self.builder.build_signed_int_to_float(iv, f64_ty, "b_f64")
                             .map_err(|e| format!("int_to_float error: {}", e))?
                     }
-                    _ => return Err("[E0712] pow requires numeric arguments".into()),
+                    _ => return Err(CompileError::TypeMismatch("pow requires numeric arguments".into())),
                 };
                 let pow_fn = self.module.get_function("pow")
                     .unwrap_or_else(|| {

@@ -2,7 +2,7 @@ use crate::ast::*;
 use crate::codegen::call_try_basic_value;
 use crate::codegen::CallSiteValueExt;
 use crate::codegen::types;
-use crate::error::{CompileError, MimiResult};
+
 use inkwell::types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum};
 use inkwell::values::{BasicMetadataValueEnum, BasicValueEnum};
 use std::collections::HashMap;
@@ -348,7 +348,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                             Expr::Literal(Lit::String(s)) => s.clone(),
                             Expr::Ident(var) => self.var_type_names.get(var)
                                 .cloned().unwrap_or_else(|| "unknown".to_string()),
-                            _ => return Err("[E0712] type_fields: argument must be a type name string".into()),
+                            _ => return Err("type_fields: argument must be a type name string".into()),
                         };
                         let field_names: Vec<String> = self.type_defs.get(&type_name_str)
                             .map(|td| match &td.kind {
@@ -369,7 +369,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                             Expr::Literal(Lit::String(s)) => s.clone(),
                             Expr::Ident(var) => self.var_type_names.get(var)
                                 .cloned().unwrap_or_else(|| "unknown".to_string()),
-                            _ => return Err("[E0712] type_variants: argument must be a type name string".into()),
+                            _ => return Err("type_variants: argument must be a type name string".into()),
                         };
                         let variant_names: Vec<String> = self.type_defs.get(&type_name_str)
                             .map(|td| match &td.kind {
@@ -428,9 +428,9 @@ impl<'ctx> CodeGenerator<'ctx> {
                                         .into_pointer_value();
                                     let record_ptr = match self.compile_expr(&args[0], vars)? {
                                         BasicValueEnum::PointerValue(pv) => pv,
-                                        _ => return Err("[E0712] values: expected record pointer".into()),
+                                        _ => return Err("values: expected record pointer".into()),
                                     };
-                                    let type_def = self.type_defs.get(&type_name).ok_or_else(|| format!("[E0712] values: unknown type '{}'", type_name))?;
+                                    let type_def = self.type_defs.get(&type_name).ok_or_else(|| format!("values: unknown type '{}'", type_name))?;
                                     if let TypeDefKind::Record(fields) = &type_def.kind {
                                         for (i, field) in fields.iter().enumerate() {
                                             let gep = self.builder.build_struct_gep(_struct_ty, record_ptr, i as u32, &field.name)
@@ -445,7 +445,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                                                     .map_err(|e| format!("fptosi error: {}", e))?,
                                                 BasicValueEnum::PointerValue(pv) => self.builder.build_ptr_to_int(pv, i64_ty, "ptr_to_i64")
                                                     .map_err(|e| format!("ptrtoint error: {}", e))?,
-                                                _ => return Err("[E0701] values: unsupported field type".into()),
+                                                _ => return Err("values: unsupported field type".into()),
                                             };
                                             // SAFETY: build_gep requires valid pointer and index types; the pointer is derived from a valid LLVM-typed allocation and indices are correctly-typed i64 values.
                                             // SAFETY: SAFETY: values_data_i64 is i64* from malloc; i is in-bounds (small constant index).
@@ -1130,7 +1130,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                         Lit::Int(n) => self.context.i64_type().const_int(*n as u64, true),
                         Lit::Bool(b) => self.context.bool_type().const_int(*b as u64, false),
                         Lit::Unit => self.context.i64_type().const_int(0, false),
-                        _ => return Err("[E0709] unsupported match literal type".into()),
+                        _ => return Err("unsupported match literal type".into()),
                     };
                     let cmp = self.builder.build_int_compare(
                         inkwell::IntPredicate::EQ,
@@ -1904,7 +1904,7 @@ impl<'ctx> CodeGenerator<'ctx> {
             BasicValueEnum::PointerValue(pv) => {
                 let idx_iv = match idx_val {
                     BasicValueEnum::IntValue(iv) => iv,
-                    _ => return Err("[E0712] index must be i64".into()),
+                    _ => return Err("index must be i64".into()),
                 };
                 // Try list struct first: { i64 len, i8* data }
                 let list_ty = self.context.struct_type(&[
@@ -1947,9 +1947,9 @@ impl<'ctx> CodeGenerator<'ctx> {
                     BasicValueEnum::IntValue(iv) => {
                         // Convert runtime i64 index to constant u32 for extractvalue
                         iv.get_zero_extended_constant()
-                            .ok_or_else(|| "[E0712] array index must be a compile-time constant".to_string())? as u32
+                            .ok_or_else(|| "array index must be a compile-time constant".to_string())? as u32
                     }
-                    _ => return Err("[E0712] index must be i64".into()),
+                    _ => return Err("index must be i64".into()),
                 };
                 let elem = self.builder.build_extract_value(obj_val.into_array_value(), idx, "arr_elem")
                     .map_err(|e| format!("extractvalue error: {}", e))?;
@@ -2494,11 +2494,11 @@ impl<'ctx> CodeGenerator<'ctx> {
         let end_val = self.compile_expr(end, vars)?;
         let start_iv = match start_val {
             BasicValueEnum::IntValue(iv) => iv,
-            _ => return Err("[E0712] range start must be i64".into()),
+            _ => return Err("range start must be i64".into()),
         };
         let end_iv = match end_val {
             BasicValueEnum::IntValue(iv) => iv,
-            _ => return Err("[E0712] range end must be i64".into()),
+            _ => return Err("range end must be i64".into()),
         };
         // Create a range struct { start: i64, end: i64 }
         let range_ty = self.context.struct_type(&[
@@ -3453,11 +3453,11 @@ impl<'ctx> CodeGenerator<'ctx> {
             BinOp::Range => {
                 let start_iv = match lhs {
                     BasicValueEnum::IntValue(iv) => iv,
-                    _ => return Err("[E0712] range start must be i64".into()),
+                    _ => return Err("range start must be i64".into()),
                 };
                 let end_iv = match rhs {
                     BasicValueEnum::IntValue(iv) => iv,
-                    _ => return Err("[E0712] range end must be i64".into()),
+                    _ => return Err("range end must be i64".into()),
                 };
                 // Create a range struct { start: i64, end: i64 }
                 let i64_ty = self.context.i64_type();
@@ -3644,7 +3644,7 @@ impl<'ctx> CodeGenerator<'ctx> {
             "Ok" => {
                 // Ok(val) — Result constructor: {i1 disc, T ok, i64 err} (3 fields)
                 if compiled_args.len() != 1 {
-                    return Err("[E0711] Ok expects 1 argument".into());
+                    return Err("Ok expects 1 argument".into());
                 }
                 let val = compiled_args[0];
                 let bool_ty = self.context.bool_type();
@@ -3677,7 +3677,7 @@ impl<'ctx> CodeGenerator<'ctx> {
             "Some" => {
                 // Some(val) — Option constructor: {i1 disc, T payload} (2 fields)
                 if compiled_args.len() != 1 {
-                    return Err("[E0711] Some expects 1 argument".into());
+                    return Err("Some expects 1 argument".into());
                 }
                 let val = compiled_args[0];
                 let bool_ty = self.context.bool_type();
@@ -3705,7 +3705,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                 // Err(val) — Result constructor: {i1 disc, T ok, i64 err} (3 fields)
                 // The error field is always stored as i64 for a consistent layout.
                 if compiled_args.len() != 1 {
-                    return Err("[E0711] Err expects 1 argument".into());
+                    return Err("Err expects 1 argument".into());
                 }
                 let val = compiled_args[0];
                 let bool_ty = self.context.bool_type();
@@ -3732,7 +3732,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                             .map_err(|e| format!("ptrtoint error: {}", e))?
                             .into()
                     }
-                    _ => return Err("[E0711] Err: unsupported error value type".into()),
+                    _ => return Err("Err: unsupported error value type".into()),
                 };
                 let struct_ty = self.context.struct_type(&[
                     BasicTypeEnum::IntType(bool_ty),
@@ -3760,7 +3760,7 @@ impl<'ctx> CodeGenerator<'ctx> {
             "None" => {
                 // None — Option constructor: {i1 disc, T payload} (2 fields)
                 if compiled_args.len() != 0 {
-                    return Err("[E0711] None expects 0 arguments".into());
+                    return Err("None expects 0 arguments".into());
                 }
                 let bool_ty = self.context.bool_type();
                 let i64_ty = self.context.i64_type();
@@ -3867,10 +3867,10 @@ impl<'ctx> CodeGenerator<'ctx> {
                     .map_err(|e| format!("extract str ptr error: {}", e))?;
                 match extracted {
                     BasicValueEnum::PointerValue(pv) => Ok(pv),
-                    _ => Err("[E0712] string struct field 0 is not a pointer".into()),
+                    _ => Err("string struct field 0 is not a pointer".into()),
                 }
             }
-            _ => Err("[E0712] expected a string argument".into()),
+            _ => Err("expected a string argument".into()),
         }
     }
 

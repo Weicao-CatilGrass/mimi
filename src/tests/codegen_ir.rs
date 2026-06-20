@@ -378,7 +378,7 @@ fn ir_generic_mangling_i32() {
         func identity<T>(x: T) -> T { x }
         func main() -> i32 { identity::<i32>(42) }
     "#);
-    assert!(ir.contains("identity__T_i32"), "generic should be mangled");
+    assert!(ir.contains("identity$T_i32"), "generic should be mangled");
 }
 
 #[test]
@@ -387,8 +387,8 @@ fn ir_generic_multi_instantiation() {
         func wrap<T>(x: T) -> T { x }
         func main() -> i32 { let a = wrap::<i32>(1); let b = wrap::<i64>(2); a }
     "#);
-    assert!(ir.contains("wrap__T_i32"), "first instantiation");
-    assert!(ir.contains("wrap__T_i64"), "second instantiation");
+    assert!(ir.contains("wrap$T_i32"), "first instantiation");
+    assert!(ir.contains("wrap$T_i64"), "second instantiation");
 }
 
 // ===================== Capabilities IR =====================

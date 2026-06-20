@@ -1,5 +1,5 @@
 use super::CodeGenerator;
-use crate::error::MimiResult;
+use crate::error::{CompileError, MimiResult};
 use super::super::CallSiteValueExt;
 use inkwell::values::{BasicMetadataValueEnum, BasicValueEnum};
 
@@ -9,7 +9,7 @@ impl<'ctx> CodeGenerator<'ctx> {
         &self,
         args: &[BasicMetadataValueEnum<'ctx>],
     ) -> MimiResult<BasicValueEnum<'ctx>> {
-                if args.len() != 1 { return Err("[E0711] to_json expects 1 argument".into()); }
+                if args.len() != 1 { return Err(CompileError::WrongArgCount("to_json expects 1 argument".into())); }
                 let i64_ty = self.context.i64_type();
                 let malloc_fn = self.module.get_function("malloc")
                     .ok_or_else(|| "malloc not declared".to_string())?;
@@ -127,7 +127,7 @@ impl<'ctx> CodeGenerator<'ctx> {
         &self,
         args: &[BasicMetadataValueEnum<'ctx>],
     ) -> MimiResult<BasicValueEnum<'ctx>> {
-                if args.len() != 1 { return Err("[E0711] json_is_valid expects 1 argument".into()); }
+                if args.len() != 1 { return Err(CompileError::WrongArgCount("json_is_valid expects 1 argument".into())); }
                 let raw_ptr = self.extract_raw_str_ptr(&args[0])?;
                 let func = self.module.get_function("mimi_is_valid_json")
                     .ok_or_else(|| "codegen: mimi_is_valid_json not declared".to_string())?;
@@ -150,7 +150,7 @@ impl<'ctx> CodeGenerator<'ctx> {
         &self,
         args: &[BasicMetadataValueEnum<'ctx>],
     ) -> MimiResult<BasicValueEnum<'ctx>> {
-                if args.len() != 1 { return Err("[E0711] from_json expects 1 argument".into()); }
+                if args.len() != 1 { return Err(CompileError::WrongArgCount("from_json expects 1 argument".into())); }
                 let raw_ptr = self.extract_raw_str_ptr(&args[0])?;
                 let from_json_fn = self.module.get_function("mimi_from_json")
                     .ok_or_else(|| "codegen: mimi_from_json not declared".to_string())?;
@@ -170,7 +170,7 @@ impl<'ctx> CodeGenerator<'ctx> {
         &self,
         args: &[BasicMetadataValueEnum<'ctx>],
     ) -> MimiResult<BasicValueEnum<'ctx>> {
-                if args.len() != 2 { return Err("[E0711] json_get_string expects 2 arguments".into()); }
+                if args.len() != 2 { return Err(CompileError::WrongArgCount("json_get_string expects 2 arguments".into())); }
                 let json_ptr = self.extract_raw_str_ptr(&args[0])?;
                 let key_ptr = self.extract_raw_str_ptr(&args[1])?;
                 let func = self.module.get_function("json_get_string")
@@ -191,7 +191,7 @@ impl<'ctx> CodeGenerator<'ctx> {
         &self,
         args: &[BasicMetadataValueEnum<'ctx>],
     ) -> MimiResult<BasicValueEnum<'ctx>> {
-                if args.len() != 2 { return Err("[E0711] json_get_int expects 2 arguments".into()); }
+                if args.len() != 2 { return Err(CompileError::WrongArgCount("json_get_int expects 2 arguments".into())); }
                 let json_ptr = self.extract_raw_str_ptr(&args[0])?;
                 let key_ptr = self.extract_raw_str_ptr(&args[1])?;
                 let func = self.module.get_function("json_get_int")
@@ -209,11 +209,11 @@ impl<'ctx> CodeGenerator<'ctx> {
         &self,
         args: &[BasicMetadataValueEnum<'ctx>],
     ) -> MimiResult<BasicValueEnum<'ctx>> {
-                if args.len() != 2 { return Err("[E0711] json_get_element expects 2 arguments".into()); }
+                if args.len() != 2 { return Err(CompileError::WrongArgCount("json_get_element expects 2 arguments".into())); }
                 let json_ptr = self.extract_raw_str_ptr(&args[0])?;
                 let index = match args[1] {
                     BasicMetadataValueEnum::IntValue(iv) => iv,
-                    _ => return Err("[E0712] json_get_element: index must be i32".into()),
+                    _ => return Err(CompileError::TypeMismatch("json_get_element: index must be i32".into())),
                 };
                 let func = self.module.get_function("json_get_element")
                     .ok_or_else(|| "codegen: json_get_element not declared".to_string())?;

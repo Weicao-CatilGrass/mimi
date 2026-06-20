@@ -1346,7 +1346,7 @@ fn codegen_turbofish_generic() {
             identity::<i32>(42)
         }
     "#);
-    assert!(ir.contains("identity__T_i32"), "IR should contain mangled generic function name:\n{}", ir);
+    assert!(ir.contains("identity$T_i32"), "IR should contain mangled generic function name:\n{}", ir);
 }
 
 #[test]
@@ -1362,8 +1362,8 @@ fn codegen_turbofish_multiple_instantiations() {
             a
         }
     "#);
-    assert!(ir.contains("wrap__T_i32"), "IR should contain wrap__T_i32:\n{}", ir);
-    assert!(ir.contains("wrap__T_i64"), "IR should contain wrap__T_i64:\n{}", ir);
+    assert!(ir.contains("wrap$T_i32"), "IR should contain wrap$T_i32:\n{}", ir);
+    assert!(ir.contains("wrap$T_i64"), "IR should contain wrap$T_i64:\n{}", ir);
 }
 
 #[test]

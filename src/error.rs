@@ -65,16 +65,6 @@ pub enum CompileError {
     // === Codegen internal errors (E07xx) ===
     #[error("LLVM IR generation error: {0}")]
     LlvmError(String),
-    #[error("pattern match compilation error: {0}")]
-    PatternMatchError(String),
-    #[error("closure compilation error: {0}")]
-    ClosureError(String),
-    #[error("spawn/await compilation error: {0}")]
-    SpawnAwaitError(String),
-    #[error("compensation block error: {0}")]
-    CompensationError(String),
-    #[error("generic instantiation error: {0}")]
-    GenericsError(String),
     #[error("builtin function error: {0}")]
     BuiltinError(String),
     #[error("extern function '{0}' not declared")]
@@ -130,11 +120,6 @@ impl CompileError {
             Self::BreakOutsideLoop => E0404,
             Self::ContinueOutsideLoop => E0405,
             Self::LlvmError(_) => E0713,
-            Self::PatternMatchError(_) => E0715,
-            Self::ClosureError(_) => E0716,
-            Self::SpawnAwaitError(_) => E0717,
-            Self::CompensationError(_) => E0719,
-            Self::GenericsError(_) => E0720,
             Self::BuiltinError(_) => E0709,
             Self::ExternNotDeclared(_) => E0710,
             Self::FfiWrapper(_) => E0741,
