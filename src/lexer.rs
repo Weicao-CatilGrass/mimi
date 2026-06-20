@@ -648,24 +648,57 @@ impl<'a> Lexer<'a> {
         let _start_col = self.col;
         let mut s = String::new();
         let mut is_float = false;
-        // Check for 0x or 0X prefix (hex literal)
+        // Check for 0x (hex), 0b (binary), 0o (octal) prefix
         if let Some('0') = self.peek() {
             let mut tmp = self.chars.clone();
             let next = tmp.next();
-            if matches!(next, Some('x') | Some('X')) {
-                s.push('0');
-                self.advance();
-                s.push('x');
-                self.advance();
-                while let Some(c) = self.peek() {
-                    if c.is_ascii_hexdigit() || c == '_' {
-                        s.push(c);
-                        self.advance();
-                    } else {
-                        break;
+            match next {
+                Some('x') | Some('X') => {
+                    s.push('0');
+                    self.advance();
+                    s.push('x');
+                    self.advance();
+                    while let Some(c) = self.peek() {
+                        if c.is_ascii_hexdigit() || c == '_' {
+                            s.push(c);
+                            self.advance();
+                        } else {
+                            break;
+                        }
                     }
+                    return TokenKind::Int(s);
                 }
-                return TokenKind::Int(s);
+                Some('b') | Some('B') => {
+                    s.push('0');
+                    self.advance();
+                    s.push('b');
+                    self.advance();
+                    while let Some(c) = self.peek() {
+                        if c == '0' || c == '1' || c == '_' {
+                            s.push(c);
+                            self.advance();
+                        } else {
+                            break;
+                        }
+                    }
+                    return TokenKind::Int(s);
+                }
+                Some('o') | Some('O') => {
+                    s.push('0');
+                    self.advance();
+                    s.push('o');
+                    self.advance();
+                    while let Some(c) = self.peek() {
+                        if c.is_ascii_digit() && c != '8' && c != '9' || c == '_' {
+                            s.push(c);
+                            self.advance();
+                        } else {
+                            break;
+                        }
+                    }
+                    return TokenKind::Int(s);
+                }
+                _ => {}
             }
         }
         while let Some(c) = self.peek() {

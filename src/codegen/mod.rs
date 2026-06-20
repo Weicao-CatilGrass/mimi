@@ -15,6 +15,7 @@ use crate::error::CompileError;
 use inkwell::context::Context;
 use inkwell::module::Module;
 use inkwell::builder::Builder;
+use inkwell::passes::PassBuilderOptions;
 use inkwell::targets::{CodeModel, InitializationConfig, RelocMode, Target, TargetMachine};
 use inkwell::types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum};
 use inkwell::values::{BasicMetadataValueEnum, BasicValueEnum, CallSiteValue, ValueKind};
@@ -481,8 +482,6 @@ impl<'ctx> CodeGenerator<'ctx> {
         let triple = TargetMachine::get_default_triple();
         let triple_str = triple.as_str().to_string_lossy().to_string();
         let triple_ref = if self.no_std {
-            // Use freestanding target triple
-            // e.g., "x86_64-unknown-linux-gnu" → "x86_64-unknown-none"
             let parts: Vec<&str> = triple_str.split('-').collect();
             let freestanding = if parts.len() >= 3 {
                 format!("{}-{}-none", parts[0], parts[1])
@@ -503,6 +502,13 @@ impl<'ctx> CodeGenerator<'ctx> {
             OptimizationLevel::Aggressive,
             reloc_mode, CodeModel::Default,
         ).ok_or_else(|| format!("failed to create target machine for triple '{}'", triple_ref))?;
+
+        // Run LLVM optimization passes before codegen (opt-in via MIMI_OPT env var)
+        if std::env::var("MIMI_OPT").map(|v| v == "1" || v == "true").unwrap_or(false) {
+            let options = inkwell::passes::PassBuilderOptions::create();
+            self.module.run_passes("default<O2>", &tm, options)
+                .map_err(|e| CompileError::LlvmError(format!("optimization failed: {}", e)))?;
+        }
 
         tm.write_to_file(&self.module, inkwell::targets::FileType::Object, output_path)
             .map_err(|e| CompileError::Io(format!("failed to write object file: {}", e)))
