@@ -116,8 +116,9 @@ impl Verifier {
         let requires_expr = func.requires.as_ref();
         let ensures_expr = func.ensures.as_ref();
 
+        let returns_real = func.ret.as_ref().map_or(false, |t| matches!(t, Type::Name(n, _) if n == "f64"));
+
         let mut vars = Z3VarMap::new();
-        let z3_result = Z3Int::new_const("result");
 
         for p in &func.params {
             if matches!(&p.ty, Type::Name(n, _) if n == "f64") {
@@ -126,7 +127,11 @@ impl Verifier {
                 vars.insert_int(p.name.as_str(), Z3Int::new_const(p.name.as_str()));
             }
         }
-        vars.insert_int("result", z3_result.clone());
+        if returns_real {
+            vars.insert_real("result", Z3Real::new_const("result"));
+        } else {
+            vars.insert_int("result", Z3Int::new_const("result"));
+        }
 
         let constraint_count = (requires_expr.is_some() as usize) + (ensures_expr.is_some() as usize);
 
@@ -282,6 +287,8 @@ impl Verifier {
             };
         }
 
+        let returns_real = func.ret.as_ref().map_or(false, |t| matches!(t, Type::Name(n, _) if n == "f64"));
+
         let mut vars = Z3VarMap::new();
         let mut old_names: Vec<String> = Vec::with_capacity(func.params.len());
 
@@ -294,8 +301,13 @@ impl Verifier {
             old_names.push(format!("old_{}", p.name));
         }
 
-        let z3_result = Z3Int::new_const("result");
-        vars.insert_int("result", z3_result.clone());
+        if returns_real {
+            let z3_result = Z3Real::new_const("result");
+            vars.insert_real("result", z3_result.clone());
+        } else {
+            let z3_result = Z3Int::new_const("result");
+            vars.insert_int("result", z3_result.clone());
+        }
 
         for (i, p) in func.params.iter().enumerate() {
             let old_name = old_names[i].as_str();
@@ -329,9 +341,26 @@ impl Verifier {
             }
         }
 
+        for (i, p) in func.params.iter().enumerate() {
+            let old_name = old_names[i].as_str();
+            let param_z3 = vars.get_real(p.name.as_str()).cloned();
+            let old_z3 = vars.get_real(old_name).cloned();
+            if let (Some(pv), Some(ov)) = (param_z3, old_z3) {
+                self.solver.assert(&ov.eq(&pv));
+            }
+        }
+
         if let Some(ref return_expr) = body_return {
-            if let Some(body_z3) = self.expr_to_z3_int(return_expr, &vars) {
-                self.solver.assert(&z3_result.eq(&body_z3));
+            if returns_real {
+                if let Some(body_z3) = self.expr_to_z3_real(return_expr, &vars) {
+                    if let Some(r) = vars.get_real("result") {
+                        self.solver.assert(&r.eq(&body_z3));
+                    }
+                }
+            } else if let Some(body_z3) = self.expr_to_z3_int(return_expr, &vars) {
+                if let Some(i) = vars.get_int("result") {
+                    self.solver.assert(&i.eq(&body_z3));
+                }
             }
         }
 
@@ -446,7 +475,7 @@ impl Verifier {
 
         if let Some(model) = model {
             for (name, z3_var) in &vars.int_vars {
-                if name == "result" { continue; }
+                if name == "result" || name.starts_with("old_") { continue; }
                 if let Some(val) = model.eval(z3_var, true) {
                     if let Some(i) = val.as_i64() {
                         assignments.push((name.clone(), i));
@@ -461,10 +490,19 @@ impl Verifier {
                 }
             }
             for (name, z3_var) in &vars.real_vars {
+                if name == "result" || name.starts_with("old_") { continue; }
                 if let Some(val) = model.eval(z3_var, true) {
                     if let Some((num, den)) = val.as_real() {
                         let f = (num as f64) / (den as f64);
                         real_assignments.push((name.clone(), f));
+                    }
+                }
+            }
+            if let Some(z3_var) = vars.real_vars.get("result") {
+                if let Some(val) = model.eval(z3_var, true) {
+                    if let Some((num, den)) = val.as_real() {
+                        let f = (num as f64) / (den as f64);
+                        real_assignments.push(("result".to_string(), f));
                     }
                 }
             }
@@ -512,6 +550,21 @@ impl Verifier {
                 } else {
                     None
                 }
+            }
+            Expr::Binary(op, lhs, rhs) => {
+                let l = Self::resolve_to_i64(lhs, model, vars)?;
+                let r = Self::resolve_to_i64(rhs, model, vars)?;
+                match op {
+                    BinOp::Add => Some(l + r),
+                    BinOp::Sub => Some(l - r),
+                    BinOp::Mul => Some(l * r),
+                    BinOp::Div => Some(l / r),
+                    BinOp::Mod => Some(l % r),
+                    _ => None,
+                }
+            }
+            Expr::Unary(UnOp::Neg, inner) => {
+                Self::resolve_to_i64(inner, model, vars).map(|v| -v)
             }
             _ => None,
         }
@@ -650,29 +703,33 @@ impl Verifier {
         let result_val = counterexample.assignments.iter()
             .find(|(name, _)| name == "result")
             .map(|(_, val)| *val);
+        let result_real = counterexample.real_assignments.iter()
+            .find(|(name, _)| name == "result")
+            .map(|(_, val)| *val);
 
         let mut message = format!(
             "verification failed for '{}': postcondition violation",
             func_name
         );
 
-        if !input_assignments.is_empty() {
-            let mut parts: Vec<String> = input_assignments.iter()
-                .map(|(name, val)| format!("{} = {}", name, val))
-                .collect();
-            for (name, val) in &counterexample.real_assignments {
-                parts.push(format!("{} = {:.6}", name, val));
+        let mut all_parts: Vec<String> = Vec::new();
+        for (name, val) in &input_assignments {
+            all_parts.push(format!("{} = {}", name, val));
+        }
+        for (name, val) in &counterexample.real_assignments {
+            if name != "result" {
+                all_parts.push(format!("{} = {:.6}", name, val));
             }
-            message.push_str(&format!("\n  with inputs: {}", parts.join(", ")));
+        }
+        if !all_parts.is_empty() {
+            message.push_str(&format!("\n  with inputs: {}", all_parts.join(", ")));
         }
 
         if let Some(result) = result_val {
             message.push_str(&format!("\n  body returns: result = {}", result));
         }
-        if !counterexample.real_assignments.is_empty() {
-            for (name, val) in &counterexample.real_assignments {
-                message.push_str(&format!("\n  body returns: {} = {:.6}", name, val));
-            }
+        if let Some(result) = result_real {
+            message.push_str(&format!("\n  body returns: result = {:.6}", result));
         }
 
         for &idx in counterexample.violated_indices.iter() {
