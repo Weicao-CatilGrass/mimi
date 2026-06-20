@@ -1619,7 +1619,30 @@ pub fn subst_type_params(ty: &Type, generics: &[GenericParam], type_map: &HashMa
 }
 
 fn same_type(a: &Type, b: &Type) -> bool {
-    match (a, b) {
+    // 'unknown' is compatible with any type (inference placeholder)
+    if matches!(a, Type::Name(n, _) if n == "unknown") || matches!(b, Type::Name(n, _) if n == "unknown") {
+        return true;
+    }
+    // Normalize Type::Name("Result", [T, E]) <-> Type::Result(T, E) and Type::Name("Option", [T]) <-> Type::Option(T)
+    let norm_a = match a {
+        Type::Name(n, args) if n == "Result" && args.len() == 2 => {
+            Type::Result(Box::new(args[0].clone()), Box::new(args[1].clone()))
+        }
+        Type::Name(n, args) if n == "Option" && args.len() == 1 => {
+            Type::Option(Box::new(args[0].clone()))
+        }
+        _ => a.clone(),
+    };
+    let norm_b = match b {
+        Type::Name(n, args) if n == "Result" && args.len() == 2 => {
+            Type::Result(Box::new(args[0].clone()), Box::new(args[1].clone()))
+        }
+        Type::Name(n, args) if n == "Option" && args.len() == 1 => {
+            Type::Option(Box::new(args[0].clone()))
+        }
+        _ => b.clone(),
+    };
+    match (&norm_a, &norm_b) {
         (Type::Name(na, aa), Type::Name(nb, ab)) => na == nb && aa.len() == ab.len() && aa.iter().zip(ab.iter()).all(|(x, y)| same_type(x, y)),
         (Type::Ref(_, a), Type::Ref(_, b)) => same_type(a, b),
         (Type::RefMut(_, a), Type::RefMut(_, b)) => same_type(a, b),

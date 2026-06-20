@@ -98,7 +98,14 @@ impl<'a> Checker<'a> {
                     Expr::Field(obj, method_name) => {
                         // Method call: obj.method(args) or Type.spawn(args)
                         let obj_ty = self.infer_expr(obj, scopes);
-                        if let Type::Name(type_name, _) = &obj_ty {
+                        if let Type::Name(type_name, type_args) = &obj_ty {
+                            // Check built-in Result/Option methods via Name type
+                            if type_name == "Option" && type_args.len() == 1 {
+                                return self.check_option_method(method_name, &type_args[0], args, scopes);
+                            }
+                            if type_name == "Result" && type_args.len() == 2 {
+                                return self.check_result_method(method_name, &type_args[0], &type_args[1], args, scopes);
+                            }
                             // Check if it's an actor spawn call (Type.spawn)
                             if method_name == "spawn" {
                                 return Type::Name(type_name.clone(), vec![]);
