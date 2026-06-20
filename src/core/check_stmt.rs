@@ -128,7 +128,13 @@ impl<'a> Checker<'a> {
                 if let Pattern::Variable(name) = pat {
                     for scope in self.var_scopes.iter().rev() {
                         if scope.contains_key(name) {
-                            self.emit_code(crate::diagnostic::codes::E0403, format!("variable '{}' shadows an outer variable", name));
+                            self.errors.push(
+                                Diagnostic::error_code(
+                                    crate::diagnostic::codes::E0403,
+                                    format!("variable '{}' shadows an outer variable", name),
+                                    Span::single(self.current_line, self.current_col),
+                                ).with_help("rename the inner variable to avoid shadowing")
+                            );
                             break;
                         }
                     }
@@ -315,7 +321,7 @@ impl<'a> Checker<'a> {
                 if let Some(declared) = ty {
                     let declared = self.resolve_type(declared);
                     if !same_type(&declared, &final_ty) {
-                        self.emit(format!(
+                        self.emit_code(crate::diagnostic::codes::E0258, format!(
                             "shared binding declared as {} but inferred as {}",
                             fmt_type(&declared),
                             fmt_type(&final_ty)
@@ -344,11 +350,17 @@ impl<'a> Checker<'a> {
                             scope.get(name).copied().unwrap_or(false)
                         });
                         if !is_mut {
-                            self.emit_code(crate::diagnostic::codes::E0208, format!("cannot assign to immutable variable '{}' (use 'let mut')", name));
+                            self.errors.push(
+                                Diagnostic::error_code(
+                                    crate::diagnostic::codes::E0208,
+                                    format!("cannot assign to immutable variable '{}' (use 'let mut')", name),
+                                    Span::single(self.current_line, self.current_col),
+                                ).with_help("use 'let mut' to make the variable mutable")
+                            );
                         }
                         let target_ty = self.lookup_var(name, scopes);
                         if !same_type(&target_ty, &value_ty) {
-                            self.emit(format!(
+                            self.emit_code(crate::diagnostic::codes::E0209, format!(
                                 "cannot assign {} to variable '{}' of type {}",
                                 fmt_type(&value_ty),
                                 name,
@@ -362,7 +374,7 @@ impl<'a> Checker<'a> {
                         match &inner_ty {
                             Type::RefMut(_, inner_inner) => {
                                 if !same_type(&value_ty, inner_inner) {
-                                    self.emit(format!(
+                                    self.emit_code(crate::diagnostic::codes::E0233, format!(
                                         "cannot assign {} through &mut reference of type {}",
                                         fmt_type(&value_ty),
                                         fmt_type(&inner_ty)
@@ -370,7 +382,7 @@ impl<'a> Checker<'a> {
                                 }
                             }
                             _ => {
-                                self.emit(format!(
+                                self.emit_code(crate::diagnostic::codes::E0233, format!(
                                     "cannot assign through non-mutable reference {}",
                                     fmt_type(&inner_ty)
                                 ));
@@ -387,16 +399,16 @@ impl<'a> Checker<'a> {
                                         if !fields.iter().any(|f| f.name == *field) {
                                             let available: Vec<&str> = fields.iter().map(|f| f.name.as_str()).collect();
                                             if available.is_empty() {
-                                                self.emit(format!("field '{}' not found in record '{}' (record has no fields)", field, name));
+                                                self.emit_code(crate::diagnostic::codes::E0220, format!("field '{}' not found in record '{}' (record has no fields)", field, name));
                                             } else {
-                                                self.emit(format!("field '{}' not found in record '{}' — available fields: {}", field, name, available.join(", ")));
+                                                self.emit_code(crate::diagnostic::codes::E0220, format!("field '{}' not found in record '{}' — available fields: {}", field, name, available.join(", ")));
                                             }
                                         }
                                     }
                                     TypeDefKind::Enum(variants) => {
                                         if !variants.iter().any(|v| v.name == *field) {
                                             let available: Vec<&str> = variants.iter().map(|v| v.name.as_str()).collect();
-                                            self.emit(format!("variant '{}' not found in enum '{}' — available: {}", field, name, available.join(", ")));
+                                            self.emit_code(crate::diagnostic::codes::E0226, format!("variant '{}' not found in enum '{}' — available: {}", field, name, available.join(", ")));
                                         }
                                     }
                                     _ => {}
@@ -412,7 +424,7 @@ impl<'a> Checker<'a> {
                             Type::Name(n, args) if n == "List" && args.len() == 1 => {
                                 let elem_ty = &args[0];
                                 if !same_type(&value_ty, elem_ty) {
-                                    self.emit(format!(
+                                    self.emit_code(crate::diagnostic::codes::E0209, format!(
                                         "cannot assign {} to list element of type {}",
                                         fmt_type(&value_ty),
                                         fmt_type(elem_ty)
@@ -420,7 +432,7 @@ impl<'a> Checker<'a> {
                                 }
                             }
                             _ => {
-                                self.emit(format!(
+                                self.emit_code(crate::diagnostic::codes::E0218, format!(
                                     "cannot index-assign to {}",
                                     fmt_type(&obj_ty)
                                 ));
@@ -437,10 +449,16 @@ impl<'a> Checker<'a> {
                 if let Expr::Ident(name) = expr {
                     if let Some(consumed) = self.cap_vars.last_mut().expect("scope stack non-empty").get_mut(name) {
                         if *consumed {
-                            self.emit_code(crate::diagnostic::codes::E0304, format!(
-                                "capability '{}' has already been consumed",
-                                name
-                            ));
+                            self.errors.push(
+                                Diagnostic::error_code(
+                                    crate::diagnostic::codes::E0304,
+                                    format!(
+                                        "capability '{}' has already been consumed",
+                                        name
+                                    ),
+                                    Span::single(self.current_line, self.current_col),
+                                ).with_help("capabilities are linear - each can only be dropped once")
+                            );
                         } else {
                             *consumed = true;
                         }

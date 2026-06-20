@@ -116,6 +116,8 @@ impl InterpError {
             message = format!("{} [{}]", message, func);
         }
 
+        // Interpreter errors are runtime errors without source position info;
+        // the function name and call stack provide the context instead.
         let mut diag = Diagnostic::error(message, Span::single(0, 0));
 
         // Add help if available
@@ -126,6 +128,7 @@ impl InterpError {
         // Add call stack as notes
         if !self.call_stack.is_empty() {
             let stack_str: Vec<&str> = self.call_stack.iter().map(|s| s.as_str()).collect();
+            // Runtime call stack has no source span; this note is informational
             diag = diag.with_note(
                 format!("call stack: {}", stack_str.join(" → ")),
                 Span::single(0, 0),

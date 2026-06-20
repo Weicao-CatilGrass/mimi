@@ -610,7 +610,7 @@ impl<'a> Checker<'a> {
                 // Collect actor methods as functions
                 for method in &actor.methods {
                     if self.funcs.contains_key(&method.name) {
-                        self.emit(format!("duplicate function definition '{}'", method.name));
+                        self.emit_code(crate::diagnostic::codes::E0402, format!("duplicate function definition '{}'", method.name));
                         return;
                     }
                     let generic_names: Vec<String> = method.generics.iter().map(|g| g.name.clone()).collect();
@@ -826,7 +826,7 @@ impl<'a> Checker<'a> {
                     if let Some(init) = &field.init {
                         let init_ty = self.infer_expr(init, &mut vec![HashMap::new()]);
                         if !same_type(&field_ty, &init_ty) {
-                            self.emit(format!(
+                            self.emit_code(crate::diagnostic::codes::E0209, format!(
                                 "actor field '{}' initializer type {} does not match field type {}",
                                 field.name,
                                 fmt_type(&init_ty),
@@ -899,7 +899,7 @@ impl<'a> Checker<'a> {
                     let implemented: Vec<String> = impl_def.methods.iter().map(|m| m.name.clone()).collect();
                     for required in &required_methods {
                         if !implemented.contains(required) {
-                            self.emit(format!(
+                            self.emit_code(crate::diagnostic::codes::E0252, format!(
                                 "missing method '{}' in impl of trait '{}' for '{}'",
                                 required, impl_def.trait_name, impl_def.type_name
                             ));
@@ -919,7 +919,15 @@ impl<'a> Checker<'a> {
     }
 
     fn is_builtin_type(name: &str) -> bool {
-        matches!(name, "i32" | "i64" | "f64" | "bool" | "string" | "unit" | "List" | "Future" | "Result" | "Option")
+        Self::builtin_type_names().contains(&name.to_string())
+    }
+
+    fn builtin_type_names() -> Vec<String> {
+        vec![
+            "i32".into(), "i64".into(), "f64".into(), "bool".into(),
+            "string".into(), "unit".into(), "List".into(), "Future".into(),
+            "Result".into(), "Option".into(),
+        ]
     }
 
     fn check_type_well_formed(&mut self, ty: &Type, context: &str) {
@@ -945,7 +953,22 @@ impl<'a> Checker<'a> {
                     && !self.types.contains_key(name)
                     && !self.generic_scope.contains(name)
                 {
-                    self.emit_code(crate::diagnostic::codes::E0231, format!("unknown type '{}' in {}", name, context));
+                    let mut candidates: Vec<String> = self.types.keys().cloned().collect();
+                    candidates.extend(self.generic_scope.clone());
+                    candidates.extend(Self::builtin_type_names());
+                    let suggestion = suggest_name(name, &candidates, 3);
+                    let help = if let Some(suggested) = suggestion {
+                        format!("type '{}' not found — did you mean '{}'?", name, suggested)
+                    } else {
+                        "check the type name spelling or add a 'type' declaration".to_string()
+                    };
+                    self.errors.push(
+                        Diagnostic::error_code(
+                            crate::diagnostic::codes::E0231,
+                            format!("unknown type '{}' in {}", name, context),
+                            Span::single(self.current_line, self.current_col),
+                        ).with_help(help)
+                    );
                 }
                 for arg in args {
                     self.check_type_well_formed_inner(arg, context, allow_passport);
@@ -985,7 +1008,7 @@ impl<'a> Checker<'a> {
             }
             Type::Newtype(name, inner) => {
                 if !self.types.contains_key(name) && !self.newtypes.contains_key(name) {
-                    self.emit(format!("unknown newtype '{}' in {}", name, context));
+                    self.emit_code(crate::diagnostic::codes::E0231, format!("unknown newtype '{}' in {}", name, context));
                 }
                 self.check_type_well_formed_inner(inner, context, allow_passport);
             }
@@ -998,7 +1021,7 @@ impl<'a> Checker<'a> {
             Type::DynTrait(traits) => {
                 for trait_name in traits {
                     if !self.traits.contains_key(trait_name) {
-                        self.emit(format!("unknown trait '{}' in dyn Trait in {}", trait_name, context));
+                        self.emit_code(crate::diagnostic::codes::E0406, format!("unknown trait '{}' in dyn Trait in {}", trait_name, context));
                     }
                 }
             }
@@ -1065,10 +1088,13 @@ impl<'a> Checker<'a> {
         }
         // Check all-return-paths requirement
         if !matches!(&ret, Type::Name(n, _) if n == "unit") && !self.block_returns_on_all_paths(&func.body) {
-            self.emit(format!(
-                "function '{}' does not return on all paths (missing return in some branches)",
-                func.name
-            ));
+            self.errors.push(
+                Diagnostic::error_code(
+                    crate::diagnostic::codes::E0255,
+                    format!("function '{}' does not return on all paths (missing return in some branches)", func.name),
+                    Span::single(self.current_line, self.current_col),
+                ).with_help("add a return statement or make the last expression return the appropriate type")
+            );
         }
         self.check_block(&func.body, &ret, &mut scopes);
         // Check for unconsumed caps before popping
@@ -1130,7 +1156,7 @@ impl<'a> Checker<'a> {
                 .map(|(name, _)| name.clone())
                 .collect();
             for name in unconsumed {
-                self.emit(format!(
+                self.emit_code(crate::diagnostic::codes::E0256, format!(
                     "linear capability '{}' must be consumed (via drop) before end of scope",
                     name
                 ));
@@ -1213,11 +1239,17 @@ impl<'a> Checker<'a> {
                     Lit::Unit => Type::Name("unit".into(), vec![]),
                 };
                 if !same_type(subject, &lit_ty) {
-                    self.emit(format!(
-                        "pattern literal type {} does not match subject {}",
-                        fmt_type(&lit_ty),
-                        fmt_type(subject)
-                    ));
+                    self.errors.push(
+                        Diagnostic::error_code(
+                            crate::diagnostic::codes::E0225,
+                            format!(
+                                "pattern literal type {} does not match subject {}",
+                                fmt_type(&lit_ty),
+                                fmt_type(subject)
+                            ),
+                            Span::single(self.current_line, self.current_col),
+                        ).with_help(format!("change the pattern to match type {}", fmt_type(subject)))
+                    );
                 }
             }
             Pattern::Constructor(name, pats) => {
@@ -1226,7 +1258,7 @@ impl<'a> Checker<'a> {
                     if let Type::Result(ok_ty, err_ty) = subject {
                         let expected_ty = if name == "Ok" { ok_ty } else { err_ty };
                         if pats.len() != 1 {
-                            self.emit(format!("'{}' expects 1 argument, got {}", name, pats.len()));
+                            self.emit_code(crate::diagnostic::codes::E0228, format!("'{}' expects 1 argument, got {}", name, pats.len()));
                         } else {
                             self.check_pattern(&pats[0], expected_ty, scopes);
                         }
@@ -1237,7 +1269,7 @@ impl<'a> Checker<'a> {
                 if name == "Some" && matches!(subject, Type::Option(_)) {
                     if let Type::Option(inner) = subject {
                         if pats.len() != 1 {
-                            self.emit(format!("'Some' expects 1 argument, got {}", pats.len()));
+                            self.emit_code(crate::diagnostic::codes::E0228, format!("'Some' expects 1 argument, got {}", pats.len()));
                         } else {
                             self.check_pattern(&pats[0], inner, scopes);
                         }
@@ -1246,7 +1278,7 @@ impl<'a> Checker<'a> {
                 }
                 if name == "None" && matches!(subject, Type::Option(_)) {
                     if !pats.is_empty() {
-                        self.emit("'None' expects no arguments".to_string());
+                        self.emit_code(crate::diagnostic::codes::E0227, "'None' expects no arguments".to_string());
                     }
                     return;
                 }
@@ -1265,7 +1297,7 @@ impl<'a> Checker<'a> {
                                     match &variant.payload {
                                         None => {
                                             if !pats.is_empty() {
-                                                self.emit(format!(
+                                                self.emit_code(crate::diagnostic::codes::E0227, format!(
                                                     "variant '{}' takes no arguments",
                                                     name
                                                 ));
@@ -1274,7 +1306,7 @@ impl<'a> Checker<'a> {
                                         Some(VariantPayload::Tuple(types)) => {
                                             let types: Vec<Type> = types.clone();
                                             if pats.len() != types.len() {
-                                                self.emit(format!(
+                                                self.emit_code(crate::diagnostic::codes::E0228, format!(
                                                     "variant '{}' expects {} arguments, got {}",
                                                     name,
                                                     types.len(),
@@ -1288,7 +1320,7 @@ impl<'a> Checker<'a> {
                                         }
                                         Some(VariantPayload::Record(fields)) => {
                                             if pats.len() != fields.len() {
-                                                self.emit(format!(
+                                                self.emit_code(crate::diagnostic::codes::E0228, format!(
                                                     "variant '{}' record expects {} fields, got {}",
                                                     name,
                                                     fields.len(),
@@ -1303,12 +1335,12 @@ impl<'a> Checker<'a> {
                                         }
                                     }
                                 } else {
-                                    self.emit(format!("variant '{}' not found in type '{}'", name, tdef.name));
+                                    self.emit_code(crate::diagnostic::codes::E0226, format!("variant '{}' not found in type '{}'", name, tdef.name));
                                 }
                             }
                             TypeDefKind::Newtype(inner) => {
                                 if pats.len() != 1 {
-                                    self.emit(format!(
+                                    self.emit_code(crate::diagnostic::codes::E0228, format!(
                                         "newtype '{}' pattern expects exactly one argument",
                                         name
                                     ));
@@ -1317,12 +1349,30 @@ impl<'a> Checker<'a> {
                                 }
                             }
                             _ => {
-                                self.emit(format!("'{}' is not an enum variant", name));
+                                self.emit_code(crate::diagnostic::codes::E0226, format!("'{}' is not an enum variant", name));
                             }
                         }
                     }
                     None => {
-                        self.emit(format!("undefined constructor '{}'", name));
+                        let mut constructors: Vec<String> = Vec::new();
+                        for tdef in self.types.values() {
+                            match &tdef.kind {
+                                TypeDefKind::Enum(variants) => {
+                                    constructors.extend(variants.iter().map(|v| v.name.clone()));
+                                }
+                                TypeDefKind::Newtype(_) => {
+                                    constructors.push(tdef.name.clone());
+                                }
+                                _ => {}
+                            }
+                        }
+                        let suggestion = suggest_name(name, &constructors, 3);
+                        let msg = if let Some(s) = suggestion {
+                            format!("undefined constructor '{}' — did you mean '{}'?", name, s)
+                        } else {
+                            format!("undefined constructor '{}'", name)
+                        };
+                        self.emit_code(crate::diagnostic::codes::E0226, msg);
                     }
                 }
             }
@@ -1330,7 +1380,7 @@ impl<'a> Checker<'a> {
                 match subject {
                     Type::Tuple(types) => {
                         if pats.len() != types.len() {
-                            self.emit(format!(
+                            self.emit_code(crate::diagnostic::codes::E0251, format!(
                                 "tuple pattern expects {} elements, found {}",
                                 types.len(),
                                 pats.len()
@@ -1342,7 +1392,7 @@ impl<'a> Checker<'a> {
                         }
                     }
                     _ => {
-                        self.emit(format!(
+                        self.emit_code(crate::diagnostic::codes::E0251, format!(
                             "cannot match tuple pattern against non-tuple type {}",
                             fmt_type(subject)
                         ));
@@ -1353,7 +1403,7 @@ impl<'a> Checker<'a> {
                 match subject {
                     Type::Array(inner, size) => {
                         if pats.len() != *size {
-                            self.emit(format!(
+                            self.emit_code(crate::diagnostic::codes::E0251, format!(
                                 "array pattern expects {} elements, found {}",
                                 size,
                                 pats.len()
@@ -1369,7 +1419,7 @@ impl<'a> Checker<'a> {
                         // For now, just check against the inner type if available
                     }
                     _ => {
-                        self.emit(format!(
+                        self.emit_code(crate::diagnostic::codes::E0251, format!(
                             "cannot match array pattern against non-array type {}",
                             fmt_type(subject)
                         ));
@@ -1391,7 +1441,7 @@ impl<'a> Checker<'a> {
                         }
                     }
                     _ => {
-                        self.emit(format!(
+                        self.emit_code(crate::diagnostic::codes::E0251, format!(
                             "cannot match slice pattern against non-slice type {}",
                             fmt_type(subject)
                         ));

@@ -17,12 +17,14 @@ impl Default for Contract {
             requires: Vec::new(),
             ensures: Vec::new(),
             math: Vec::new(),
+            // No source context for Default; callers should set span explicitly
             span: Span::single(0, 0),
         }
     }
 }
 
-/// Extract contracts from mms block text content
+/// Extract contracts from mms block text content (no span known).
+/// Prefer `extract_contracts_with_span` when the source position is available.
 pub fn extract_contracts(mms_text: &str) -> Contract {
     Contract {
         requires: mms_text.lines()
@@ -34,6 +36,7 @@ pub fn extract_contracts(mms_text: &str) -> Contract {
         math: mms_text.lines()
             .filter_map(|line| line.trim().strip_prefix("math:").map(|s| s.trim().to_string()))
             .collect(),
+        // Callers should use extract_contracts_with_span when possible
         span: Span::single(0, 0),
     }
 }
