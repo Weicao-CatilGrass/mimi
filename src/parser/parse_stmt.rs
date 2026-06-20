@@ -173,7 +173,7 @@ impl Parser {
         self.expect(TokenKind::Mms, "`mms`")?;
         self.skip_newlines();
         self.expect(TokenKind::LBrace, "`{`")?;
-        let content = if self.at(&TokenKind::String("".into())) {
+        let content = if matches!(self.peek_kind(), TokenKind::String(_)) {
             self.expect_string()?
         } else {
             let mut text = String::new();

@@ -1,7 +1,5 @@
 use super::*;
 use crate::ffi::FfiContract;
-use std::cell::RefCell;
-use std::rc::Rc;
 
 impl<'a> Interpreter<'a> {
     pub(crate) fn call_func(&mut self, func: &FuncDef, args: Vec<Value>) -> Result<Value, String> {
@@ -316,7 +314,7 @@ impl<'a> Interpreter<'a> {
             }
             Value::LocalShared(rc) => {
                 match method {
-                    "clone" => Ok(Value::LocalShared(Rc::clone(&rc))),
+                    "clone" => Ok(Value::LocalShared(LocalSharedInner::clone_rc(&rc))),
                     "deref" | "inner" => {
                         let inner = rc.borrow();
                         Ok(inner.clone())

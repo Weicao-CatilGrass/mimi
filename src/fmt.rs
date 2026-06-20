@@ -12,6 +12,47 @@ impl Formatter {
         Self { indent_size: 4 }
     }
 
+    /// Strip string literal contents from a line so brace counting ignores braces in strings.
+    fn strip_strings(line: &str) -> String {
+        let mut result = String::with_capacity(line.len());
+        let mut chars = line.chars().peekable();
+        while let Some(c) = chars.next() {
+            if c == '"' {
+                result.push(c);
+                // Skip until closing quote
+                while let Some(&next) = chars.peek() {
+                    result.push(next);
+                    chars.next();
+                    if next == '\\' {
+                        // Escape sequence: consume the next char too
+                        if let Some(escaped) = chars.next() {
+                            result.push(escaped);
+                        }
+                    } else if next == '"' {
+                        break;
+                    }
+                }
+            } else if c == '\'' {
+                result.push(c);
+                // Skip single-quoted string (character literal)
+                while let Some(&next) = chars.peek() {
+                    result.push(next);
+                    chars.next();
+                    if next == '\\' {
+                        if let Some(escaped) = chars.next() {
+                            result.push(escaped);
+                        }
+                    } else if next == '\'' {
+                        break;
+                    }
+                }
+            } else {
+                result.push(c);
+            }
+        }
+        result
+    }
+
     /// Format source code, returning the formatted version.
     pub fn format(&self, source: &str) -> String {
         let mut output = String::new();
@@ -31,8 +72,11 @@ impl Formatter {
             }
             prev_blank = false;
 
+            // Strip string literals before counting braces
+            let stripped = Self::strip_strings(trimmed);
+
             // Decrease indent before closing braces
-            if trimmed.starts_with('}') || trimmed.starts_with(')') || trimmed.starts_with(']') {
+            if stripped.starts_with('}') || stripped.starts_with(')') || stripped.starts_with(']') {
                 indent_level = indent_level.saturating_sub(1);
             }
 
@@ -42,12 +86,12 @@ impl Formatter {
             output.push_str(trimmed);
             output.push('\n');
 
-            // Increase indent after opening braces
-            if trimmed.ends_with('{') || trimmed.ends_with('(') || trimmed.ends_with('[') {
+            // Increase indent after opening braces (on the stripped line)
+            if stripped.ends_with('{') || stripped.ends_with('(') || stripped.ends_with('[') {
                 indent_level += 1;
             }
-            // Handle single-line blocks like `if x { y }`
-            else if trimmed.contains('{') && trimmed.contains('}') {
+            // Handle single-line blocks like `if x { y }` (on the stripped line)
+            else if stripped.contains('{') && stripped.contains('}') {
                 // No indent change for single-line blocks
             }
         }

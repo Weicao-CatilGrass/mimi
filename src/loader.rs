@@ -1,6 +1,6 @@
 use crate::ast::*;
 use crate::{core, lexer, parser, manifest};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 /// Get the path to the built-in standard library directory.
@@ -53,6 +53,8 @@ pub struct ModuleLoader {
     modules: HashMap<String, LoadedModule>,
     /// Dependency paths from mimi.toml: dep_name -> resolved path
     dep_paths: HashMap<String, PathBuf>,
+    /// Set of paths currently being loaded (cycle detection)
+    visiting: HashSet<PathBuf>,
 }
 
 impl ModuleLoader {
@@ -73,6 +75,7 @@ impl ModuleLoader {
             loaded: HashMap::new(),
             modules: HashMap::new(),
             dep_paths: HashMap::new(),
+            visiting: HashSet::new(),
         };
         // Try to load mimi.toml and resolve dependency paths
         if let Ok(Some((dir, manifest))) = manifest::Manifest::find(&base_dir) {
@@ -107,6 +110,11 @@ impl ModuleLoader {
             });
         }
 
+        // Cycle detection
+        if !self.visiting.insert(path.to_path_buf()) {
+            return Err(format!("circular dependency detected: {} imports itself", path.display()));
+        }
+
         // Read and parse
         let source = std::fs::read_to_string(path)
             .map_err(|e| format!("failed to read {}: {}", path.display(), e))?;
@@ -130,6 +138,8 @@ impl ModuleLoader {
             let dep_name = self.module_key(&import_path);
             self.modules.insert(dep_name, dep);
         }
+
+        self.visiting.remove(path);
 
         self.modules.insert(module_name, loaded.clone());
         self.loaded.insert(path.to_path_buf(), loaded.clone());

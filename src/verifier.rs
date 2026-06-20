@@ -494,6 +494,29 @@ impl Verifier {
         }
     }
 
+    /// Try to resolve an expression to a concrete i64 value from the model.
+    fn resolve_to_i64(expr: &Expr, model: &z3::Model, vars: &Z3VarMap) -> Option<i64> {
+        match expr {
+            Expr::Literal(Lit::Int(n)) => Some(*n),
+            Expr::Ident(name) => {
+                vars.get_int(name).and_then(|z3_var| {
+                    model.eval(z3_var, true).and_then(|v| v.as_i64())
+                })
+            }
+            Expr::Old(inner) => {
+                if let Expr::Ident(name) = inner.as_ref() {
+                    let old_name = format!("old_{}", name);
+                    vars.get_int(&old_name).and_then(|z3_var| {
+                        model.eval(z3_var, true).and_then(|v| v.as_i64())
+                    })
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
+    }
+
     fn eval_expr_on_model(expr: &Expr, model: &z3::Model, vars: &Z3VarMap) -> bool {
         match expr {
             Expr::Literal(Lit::Bool(b)) => *b,
@@ -533,18 +556,76 @@ impl Verifier {
                 }
             }
             Expr::Binary(op, lhs, rhs) => {
-                let l = Self::eval_expr_on_model(lhs, model, vars);
-                let r = Self::eval_expr_on_model(rhs, model, vars);
                 match op {
-                    BinOp::And => l && r,
-                    BinOp::Or => l || r,
-                    BinOp::EqCmp => l == r,
-                    BinOp::NeCmp => l != r,
-                    BinOp::Lt => l < r,
-                    BinOp::Gt => l > r,
-                    BinOp::Le => l <= r,
-                    BinOp::Ge => l >= r,
-                    _ => false,
+                    BinOp::EqCmp => {
+                        match (Self::resolve_to_i64(lhs, model, vars), Self::resolve_to_i64(rhs, model, vars)) {
+                            (Some(l), Some(r)) => l == r,
+                            _ => {
+                                let l = Self::eval_expr_on_model(lhs, model, vars);
+                                let r = Self::eval_expr_on_model(rhs, model, vars);
+                                l == r
+                            }
+                        }
+                    }
+                    BinOp::NeCmp => {
+                        match (Self::resolve_to_i64(lhs, model, vars), Self::resolve_to_i64(rhs, model, vars)) {
+                            (Some(l), Some(r)) => l != r,
+                            _ => {
+                                let l = Self::eval_expr_on_model(lhs, model, vars);
+                                let r = Self::eval_expr_on_model(rhs, model, vars);
+                                l != r
+                            }
+                        }
+                    }
+                    BinOp::Lt => {
+                        match (Self::resolve_to_i64(lhs, model, vars), Self::resolve_to_i64(rhs, model, vars)) {
+                            (Some(l), Some(r)) => l < r,
+                            _ => {
+                                let l = Self::eval_expr_on_model(lhs, model, vars);
+                                let r = Self::eval_expr_on_model(rhs, model, vars);
+                                l < r
+                            }
+                        }
+                    }
+                    BinOp::Gt => {
+                        match (Self::resolve_to_i64(lhs, model, vars), Self::resolve_to_i64(rhs, model, vars)) {
+                            (Some(l), Some(r)) => l > r,
+                            _ => {
+                                let l = Self::eval_expr_on_model(lhs, model, vars);
+                                let r = Self::eval_expr_on_model(rhs, model, vars);
+                                l > r
+                            }
+                        }
+                    }
+                    BinOp::Le => {
+                        match (Self::resolve_to_i64(lhs, model, vars), Self::resolve_to_i64(rhs, model, vars)) {
+                            (Some(l), Some(r)) => l <= r,
+                            _ => {
+                                let l = Self::eval_expr_on_model(lhs, model, vars);
+                                let r = Self::eval_expr_on_model(rhs, model, vars);
+                                l <= r
+                            }
+                        }
+                    }
+                    BinOp::Ge => {
+                        match (Self::resolve_to_i64(lhs, model, vars), Self::resolve_to_i64(rhs, model, vars)) {
+                            (Some(l), Some(r)) => l >= r,
+                            _ => {
+                                let l = Self::eval_expr_on_model(lhs, model, vars);
+                                let r = Self::eval_expr_on_model(rhs, model, vars);
+                                l >= r
+                            }
+                        }
+                    }
+                    _ => {
+                        let l = Self::eval_expr_on_model(lhs, model, vars);
+                        let r = Self::eval_expr_on_model(rhs, model, vars);
+                        match op {
+                            BinOp::And => l && r,
+                            BinOp::Or => l || r,
+                            _ => false,
+                        }
+                    }
                 }
             }
             Expr::Unary(UnOp::Not, inner) => !Self::eval_expr_on_model(inner, model, vars),

@@ -142,7 +142,7 @@ impl Parser {
     }
 
     fn at(&self, kind: &TokenKind) -> bool {
-        std::mem::discriminant(self.peek_kind()) == std::mem::discriminant(kind)
+        *self.peek_kind() == *kind
     }
 
     fn expect(&mut self, kind: TokenKind, expected: &str) -> Result<&Token, ParseError> {
@@ -605,7 +605,7 @@ impl Parser {
     fn parse_extern_block(&mut self) -> Result<ExternBlock, ParseError> {
         self.expect(TokenKind::Extern, "`extern`")?;
         // Parse optional ABI string: extern "C" { ... }
-        let abi = if self.at(&TokenKind::String("".into())) {
+        let abi = if matches!(self.peek_kind(), TokenKind::String(_)) {
             // Get the actual string value
             let tok = self.peek().clone();
             if let TokenKind::String(s) = &tok.kind {
