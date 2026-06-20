@@ -604,7 +604,7 @@ impl<'a> Interpreter<'a> {
                             if let Expr::Ident(type_name) = obj.as_ref() {
                                 // Check if this is an actor type
                                 if self.find_actor(type_name).is_some() {
-                                    return self.spawn_actor(type_name, vals);
+                                    return self.spawn_actor(type_name);
                                 }
                             }
                         }

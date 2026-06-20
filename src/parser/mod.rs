@@ -25,16 +25,6 @@ impl ParseError {
         }
     }
 
-    #[allow(dead_code)]
-    fn with_span(message: impl Into<String>, span: Span) -> Self {
-        Self {
-            message: message.into(),
-            line: span.start_line,
-            col: span.start_col,
-            span: Some(span),
-        }
-    }
-
     /// Convert to the new Diagnostic type.
     pub fn to_diagnostic(&self) -> Diagnostic {
         let span = self.span.unwrap_or_else(|| Span::single(self.line, self.col));

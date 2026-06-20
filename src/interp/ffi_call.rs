@@ -1256,6 +1256,15 @@ impl<'a> Interpreter<'a> {
         // PARENT
         unsafe { libc::close(pipe_fds[1]); }
 
+        // Set pipe read end to non-blocking so we never deadlock if the
+        // child crashes without writing (e.g., panic unwind, SIGKILL before write).
+        unsafe {
+            let flags = libc::fcntl(pipe_fds[0], libc::F_GETFL, 0);
+            if flags >= 0 {
+                libc::fcntl(pipe_fds[0], libc::F_SETFL, flags | libc::O_NONBLOCK);
+            }
+        }
+
         // F4: poll waitpid with WNOHANG + timeout so a hung C function does not
         // permanently block the Mimi process.
         let ffi_timeout_ms = std::env::var("MIMI_FFI_TIMEOUT_MS")
@@ -1302,13 +1311,18 @@ impl<'a> Interpreter<'a> {
         }
 
         let mut result: i64 = 0;
-        unsafe {
-            libc::read(pipe_fds[0], &mut result as *mut i64 as *mut libc::c_void,
+        let nread = unsafe {
+            let n = libc::read(pipe_fds[0], &mut result as *mut i64 as *mut libc::c_void,
                 std::mem::size_of::<i64>());
             libc::close(pipe_fds[0]);
-        }
+            n
+        };
 
-        if result == i64::MIN {
+        if nread <= 0 {
+            // Pipe was empty or error — child exited without writing result.
+            // This is unexpected (child _exit should only run after write).
+            Err("FFI safety: C function exited without producing a result".to_string())
+        } else if result == i64::MIN {
             Err("FFI safety: C function returned an error".to_string())
         } else {
             Ok(result)
@@ -1350,36 +1364,10 @@ impl<'a> Interpreter<'a> {
     }
 
     pub(crate) fn values_equal(&self, a: &Value, b: &Value) -> bool {
-        match (a, b) {
-            (Value::Int(a), Value::Int(b)) => a == b,
-            (Value::Float(a), Value::Float(b)) => a == b,
-            (Value::Bool(a), Value::Bool(b)) => a == b,
-            (Value::String(a), Value::String(b)) => a == b,
-            (Value::Unit, Value::Unit) => true,
-            (Value::Record(n1, f1), Value::Record(n2, f2)) => {
-                if n1 != n2 || f1.len() != f2.len() {
-                    return false;
-                }
-                f1.iter().all(|(k, v)| {
-                    if let Some(v2) = f2.get(k) {
-                        self.values_equal(v, v2)
-                    } else {
-                        false
-                    }
-                })
-            }
-            (Value::Variant(n1, a1), Value::Variant(n2, a2)) => {
-                n1 == n2 && a1.len() == a2.len()
-                    && a1.iter().zip(a2.iter()).all(|(a, b)| self.values_equal(a, b))
-            }
-            (Value::List(a), Value::List(b)) => {
-                a.len() == b.len() && a.iter().zip(b.iter()).all(|(x, y)| self.values_equal(x, y))
-            }
-            (Value::Tuple(a), Value::Tuple(b)) => {
-                a.len() == b.len() && a.iter().zip(b.iter()).all(|(x, y)| self.values_equal(x, y))
-            }
-            _ => false,
-        }
+        // Delegate to the canonical implementation in value.rs to avoid duplication.
+        // The canonical version supports more Value variants (Shared, Ref, DynTrait, etc.)
+        // and uses relative epsilon for float comparison.
+        crate::interp::value::values_equal(a, b)
     }
 }
 
