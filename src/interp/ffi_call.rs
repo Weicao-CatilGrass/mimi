@@ -764,28 +764,8 @@ impl<'a> Interpreter<'a> {
     /// C trampoline via raw pointer.
     pub(crate) fn apply_closure_ffi(&mut self, closure: &Value, args: Vec<Value>) -> Result<Value, Errno> {
         match closure {
-            Value::Closure { params, body, captured, .. } => {
-                if params.len() != args.len() {
-                    return Err(Errno::Generic(format!(
-                        "closure expects {} arguments, got {}",
-                        params.len(),
-                        args.len()
-                    )));
-                }
-                self.push_scope();
-                for (n, v) in captured {
-                    self.bind(n, v.clone())?;
-                }
-                for (param, arg) in params.iter().zip(args) {
-                    self.bind(&param.name, arg)?;
-                }
-                let result = self.eval_block(body).map_err(Errno::from)?;
-                self.pop_scope();
-                if let Some(val) = self.early_return.take() {
-                    return Ok(val);
-                }
-                Ok(result.unwrap_or(Value::Unit))
-            }
+            Value::Closure { params, body, captured, .. } =>
+                self.apply_closure_inner(params, body, captured, args).map_err(Errno::from),
             _ => Err(Errno::Generic(format!("expected a closure, found {}", closure))),
         }
     }

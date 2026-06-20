@@ -12,6 +12,10 @@ impl<'a> Checker<'a> {
                 Lit::Unit => Type::Name("unit".into(), vec![]),
             },
             Expr::Ident(name) => self.lookup_var(name, scopes),
+            Expr::Call(callee, args) => self.infer_call_expr(callee, args, scopes),
+            Expr::Field(obj, field) => self.infer_field_access(obj, field, scopes),
+            Expr::Record { ty, fields } => self.infer_record_expr(ty, fields, scopes),
+            Expr::Match(target, arms) => self.infer_match_expr(target, arms, scopes),
             Expr::Unary(op, e) => {
                 let t = self.infer_expr(e, scopes);
                 match op {
@@ -98,226 +102,6 @@ impl<'a> Checker<'a> {
                 }
             }
             Expr::Binary(op, l, r) => self.infer_binary(*op, l, r, scopes),
-            Expr::Call(callee, args) => {
-                match callee.as_ref() {
-                    Expr::Ident(name) => self.check_call(name, args, scopes),
-                    Expr::Field(obj, method_name) => {
-                        // Method call: obj.method(args) or Type.spawn(args)
-                        let obj_ty = self.infer_expr(obj, scopes);
-                        if let Type::Name(type_name, type_args) = &obj_ty {
-                            // Check built-in Option/Result methods; fall through to trait dispatch for unknown methods
-                            if type_name == "Option" && type_args.len() == 1 {
-                                let known = ["unwrap", "expect", "unwrap_or", "is_some", "is_none", "ok_or", "map", "and_then", "map_err"];
-                                if known.contains(&method_name.as_str()) {
-                                    return self.check_option_method(method_name, &type_args[0], args, scopes);
-                                }
-                            } else if type_name == "Result" && type_args.len() == 2 {
-                                let known = ["unwrap", "expect", "unwrap_or", "is_ok", "is_err", "map", "and_then", "map_err", "ok_or"];
-                                if known.contains(&method_name.as_str()) {
-                                    return self.check_result_method(method_name, &type_args[0], &type_args[1], args, scopes);
-                                }
-                            }
-                            // Check if it's an actor spawn call (Type.spawn)
-                            if method_name == "spawn" {
-                                return Type::Name(type_name.clone(), vec![]);
-                            }
-                            // Check module-qualified function call: Module::func(args)
-                            let qualified_func = format!("{}::{}", type_name, method_name);
-                            if self.funcs.contains_key(&qualified_func) {
-                                return self.check_call(&qualified_func, args, scopes);
-                            }
-                            // Check record field access (field is a closure/function)
-                            if let Some(tdef) = self.types.get(type_name) {
-                                if let TypeDefKind::Record(fields) = &tdef.kind {
-                                    if let Some(f) = fields.iter().find(|f| f.name == *method_name) {
-                                        // Field access that returns a callable — just return the field type
-                                        return self.resolve_type(&f.ty);
-                                    }
-                                }
-                                // Check enum variant access (e.g., TokenKind::Func)
-                                if let TypeDefKind::Enum(variants) = &tdef.kind {
-                                    if variants.iter().any(|v| v.name == *method_name) {
-                                        // Enum variant access — return the enum type
-                                        return Type::Name(type_name.clone(), vec![]);
-                                    }
-                                }
-                            }
-                            // Check trait methods on this type
-                            if let Some(methods) = self.type_methods.get(type_name) {
-                                if let Some((trait_name, _)) = methods.iter().find(|(_, m)| m == method_name) {
-                                    let trait_name = trait_name.clone();
-                                    if let Some((params, ret)) = self.trait_method_sigs.get(&(trait_name.clone(), method_name.clone())).cloned() {
-                                        // Substitute trait generic params using receiver type args
-                                        let (method_params, method_ret) = if let Some(trait_generic_names) = self.trait_generics.get(&trait_name) {
-                                            if !trait_generic_names.is_empty() && trait_generic_names.len() == type_args.len() {
-                                                let type_map: HashMap<String, Type> = trait_generic_names.iter()
-                                                    .zip(type_args.iter())
-                                                    .map(|(g, a)| (g.clone(), a.clone()))
-                                                    .collect();
-                                                let gen_slice: Vec<GenericParam> = trait_generic_names.iter()
-                                                    .map(|g| GenericParam { name: g.clone(), bounds: vec![] })
-                                                    .collect();
-                                                let subst_params: Vec<Type> = params.iter()
-                                                    .map(|p| subst_type_params(p, &gen_slice, &type_map))
-                                                    .collect();
-                                                let subst_ret = subst_type_params(&ret, &gen_slice, &type_map);
-                                                (subst_params, subst_ret)
-                                            } else {
-                                                (params, ret)
-                                            }
-                                        } else {
-                                            (params, ret)
-                                        };
-                                        // Validate arguments against method params (no self in trait sigs)
-                                        let user_args = &args;
-                                        if user_args.len() != method_params.len() {
-                                            self.emit_code(crate::diagnostic::codes::E0257, format!(
-                                                "method '{}' of trait '{}' expects {} arguments, got {}",
-                                                method_name, trait_name, method_params.len(), user_args.len()
-                                            ));
-                                        } else {
-                                            for (i, (arg, param)) in user_args.iter().zip(method_params.iter()).enumerate() {
-                                                let at = self.infer_expr(arg, scopes);
-                                                if !same_type(&at, param) {
-                                                    self.emit_code(crate::diagnostic::codes::E0211, format!(
-                                                        "argument {} of method '{}' expected {}, found {}",
-                                                        i + 1, method_name, fmt_type(param), fmt_type(&at)
-                                                    ));
-                                                }
-                                            }
-                                        }
-                                        return method_ret;
-                                    }
-                                }
-                            }
-                            // Check if the type has this as a direct method (actor methods)
-                            if let Some(actor_def) = self.file.items.iter().find_map(|item| {
-                                if let Item::Actor(a) = item { if a.name == *type_name { Some(a) } else { None } } else { None }
-                            }) {
-                                if let Some(method) = actor_def.methods.iter().find(|m| m.name == *method_name) {
-                                    let ret = method.ret.as_ref()
-                                        .map(|t| self.resolve_type(t))
-                                        .unwrap_or_else(|| Type::Name("unit".into(), vec![]));
-                                    return ret;
-                                }
-                            }
-                            // Check string methods
-                            if type_name == "string" {
-                                return self.check_string_method(method_name, args, scopes);
-                            }
-                            // Check list methods (built-in only: len; others via trait dispatch)
-                            if type_name == "List" && method_name == "len" {
-                                return self.check_list_method(method_name, args, scopes);
-                            }
-                            let mut method_candidates: Vec<String> = self.type_methods.get(type_name)
-                                .map(|methods| methods.iter().map(|(_, m)| m.clone()).collect())
-                                .unwrap_or_default();
-                            if let Some(actor_def) = self.file.items.iter().find_map(|item| {
-                                if let Item::Actor(a) = item { if a.name == *type_name { Some(a) } else { None } } else { None }
-                            }) {
-                                method_candidates.extend(actor_def.methods.iter().map(|m| m.name.clone()));
-                            }
-                            let suggestion = super::suggest_name(method_name, &method_candidates, 3);
-                            let help = if let Some(s) = suggestion {
-                                format!("did you mean '{}'?", s)
-                            } else {
-                                "check the method name spelling or available methods for this type".to_string()
-                            };
-                            self.errors.push(
-                                Diagnostic::error_code(
-                                    crate::diagnostic::codes::E0221,
-                                    format!("type '{}' has no method '{}'", type_name, method_name),
-                                    Span::single(self.current_line, self.current_col),
-                                ).with_help(&help)
-                            );
-                            Type::Name("unknown".into(), vec![])
-                        } else if let Type::DynTrait(traits) = &obj_ty {
-                            // dyn Trait method resolution: look up method in each listed trait
-                            for trait_name in traits {
-                                if let Some((params, ret)) = self.trait_method_sigs.get(&(trait_name.clone(), method_name.clone())).cloned() {
-                                    let user_args = &args;
-                                    let method_params = &params;
-                                    if user_args.len() != method_params.len() {
-                                        self.emit_code(crate::diagnostic::codes::E0257, format!(
-                                            "method '{}' of trait '{}' expects {} arguments, got {}",
-                                            method_name, trait_name, method_params.len(), user_args.len()
-                                        ));
-                                    } else {
-                                        for (i, (arg, param)) in user_args.iter().zip(method_params.iter()).enumerate() {
-                                            let at = self.infer_expr(arg, scopes);
-                                            if !same_type(&at, param) {
-                                                self.emit_code(crate::diagnostic::codes::E0211, format!(
-                                                    "argument {} of method '{}' expected {}, found {}",
-                                                    i + 1, method_name, fmt_type(param), fmt_type(&at)
-                                                ));
-                                            }
-                                        }
-                                    }
-                                    return ret;
-                                }
-                            }
-                            self.errors.push(
-                                Diagnostic::error_code(
-                                    crate::diagnostic::codes::E0221,
-                                    format!("trait object does not have method '{}'", method_name),
-                                    Span::single(self.current_line, self.current_col),
-                                ).with_help("check the method name spelling or available methods for this type")
-                            );
-                            Type::Name("unknown".into(), vec![])
-                        } else if let Type::ImplTrait(traits) = &obj_ty {
-                            // impl Trait method resolution: same as dyn Trait
-                            for trait_name in traits {
-                                if let Some((params, ret)) = self.trait_method_sigs.get(&(trait_name.clone(), method_name.clone())).cloned() {
-                                    let user_args = &args;
-                                    let method_params = &params;
-                                    if user_args.len() != method_params.len() {
-                                        self.emit_code(crate::diagnostic::codes::E0257, format!(
-                                            "method '{}' of trait '{}' expects {} arguments, got {}",
-                                            method_name, trait_name, method_params.len(), user_args.len()
-                                        ));
-                                    } else {
-                                        for (i, (arg, param)) in user_args.iter().zip(method_params.iter()).enumerate() {
-                                            let at = self.infer_expr(arg, scopes);
-                                            if !same_type(&at, param) {
-                                                self.emit_code(crate::diagnostic::codes::E0211, format!(
-                                                    "argument {} of method '{}' expected {}, found {}",
-                                                    i + 1, method_name, fmt_type(param), fmt_type(&at)
-                                                ));
-                                            }
-                                        }
-                                    }
-                                    return ret;
-                                }
-                            }
-                            self.errors.push(
-                                Diagnostic::error_code(
-                                    crate::diagnostic::codes::E0221,
-                                    format!("impl Trait does not have method '{}'", method_name),
-                                    Span::single(self.current_line, self.current_col),
-                                ).with_help("check the method name spelling or available methods for this type")
-                            );
-                            Type::Name("unknown".into(), vec![])
-                        } else if let Type::Option(inner) = &obj_ty {
-                            self.check_option_method(method_name, inner, args, scopes)
-                        } else if let Type::Result(ok_ty, err_ty) = &obj_ty {
-                            self.check_result_method(method_name, ok_ty, err_ty, args, scopes)
-                        } else {
-                            self.errors.push(
-                                Diagnostic::error_code(
-                                    crate::diagnostic::codes::E0222,
-                                    format!("method call requires a named type, found {}", fmt_type(&obj_ty)),
-                                    Span::single(self.current_line, self.current_col),
-                                ).with_help("only named types (record, enum, actor) have methods")
-                            );
-                            Type::Name("unknown".into(), vec![])
-                        }
-                    }
-                    _ => {
-                        self.emit_code(crate::diagnostic::codes::E0223, "callee must be a function name");
-                        Type::Name("unknown".into(), vec![])
-                    }
-                }
-            }
             Expr::Tuple(elems) => {
                 Type::Tuple(elems.iter().map(|e| self.infer_expr(e, scopes)).collect())
             }
@@ -383,294 +167,8 @@ impl<'a> Checker<'a> {
                 Type::Name("List".into(), vec![expr_ty])
             }
             Expr::If { cond, then_, else_ } => {
-                self.infer_expr(cond, scopes);
-                let then_ty = self.infer_block_expr(then_, scopes);
-                if let Some(eb) = else_ {
-                    let else_ty = self.infer_block_expr(eb, scopes);
-                    let then_name = format!("{:?}", then_ty);
-                    let else_name = format!("{:?}", else_ty);
-                    if then_name == else_name { then_ty } else { Type::Name("unknown".into(), vec![]) }
-                } else {
-                    then_ty
-                }
-            }
-            Expr::Match(subject, arms) => {
-                let subject_ty = self.infer_expr(subject, scopes);
-                if arms.is_empty() {
-                    self.emit_code(crate::diagnostic::codes::E0213, "match expression must have at least one arm");
-                    return Type::Name("unknown".into(), vec![]);
-                }
-
-                // Get all variants of the subject type for exhaustiveness checking
-                let all_variants = self.get_enum_variants(&subject_ty);
-
-                // Track which variants are covered by match arms
-                let mut covered_variants: Vec<String> = Vec::new();
-                let mut has_catchall = false;
-                // Track if any arm has a guard - guards make exhaustiveness checking unreliable
-                let mut has_guard = false;
-
-                let mut result_ty: Option<Type> = None;
-                for arm in arms {
-                    // Check pattern coverage
-                    let (pattern_covered, is_catchall) = self.pattern_covers_variants(&arm.pat, &subject_ty);
-                    if is_catchall {
-                        has_catchall = true;
-                    }
-                    for variant in pattern_covered {
-                        if !covered_variants.contains(&variant) {
-                            covered_variants.push(variant);
-                        }
-                    }
-
-                    scopes.push(HashMap::new());
-                    self.check_pattern(&arm.pat, &subject_ty, scopes);
-                    if let Some(guard) = &arm.guard {
-                        has_guard = true;
-                        let gt = self.infer_expr(guard, scopes);
-                        if !is_bool(&gt) {
-                            self.emit_code(crate::diagnostic::codes::E0216, format!(
-                                "match guard must be bool, found {}",
-                                fmt_type(&gt)
-                            ));
-                        }
-                    }
-                    let body_ty = self.infer_expr(&arm.body, scopes);
-                    scopes.pop();
-                    match &result_ty {
-                        None => result_ty = Some(body_ty),
-                        Some(rt) => {
-                            if !same_type(rt, &body_ty) {
-                                self.emit_code(crate::diagnostic::codes::E0214, format!(
-                                    "match arm body type {} does not match previous {}",
-                                    fmt_type(&body_ty),
-                                    fmt_type(rt)
-                                ));
-                            }
-                        }
-                    }
-                }
-
-                // Check exhaustiveness: all variants must be covered
-                // Skip if: no enum variants, has catchall, or any arm has a guard (undecidable)
-                if !all_variants.is_empty() && !has_catchall && !has_guard {
-                    for variant in &all_variants {
-                            if !covered_variants.contains(variant) {
-                            self.errors.push(
-                                Diagnostic::error_code(
-                                    crate::diagnostic::codes::E0215,
-                                    format!("match expression is not exhaustive: missing variant '{}' of '{}'", variant, fmt_type(&subject_ty)),
-                                    Span::single(self.current_line, self.current_col),
-                                ).with_help(format!("add an arm for '{}' or a wildcard '_ => ...' arm", variant))
-                            );
-                        }
-                    }
-                }
-
-                result_ty.unwrap_or_else(|| Type::Name("unknown".into(), vec![]))
-            }
-            Expr::Field(obj, field) => {
-                let obj_ty = self.infer_expr(obj, scopes);
-                match &obj_ty {
-                    Type::Name(name, _) => {
-                        // Check if it's an actor type
-                        if let Some(actor_def) = self.file.items.iter().find_map(|item| {
-                            if let Item::Actor(a) = item {
-                                if a.name == *name { Some(a) } else { None }
-                            } else { None }
-                        }) {
-                            // Actor field access
-                            if let Some(f) = actor_def.fields.iter().find(|f| f.name == *field) {
-                                self.resolve_type(&f.ty)
-                            } else {
-                                let field_names: Vec<String> = actor_def.fields.iter().map(|f| f.name.clone()).collect();
-                                let suggestion = super::suggest_name(field, &field_names, 3);
-                                let help = if let Some(s) = suggestion {
-                                    format!("did you mean '{}'?", s)
-                                } else {
-                                    format!("available fields: {}", field_names.join(", "))
-                                };
-                                self.errors.push(
-                                    Diagnostic::error_code(
-                                        crate::diagnostic::codes::E0220,
-                                        format!(
-                                            "actor '{}' has no field '{}'",
-                                            name, field
-                                        ),
-                                        Span::single(self.current_line, self.current_col),
-                                    ).with_help(&help)
-                                );
-                                Type::Name("unknown".into(), vec![])
-                            }
-                        } else if let Some(tdef) = self.types.get(name) {
-                            match &tdef.kind {
-                                TypeDefKind::Record(fields) => {
-                                    if let Some(f) = fields.iter().find(|f| f.name == *field) {
-                                        self.resolve_type(&f.ty)
-                                    } else if let Some(methods) = self.type_methods.get(name) {
-                                        if let Some((trait_name, _)) = methods.iter().find(|(_, m)| m == field) {
-                                            let trait_name = trait_name.clone();
-                                            if let Some((params, ret)) = self.trait_method_sigs.get(&(trait_name, field.clone())).cloned() {
-                                                Type::Func(params, Box::new(ret))
-                                            } else {
-                                                Type::Name("unknown".into(), vec![])
-                                            }
-                                        } else {
-                                            let field_names: Vec<String> = fields.iter().map(|f| f.name.clone()).collect();
-                                            let suggestion = super::suggest_name(field, &field_names, 3);
-                                            let help = if let Some(s) = suggestion {
-                                                format!("did you mean '{}'?", s)
-                                            } else {
-                                                format!("available fields: {}", field_names.join(", "))
-                                            };
-                                            self.errors.push(
-                                                Diagnostic::error_code(
-                                                    crate::diagnostic::codes::E0220,
-                                                    format!(
-                                                        "type '{}' has no field '{}'",
-                                                        name, field
-                                                    ),
-                                                    Span::single(self.current_line, self.current_col),
-                                                ).with_help(&help)
-                                            );
-                                            Type::Name("unknown".into(), vec![])
-                                        }
-                                    } else {
-                                        let field_names: Vec<String> = fields.iter().map(|f| f.name.clone()).collect();
-                                        let suggestion = super::suggest_name(field, &field_names, 3);
-                                        let help = if let Some(s) = suggestion {
-                                            format!("did you mean '{}'?", s)
-                                        } else {
-                                            format!("available fields: {}", field_names.join(", "))
-                                        };
-                                        self.errors.push(
-                                            Diagnostic::error_code(
-                                                crate::diagnostic::codes::E0220,
-                                                format!(
-                                                    "type '{}' has no field '{}'",
-                                                    name, field
-                                                ),
-                                                Span::single(self.current_line, self.current_col),
-                                            ).with_help(&help)
-                                        );
-                                        Type::Name("unknown".into(), vec![])
-                                    }
-                                }
-                                TypeDefKind::Enum(variants) => {
-                                    // Check enum variant access (e.g., TokenKind::Func)
-                                    if let Some(_v) = variants.iter().find(|v| v.name == *field) {
-                                        // Return a function that constructs this variant
-                                        let variant_func = format!("{}::{}", name, field);
-                                        if let Some((params, ret)) = self.funcs.get(&variant_func) {
-                                            Type::Func(params.clone(), Box::new(ret.clone()))
-                                        } else {
-                                            Type::Name(name.into(), vec![])
-                                        }
-                                    } else {
-                                        let variant_names: Vec<String> = variants.iter().map(|v| v.name.clone()).collect();
-                                        let suggestion = super::suggest_name(field, &variant_names, 3);
-                                        let msg = if let Some(s) = suggestion {
-                                            format!("type '{}' has no variant '{}' — did you mean '{}'?", name, field, s)
-                                        } else {
-                                            format!("type '{}' has no variant '{}' — available variants: {}", name, field, variant_names.join(", "))
-                                        };
-                                        self.errors.push(
-                                            Diagnostic::error_code(
-                                                crate::diagnostic::codes::E0246,
-                                                msg,
-                                                Span::single(self.current_line, self.current_col),
-                                            ).with_help("check the variant name spelling")
-                                        );
-                                        Type::Name("unknown".into(), vec![])
-                                    }
-                                }
-                                _ => {
-                                    // Check trait methods for non-record types
-                                    if let Some(methods) = self.type_methods.get(name) {
-                                        if let Some((trait_name, _)) = methods.iter().find(|(_, m)| m == field) {
-                                            let trait_name = trait_name.clone();
-                                            if let Some((params, ret)) = self.trait_method_sigs.get(&(trait_name, field.clone())).cloned() {
-                                                Type::Func(params, Box::new(ret))
-                                            } else {
-                                                Type::Name("unknown".into(), vec![])
-                                            }
-                                        } else {
-                                            self.emit_code(crate::diagnostic::codes::E0249, format!("'{}' is not a record type", name));
-                                            Type::Name("unknown".into(), vec![])
-                                        }
-                                    } else {
-                                        self.emit_code(crate::diagnostic::codes::E0249, format!("'{}' is not a record type", name));
-                                        Type::Name("unknown".into(), vec![])
-                                    }
-                                }
-                            }
-                        } else {
-                            self.emit_code(crate::diagnostic::codes::E0220, format!("field access on unknown type '{}'", name));
-                            Type::Name("unknown".into(), vec![])
-                        }
-                    }
-                    _ => {
-                                self.errors.push(
-                                    Diagnostic::error_code(
-                                        crate::diagnostic::codes::E0219,
-                                        format!("field access requires record type, found {}", fmt_type(&obj_ty)),
-                                        Span::single(self.current_line, self.current_col),
-                                    ).with_help("only record types support field access with '.'")
-                                );
-                        Type::Name("unknown".into(), vec![])
-                    }
-                }
-            }
-            Expr::Record { ty, fields } => {
-                let tdef = ty.as_ref().and_then(|n| self.types.get(n)).cloned();
-                match tdef {
-                    Some(tdef) => {
-                        match &tdef.kind {
-                            TypeDefKind::Record(expected_fields) => {
-                                let expected: HashMap<String, Type> = expected_fields
-                                    .iter()
-                                    .map(|f| (f.name.clone(), self.resolve_type(&f.ty)))
-                                    .collect();
-                                for (name, value) in fields.iter().map(|f| (&f.name, &f.value)) {
-                                    if let Some(expected_ty) = expected.get(name) {
-                                        let actual_ty = self.infer_expr(value, scopes);
-                                        if !same_type(expected_ty, &actual_ty) {
-                                            self.emit_code(crate::diagnostic::codes::E0247, format!(
-                                                "field '{}' expected {}, found {}",
-                                                name,
-                                                fmt_type(expected_ty),
-                                                fmt_type(&actual_ty)
-                                            ));
-                                        }
-                                    } else {
-                                        self.emit_code(crate::diagnostic::codes::E0247, format!(
-                                            "type '{}' has no field '{}'",
-                                            tdef.name,
-                                            name
-                                        ));
-                                    }
-                                }
-                                for name in expected.keys() {
-                                    if !fields.iter().any(|f| &f.name == name) {
-                                        self.emit_code(crate::diagnostic::codes::E0248, format!(
-                                            "missing field '{}' in record literal",
-                                            name
-                                        ));
-                                    }
-                                }
-                                Type::Name(tdef.name.clone(), vec![])
-                            }
-                            _ => {
-                                self.emit_code(crate::diagnostic::codes::E0249, format!("'{}' is not a record type", tdef.name));
-                                Type::Name("unknown".into(), vec![])
-                            }
-                        }
-                    }
-                    None => {
-                        self.emit_code(crate::diagnostic::codes::E0410, "cannot infer record type without explicit type name");
-                        Type::Name("unknown".into(), vec![])
-                    }
-                }
+                let else_ref = else_.as_ref().map(|b| { let v: &Block = b; v });
+                self.infer_if_expr(cond, then_, else_ref, scopes)
             }
             Expr::Index(obj, idx) => {
                 let obj_ty = self.infer_expr(obj, scopes);
@@ -899,6 +397,439 @@ impl<'a> Checker<'a> {
                     ret
                 }
             }
+        }
+    }
+
+    fn infer_call_expr(&mut self, callee: &Expr, args: &[Expr], scopes: &mut Vec<HashMap<String, Type>>) -> Type {
+        match callee {
+            Expr::Ident(name) => self.check_call(name, args, scopes),
+            Expr::Field(obj, method_name) => self.infer_method_call(obj, method_name, args, scopes),
+            _ => {
+                self.emit_code(crate::diagnostic::codes::E0223, "callee must be a function name");
+                Type::Name("unknown".into(), vec![])
+            }
+        }
+    }
+
+    fn infer_method_call(&mut self, obj: &Expr, method_name: &str, args: &[Expr], scopes: &mut Vec<HashMap<String, Type>>) -> Type {
+        let obj_ty = self.infer_expr(obj, scopes);
+        if let Type::Name(type_name, type_args) = &obj_ty {
+            // Check built-in Option/Result methods; fall through to trait dispatch for unknown methods
+            if type_name == "Option" && type_args.len() == 1 {
+                let known = ["unwrap", "expect", "unwrap_or", "is_some", "is_none", "ok_or", "map", "and_then", "map_err"];
+                if known.contains(&method_name) {
+                    return self.check_option_method(method_name, &type_args[0], args, scopes);
+                }
+            } else if type_name == "Result" && type_args.len() == 2 {
+                let known = ["unwrap", "expect", "unwrap_or", "is_ok", "is_err", "map", "and_then", "map_err", "ok_or"];
+                if known.contains(&method_name) {
+                    return self.check_result_method(method_name, &type_args[0], &type_args[1], args, scopes);
+                }
+            }
+            // Check if it's an actor spawn call (Type.spawn)
+            if method_name == "spawn" {
+                return Type::Name(type_name.clone(), vec![]);
+            }
+            // Check module-qualified function call: Module::func(args)
+            let qualified_func = format!("{}::{}", type_name, method_name);
+            if self.funcs.contains_key(&qualified_func) {
+                return self.check_call(&qualified_func, args, scopes);
+            }
+            // Check record field access (field is a closure/function)
+            if let Some(tdef) = self.types.get(type_name) {
+                if let TypeDefKind::Record(fields) = &tdef.kind {
+                    if let Some(f) = fields.iter().find(|f| f.name == method_name) {
+                        return self.resolve_type(&f.ty);
+                    }
+                }
+                if let TypeDefKind::Enum(variants) = &tdef.kind {
+                    if variants.iter().any(|v| v.name == method_name) {
+                        return Type::Name(type_name.clone(), vec![]);
+                    }
+                }
+            }
+            // Check trait methods on this type
+            if let Some(methods) = self.type_methods.get(type_name) {
+                if let Some((trait_name, _)) = methods.iter().find(|(_, m)| m == method_name) {
+                    let trait_name = trait_name.clone();
+                    if let Some((params, ret)) = self.trait_method_sigs.get(&(trait_name.clone(), method_name.to_string())).cloned() {
+                        let (method_params, method_ret) = if let Some(trait_generic_names) = self.trait_generics.get(&trait_name) {
+                            if !trait_generic_names.is_empty() && trait_generic_names.len() == type_args.len() {
+                                let type_map: HashMap<String, Type> = trait_generic_names.iter()
+                                    .zip(type_args.iter())
+                                    .map(|(g, a)| (g.clone(), a.clone()))
+                                    .collect();
+                                let gen_slice: Vec<GenericParam> = trait_generic_names.iter()
+                                    .map(|g| GenericParam { name: g.clone(), bounds: vec![] })
+                                    .collect();
+                                let subst_params: Vec<Type> = params.iter()
+                                    .map(|p| subst_type_params(p, &gen_slice, &type_map))
+                                    .collect();
+                                let subst_ret = subst_type_params(&ret, &gen_slice, &type_map);
+                                (subst_params, subst_ret)
+                            } else {
+                                (params, ret)
+                            }
+                        } else {
+                            (params, ret)
+                        };
+                        let user_args = &args;
+                        if user_args.len() != method_params.len() {
+                            self.emit_code(crate::diagnostic::codes::E0257, format!(
+                                "method '{}' of trait '{}' expects {} arguments, got {}",
+                                method_name, trait_name, method_params.len(), user_args.len()
+                            ));
+                        } else {
+                            for (i, (arg, param)) in user_args.iter().zip(method_params.iter()).enumerate() {
+                                let at = self.infer_expr(arg, scopes);
+                                if !same_type(&at, param) {
+                                    self.emit_code(crate::diagnostic::codes::E0211, format!(
+                                        "argument {} of method '{}' expected {}, found {}",
+                                        i + 1, method_name, fmt_type(param), fmt_type(&at)
+                                    ));
+                                }
+                            }
+                        }
+                        return method_ret;
+                    }
+                }
+            }
+            // Check if the type has this as a direct method (actor methods)
+            if let Some(actor_def) = self.file.items.iter().find_map(|item| {
+                if let Item::Actor(a) = item { if a.name == *type_name { Some(a) } else { None } } else { None }
+            }) {
+                if let Some(method) = actor_def.methods.iter().find(|m| m.name == *method_name) {
+                    let ret = method.ret.as_ref()
+                        .map(|t| self.resolve_type(t))
+                        .unwrap_or_else(|| Type::Name("unit".into(), vec![]));
+                    return ret;
+                }
+            }
+            // Check string methods
+            if type_name == "string" {
+                return self.check_string_method(method_name, args, scopes);
+            }
+            // Check list methods
+            if type_name == "List" && method_name == "len" {
+                return self.check_list_method(method_name, args, scopes);
+            }
+            let mut method_candidates: Vec<String> = self.type_methods.get(type_name)
+                .map(|methods| methods.iter().map(|(_, m)| m.clone()).collect())
+                .unwrap_or_default();
+            if let Some(actor_def) = self.file.items.iter().find_map(|item| {
+                if let Item::Actor(a) = item { if a.name == *type_name { Some(a) } else { None } } else { None }
+            }) {
+                method_candidates.extend(actor_def.methods.iter().map(|m| m.name.clone()));
+            }
+            let suggestion = super::suggest_name(method_name, &method_candidates, 3);
+            let help = if let Some(s) = suggestion {
+                format!("did you mean '{}'?", s)
+            } else {
+                "check the method name spelling or available methods for this type".to_string()
+            };
+            self.errors.push(
+                Diagnostic::error_code(
+                    crate::diagnostic::codes::E0221,
+                    format!("type '{}' has no method '{}'", type_name, method_name),
+                    Span::single(self.current_line, self.current_col),
+                ).with_help(&help)
+            );
+            Type::Name("unknown".into(), vec![])
+        } else if let Type::DynTrait(traits) = &obj_ty {
+            self.resolve_trait_method(traits, method_name, args, scopes)
+        } else if let Type::ImplTrait(traits) = &obj_ty {
+            self.resolve_trait_method(traits, method_name, args, scopes)
+        } else if let Type::Option(inner) = &obj_ty {
+            self.check_option_method(method_name, inner, args, scopes)
+        } else if let Type::Result(ok_ty, err_ty) = &obj_ty {
+            self.check_result_method(method_name, ok_ty, err_ty, args, scopes)
+        } else {
+            self.errors.push(
+                Diagnostic::error_code(
+                    crate::diagnostic::codes::E0222,
+                    format!("method call requires a named type, found {}", fmt_type(&obj_ty)),
+                    Span::single(self.current_line, self.current_col),
+                ).with_help("only named types (record, enum, actor) have methods")
+            );
+            Type::Name("unknown".into(), vec![])
+        }
+    }
+
+    fn resolve_trait_method(&mut self, traits: &[String], method_name: &str, args: &[Expr], scopes: &mut Vec<HashMap<String, Type>>) -> Type {
+        for trait_name in traits {
+            if let Some((params, ret)) = self.trait_method_sigs.get(&(trait_name.clone(), method_name.to_string())).cloned() {
+                let user_args = &args;
+                let method_params = &params;
+                if user_args.len() != method_params.len() {
+                    self.emit_code(crate::diagnostic::codes::E0257, format!(
+                        "method '{}' of trait '{}' expects {} arguments, got {}",
+                        method_name, trait_name, method_params.len(), user_args.len()
+                    ));
+                } else {
+                    for (i, (arg, param)) in user_args.iter().zip(method_params.iter()).enumerate() {
+                        let at = self.infer_expr(arg, scopes);
+                        if !same_type(&at, param) {
+                            self.emit_code(crate::diagnostic::codes::E0211, format!(
+                                "argument {} of method '{}' expected {}, found {}",
+                                i + 1, method_name, fmt_type(param), fmt_type(&at)
+                            ));
+                        }
+                    }
+                }
+                return ret;
+            }
+        }
+        self.errors.push(
+            Diagnostic::error_code(
+                crate::diagnostic::codes::E0221,
+                format!("trait object does not have method '{}'", method_name),
+                Span::single(self.current_line, self.current_col),
+            ).with_help("check the method name spelling or available methods for this type")
+        );
+        Type::Name("unknown".into(), vec![])
+    }
+
+    fn infer_field_access(&mut self, obj: &Expr, field: &str, scopes: &mut Vec<HashMap<String, Type>>) -> Type {
+        let obj_ty = self.infer_expr(obj, scopes);
+        match &obj_ty {
+            Type::Name(name, _) => {
+                if let Some(actor_def) = self.file.items.iter().find_map(|item| {
+                    if let Item::Actor(a) = item {
+                        if a.name == *name { Some(a) } else { None }
+                    } else { None }
+                }) {
+                    if let Some(f) = actor_def.fields.iter().find(|f| f.name == field) {
+                        return self.resolve_type(&f.ty);
+                    }
+                    let field_names: Vec<String> = actor_def.fields.iter().map(|f| f.name.clone()).collect();
+                    let suggestion = super::suggest_name(field, &field_names, 3);
+                    let help = if let Some(s) = suggestion {
+                        format!("did you mean '{}'?", s)
+                    } else {
+                        format!("available fields: {}", field_names.join(", "))
+                    };
+                    self.errors.push(Diagnostic::error_code(
+                        crate::diagnostic::codes::E0220,
+                        format!("actor '{}' has no field '{}'", name, field),
+                        Span::single(self.current_line, self.current_col),
+                    ).with_help(&help));
+                    return Type::Name("unknown".into(), vec![]);
+                }
+                if let Some(tdef) = self.types.get(name) {
+                    match &tdef.kind {
+                        TypeDefKind::Record(fields) => {
+                            if let Some(f) = fields.iter().find(|f| f.name == field) {
+                                return self.resolve_type(&f.ty);
+                            }
+                            if let Some(methods) = self.type_methods.get(name) {
+                                if let Some((trait_name, _)) = methods.iter().find(|(_, m)| m == field) {
+                                    let tn = trait_name.clone();
+                                    if let Some((params, ret)) = self.trait_method_sigs.get(&(tn, field.to_string())).cloned() {
+                                        return Type::Func(params, Box::new(ret));
+                                    }
+                                }
+                            }
+                            let field_names: Vec<String> = fields.iter().map(|f| f.name.clone()).collect();
+                            let suggestion = super::suggest_name(field, &field_names, 3);
+                            self.errors.push(Diagnostic::error_code(
+                                crate::diagnostic::codes::E0220,
+                                format!("type '{}' has no field '{}'", name, field),
+                                Span::single(self.current_line, self.current_col),
+                            ).with_help(&suggestion.map(|s| format!("did you mean '{}'?", s)).unwrap_or_default()));
+                            Type::Name("unknown".into(), vec![])
+                        }
+                        TypeDefKind::Enum(variants) => {
+                            if variants.iter().any(|v| v.name == field) {
+                                let variant_func = format!("{}::{}", name, field);
+                                if let Some((params, ret)) = self.funcs.get(&variant_func) {
+                                    Type::Func(params.clone(), Box::new(ret.clone()))
+                                } else {
+                                    Type::Name(name.into(), vec![])
+                                }
+                            } else {
+                                let variant_names: Vec<String> = variants.iter().map(|v| v.name.clone()).collect();
+                                let suggestion = super::suggest_name(field, &variant_names, 3);
+                                self.errors.push(Diagnostic::error_code(
+                                    crate::diagnostic::codes::E0246,
+                                    if let Some(s) = suggestion {
+                                        format!("type '{}' has no variant '{}' — did you mean '{}'?", name, field, s)
+                                    } else {
+                                        format!("type '{}' has no variant '{}' — available variants: {}", name, field, variant_names.join(", "))
+                                    },
+                                    Span::single(self.current_line, self.current_col),
+                                ).with_help("check the variant name spelling"));
+                                Type::Name("unknown".into(), vec![])
+                            }
+                        }
+                        _ => {
+                            if let Some(methods) = self.type_methods.get(name) {
+                                if let Some((trait_name, _)) = methods.iter().find(|(_, m)| m == field) {
+                                    let tn = trait_name.clone();
+                                    if let Some((params, ret)) = self.trait_method_sigs.get(&(tn, field.to_string())).cloned() {
+                                        return Type::Func(params, Box::new(ret));
+                                    }
+                                }
+                            }
+                            self.emit_code(crate::diagnostic::codes::E0249, format!("'{}' is not a record type", name));
+                            Type::Name("unknown".into(), vec![])
+                        }
+                    }
+                } else {
+                    self.emit_code(crate::diagnostic::codes::E0220, format!("field access on unknown type '{}'", name));
+                    Type::Name("unknown".into(), vec![])
+                }
+            }
+            Type::Tuple(elems) => match field.parse::<usize>() {
+                Ok(idx) if idx < elems.len() => elems[idx].clone(),
+                _ => {
+                    self.emit_code(crate::diagnostic::codes::E0223,
+                        format!("tuple of {} elements has no field '{}'", elems.len(), field));
+                    Type::Name("unknown".into(), vec![])
+                }
+            },
+            Type::Ref(_, inner) | Type::RefMut(_, inner) =>
+                self.infer_field_deref(inner, field, scopes),
+            Type::Shared(inner) | Type::LocalShared(inner) =>
+                self.infer_field_deref(inner, field, scopes),
+            Type::Newtype(_, inner) =>
+                self.infer_field_deref(inner, field, scopes),
+            Type::Infer => Type::Infer,
+            _ => {
+                self.errors.push(Diagnostic::error_code(
+                    crate::diagnostic::codes::E0219,
+                    format!("field access requires record type, found {}", fmt_type(&obj_ty)),
+                    Span::single(self.current_line, self.current_col),
+                ).with_help("only record types support field access with '.'"));
+                Type::Name("unknown".into(), vec![])
+            }
+        }
+    }
+
+    fn infer_field_deref(&mut self, inner: &Type, field: &str, scopes: &mut Vec<HashMap<String, Type>>) -> Type {
+        self.infer_field_access(
+            &Expr::Unary(UnOp::Deref, Box::new(Expr::Ident("_".into()))),
+            field,
+            scopes,
+        )
+    }
+
+    fn infer_record_expr(&mut self, ty: &Option<String>, fields: &[RecordFieldExpr], scopes: &mut Vec<HashMap<String, Type>>) -> Type {
+        let tdef = ty.as_ref().and_then(|n| self.types.get(n)).cloned();
+        match tdef {
+            Some(tdef) => {
+                match &tdef.kind {
+                    TypeDefKind::Record(expected_fields) => {
+                        let expected: HashMap<String, Type> = expected_fields
+                            .iter()
+                            .map(|f| (f.name.clone(), self.resolve_type(&f.ty)))
+                            .collect();
+                        for (name, value) in fields.iter().map(|f| (&f.name, &f.value)) {
+                            if let Some(expected_ty) = expected.get(name) {
+                                let actual_ty = self.infer_expr(value, scopes);
+                                if !same_type(expected_ty, &actual_ty) {
+                                    self.emit_code(crate::diagnostic::codes::E0247, format!(
+                                        "field '{}' expected {}, found {}",
+                                        name, fmt_type(expected_ty), fmt_type(&actual_ty)
+                                    ));
+                                }
+                            } else {
+                                self.emit_code(crate::diagnostic::codes::E0247, format!(
+                                    "type '{}' has no field '{}'", tdef.name, name
+                                ));
+                            }
+                        }
+                        for name in expected.keys() {
+                            if !fields.iter().any(|f| &f.name == name) {
+                                self.emit_code(crate::diagnostic::codes::E0248, format!(
+                                    "missing field '{}' in record literal", name
+                                ));
+                            }
+                        }
+                        Type::Name(tdef.name.clone(), vec![])
+                    }
+                    _ => {
+                        self.emit_code(crate::diagnostic::codes::E0249, format!("'{}' is not a record type", tdef.name));
+                        Type::Name("unknown".into(), vec![])
+                    }
+                }
+            }
+            None => {
+                self.emit_code(crate::diagnostic::codes::E0410, "cannot infer record type without explicit type name");
+                Type::Name("unknown".into(), vec![])
+            }
+        }
+    }
+
+    fn infer_match_expr(&mut self, subject: &Expr, arms: &[MatchArm], scopes: &mut Vec<HashMap<String, Type>>) -> Type {
+        let subject_ty = self.infer_expr(subject, scopes);
+        if arms.is_empty() {
+            self.emit_code(crate::diagnostic::codes::E0213, "match expression must have at least one arm");
+            return Type::Name("unknown".into(), vec![]);
+        }
+
+        let all_variants = self.get_enum_variants(&subject_ty);
+        let mut covered_variants: Vec<String> = Vec::new();
+        let mut has_catchall = false;
+        let mut has_guard = false;
+        let mut result_ty: Option<Type> = None;
+
+        for arm in arms {
+            let (pattern_covered, is_catchall) = self.pattern_covers_variants(&arm.pat, &subject_ty);
+            if is_catchall { has_catchall = true; }
+            for variant in pattern_covered {
+                if !covered_variants.contains(&variant) { covered_variants.push(variant); }
+            }
+
+            scopes.push(HashMap::new());
+            self.check_pattern(&arm.pat, &subject_ty, scopes);
+            if let Some(guard) = &arm.guard {
+                has_guard = true;
+                let gt = self.infer_expr(guard, scopes);
+                if !is_bool(&gt) {
+                    self.emit_code(crate::diagnostic::codes::E0216, format!(
+                        "match guard must be bool, found {}", fmt_type(&gt)
+                    ));
+                }
+            }
+            let body_ty = self.infer_expr(&arm.body, scopes);
+            scopes.pop();
+
+            match &result_ty {
+                None => result_ty = Some(body_ty),
+                Some(rt) => if !same_type(rt, &body_ty) {
+                    self.emit_code(crate::diagnostic::codes::E0214, format!(
+                        "match arm body type {} does not match previous {}",
+                        fmt_type(&body_ty), fmt_type(rt)
+                    ));
+                }
+            }
+        }
+
+        if !all_variants.is_empty() && !has_catchall && !has_guard {
+            for variant in &all_variants {
+                if !covered_variants.contains(variant) {
+                    self.errors.push(Diagnostic::error_code(
+                        crate::diagnostic::codes::E0215,
+                        format!("match expression is not exhaustive: missing variant '{}' of '{}'", variant, fmt_type(&subject_ty)),
+                        Span::single(self.current_line, self.current_col),
+                    ).with_help(format!("add an arm for '{}' or a wildcard '_ => ...' arm", variant)));
+                }
+            }
+        }
+
+        result_ty.unwrap_or_else(|| Type::Name("unknown".into(), vec![]))
+    }
+
+    fn infer_if_expr(&mut self, cond: &Expr, then_: &Block, else_: Option<&Block>, scopes: &mut Vec<HashMap<String, Type>>) -> Type {
+        self.infer_expr(cond, scopes);
+        let then_ty = self.infer_block_expr(then_, scopes);
+        if let Some(eb) = else_ {
+            let else_ty = self.infer_block_expr(eb, scopes);
+            let then_name = format!("{:?}", then_ty);
+            let else_name = format!("{:?}", else_ty);
+            if then_name == else_name { then_ty } else { Type::Name("unknown".into(), vec![]) }
+        } else {
+            then_ty
         }
     }
 

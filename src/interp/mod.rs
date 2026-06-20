@@ -173,6 +173,33 @@ impl<'a> Interpreter<'a> {
         result
     }
 
+    /// Apply a closure value: push scope, bind captured vars and params,
+    /// eval body, handle early return, pop scope.
+    fn apply_closure_inner(
+        &mut self,
+        params: &[Param],
+        body: &Block,
+        captured: &HashMap<String, Value>,
+        args: Vec<Value>,
+    ) -> Result<Value, String> {
+        if params.len() != args.len() {
+            return Err(format!("closure expects {} arguments, got {}", params.len(), args.len()));
+        }
+        self.push_scope();
+        for (n, v) in captured {
+            self.bind(n, v.clone())?;
+        }
+        for (param, arg) in params.iter().zip(args) {
+            self.bind(&param.name, arg)?;
+        }
+        let result = self.eval_block(body)?;
+        self.pop_scope();
+        if let Some(val) = self.early_return.take() {
+            return Ok(val);
+        }
+        Ok(result.unwrap_or(Value::Unit))
+    }
+
     fn build_func_index(items: &[Item], index: &mut HashMap<String, FuncDef>) {
         Self::build_func_index_rec(items, "", index);
     }

@@ -366,6 +366,41 @@ impl<'ctx> CodeGenerator<'ctx> {
         Ok(())
     }
 
+    /// Compile an arena block: push arena body BB, stacksav, compile block,
+    /// filter out new vars, stackrestor, branch to continuation BB.
+    /// Shared by Stmt::Arena and Stmt::Alloc { kind: AllocKind::Arena }.
+    pub(super) fn compile_arena_block(
+        &mut self,
+        block: &Block,
+        vars: &mut HashMap<String, VarEntry<'ctx>>,
+        label: &str,
+    ) -> Result<(), CompileError> {
+        let function = self.current_function()
+            .ok_or_else(|| CompileError::LlvmError("arena outside function".to_string()))?;
+        let arena_body_bb = self.context.append_basic_block(function, &format!("{}_body", label));
+        let arena_cont_bb = self.context.append_basic_block(function, &format!("{}_cont", label));
+        if !self.block_has_terminator() {
+            self.builder.build_unconditional_branch(arena_body_bb)
+                .map_err(|e| CompileError::LlvmError(format!("branch to {}: {}", label, e)))?;
+        }
+        self.builder.position_at_end(arena_body_bb);
+        let saved = self.build_stacksave()?;
+        let vars_before: std::collections::HashSet<String> = vars.keys().cloned().collect();
+        self.compile_block(block, vars)?;
+        for k in vars.keys().cloned().collect::<Vec<_>>() {
+            if !vars_before.contains(&k) {
+                vars.remove(&k);
+            }
+        }
+        self.build_stackrestore(saved)?;
+        if !self.block_has_terminator() {
+            self.builder.build_unconditional_branch(arena_cont_bb)
+                .map_err(|e| CompileError::LlvmError(format!("branch after {}: {}", label, e)))?;
+        }
+        self.builder.position_at_end(arena_cont_bb);
+        Ok(())
+    }
+
     /// G5b: Clone a shared reference: retain the heap pointer and register
     /// `new_name` as a new shared variable pointing to the same allocation.
     pub(super) fn compile_shared_ref_copy(

@@ -206,45 +206,7 @@ impl Parser {
                         let field = self.expect_ident()?;
                         e = Expr::Field(Box::new(e), field);
                     } else if self.at(&TokenKind::LBracket) {
-                        self.advance();
-                        // Check for slice syntax: arr[start..end], arr[..end], arr[start..]
-                        if self.at(&TokenKind::DotDot) {
-                            // arr[..end]
-                            self.advance();
-                            let end = if self.at(&TokenKind::RBracket) {
-                                None
-                            } else {
-                                Some(Box::new(self.parse_expr(0)?))
-                            };
-                            self.expect(TokenKind::RBracket, "`]`")?;
-                            e = Expr::SliceExpr {
-                                target: Box::new(e),
-                                start: None,
-                                end,
-                            };
-                        } else {
-                            // Parse the start expression, but stop before `..` to handle slice syntax
-                            let first = self.parse_expr_without_range()?;
-                            if self.at(&TokenKind::DotDot) {
-                                // arr[start..end] or arr[start..]
-                                self.advance();
-                                let end = if self.at(&TokenKind::RBracket) {
-                                    None
-                                } else {
-                                    Some(Box::new(self.parse_expr(0)?))
-                                };
-                                self.expect(TokenKind::RBracket, "`]`")?;
-                                e = Expr::SliceExpr {
-                                    target: Box::new(e),
-                                    start: Some(Box::new(first)),
-                                    end,
-                                };
-                            } else {
-                                // arr[i] — regular index
-                                self.expect(TokenKind::RBracket, "`]`")?;
-                                e = Expr::Index(Box::new(e), Box::new(first));
-                            }
-                        }
+                        e = self.parse_slice_or_index(e)?;
                     } else {
                         break;
                     }
@@ -333,45 +295,7 @@ impl Parser {
                             e = Expr::Field(Box::new(e), field);
                         }
                     } else if self.at(&TokenKind::LBracket) {
-                        self.advance();
-                        // Check for slice syntax: arr[start..end], arr[..end], arr[start..]
-                        if self.at(&TokenKind::DotDot) {
-                            // arr[..end]
-                            self.advance();
-                            let end = if self.at(&TokenKind::RBracket) {
-                                None
-                            } else {
-                                Some(Box::new(self.parse_expr(0)?))
-                            };
-                            self.expect(TokenKind::RBracket, "`]`")?;
-                            e = Expr::SliceExpr {
-                                target: Box::new(e),
-                                start: None,
-                                end,
-                            };
-                        } else {
-                            // Parse the start expression, but stop before `..` to handle slice syntax
-                            let first = self.parse_expr_without_range()?;
-                            if self.at(&TokenKind::DotDot) {
-                                // arr[start..end] or arr[start..]
-                                self.advance();
-                                let end = if self.at(&TokenKind::RBracket) {
-                                    None
-                                } else {
-                                    Some(Box::new(self.parse_expr(0)?))
-                                };
-                                self.expect(TokenKind::RBracket, "`]`")?;
-                                e = Expr::SliceExpr {
-                                    target: Box::new(e),
-                                    start: Some(Box::new(first)),
-                                    end,
-                                };
-                            } else {
-                                // arr[i] — regular index
-                                self.expect(TokenKind::RBracket, "`]`")?;
-                                e = Expr::Index(Box::new(e), Box::new(first));
-                            }
-                        }
+                        e = self.parse_slice_or_index(e)?;
                     } else if self.at(&TokenKind::LBrace) {
                         if let Expr::Ident(ty_name) = &e {
                             if ty_name.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
@@ -645,6 +569,49 @@ impl Parser {
             self.advance();
         }
         Ok(args)
+    }
+
+    /// Parse `expr[i]` (index) or `expr[start..end]` / `expr[..end]` / `expr[start..]` (slice).
+    /// Shared by the primary expression and identifier postfix paths.
+    fn parse_slice_or_index(&mut self, target: Expr) -> Result<Expr, ParseError> {
+        self.advance(); // skip [
+        if self.at(&TokenKind::DotDot) {
+            // expr[..end]
+            self.advance();
+            let end = if self.at(&TokenKind::RBracket) {
+                None
+            } else {
+                Some(Box::new(self.parse_expr(0)?))
+            };
+            self.expect(TokenKind::RBracket, "`]`")?;
+            Ok(Expr::SliceExpr {
+                target: Box::new(target),
+                start: None,
+                end,
+            })
+        } else {
+            // Parse start, stopping before `..` to handle slice syntax
+            let first = self.parse_expr_without_range()?;
+            if self.at(&TokenKind::DotDot) {
+                // expr[start..end] or expr[start..]
+                self.advance();
+                let end = if self.at(&TokenKind::RBracket) {
+                    None
+                } else {
+                    Some(Box::new(self.parse_expr(0)?))
+                };
+                self.expect(TokenKind::RBracket, "`]`")?;
+                Ok(Expr::SliceExpr {
+                    target: Box::new(target),
+                    start: Some(Box::new(first)),
+                    end,
+                })
+            } else {
+                // expr[i] — regular index
+                self.expect(TokenKind::RBracket, "`]`")?;
+                Ok(Expr::Index(Box::new(target), Box::new(first)))
+            }
+        }
     }
 
     fn parse_record_expr_fields(&mut self) -> Result<Vec<RecordFieldExpr>, ParseError> {

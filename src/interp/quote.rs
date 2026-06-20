@@ -505,24 +505,8 @@ impl<'a> Interpreter<'a> {
                 let arg_vals: Result<Vec<_>, _> = args.iter().map(|a| self.eval_quoted_ast(a)).collect();
                 let arg_vals = arg_vals?;
                 match func_val {
-                    Value::Closure { params, ret: _, body, captured } => {
-                        if params.len() != arg_vals.len() {
-                            return Err(format!("closure expects {} args, got {}", params.len(), arg_vals.len()));
-                        }
-                        self.push_scope();
-                        for (n, v) in &captured {
-                            self.bind(n, v.clone())?;
-                        }
-                        for (p, a) in params.iter().zip(arg_vals) {
-                            self.bind(&p.name, a)?;
-                        }
-                        let result = self.eval_block(&body);
-                        self.pop_scope();
-                        if let Some(val) = self.early_return.take() {
-                            return Ok(val);
-                        }
-                        result.map(|v| v.unwrap_or(Value::Unit))
-                    }
+                    Value::Closure { params, ret: _, body, captured } =>
+                        self.apply_closure_inner(&params, &body, &captured, arg_vals),
                     _ => Err("cannot call non-closure in quoted AST".into()),
                 }
             }
