@@ -97,10 +97,18 @@ proptest! {
 
     /// unknown is compatible with any type.
     #[test]
-    fn unknown_compatible_with_any(t in arb_type()) {
+    fn unknown_matches_only_unknown(t in arb_type()) {
         let unknown = Type::Name("unknown".into(), vec![]);
-        prop_assert!(core::same_type(&unknown, &t), "unknown should be compatible with {:?}", t);
-        prop_assert!(core::same_type(&t, &unknown), "{:?} should be compatible with unknown", t);
+        // 'unknown' only matches another 'unknown' — single-sided match
+        // would mask cascade errors downstream.
+        if format!("{:?}", &t) == format!("{:?}", &unknown) {
+            prop_assert!(core::same_type(&unknown, &t));
+        } else {
+            prop_assert!(!core::same_type(&unknown, &t),
+                "unknown should NOT be compatible with {:?} — would mask type errors", t);
+            prop_assert!(!core::same_type(&t, &unknown),
+                "{:?} should NOT be compatible with unknown — would mask type errors", t);
+        }
     }
 }
 

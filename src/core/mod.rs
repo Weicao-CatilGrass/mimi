@@ -1684,13 +1684,54 @@ pub fn is_type_param(name: &str, generics: &[GenericParam]) -> bool {
     generics.iter().any(|g| g.name == name)
 }
 
-/// Substitute type parameters in a type
+/// Check if a type name appears within a type (occurs check).
+/// Prevents infinite recursion from self-referential type substitutions.
+fn occurs_check(name: &str, ty: &Type, generics: &[GenericParam]) -> bool {
+    match ty {
+        Type::Name(n, args) => {
+            if n == name { return true; }
+            args.iter().any(|a| occurs_check(name, a, generics))
+        }
+        Type::Ref(_, inner) => occurs_check(name, inner, generics),
+        Type::RefMut(_, inner) => occurs_check(name, inner, generics),
+        Type::Option(inner) => occurs_check(name, inner, generics),
+        Type::Result(ok, err) => occurs_check(name, ok, generics) || occurs_check(name, err, generics),
+        Type::Tuple(elems) => elems.iter().any(|e| occurs_check(name, e, generics)),
+        Type::Func(args, ret) => args.iter().any(|a| occurs_check(name, a, generics)) || occurs_check(name, ret, generics),
+        Type::Shared(inner) => occurs_check(name, inner, generics),
+        Type::LocalShared(inner) => occurs_check(name, inner, generics),
+        Type::Weak(inner) => occurs_check(name, inner, generics),
+        Type::WeakLocal(inner) => occurs_check(name, inner, generics),
+        Type::RawPtr(inner) => occurs_check(name, inner, generics),
+        Type::RawPtrMut(inner) => occurs_check(name, inner, generics),
+        Type::CShared(inner) => occurs_check(name, inner, generics),
+        Type::CBorrow(inner) => occurs_check(name, inner, generics),
+        Type::CBorrowMut(inner) => occurs_check(name, inner, generics),
+        Type::Newtype(_, inner) => occurs_check(name, inner, generics),
+        Type::ExternFunc(args, ret) => args.iter().any(|a| occurs_check(name, a, generics)) || occurs_check(name, ret, generics),
+        Type::CBuffer(inner) => occurs_check(name, inner, generics),
+        Type::Array(inner, _) => occurs_check(name, inner, generics),
+        Type::Slice(inner) => occurs_check(name, inner, generics),
+        Type::Cap(_) | Type::Nothing | Type::RawString | Type::Allocator | Type::Infer
+        | Type::ImplTrait(_) | Type::DynTrait(_) => false,
+    }
+}
+
+/// Substitute type parameters in a type.
+/// If substitution would cause infinite recursion (self-referential type),
+/// returns the original type unchanged to let downstream checks catch the mismatch.
 pub fn subst_type_params(ty: &Type, generics: &[GenericParam], type_map: &HashMap<String, Type>) -> Type {
     match ty {
         Type::Name(name, args) => {
             if is_type_param(name, generics) {
                 if let Some(concrete) = type_map.get(name) {
-                    concrete.clone()
+                    // Occurs check: if concrete type references this parameter,
+                    // return original to prevent infinite recursion.
+                    if occurs_check(name, concrete, generics) {
+                        ty.clone()
+                    } else {
+                        concrete.clone()
+                    }
                 } else {
                     ty.clone()
                 }
@@ -1739,8 +1780,10 @@ pub fn subst_type_params(ty: &Type, generics: &[GenericParam], type_map: &HashMa
 }
 
 pub(crate) fn same_type(a: &Type, b: &Type) -> bool {
-    // 'unknown' is compatible with any type (inference placeholder)
-    if matches!(a, Type::Name(n, _) if n == "unknown") || matches!(b, Type::Name(n, _) if n == "unknown") {
+    // Only treat 'unknown' as matching if BOTH sides are unknown.
+    // Single-sided unknown would mask cascade errors — let the
+    // real type propagate so subsequent checks detect mismatches.
+    if matches!(a, Type::Name(n, _) if n == "unknown") && matches!(b, Type::Name(n, _) if n == "unknown") {
         return true;
     }
     // Normalize Type::Name("Result", [T, E]) <-> Type::Result(T, E) and Type::Name("Option", [T]) <-> Type::Option(T)
@@ -1812,9 +1855,14 @@ pub(crate) fn same_type(a: &Type, b: &Type) -> bool {
 }
 
 /// Check if a concrete type can be coerced to a dyn Trait type (e.g., Circle → dyn Drawable)
-fn is_trait_coercion(declared: &Type, init_ty: &Type) -> bool {
+/// `impls` maps (trait_name, type_name) -> method_names
+fn is_trait_coercion(declared: &Type, init_ty: &Type, impls: &HashMap<(String, String), Vec<String>>) -> bool {
     match (declared, init_ty) {
-        (Type::DynTrait(_), Type::Name(_, _)) => true,
+        (Type::DynTrait(trait_names), Type::Name(ty_name, _)) => {
+            trait_names.iter().all(|trait_name| {
+                impls.contains_key(&(trait_name.clone(), ty_name.clone()))
+            })
+        }
         _ => false,
     }
 }
