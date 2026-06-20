@@ -125,6 +125,7 @@ impl std::fmt::Display for Diagnostic {
 impl std::error::Error for Diagnostic {}
 
 /// Legacy bridge: create a Diagnostic from a simple message (no span info).
+/// These are used when no source position is available (e.g., CLI-level errors).
 impl From<&str> for Diagnostic {
     fn from(msg: &str) -> Self {
         Self::error(msg, Span::single(0, 0))

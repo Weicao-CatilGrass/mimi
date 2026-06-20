@@ -32,6 +32,7 @@ impl Linter {
                 }
                 Item::Desc(_text) => {
                     if !is_followed_by_impl(&file.items, idx) {
+                        // TODO: Item::Desc lacks a pos field; add one to propagate real span
                         diagnostics.push(Diagnostic::warning_code(
                             "W001",
                             format!("standalone `desc` has no associated implementation"),
@@ -41,6 +42,7 @@ impl Linter {
                 }
                 Item::Rule(_text) => {
                     if !is_followed_by_impl(&file.items, idx) {
+                        // TODO: Item::Rule lacks a pos field; add one to propagate real span
                         diagnostics.push(Diagnostic::warning_code(
                             "W001",
                             format!("standalone `rule` has no associated implementation"),
@@ -73,7 +75,7 @@ impl Linter {
             diagnostics.push(Diagnostic::warning_code(
                 "W004",
                 format!("function `{}` should use snake_case naming", func.name),
-                Span::single(0, 0),
+                Span::single(func.pos.0, func.pos.1),
             ));
         }
 
@@ -82,7 +84,7 @@ impl Linter {
             diagnostics.push(Diagnostic::warning_code(
                 "W002",
                 format!("locked function `{}` has empty implementation", func.name),
-                Span::single(0, 0),
+                Span::single(func.pos.0, func.pos.1),
             ));
         }
     }

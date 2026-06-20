@@ -19,7 +19,13 @@ impl<'a> Checker<'a> {
                         if is_numeric(&t) {
                             t
                         } else {
-                            self.emit_code(crate::diagnostic::codes::E0201, format!("cannot negate {}", fmt_type(&t)));
+                            self.errors.push(
+                                Diagnostic::error_code(
+                                    crate::diagnostic::codes::E0201,
+                                    format!("cannot negate {}", fmt_type(&t)),
+                                    Span::single(self.current_line, self.current_col),
+                                ).with_help("negation only works on numeric types (i32, i64, f64)")
+                            );
                             Type::Name("unknown".into(), vec![])
                         }
                     }
@@ -140,7 +146,7 @@ impl<'a> Checker<'a> {
                                         let user_args = &args;
                                         let method_params = if !params.is_empty() { &params[1..] } else { &params };
                                         if user_args.len() != method_params.len() {
-                                            self.emit(format!(
+                                            self.emit_code(crate::diagnostic::codes::E0257, format!(
                                                 "method '{}' of trait '{}' expects {} arguments, got {}",
                                                 method_name, trait_name, method_params.len(), user_args.len()
                                             ));
@@ -148,7 +154,7 @@ impl<'a> Checker<'a> {
                                             for (i, (arg, param)) in user_args.iter().zip(method_params.iter()).enumerate() {
                                                 let at = self.infer_expr(arg, scopes);
                                                 if !same_type(&at, param) {
-                                                    self.emit(format!(
+                                                    self.emit_code(crate::diagnostic::codes::E0211, format!(
                                                         "argument {} of method '{}' expected {}, found {}",
                                                         i + 1, method_name, fmt_type(param), fmt_type(&at)
                                                     ));
@@ -178,7 +184,27 @@ impl<'a> Checker<'a> {
                             if type_name == "List" {
                                 return self.check_list_method(method_name, args, scopes);
                             }
-                            self.emit_code(crate::diagnostic::codes::E0221, format!("type '{}' has no method '{}'", type_name, method_name));
+                            let mut method_candidates: Vec<String> = self.type_methods.get(type_name)
+                                .map(|methods| methods.iter().map(|(_, m)| m.clone()).collect())
+                                .unwrap_or_default();
+                            if let Some(actor_def) = self.file.items.iter().find_map(|item| {
+                                if let Item::Actor(a) = item { if a.name == *type_name { Some(a) } else { None } } else { None }
+                            }) {
+                                method_candidates.extend(actor_def.methods.iter().map(|m| m.name.clone()));
+                            }
+                            let suggestion = super::suggest_name(method_name, &method_candidates, 3);
+                            let help = if let Some(s) = suggestion {
+                                format!("did you mean '{}'?", s)
+                            } else {
+                                "check the method name spelling or available methods for this type".to_string()
+                            };
+                            self.errors.push(
+                                Diagnostic::error_code(
+                                    crate::diagnostic::codes::E0221,
+                                    format!("type '{}' has no method '{}'", type_name, method_name),
+                                    Span::single(self.current_line, self.current_col),
+                                ).with_help(&help)
+                            );
                             Type::Name("unknown".into(), vec![])
                         } else if let Type::DynTrait(traits) = &obj_ty {
                             // dyn Trait method resolution: look up method in each listed trait
@@ -187,7 +213,7 @@ impl<'a> Checker<'a> {
                                     let user_args = &args;
                                     let method_params = if !params.is_empty() { &params[1..] } else { &params };
                                     if user_args.len() != method_params.len() {
-                                        self.emit(format!(
+                                        self.emit_code(crate::diagnostic::codes::E0257, format!(
                                             "method '{}' of trait '{}' expects {} arguments, got {}",
                                             method_name, trait_name, method_params.len(), user_args.len()
                                         ));
@@ -195,7 +221,7 @@ impl<'a> Checker<'a> {
                                         for (i, (arg, param)) in user_args.iter().zip(method_params.iter()).enumerate() {
                                             let at = self.infer_expr(arg, scopes);
                                             if !same_type(&at, param) {
-                                                self.emit(format!(
+                                                self.emit_code(crate::diagnostic::codes::E0211, format!(
                                                     "argument {} of method '{}' expected {}, found {}",
                                                     i + 1, method_name, fmt_type(param), fmt_type(&at)
                                                 ));
@@ -205,8 +231,13 @@ impl<'a> Checker<'a> {
                                     return ret;
                                 }
                             }
-                            self.emit_code(crate::diagnostic::codes::E0221,
-                                format!("trait object does not have method '{}'", method_name));
+                            self.errors.push(
+                                Diagnostic::error_code(
+                                    crate::diagnostic::codes::E0221,
+                                    format!("trait object does not have method '{}'", method_name),
+                                    Span::single(self.current_line, self.current_col),
+                                ).with_help("check the method name spelling or available methods for this type")
+                            );
                             Type::Name("unknown".into(), vec![])
                         } else if let Type::ImplTrait(traits) = &obj_ty {
                             // impl Trait method resolution: same as dyn Trait
@@ -215,7 +246,7 @@ impl<'a> Checker<'a> {
                                     let user_args = &args;
                                     let method_params = if !params.is_empty() { &params[1..] } else { &params };
                                     if user_args.len() != method_params.len() {
-                                        self.emit(format!(
+                                        self.emit_code(crate::diagnostic::codes::E0257, format!(
                                             "method '{}' of trait '{}' expects {} arguments, got {}",
                                             method_name, trait_name, method_params.len(), user_args.len()
                                         ));
@@ -223,7 +254,7 @@ impl<'a> Checker<'a> {
                                         for (i, (arg, param)) in user_args.iter().zip(method_params.iter()).enumerate() {
                                             let at = self.infer_expr(arg, scopes);
                                             if !same_type(&at, param) {
-                                                self.emit(format!(
+                                                self.emit_code(crate::diagnostic::codes::E0211, format!(
                                                     "argument {} of method '{}' expected {}, found {}",
                                                     i + 1, method_name, fmt_type(param), fmt_type(&at)
                                                 ));
@@ -233,15 +264,26 @@ impl<'a> Checker<'a> {
                                     return ret;
                                 }
                             }
-                            self.emit_code(crate::diagnostic::codes::E0221,
-                                format!("impl Trait does not have method '{}'", method_name));
+                            self.errors.push(
+                                Diagnostic::error_code(
+                                    crate::diagnostic::codes::E0221,
+                                    format!("impl Trait does not have method '{}'", method_name),
+                                    Span::single(self.current_line, self.current_col),
+                                ).with_help("check the method name spelling or available methods for this type")
+                            );
                             Type::Name("unknown".into(), vec![])
                         } else if let Type::Option(inner) = &obj_ty {
                             self.check_option_method(method_name, inner, args, scopes)
                         } else if let Type::Result(ok_ty, err_ty) = &obj_ty {
                             self.check_result_method(method_name, ok_ty, err_ty, args, scopes)
                         } else {
-                            self.emit_code(crate::diagnostic::codes::E0222, format!("method call requires a named type, found {}", fmt_type(&obj_ty)));
+                            self.errors.push(
+                                Diagnostic::error_code(
+                                    crate::diagnostic::codes::E0222,
+                                    format!("method call requires a named type, found {}", fmt_type(&obj_ty)),
+                                    Span::single(self.current_line, self.current_col),
+                                ).with_help("only named types (record, enum, actor) have methods")
+                            );
                             Type::Name("unknown".into(), vec![])
                         }
                     }
@@ -261,12 +303,12 @@ impl<'a> Checker<'a> {
                         if *idx < elems.len() {
                             elems[*idx].clone()
                         } else {
-                            self.emit(format!("tuple index {} out of bounds (len {})", idx, elems.len()));
+                            self.emit_code(crate::diagnostic::codes::E0243, format!("tuple index {} out of bounds (len {})", idx, elems.len()));
                             Type::Name("unknown".into(), vec![])
                         }
                     }
                     _ => {
-                        self.emit(format!("cannot index non-tuple type {} with .{}", fmt_type(&obj_ty), idx));
+                        self.emit_code(crate::diagnostic::codes::E0244, format!("cannot index non-tuple type {} with .{}", fmt_type(&obj_ty), idx));
                         Type::Name("unknown".into(), vec![])
                     }
                 }
@@ -278,7 +320,7 @@ impl<'a> Checker<'a> {
                     if i == 0 {
                         elem_ty = t;
                     } else if !same_type(&elem_ty, &t) {
-                        self.emit(format!(
+                        self.emit_code(crate::diagnostic::codes::E0242, format!(
                             "list element {} type {} does not match first element {}",
                             i + 1,
                             fmt_type(&t),
@@ -293,7 +335,7 @@ impl<'a> Checker<'a> {
                 // Check iter is a list
                 if let Type::Name(n, args) = &iter_ty {
                     if n != "List" || args.len() != 1 {
-                        self.emit(format!("comprehension requires a list, found {}", fmt_type(&iter_ty)));
+                        self.emit_code(crate::diagnostic::codes::E0250, format!("comprehension requires a list, found {}", fmt_type(&iter_ty)));
                     }
                 }
                 // Infer element type from iter
@@ -416,10 +458,23 @@ impl<'a> Checker<'a> {
                             if let Some(f) = actor_def.fields.iter().find(|f| f.name == *field) {
                                 self.resolve_type(&f.ty)
                             } else {
-                                self.emit_code(crate::diagnostic::codes::E0220, format!(
-                                    "actor '{}' has no field '{}'",
-                                    name, field
-                                ));
+                                let field_names: Vec<String> = actor_def.fields.iter().map(|f| f.name.clone()).collect();
+                                let suggestion = super::suggest_name(field, &field_names, 3);
+                                let help = if let Some(s) = suggestion {
+                                    format!("did you mean '{}'?", s)
+                                } else {
+                                    format!("available fields: {}", field_names.join(", "))
+                                };
+                                self.errors.push(
+                                    Diagnostic::error_code(
+                                        crate::diagnostic::codes::E0220,
+                                        format!(
+                                            "actor '{}' has no field '{}'",
+                                            name, field
+                                        ),
+                                        Span::single(self.current_line, self.current_col),
+                                    ).with_help(&help)
+                                );
                                 Type::Name("unknown".into(), vec![])
                             }
                         } else if let Some(tdef) = self.types.get(name) {
@@ -436,17 +491,43 @@ impl<'a> Checker<'a> {
                                                 Type::Name("unknown".into(), vec![])
                                             }
                                         } else {
-                                            self.emit_code(crate::diagnostic::codes::E0220, format!(
-                                                "type '{}' has no field '{}'",
-                                                name, field
-                                            ));
+                                            let field_names: Vec<String> = fields.iter().map(|f| f.name.clone()).collect();
+                                            let suggestion = super::suggest_name(field, &field_names, 3);
+                                            let help = if let Some(s) = suggestion {
+                                                format!("did you mean '{}'?", s)
+                                            } else {
+                                                format!("available fields: {}", field_names.join(", "))
+                                            };
+                                            self.errors.push(
+                                                Diagnostic::error_code(
+                                                    crate::diagnostic::codes::E0220,
+                                                    format!(
+                                                        "type '{}' has no field '{}'",
+                                                        name, field
+                                                    ),
+                                                    Span::single(self.current_line, self.current_col),
+                                                ).with_help(&help)
+                                            );
                                             Type::Name("unknown".into(), vec![])
                                         }
                                     } else {
-                                        self.emit(format!(
-                                            "type '{}' has no field '{}'",
-                                            name, field
-                                        ));
+                                        let field_names: Vec<String> = fields.iter().map(|f| f.name.clone()).collect();
+                                        let suggestion = super::suggest_name(field, &field_names, 3);
+                                        let help = if let Some(s) = suggestion {
+                                            format!("did you mean '{}'?", s)
+                                        } else {
+                                            format!("available fields: {}", field_names.join(", "))
+                                        };
+                                        self.errors.push(
+                                            Diagnostic::error_code(
+                                                crate::diagnostic::codes::E0220,
+                                                format!(
+                                                    "type '{}' has no field '{}'",
+                                                    name, field
+                                                ),
+                                                Span::single(self.current_line, self.current_col),
+                                            ).with_help(&help)
+                                        );
                                         Type::Name("unknown".into(), vec![])
                                     }
                                 }
@@ -461,7 +542,20 @@ impl<'a> Checker<'a> {
                                             Type::Name(name.into(), vec![])
                                         }
                                     } else {
-                                        self.emit(format!("type '{}' has no variant '{}'", name, field));
+                                        let variant_names: Vec<String> = variants.iter().map(|v| v.name.clone()).collect();
+                                        let suggestion = super::suggest_name(field, &variant_names, 3);
+                                        let msg = if let Some(s) = suggestion {
+                                            format!("type '{}' has no variant '{}' — did you mean '{}'?", name, field, s)
+                                        } else {
+                                            format!("type '{}' has no variant '{}' — available variants: {}", name, field, variant_names.join(", "))
+                                        };
+                                        self.errors.push(
+                                            Diagnostic::error_code(
+                                                crate::diagnostic::codes::E0246,
+                                                msg,
+                                                Span::single(self.current_line, self.current_col),
+                                            ).with_help("check the variant name spelling")
+                                        );
                                         Type::Name("unknown".into(), vec![])
                                     }
                                 }
@@ -476,22 +570,28 @@ impl<'a> Checker<'a> {
                                                 Type::Name("unknown".into(), vec![])
                                             }
                                         } else {
-                                            self.emit(format!("'{}' is not a record type", name));
+                                            self.emit_code(crate::diagnostic::codes::E0249, format!("'{}' is not a record type", name));
                                             Type::Name("unknown".into(), vec![])
                                         }
                                     } else {
-                                        self.emit(format!("'{}' is not a record type", name));
+                                        self.emit_code(crate::diagnostic::codes::E0249, format!("'{}' is not a record type", name));
                                         Type::Name("unknown".into(), vec![])
                                     }
                                 }
                             }
                         } else {
-                            self.emit(format!("field access on unknown type '{}'", name));
+                            self.emit_code(crate::diagnostic::codes::E0220, format!("field access on unknown type '{}'", name));
                             Type::Name("unknown".into(), vec![])
                         }
                     }
                     _ => {
-                                self.emit_code(crate::diagnostic::codes::E0219, format!("field access requires record type, found {}", fmt_type(&obj_ty)));
+                                self.errors.push(
+                                    Diagnostic::error_code(
+                                        crate::diagnostic::codes::E0219,
+                                        format!("field access requires record type, found {}", fmt_type(&obj_ty)),
+                                        Span::single(self.current_line, self.current_col),
+                                    ).with_help("only record types support field access with '.'")
+                                );
                         Type::Name("unknown".into(), vec![])
                     }
                 }
@@ -510,7 +610,7 @@ impl<'a> Checker<'a> {
                                     if let Some(expected_ty) = expected.get(name) {
                                         let actual_ty = self.infer_expr(value, scopes);
                                         if !same_type(expected_ty, &actual_ty) {
-                                            self.emit(format!(
+                                            self.emit_code(crate::diagnostic::codes::E0247, format!(
                                                 "field '{}' expected {}, found {}",
                                                 name,
                                                 fmt_type(expected_ty),
@@ -518,7 +618,7 @@ impl<'a> Checker<'a> {
                                             ));
                                         }
                                     } else {
-                                        self.emit(format!(
+                                        self.emit_code(crate::diagnostic::codes::E0247, format!(
                                             "type '{}' has no field '{}'",
                                             tdef.name,
                                             name
@@ -527,7 +627,7 @@ impl<'a> Checker<'a> {
                                 }
                                 for name in expected.keys() {
                                     if !fields.iter().any(|f| &f.name == name) {
-                                        self.emit(format!(
+                                        self.emit_code(crate::diagnostic::codes::E0248, format!(
                                             "missing field '{}' in record literal",
                                             name
                                         ));
@@ -536,13 +636,13 @@ impl<'a> Checker<'a> {
                                 Type::Name(tdef.name.clone(), vec![])
                             }
                             _ => {
-                                self.emit(format!("'{}' is not a record type", tdef.name));
+                                self.emit_code(crate::diagnostic::codes::E0249, format!("'{}' is not a record type", tdef.name));
                                 Type::Name("unknown".into(), vec![])
                             }
                         }
                     }
                     None => {
-                        self.emit("cannot infer record type without explicit type name");
+                        self.emit_code(crate::diagnostic::codes::E0410, "cannot infer record type without explicit type name");
                         Type::Name("unknown".into(), vec![])
                     }
                 }
@@ -587,7 +687,7 @@ impl<'a> Checker<'a> {
                                             types[0].clone()
                                         }
                                         _ => {
-                                            self.emit(format!(
+                                            self.emit_code(crate::diagnostic::codes::E0224, format!(
                                                 "? operator: cannot determine success type from enum '{}'",
                                                 name
                                             ));
@@ -596,7 +696,7 @@ impl<'a> Checker<'a> {
                                     }
                                 }
                                 _ => {
-                                    self.emit(format!(
+                                    self.emit_code(crate::diagnostic::codes::E0224, format!(
                                         "? operator requires Result or Option type, found '{}'",
                                         name
                                     ));
@@ -604,7 +704,7 @@ impl<'a> Checker<'a> {
                                 }
                             }
                         } else {
-                            self.emit(format!(
+                            self.emit_code(crate::diagnostic::codes::E0224, format!(
                                 "? operator requires Result or Option type, found '{}'",
                                 name
                             ));
@@ -633,7 +733,7 @@ impl<'a> Checker<'a> {
                 match inner_ty {
                     Type::Name(n, args) if n == "Future" && !args.is_empty() => args[0].clone(),
                     other => {
-                        self.emit(format!("await requires Future type, found {}", fmt_type(&other)));
+                        self.emit_code(crate::diagnostic::codes::E0245, format!("await requires Future type, found {}", fmt_type(&other)));
                         Type::Name("unknown".into(), vec![])
                     }
                 }
@@ -708,7 +808,7 @@ impl<'a> Checker<'a> {
                 let mut type_map: HashMap<String, Type> = HashMap::new();
                 if !generics.is_empty() && !type_args.is_empty() {
                     if type_args.len() != generics.len() {
-                        self.emit(format!(
+                        self.emit_code(crate::diagnostic::codes::E0239, format!(
                             "function '{}' expects {} type arguments, got {}",
                             name,
                             generics.len(),
@@ -722,7 +822,7 @@ impl<'a> Checker<'a> {
                 }
 
                 if args.len() != params.len() {
-                    self.emit(format!(
+                    self.emit_code(crate::diagnostic::codes::E0257, format!(
                         "function '{}' expects {} arguments, got {}",
                         name,
                         params.len(),
@@ -736,7 +836,7 @@ impl<'a> Checker<'a> {
                             if self.type_uses_type_param(param, &type_param) {
                                 for bound in &bounds {
                                     if !self.type_implements_trait(&at, bound) {
-                                        self.emit(format!(
+                                        self.emit_code(crate::diagnostic::codes::E0253, format!(
                                             "where constraint violated: type '{}' does not implement trait '{}' (required by function '{}')",
                                             fmt_type(&at),
                                             bound,
@@ -757,7 +857,7 @@ impl<'a> Checker<'a> {
                             param.clone()
                         };
                         if !same_type(&at, &subst_param) {
-                            self.emit(format!(
+                            self.emit_code(crate::diagnostic::codes::E0211, format!(
                                 "argument {} of '{}' expected {}, found {}",
                                 i + 1,
                                 name,
@@ -789,7 +889,7 @@ impl<'a> Checker<'a> {
             let lt = self.infer_expr(l, scopes);
             let rt = self.infer_expr(r, scopes);
             if !is_bool(&lt) || !is_bool(&rt) {
-                self.emit(format!(
+                self.emit_code(crate::diagnostic::codes::E0202, format!(
                     "logical operator requires bool operands, found {} and {}",
                     fmt_type(&lt),
                     fmt_type(&rt)
@@ -807,7 +907,7 @@ impl<'a> Checker<'a> {
                 if is_string(&lt) && is_string(&rt) {
                     Type::Name("string".into(), vec![])
                 } else if !same_type(&lt, &rt) || !is_numeric(&lt) {
-                    self.emit(format!(
+                    self.emit_code(crate::diagnostic::codes::E0202, format!(
                         "arithmetic operator requires matching numeric types, found {} and {}",
                         fmt_type(&lt),
                         fmt_type(&rt)
@@ -819,7 +919,7 @@ impl<'a> Checker<'a> {
             }
             BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Pow => {
                 if !same_type(&lt, &rt) || !is_numeric(&lt) {
-                    self.emit(format!(
+                    self.emit_code(crate::diagnostic::codes::E0202, format!(
                         "arithmetic operator requires matching numeric types, found {} and {}",
                         fmt_type(&lt),
                         fmt_type(&rt)
@@ -837,7 +937,7 @@ impl<'a> Checker<'a> {
             }
             BinOp::Mod | BinOp::BitAnd | BinOp::BitOr | BinOp::BitXor | BinOp::Shl | BinOp::Shr => {
                 if !same_type(&lt, &rt) || !is_int(&lt) {
-                    self.emit(format!(
+                    self.emit_code(crate::diagnostic::codes::E0202, format!(
                         "operator requires matching integer types, found {} and {}",
                         fmt_type(&lt),
                         fmt_type(&rt)
@@ -855,7 +955,7 @@ impl<'a> Checker<'a> {
             }
             BinOp::EqCmp | BinOp::NeCmp => {
                 if !same_type(&lt, &rt) {
-                    self.emit(format!(
+                    self.emit_code(crate::diagnostic::codes::E0202, format!(
                         "equality requires matching types, found {} and {}",
                         fmt_type(&lt),
                         fmt_type(&rt)
@@ -865,7 +965,7 @@ impl<'a> Checker<'a> {
             }
             BinOp::Lt | BinOp::Gt | BinOp::Le | BinOp::Ge => {
                 if !same_type(&lt, &rt) || !(is_numeric(&lt) || is_string(&lt)) {
-                    self.emit(format!(
+                    self.emit_code(crate::diagnostic::codes::E0202, format!(
                         "comparison requires matching numeric or string types, found {} and {}",
                         fmt_type(&lt),
                         fmt_type(&rt)
@@ -875,7 +975,7 @@ impl<'a> Checker<'a> {
             }
             BinOp::Range => {
                 if !same_type(&lt, &rt) || !is_int(&lt) {
-                    self.emit(format!(
+                    self.emit_code(crate::diagnostic::codes::E0202, format!(
                         "range requires matching integer types, found {} and {}",
                         fmt_type(&lt),
                         fmt_type(&rt)
@@ -909,41 +1009,41 @@ impl<'a> Checker<'a> {
             }
             "assert" => {
                 if args.len() != 1 {
-                    self.emit("assert expects 1 argument");
+                    self.emit_code(crate::diagnostic::codes::E0242, "assert expects 1 argument");
                 } else {
                     let t = self.infer_expr(&args[0], scopes);
                     if !is_bool(&t) {
-                        self.emit(format!("assert expects bool, found {}", fmt_type(&t)));
+                        self.emit_code(crate::diagnostic::codes::E0242, format!("assert expects bool, found {}", fmt_type(&t)));
                     }
                 }
                 return Type::Name("unit".into(), vec![]);
             }
             "range" => {
                 if args.len() != 2 {
-                    self.emit("range expects 2 arguments");
+                    self.emit_code(crate::diagnostic::codes::E0242, "range expects 2 arguments");
                 } else {
                     let t1 = self.infer_expr(&args[0], scopes);
                     let t2 = self.infer_expr(&args[1], scopes);
                     if !is_int(&t1) || !is_int(&t2) {
-                        self.emit("range expects integer arguments");
+                        self.emit_code(crate::diagnostic::codes::E0242, "range expects integer arguments");
                     }
                 }
                 return Type::Name("List".into(), vec![Type::Name("i32".into(), vec![])]);
             }
             "sqrt" => {
                 if args.len() != 1 {
-                    self.emit("sqrt expects 1 argument");
+                    self.emit_code(crate::diagnostic::codes::E0242, "sqrt expects 1 argument");
                 } else {
                     let t = self.infer_expr(&args[0], scopes);
                     if !is_numeric(&t) {
-                        self.emit("sqrt expects a numeric argument");
+                        self.emit_code(crate::diagnostic::codes::E0242, "sqrt expects a numeric argument");
                     }
                 }
                 return Type::Name("f64".into(), vec![]);
             }
             "len" => {
                 if args.len() != 1 {
-                    self.emit("len expects 1 argument");
+                    self.emit_code(crate::diagnostic::codes::E0242, "len expects 1 argument");
                 } else {
                     self.infer_expr(&args[0], scopes);
                 }
@@ -951,7 +1051,7 @@ impl<'a> Checker<'a> {
             }
             "to_string" => {
                 if args.len() != 1 {
-                    self.emit("to_string expects 1 argument");
+                    self.emit_code(crate::diagnostic::codes::E0242, "to_string expects 1 argument");
                 } else {
                     self.infer_expr(&args[0], scopes);
                 }
@@ -959,7 +1059,7 @@ impl<'a> Checker<'a> {
             }
             "to_int" => {
                 if args.len() != 1 {
-                    self.emit("to_int expects 1 argument");
+                    self.emit_code(crate::diagnostic::codes::E0242, "to_int expects 1 argument");
                 } else {
                     self.infer_expr(&args[0], scopes);
                 }
@@ -967,7 +1067,7 @@ impl<'a> Checker<'a> {
             }
             "to_float" => {
                 if args.len() != 1 {
-                    self.emit("to_float expects 1 argument");
+                    self.emit_code(crate::diagnostic::codes::E0242, "to_float expects 1 argument");
                 } else {
                     self.infer_expr(&args[0], scopes);
                 }
@@ -975,18 +1075,18 @@ impl<'a> Checker<'a> {
             }
             "abs" => {
                 if args.len() != 1 {
-                    self.emit("abs expects 1 argument");
+                    self.emit_code(crate::diagnostic::codes::E0242, "abs expects 1 argument");
                 } else {
                     let t = self.infer_expr(&args[0], scopes);
                     if !is_numeric(&t) {
-                        self.emit("abs expects a numeric argument");
+                        self.emit_code(crate::diagnostic::codes::E0242, "abs expects a numeric argument");
                     }
                 }
                 return Type::Name("unknown".into(), vec![]);
             }
             "push" => {
                 if args.len() != 2 {
-                    self.emit("push expects 2 arguments");
+                    self.emit_code(crate::diagnostic::codes::E0242, "push expects 2 arguments");
                 } else {
                     self.infer_expr(&args[0], scopes);
                     self.infer_expr(&args[1], scopes);
@@ -995,7 +1095,7 @@ impl<'a> Checker<'a> {
             }
             "pop" => {
                 if args.len() != 1 {
-                    self.emit("pop expects 1 argument");
+                    self.emit_code(crate::diagnostic::codes::E0242, "pop expects 1 argument");
                 } else {
                     self.infer_expr(&args[0], scopes);
                 }
@@ -1003,19 +1103,19 @@ impl<'a> Checker<'a> {
             }
             "min" | "max" => {
                 if args.len() != 2 {
-                    self.emit(format!("{} expects 2 arguments", name));
+                    self.emit_code(crate::diagnostic::codes::E0242, format!("{} expects 2 arguments", name));
                 } else {
                     let t1 = self.infer_expr(&args[0], scopes);
                     let t2 = self.infer_expr(&args[1], scopes);
                     if !same_type(&t1, &t2) {
-                        self.emit(format!("{} expects matching types, found {} and {}", name, fmt_type(&t1), fmt_type(&t2)));
+                        self.emit_code(crate::diagnostic::codes::E0242, format!("{} expects matching types, found {} and {}", name, fmt_type(&t1), fmt_type(&t2)));
                     }
                 }
                 return Type::Name("unknown".into(), vec![]);
             }
             "contains" => {
                 if args.len() != 2 {
-                    self.emit("contains expects 2 arguments");
+                    self.emit_code(crate::diagnostic::codes::E0242, "contains expects 2 arguments");
                 } else {
                     self.infer_expr(&args[0], scopes);
                     self.infer_expr(&args[1], scopes);
@@ -1024,12 +1124,12 @@ impl<'a> Checker<'a> {
             }
             "assert_eq" | "assert_ne" => {
                 if args.len() != 2 {
-                    self.emit(format!("{} expects 2 arguments", name));
+                    self.emit_code(crate::diagnostic::codes::E0242, format!("{} expects 2 arguments", name));
                 } else {
                     let t1 = self.infer_expr(&args[0], scopes);
                     let t2 = self.infer_expr(&args[1], scopes);
                     if !same_type(&t1, &t2) {
-                        self.emit(format!("{} expects matching types, found {} and {}", name, fmt_type(&t1), fmt_type(&t2)));
+                        self.emit_code(crate::diagnostic::codes::E0242, format!("{} expects matching types, found {} and {}", name, fmt_type(&t1), fmt_type(&t2)));
                     }
                 }
                 return Type::Name("unit".into(), vec![]);
@@ -1042,7 +1142,7 @@ impl<'a> Checker<'a> {
             }
             "map" => {
                 if args.len() != 2 {
-                    self.emit("map expects 2 arguments (list, closure)");
+                    self.emit_code(crate::diagnostic::codes::E0242, "map expects 2 arguments (list, closure)");
                 } else {
                     let list_ty = self.infer_expr(&args[0], scopes);
                     let elem_ty = match &list_ty {
@@ -1060,7 +1160,7 @@ impl<'a> Checker<'a> {
             }
             "filter" => {
                 if args.len() != 2 {
-                    self.emit("filter expects 2 arguments (list, closure)");
+                    self.emit_code(crate::diagnostic::codes::E0242, "filter expects 2 arguments (list, closure)");
                 } else {
                     let list_ty = self.infer_expr(&args[0], scopes);
                     let elem_ty = match &list_ty {
@@ -1074,7 +1174,7 @@ impl<'a> Checker<'a> {
             }
             "reduce" => {
                 if args.len() != 3 {
-                    self.emit("reduce expects 3 arguments");
+                    self.emit_code(crate::diagnostic::codes::E0242, "reduce expects 3 arguments");
                 } else {
                     self.infer_expr(&args[0], scopes);
                     self.infer_expr(&args[1], scopes);
@@ -1084,7 +1184,7 @@ impl<'a> Checker<'a> {
             }
             "sort" | "reverse" | "flatten" => {
                 if args.len() != 1 {
-                    self.emit(format!("{} expects 1 argument", name));
+                    self.emit_code(crate::diagnostic::codes::E0242, format!("{} expects 1 argument", name));
                 } else {
                     self.infer_expr(&args[0], scopes);
                 }
@@ -1092,7 +1192,7 @@ impl<'a> Checker<'a> {
             }
             "zip" => {
                 if args.len() != 2 {
-                    self.emit("zip expects 2 arguments (list, list)");
+                    self.emit_code(crate::diagnostic::codes::E0242, "zip expects 2 arguments (list, list)");
                 } else {
                     self.infer_expr(&args[0], scopes);
                     self.infer_expr(&args[1], scopes);
@@ -1101,7 +1201,7 @@ impl<'a> Checker<'a> {
             }
             "sum" => {
                 if args.len() != 1 {
-                    self.emit("sum expects 1 argument");
+                    self.emit_code(crate::diagnostic::codes::E0242, "sum expects 1 argument");
                 } else {
                     self.infer_expr(&args[0], scopes);
                 }
@@ -1109,7 +1209,7 @@ impl<'a> Checker<'a> {
             }
             "pow" | "floor" | "ceil" | "round" => {
                 if args.len() != 2 {
-                    self.emit(format!("{} expects 2 arguments", name));
+                    self.emit_code(crate::diagnostic::codes::E0242, format!("{} expects 2 arguments", name));
                 } else {
                     self.infer_expr(&args[0], scopes);
                     self.infer_expr(&args[1], scopes);
@@ -1127,18 +1227,18 @@ impl<'a> Checker<'a> {
             }
             "sleep" => {
                 if args.len() != 1 {
-                    self.emit("sleep expects 1 argument (milliseconds)");
+                    self.emit_code(crate::diagnostic::codes::E0242, "sleep expects 1 argument (milliseconds)");
                 } else {
                     let t = self.infer_expr(&args[0], scopes);
                     if !is_int(&t) {
-                        self.emit("sleep expects an integer argument");
+                        self.emit_code(crate::diagnostic::codes::E0242, "sleep expects an integer argument");
                     }
                 }
                 return Type::Name("unit".into(), vec![]);
             }
             "type_name" | "type_fields" | "type_variants" => {
                 if args.len() != 1 {
-                    self.emit(format!("{} expects 1 argument", name));
+                    self.emit_code(crate::diagnostic::codes::E0242, format!("{} expects 1 argument", name));
                 } else {
                     self.infer_expr(&args[0], scopes);
                 }
@@ -1146,7 +1246,7 @@ impl<'a> Checker<'a> {
             }
             "keys" | "values" => {
                 if args.len() != 1 {
-                    self.emit(format!("{} expects 1 argument", name));
+                    self.emit_code(crate::diagnostic::codes::E0242, format!("{} expects 1 argument", name));
                 } else {
                     self.infer_expr(&args[0], scopes);
                 }
@@ -1154,7 +1254,7 @@ impl<'a> Checker<'a> {
             }
             "has_key" => {
                 if args.len() != 2 {
-                    self.emit("has_key expects 2 arguments");
+                    self.emit_code(crate::diagnostic::codes::E0242, "has_key expects 2 arguments");
                 } else {
                     self.infer_expr(&args[0], scopes);
                     self.infer_expr(&args[1], scopes);
@@ -1190,7 +1290,7 @@ impl<'a> Checker<'a> {
             }
             "read_file" => {
                 if args.len() != 1 {
-                    self.emit("read_file expects 1 argument");
+                    self.emit_code(crate::diagnostic::codes::E0242, "read_file expects 1 argument");
                 } else {
                     self.infer_expr(&args[0], scopes);
                 }
@@ -1201,7 +1301,7 @@ impl<'a> Checker<'a> {
             }
             "write_file" => {
                 if args.len() != 2 {
-                    self.emit("write_file expects 2 arguments");
+                    self.emit_code(crate::diagnostic::codes::E0242, "write_file expects 2 arguments");
                 } else {
                     self.infer_expr(&args[0], scopes);
                     self.infer_expr(&args[1], scopes);
@@ -1213,7 +1313,7 @@ impl<'a> Checker<'a> {
             }
             "file_exists" => {
                 if args.len() != 1 {
-                    self.emit("file_exists expects 1 argument");
+                    self.emit_code(crate::diagnostic::codes::E0242, "file_exists expects 1 argument");
                 } else {
                     self.infer_expr(&args[0], scopes);
                 }
@@ -1221,7 +1321,7 @@ impl<'a> Checker<'a> {
             }
             "str_split" => {
                 if args.len() != 2 {
-                    self.emit("str_split expects 2 arguments (string, delimiter)");
+                    self.emit_code(crate::diagnostic::codes::E0242, "str_split expects 2 arguments (string, delimiter)");
                 } else {
                     self.infer_expr(&args[0], scopes);
                     self.infer_expr(&args[1], scopes);
@@ -1230,7 +1330,7 @@ impl<'a> Checker<'a> {
             }
             "str_join" => {
                 if args.len() != 2 {
-                    self.emit("str_join expects 2 arguments (list, separator)");
+                    self.emit_code(crate::diagnostic::codes::E0242, "str_join expects 2 arguments (list, separator)");
                 } else {
                     self.infer_expr(&args[0], scopes);
                     self.infer_expr(&args[1], scopes);
@@ -1239,7 +1339,7 @@ impl<'a> Checker<'a> {
             }
             "str_trim" | "str_to_upper" | "str_to_lower" => {
                 if args.len() != 1 {
-                    self.emit(format!("{} expects 1 argument", name));
+                    self.emit_code(crate::diagnostic::codes::E0242, format!("{} expects 1 argument", name));
                 } else {
                     self.infer_expr(&args[0], scopes);
                 }
@@ -1247,7 +1347,7 @@ impl<'a> Checker<'a> {
             }
             "str_starts_with" | "str_ends_with" | "str_contains" => {
                 if args.len() != 2 {
-                    self.emit(format!("{} expects 2 arguments", name));
+                    self.emit_code(crate::diagnostic::codes::E0242, format!("{} expects 2 arguments", name));
                 } else {
                     self.infer_expr(&args[0], scopes);
                     self.infer_expr(&args[1], scopes);
@@ -1256,7 +1356,7 @@ impl<'a> Checker<'a> {
             }
             "str_replace" => {
                 if args.len() != 3 {
-                    self.emit("str_replace expects 3 arguments");
+                    self.emit_code(crate::diagnostic::codes::E0242, "str_replace expects 3 arguments");
                 } else {
                     self.infer_expr(&args[0], scopes);
                     self.infer_expr(&args[1], scopes);
@@ -1266,7 +1366,7 @@ impl<'a> Checker<'a> {
             }
             "str_repeat" => {
                 if args.len() != 2 {
-                    self.emit("str_repeat expects 2 arguments");
+                    self.emit_code(crate::diagnostic::codes::E0242, "str_repeat expects 2 arguments");
                 } else {
                     self.infer_expr(&args[0], scopes);
                     self.infer_expr(&args[1], scopes);
@@ -1275,7 +1375,7 @@ impl<'a> Checker<'a> {
             }
             "str_char_at" => {
                 if args.len() != 2 {
-                    self.emit("str_char_at expects 2 arguments");
+                    self.emit_code(crate::diagnostic::codes::E0242, "str_char_at expects 2 arguments");
                 } else {
                     self.infer_expr(&args[0], scopes);
                     self.infer_expr(&args[1], scopes);
@@ -1284,7 +1384,7 @@ impl<'a> Checker<'a> {
             }
             "str_substring" => {
                 if args.len() != 3 {
-                    self.emit("str_substring expects 3 arguments");
+                    self.emit_code(crate::diagnostic::codes::E0242, "str_substring expects 3 arguments");
                 } else {
                     self.infer_expr(&args[0], scopes);
                     self.infer_expr(&args[1], scopes);
@@ -1294,7 +1394,7 @@ impl<'a> Checker<'a> {
             }
             "str_index_of" => {
                 if args.len() != 2 {
-                    self.emit("str_index_of expects 2 arguments");
+                    self.emit_code(crate::diagnostic::codes::E0242, "str_index_of expects 2 arguments");
                 } else {
                     self.infer_expr(&args[0], scopes);
                     self.infer_expr(&args[1], scopes);
@@ -1306,7 +1406,7 @@ impl<'a> Checker<'a> {
             }
             "str_parse_int" => {
                 if args.len() != 1 {
-                    self.emit("str_parse_int expects 1 argument");
+                    self.emit_code(crate::diagnostic::codes::E0242, "str_parse_int expects 1 argument");
                 } else {
                     self.infer_expr(&args[0], scopes);
                 }
@@ -1317,7 +1417,7 @@ impl<'a> Checker<'a> {
             }
             "str_parse_float" => {
                 if args.len() != 1 {
-                    self.emit("str_parse_float expects 1 argument");
+                    self.emit_code(crate::diagnostic::codes::E0242, "str_parse_float expects 1 argument");
                 } else {
                     self.infer_expr(&args[0], scopes);
                 }
@@ -1334,7 +1434,7 @@ impl<'a> Checker<'a> {
             }
             "str_to_c_str" => {
                 if args.len() != 1 {
-                    self.emit("str_to_c_str expects 1 argument");
+                    self.emit_code(crate::diagnostic::codes::E0242, "str_to_c_str expects 1 argument");
                 } else {
                     self.infer_expr(&args[0], scopes);
                 }
@@ -1345,7 +1445,7 @@ impl<'a> Checker<'a> {
             }
             "c_str_to_string" => {
                 if args.len() != 1 {
-                    self.emit("c_str_to_string expects 1 argument");
+                    self.emit_code(crate::diagnostic::codes::E0242, "c_str_to_string expects 1 argument");
                 } else {
                     self.infer_expr(&args[0], scopes);
                 }
@@ -1353,7 +1453,7 @@ impl<'a> Checker<'a> {
             }
             "from_json" => {
                 if args.len() != 1 {
-                    self.emit("from_json expects 1 argument");
+                    self.emit_code(crate::diagnostic::codes::E0242, "from_json expects 1 argument");
                 } else {
                     self.infer_expr(&args[0], scopes);
                 }
@@ -1361,7 +1461,7 @@ impl<'a> Checker<'a> {
             }
             "json_is_valid" => {
                 if args.len() != 1 {
-                    self.emit("json_is_valid expects 1 argument");
+                    self.emit_code(crate::diagnostic::codes::E0242, "json_is_valid expects 1 argument");
                 } else {
                     self.infer_expr(&args[0], scopes);
                 }
@@ -1369,7 +1469,7 @@ impl<'a> Checker<'a> {
             }
             "json_get_string" => {
                 if args.len() != 2 {
-                    self.emit("json_get_string expects 2 arguments");
+                    self.emit_code(crate::diagnostic::codes::E0242, "json_get_string expects 2 arguments");
                 } else {
                     self.infer_expr(&args[0], scopes);
                     self.infer_expr(&args[1], scopes);
@@ -1378,7 +1478,7 @@ impl<'a> Checker<'a> {
             }
             "json_get_int" => {
                 if args.len() != 2 {
-                    self.emit("json_get_int expects 2 arguments");
+                    self.emit_code(crate::diagnostic::codes::E0242, "json_get_int expects 2 arguments");
                 } else {
                     self.infer_expr(&args[0], scopes);
                     self.infer_expr(&args[1], scopes);
@@ -1387,7 +1487,7 @@ impl<'a> Checker<'a> {
             }
             "json_get_element" => {
                 if args.len() != 2 {
-                    self.emit("json_get_element expects 2 arguments");
+                    self.emit_code(crate::diagnostic::codes::E0242, "json_get_element expects 2 arguments");
                 } else {
                     self.infer_expr(&args[0], scopes);
                     self.infer_expr(&args[1], scopes);
@@ -1410,12 +1510,12 @@ impl<'a> Checker<'a> {
                     });
                 if let Some((param_types, ret_ty)) = closure_sig {
                     if args.len() != param_types.len() {
-                        self.emit(format!("closure '{}' expects {} arguments, got {}", name, param_types.len(), args.len()));
+                        self.emit_code(crate::diagnostic::codes::E0257, format!("closure '{}' expects {} arguments, got {}", name, param_types.len(), args.len()));
                     } else {
                         for (i, (arg, param_ty)) in args.iter().zip(param_types.iter()).enumerate() {
                             let arg_ty = self.infer_expr(arg, scopes);
                             if !same_type(&arg_ty, param_ty) {
-                                self.emit(format!("argument {} of closure '{}' expected {}, found {}", i + 1, name, fmt_type(param_ty), fmt_type(&arg_ty)));
+                                self.emit_code(crate::diagnostic::codes::E0211, format!("argument {} of closure '{}' expected {}, found {}", i + 1, name, fmt_type(param_ty), fmt_type(&arg_ty)));
                             }
                         }
                     }
@@ -1425,7 +1525,7 @@ impl<'a> Checker<'a> {
                 match name {
                     "Some" => {
                         if args.len() != 1 {
-                            self.emit("Some expects 1 argument");
+                            self.emit_code(crate::diagnostic::codes::E0242, "Some expects 1 argument");
                         } else {
                             let inner = self.infer_expr(&args[0], scopes);
                             return Type::Option(Box::new(inner));
@@ -1434,13 +1534,13 @@ impl<'a> Checker<'a> {
                     }
                     "None" => {
                         if args.len() != 0 {
-                            self.emit("None expects 0 arguments");
+                            self.emit_code(crate::diagnostic::codes::E0242, "None expects 0 arguments");
                         }
                         return Type::Option(Box::new(Type::Name("unknown".into(), vec![])));
                     }
                     "Ok" => {
                         if args.len() != 1 {
-                            self.emit("Ok expects 1 argument");
+                            self.emit_code(crate::diagnostic::codes::E0242, "Ok expects 1 argument");
                         } else {
                             let inner = self.infer_expr(&args[0], scopes);
                             return Type::Result(Box::new(inner), Box::new(Type::Name("unknown".into(), vec![])));
@@ -1452,7 +1552,7 @@ impl<'a> Checker<'a> {
                     }
                     "Err" => {
                         if args.len() != 1 {
-                            self.emit("Err expects 1 argument");
+                            self.emit_code(crate::diagnostic::codes::E0242, "Err expects 1 argument");
                         } else {
                             let inner = self.infer_expr(&args[0], scopes);
                             return Type::Result(Box::new(Type::Name("unknown".into(), vec![])), Box::new(inner));
@@ -1491,7 +1591,7 @@ impl<'a> Checker<'a> {
         };
 
         if args.len() != params.len() {
-            self.emit(format!(
+            self.emit_code(crate::diagnostic::codes::E0257, format!(
                 "function '{}' expects {} arguments, got {}",
                 name,
                 params.len(),
@@ -1516,7 +1616,7 @@ impl<'a> Checker<'a> {
                         if self.type_uses_type_param(param, &type_param) {
                             for bound in &bounds {
                                 if !self.type_implements_trait(&at, bound) {
-                                    self.emit(format!(
+                                    self.emit_code(crate::diagnostic::codes::E0253, format!(
                                         "where constraint violated: type '{}' does not implement trait '{}' (required by function '{}')",
                                         fmt_type(&at),
                                         bound,
@@ -1533,7 +1633,7 @@ impl<'a> Checker<'a> {
                     let at = self.infer_expr(arg, scopes);
                     let subst_param = subst_type_params(param, &generics, &type_map);
                     if !same_type(&at, &subst_param) {
-                        self.emit(format!(
+                        self.emit_code(crate::diagnostic::codes::E0211, format!(
                             "argument {} of '{}' expected {}, found {}",
                             i + 1,
                             name,
@@ -1548,7 +1648,7 @@ impl<'a> Checker<'a> {
                 for (i, (arg, param)) in args.iter().zip(params.iter()).enumerate() {
                     let at = self.infer_expr(arg, scopes);
                     if !same_type(&at, param) {
-                        self.emit(format!(
+                        self.emit_code(crate::diagnostic::codes::E0211, format!(
                             "argument {} of '{}' expected {}, found {}",
                             i + 1,
                             name,
@@ -1564,7 +1664,7 @@ impl<'a> Checker<'a> {
                         if self.type_uses_type_param(param, &type_param) {
                             for bound in &bounds {
                                 if !self.type_implements_trait(&at, bound) {
-                                    self.emit(format!(
+                                    self.emit_code(crate::diagnostic::codes::E0253, format!(
                                         "where constraint violated: type '{}' does not implement trait '{}' (required by function '{}')",
                                         fmt_type(&at),
                                         bound,
@@ -1581,7 +1681,7 @@ impl<'a> Checker<'a> {
             if let Some(required_effects) = self.func_effects.get(name).cloned() {
                 for effect in &required_effects {
                     if !self.has_effect(effect) {
-                        self.emit(format!(
+                        self.emit_code(crate::diagnostic::codes::E0254, format!(
                             "effect '{}' required by function '{}' is not available in current scope",
                             effect, name
                         ));
@@ -1678,11 +1778,11 @@ impl<'a> Checker<'a> {
             }
             "unwrap_or" => {
                 if args.len() != 1 {
-                    self.emit("unwrap_or expects 1 argument");
+                    self.emit_code(crate::diagnostic::codes::E0242, "unwrap_or expects 1 argument");
                 } else {
                     let default = self.infer_expr(&args[0], scopes);
                     if !same_type(&default, inner) {
-                        self.emit(format!("unwrap_or expected {}, found {}", fmt_type(inner), fmt_type(&default)));
+                        self.emit_code(crate::diagnostic::codes::E0242, format!("unwrap_or expected {}, found {}", fmt_type(inner), fmt_type(&default)));
                     }
                 }
                 (*inner).clone()
@@ -1693,7 +1793,7 @@ impl<'a> Checker<'a> {
             "and_then" => Type::Name("unknown".into(), vec![]),
             "map_err" => Type::Option(Box::new((*inner).clone())),
             _ => {
-                self.emit(format!("Option<{}> has no method '{}'", fmt_type(inner), method));
+                self.emit_code(crate::diagnostic::codes::E0242, format!("Option<{}> has no method '{}'", fmt_type(inner), method));
                 Type::Name("unknown".into(), vec![])
             }
         }
@@ -1710,11 +1810,11 @@ impl<'a> Checker<'a> {
             }
             "unwrap_or" => {
                 if args.len() != 1 {
-                    self.emit("unwrap_or expects 1 argument");
+                    self.emit_code(crate::diagnostic::codes::E0242, "unwrap_or expects 1 argument");
                 } else {
                     let default = self.infer_expr(&args[0], scopes);
                     if !same_type(&default, ok_ty) {
-                        self.emit(format!("unwrap_or expected {}, found {}", fmt_type(ok_ty), fmt_type(&default)));
+                        self.emit_code(crate::diagnostic::codes::E0242, format!("unwrap_or expected {}, found {}", fmt_type(ok_ty), fmt_type(&default)));
                     }
                 }
                 (*ok_ty).clone()
@@ -1724,7 +1824,7 @@ impl<'a> Checker<'a> {
             "and_then" => Type::Name("unknown".into(), vec![]),
             "map_err" => Type::Result(Box::new((*ok_ty).clone()), Box::new(Type::Name("unknown".into(), vec![]))),
             _ => {
-                self.emit(format!("Result<{}, {}> has no method '{}'", fmt_type(ok_ty), fmt_type(err_ty), method));
+                self.emit_code(crate::diagnostic::codes::E0242, format!("Result<{}, {}> has no method '{}'", fmt_type(ok_ty), fmt_type(err_ty), method));
                 Type::Name("unknown".into(), vec![])
             }
         }
@@ -1735,7 +1835,7 @@ impl<'a> Checker<'a> {
         match method {
             "len" | "trim" | "to_upper" | "to_lower" => {
                 if !args.is_empty() {
-                    self.emit(format!("{} takes no arguments", method));
+                    self.emit_code(crate::diagnostic::codes::E0242, format!("{} takes no arguments", method));
                 }
                 match method {
                     "len" => Type::Name("i32".into(), vec![]),
@@ -1743,14 +1843,14 @@ impl<'a> Checker<'a> {
                 }
             }
             "parse_int" => {
-                if args.len() != 0 { self.emit("parse_int takes no arguments"); }
+                if args.len() != 0 { self.emit_code(crate::diagnostic::codes::E0242, "parse_int takes no arguments"); }
                 Type::Result(
                     Box::new(Type::Name("i32".into(), vec![])),
                     Box::new(Type::Name("string".into(), vec![])),
                 )
             }
             "parse_float" => {
-                if args.len() != 0 { self.emit("parse_float takes no arguments"); }
+                if args.len() != 0 { self.emit_code(crate::diagnostic::codes::E0242, "parse_float takes no arguments"); }
                 Type::Result(
                     Box::new(Type::Name("f64".into(), vec![])),
                     Box::new(Type::Name("string".into(), vec![])),
@@ -1758,34 +1858,34 @@ impl<'a> Checker<'a> {
             }
             "contains" | "starts_with" | "ends_with" => {
                 if args.len() != 1 {
-                    self.emit(format!("{} expects 1 argument", method));
+                    self.emit_code(crate::diagnostic::codes::E0242, format!("{} expects 1 argument", method));
                 } else {
                     let t = self.infer_expr(&args[0], scopes);
                     if !same_type(&t, &Type::Name("string".into(), vec![])) {
-                        self.emit(format!("{} expects a string argument", method));
+                        self.emit_code(crate::diagnostic::codes::E0242, format!("{} expects a string argument", method));
                     }
                 }
                 Type::Name("bool".into(), vec![])
             }
             "split" => {
                 if args.len() != 1 {
-                    self.emit("split expects 1 argument");
+                    self.emit_code(crate::diagnostic::codes::E0242, "split expects 1 argument");
                 } else {
                     let t = self.infer_expr(&args[0], scopes);
                     if !same_type(&t, &Type::Name("string".into(), vec![])) {
-                        self.emit("split expects a string argument");
+                        self.emit_code(crate::diagnostic::codes::E0242, "split expects a string argument");
                     }
                 }
                 Type::Name("List".into(), vec![Type::Name("string".into(), vec![])])
             }
             "replace" => {
                 if args.len() != 2 {
-                    self.emit("replace expects 2 arguments");
+                    self.emit_code(crate::diagnostic::codes::E0242, "replace expects 2 arguments");
                 } else {
                     for a in args {
                         let t = self.infer_expr(a, scopes);
                         if !same_type(&t, &Type::Name("string".into(), vec![])) {
-                            self.emit("replace expects string arguments");
+                            self.emit_code(crate::diagnostic::codes::E0242, "replace expects string arguments");
                         }
                     }
                 }
@@ -1793,34 +1893,34 @@ impl<'a> Checker<'a> {
             }
             "repeat" => {
                 if args.len() != 1 {
-                    self.emit("repeat expects 1 argument");
+                    self.emit_code(crate::diagnostic::codes::E0242, "repeat expects 1 argument");
                 } else {
                     let t = self.infer_expr(&args[0], scopes);
                     if !is_int(&t) {
-                        self.emit("repeat expects an integer argument");
+                        self.emit_code(crate::diagnostic::codes::E0242, "repeat expects an integer argument");
                     }
                 }
                 Type::Name("string".into(), vec![])
             }
             "char_at" => {
                 if args.len() != 1 {
-                    self.emit("char_at expects 1 argument");
+                    self.emit_code(crate::diagnostic::codes::E0242, "char_at expects 1 argument");
                 } else {
                     let t = self.infer_expr(&args[0], scopes);
                     if !is_int(&t) {
-                        self.emit("char_at expects an integer argument");
+                        self.emit_code(crate::diagnostic::codes::E0242, "char_at expects an integer argument");
                     }
                 }
                 Type::Name("string".into(), vec![])
             }
             "substring" => {
                 if args.len() != 2 {
-                    self.emit("substring expects 2 arguments");
+                    self.emit_code(crate::diagnostic::codes::E0242, "substring expects 2 arguments");
                 } else {
                     for a in args {
                         let t = self.infer_expr(a, scopes);
                         if !is_int(&t) {
-                            self.emit("substring expects integer arguments");
+                            self.emit_code(crate::diagnostic::codes::E0242, "substring expects integer arguments");
                         }
                     }
                 }
@@ -1828,17 +1928,17 @@ impl<'a> Checker<'a> {
             }
             "index_of" => {
                 if args.len() != 1 {
-                    self.emit("index_of expects 1 argument");
+                    self.emit_code(crate::diagnostic::codes::E0242, "index_of expects 1 argument");
                 } else {
                     let t = self.infer_expr(&args[0], scopes);
                     if !same_type(&t, &Type::Name("string".into(), vec![])) {
-                        self.emit("index_of expects a string argument");
+                        self.emit_code(crate::diagnostic::codes::E0242, "index_of expects a string argument");
                     }
                 }
                 Type::Name("i32".into(), vec![])
             }
             _ => {
-                self.emit(format!("string has no method '{}'", method));
+                self.emit_code(crate::diagnostic::codes::E0242, format!("string has no method '{}'", method));
                 Type::Name("unknown".into(), vec![])
             }
         }
@@ -1849,7 +1949,7 @@ impl<'a> Checker<'a> {
         match method {
             "len" => Type::Name("i32".into(), vec![]),
             _ => {
-                self.emit(format!("List has no method '{}'", method));
+                self.emit_code(crate::diagnostic::codes::E0242, format!("List has no method '{}'", method));
                 Type::Name("unknown".into(), vec![])
             }
         }

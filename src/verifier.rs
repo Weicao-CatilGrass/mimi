@@ -142,6 +142,7 @@ impl Verifier {
                 status: VerifStatus::Failed,
                 message: "preconditions are unsatisfiable".into(),
                 diagnostic: Some(
+                    // ExternFunc lacks a pos field; add one to AST for proper span propagation
                     Diagnostic::error(
                         format!("extern function '{}' has unsatisfiable requires", func.name),
                         Span::single(0, 0),
@@ -242,12 +243,18 @@ impl Verifier {
                     ensures_spans.push(*span);
                 }
                 Stmt::Math(exprs) => math_exprs.extend(exprs.clone()),
-                Stmt::MmsBlock { content: text, .. } => {
+                Stmt::MmsBlock { content: text, span: mms_span, .. } => {
                     let contract = contracts::extract_contracts(text);
+                    for _ in &contract.requires {
+                        requires_spans.push(*mms_span);
+                    }
                     for req_text in &contract.requires {
                         if let Ok(expr) = parse_contract_expr(req_text) {
                             requires_exprs.push(expr);
                         }
+                    }
+                    for _ in &contract.ensures {
+                        ensures_spans.push(*mms_span);
                     }
                     for ens_text in &contract.ensures {
                         if let Ok(expr) = parse_contract_expr(ens_text) {
@@ -395,7 +402,7 @@ impl Verifier {
                 }
             }
             Ok(SatResult::Unsat) => {
-                let req_span = requires_spans.first().copied().unwrap_or_else(|| Span::single(0, 0));
+                let req_span = requires_spans.first().copied().unwrap_or_else(|| Span::single(func.pos.0, func.pos.1));
                 let diagnostic = Diagnostic::error(
                     format!("preconditions are unsatisfiable for '{}'", func.name),
                     req_span,
@@ -593,12 +600,12 @@ impl Verifier {
             }
         }
 
-        let primary_span = ensures_spans.first().copied().unwrap_or_else(|| Span::single(0, 0));
+        let primary_span = ensures_spans.first().copied().unwrap_or_else(|| Span::single(func.pos.0, func.pos.1));
         let mut diag = Diagnostic::error(message, primary_span).with_code("E0500");
 
         if !requires_exprs.is_empty() {
             let req_strs: Vec<String> = requires_exprs.iter().map(format_expr).collect();
-            let req_span = requires_spans.first().copied().unwrap_or_else(|| Span::single(0, 0));
+            let req_span = requires_spans.first().copied().unwrap_or_else(|| Span::single(func.pos.0, func.pos.1));
             diag = diag.with_note(
                 format!("preconditions satisfied: {}", req_strs.join(", ")),
                 req_span,
@@ -607,7 +614,7 @@ impl Verifier {
 
         for &idx in counterexample.violated_indices.iter() {
             if let Some(ens) = ensures_exprs.get(idx) {
-                let ens_span = ensures_spans.get(idx).copied().unwrap_or_else(|| Span::single(0, 0));
+                let ens_span = ensures_spans.get(idx).copied().unwrap_or_else(|| Span::single(func.pos.0, func.pos.1));
                 diag = diag.with_note(
                     format!("postcondition '{}' is false", format_expr(ens)),
                     ens_span,

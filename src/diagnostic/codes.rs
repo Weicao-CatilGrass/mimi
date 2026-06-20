@@ -115,6 +115,26 @@ pub const E0600: &str = "E0600"; // variable shadows outer variable (warning)
 pub const E0601: &str = "E0601"; // unused variable
 pub const E0602: &str = "E0602"; // unused import
 
+/// Builtin function / miscellaneous error codes (E0242-E0259)
+pub const E0242: &str = "E0242"; // builtin function error (argument count/type)
+pub const E0243: &str = "E0243"; // tuple index out of bounds
+pub const E0244: &str = "E0244"; // cannot index non-tuple type
+pub const E0245: &str = "E0245"; // await requires Future type
+pub const E0246: &str = "E0246"; // type has no variant
+pub const E0247: &str = "E0247"; // record field type mismatch
+pub const E0248: &str = "E0248"; // missing field in record literal
+pub const E0249: &str = "E0249"; // name is not a record type
+pub const E0250: &str = "E0250"; // comprehension requires list
+pub const E0251: &str = "E0251"; // pattern mismatch
+pub const E0252: &str = "E0252"; // missing method in trait impl
+pub const E0253: &str = "E0253"; // where constraint violated
+pub const E0254: &str = "E0254"; // effect not available in scope
+pub const E0255: &str = "E0255"; // function does not return on all paths
+pub const E0256: &str = "E0256"; // linear capability not consumed
+pub const E0257: &str = "E0257"; // function argument count mismatch
+pub const E0258: &str = "E0258"; // shared binding type mismatch
+pub const E0259: &str = "E0259"; // non-expr assignment target
+
 /// Codegen error codes (E07xx)
 pub const E0700: &str = "E0700"; // codegen internal error
 pub const E0701: &str = "E0701"; // unsupported expression in codegen
@@ -216,6 +236,24 @@ pub fn describe(code: &str) -> &'static str {
         E0239 => "turbofish type argument count mismatch",
         E0240 => "where constraint violated",
         E0241 => "effect not available",
+        E0242 => "builtin function error",
+        E0243 => "tuple index out of bounds",
+        E0244 => "cannot index non-tuple type",
+        E0245 => "await requires Future type",
+        E0246 => "type has no variant",
+        E0247 => "record field type mismatch",
+        E0248 => "missing field in record literal",
+        E0249 => "name is not a record type",
+        E0250 => "comprehension requires list",
+        E0251 => "pattern mismatch",
+        E0252 => "missing method in trait impl",
+        E0253 => "where constraint violated",
+        E0254 => "effect not available in scope",
+        E0255 => "function does not return on all paths",
+        E0256 => "linear capability not consumed",
+        E0257 => "function argument count mismatch",
+        E0258 => "shared binding type mismatch",
+        E0259 => "non-expr assignment target",
 
         E0300 => "cannot borrow as mutable because already immutably borrowed",
         E0301 => "cannot borrow as mutable because already mutably borrowed",
