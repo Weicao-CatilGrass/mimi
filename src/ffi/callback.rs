@@ -19,8 +19,9 @@ pub struct CallbackHandle {
     pub invoker: Option<Box<dyn Fn(i64, &[i64]) -> i64 + Send + Sync>>,
 }
 
-// Safety: userdata is only accessed from C code that respects the protocol.
+// SAFETY: userdata is only accessed from C code that respects the protocol.
 unsafe impl Send for CallbackHandle {}
+// SAFETY: userdata is only accessed from C code that respects the protocol.
 unsafe impl Sync for CallbackHandle {}
 
 /// Global table of callback handles
@@ -136,7 +137,7 @@ mod tests {
         let id = CALLBACK_TABLE.register(
             Some(Box::new(|_id: i64, args: &[i64]| -> i64 { args[0] + args[1] })),
         );
-        // Safety: callback_trampoline is a safe-to-call extern "C" function; id is a valid registered callback ID and args are simple integers.
+        // SAFETY: callback_trampoline is a safe-to-call extern "C" function; id is a valid registered callback ID and args are simple integers.
         let result = unsafe { callback_trampoline(id, 3, 4, std::ptr::null_mut()) };
         assert_eq!(result, 7);
         CALLBACK_TABLE.remove(id);

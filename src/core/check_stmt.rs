@@ -138,7 +138,9 @@ impl<'a> Checker<'a> {
                             break;
                         }
                     }
-                    self.var_scopes.last_mut().expect("scope stack non-empty").insert(name.clone(), 0);
+                    if let Some(s) = self.var_scopes.last_mut() {
+                        s.insert(name.clone(), 0);
+                    }
                 }
 
                 let init_ty = init
@@ -173,15 +175,21 @@ impl<'a> Checker<'a> {
                 };
                 // Track mutability
                 if let Pattern::Variable(name) = pat {
-                    self.mut_vars.last_mut().expect("scope stack non-empty").insert(name.clone(), *mut_);
+                    if let Some(s) = self.mut_vars.last_mut() {
+                        s.insert(name.clone(), *mut_);
+                    }
                 }
                 self.check_pattern(pat, &final_ty, scopes);
                 // Track cap variables for linear type checking and introduce effects
                 if let Type::Cap(cap_name) = &final_ty {
                     if let Pattern::Variable(name) = pat {
-                        self.cap_vars.last_mut().expect("scope stack non-empty").insert(name.clone(), false);
+                        if let Some(s) = self.cap_vars.last_mut() {
+                            s.insert(name.clone(), false);
+                        }
                         // Introduce the cap as an effect
-                        self.available_effects.last_mut().expect("scope stack non-empty").insert(cap_name.clone(), true);
+                        if let Some(s) = self.available_effects.last_mut() {
+                            s.insert(cap_name.clone(), true);
+                        }
                     }
                 }
             }
@@ -257,7 +265,9 @@ impl<'a> Checker<'a> {
                     }
                 };
                 scopes.push(HashMap::new());
-                scopes.last_mut().expect("scope stack non-empty").insert(var.clone(), elem_ty);
+                if let Some(s) = scopes.last_mut() {
+                    s.insert(var.clone(), elem_ty);
+                }
                 self.loop_depth += 1;
                 self.check_block(body, ret, scopes);
                 self.loop_depth -= 1;
@@ -328,7 +338,9 @@ impl<'a> Checker<'a> {
                         ));
                     }
                 }
-                scopes.last_mut().expect("scope stack non-empty").insert(name.clone(), final_ty);
+                if let Some(s) = scopes.last_mut() {
+                    s.insert(name.clone(), final_ty);
+                }
             }
             Stmt::Parasteps(block) => {
                 // Parasteps block executes statements in parallel
@@ -447,20 +459,22 @@ impl<'a> Checker<'a> {
                 self.infer_expr(expr, scopes);
                 // Mark the capability as consumed
                 if let Expr::Ident(name) = expr {
-                    if let Some(consumed) = self.cap_vars.last_mut().expect("scope stack non-empty").get_mut(name) {
-                        if *consumed {
-                            self.errors.push(
-                                Diagnostic::error_code(
-                                    crate::diagnostic::codes::E0304,
-                                    format!(
-                                        "capability '{}' has already been consumed",
-                                        name
-                                    ),
-                                    Span::single(self.current_line, self.current_col),
-                                ).with_help("capabilities are linear - each can only be dropped once")
-                            );
-                        } else {
-                            *consumed = true;
+                    if let Some(cap_scope) = self.cap_vars.last_mut() {
+                        if let Some(consumed) = cap_scope.get_mut(name) {
+                            if *consumed {
+                                self.errors.push(
+                                    Diagnostic::error_code(
+                                        crate::diagnostic::codes::E0304,
+                                        format!(
+                                            "capability '{}' has already been consumed",
+                                            name
+                                        ),
+                                        Span::single(self.current_line, self.current_col),
+                                    ).with_help("capabilities are linear - each can only be dropped once")
+                                );
+                            } else {
+                                *consumed = true;
+                            }
                         }
                     }
                 }

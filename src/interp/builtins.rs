@@ -237,7 +237,7 @@ impl<'a> Interpreter<'a> {
                     return Err(InterpError::new("pop from empty list"));
                 }
                 let mut new_list = l.clone();
-                let popped = new_list.pop().expect("checked non-empty above");
+                let popped = new_list.pop().ok_or_else(|| InterpError::new("pop from empty list"))?;
                 Ok(Value::Tuple(vec![popped, Value::List(new_list)]))
             }
             other => Err(InterpError::new(format!("pop: argument must be a list, found {}", super::value::type_name(other)))),
@@ -1163,14 +1163,18 @@ impl<'a> Interpreter<'a> {
                 if *ptr == 0 {
                     return Ok(Value::String(String::new()));
                 }
-                // Safety: ptr is checked for null above. We also validate that it points to
+                // SAFETY: ptr is checked for null above. We also validate that it points to
                 // readable memory by attempting to read the first byte via a catch_unwind guard.
                 // This does NOT guarantee the entire C string is valid, but catches obvious garbage.
                 let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     // Probe the first byte: dereference the pointer to check
                     // it points to readable memory (catches obvious garbage).
                     let ptr_raw = *ptr as *const u8;
+                    // SAFETY: ptr_raw is a raw pointer from the interpreter's heap; the probe
+                    // is wrapped in catch_unwind to recover from segfault on invalid pointers.
                     let _first_byte = unsafe { *ptr_raw };
+                    // SAFETY: CStr::from_ptr requires a valid null-terminated string pointer;
+                    // catch_unwind handles invalid pointer cases.
                     let c_str = unsafe { std::ffi::CStr::from_ptr(*ptr as *const i8) };
                     Value::String(c_str.to_string_lossy().into_owned())
                 }));

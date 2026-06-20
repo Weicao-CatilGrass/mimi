@@ -82,6 +82,7 @@ impl Drop for FfiSharedGuard {
 /// Safe wrapper around `libc::free` for use as a `free_callback`.
 fn callback_free_callback(ptr: *mut std::ffi::c_void) {
     if !ptr.is_null() {
+        // SAFETY: ptr is a non-null pointer previously obtained from libc::malloc (checked above).
         unsafe { libc::free(ptr); }
     }
 }
@@ -285,7 +286,7 @@ impl<'a> Interpreter<'a> {
         }) {
             idx
         } else {
-            // Safety: libloading::Library::new loads a shared library via FFI; the path is guaranteed valid by environment variable check above.
+            // SAFETY: libloading::Library::new loads a shared library via FFI; the path is guaranteed valid by environment variable check above.
             unsafe {
                 let lib = libloading::Library::new(&lib_path)
                     .map_err(|e| Errno::Generic(format!("failed to load library '{}': {}", lib_path, e)))?;
@@ -336,15 +337,17 @@ impl<'a> Interpreter<'a> {
                             _ => unreachable!("FFI contract ensures float arg is float or int"),
                         };
                         typed_storage.push(Box::new(f));
-                        let ptr = typed_storage.last().unwrap().downcast_ref::<f64>()
-                            .expect("FFI wrapper: Float contract pushed f64 but downcast failed — type mismatch in typed_storage");
+                        let last = typed_storage.last().ok_or_else(|| "FFI call: typed_storage is empty after push (impossible)".to_string())?;
+                        let ptr = last.downcast_ref::<f64>()
+                            .ok_or_else(|| "FFI call: expected f64 in typed_storage but downcast failed".to_string())?;
                         ffi_args.push(ffi_arg(ptr));
                     }
                     _ => {
                         let v = c_args[i];
                         typed_storage.push(Box::new(v));
-                        let ptr = typed_storage.last().unwrap().downcast_ref::<i64>()
-                            .expect("FFI wrapper: default contract pushed i64 but downcast failed — type mismatch in typed_storage");
+                        let last = typed_storage.last().ok_or_else(|| "FFI call: typed_storage is empty after push (impossible)".to_string())?;
+                        let ptr = last.downcast_ref::<i64>()
+                            .ok_or_else(|| "FFI call: expected i64 in typed_storage but downcast failed".to_string())?;
                         ffi_args.push(ffi_arg(ptr));
                     }
                 }
@@ -436,7 +439,7 @@ impl<'a> Interpreter<'a> {
 
         // Priority 2: Capture errno after C call if enabled
         let errno_value = if contract.check_errno {
-            // Safety: libc::__errno_location returns a valid pointer to thread-local errno; dereferencing it is safe after an FFI call.
+            // SAFETY: libc::__errno_location returns a valid pointer to thread-local errno; dereferencing it is safe after an FFI call.
             Some(unsafe { *libc::__errno_location() })
         } else {
             None
@@ -450,7 +453,7 @@ impl<'a> Interpreter<'a> {
                 // Bind 'result' to the return value for ensures evaluation
                 // by temporarily injecting it into the current scope
                 self.push_scope();
-                self.env.last_mut().unwrap().insert("result".to_string(), return_value.clone());
+                self.env.last_mut().ok_or_else(|| Errno::Generic("FFI call: no scope after push (impossible)".to_string()))?.insert("result".to_string(), return_value.clone());
                 let eval_result = self.eval_expr(ensures_expr);
                 self.pop_scope();
                 match eval_result {

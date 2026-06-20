@@ -136,7 +136,10 @@ pub enum Value {
 #[derive(Debug, Clone)]
 pub(crate) struct LocalSharedInner(pub Rc<RefCell<Value>>);
 
+// SAFETY: LocalSharedInner wraps Rc<RefCell<Value>> which is !Send/!Sync by default, but all accesses
+// are single-threaded (only used within the interpreter which is single-threaded per instance).
 unsafe impl Send for LocalSharedInner {}
+// SAFETY: Same reasoning as Send—single-threaded access only.
 unsafe impl Sync for LocalSharedInner {}
 
 impl std::ops::Deref for LocalSharedInner {
@@ -162,7 +165,10 @@ impl LocalSharedInner {
 #[derive(Debug, Clone)]
 pub(crate) struct WeakLocalInner(pub RcWeak<RefCell<Value>>);
 
+// SAFETY: WeakLocalInner wraps RcWeak<RefCell<Value>> which is !Send/!Sync by default, but all
+// accesses are single-threaded (only used within the interpreter which is single-threaded per instance).
 unsafe impl Send for WeakLocalInner {}
+// SAFETY: Same reasoning as Send—single-threaded access only.
 unsafe impl Sync for WeakLocalInner {}
 
 impl WeakLocalInner {
@@ -185,13 +191,16 @@ pub(crate) struct CBufferInner {
     pub size: usize,
 }
 
+// SAFETY: CBufferInner owns a heap-allocated buffer via raw pointer; ownership is exclusive
+// and the buffer is only accessed through safe methods that validate the pointer.
 unsafe impl Send for CBufferInner {}
+// SAFETY: Same reasoning as Send—exclusive ownership guarantees safe shared access.
 unsafe impl Sync for CBufferInner {}
 
 impl Drop for CBufferInner {
     fn drop(&mut self) {
         if !self.ptr.is_null() {
-            // Safety: ptr is a valid non-null pointer previously allocated by libc::malloc/calloc.
+            // SAFETY: ptr is a valid non-null pointer previously allocated by libc::malloc/calloc.
             unsafe {
                 libc::free(self.ptr as *mut libc::c_void);
             }

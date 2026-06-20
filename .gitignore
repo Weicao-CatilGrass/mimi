@@ -13,3 +13,6 @@ build/
 
 # pybind11 extension modules
 **/*.cpython-*.so
+
+# Golden test diff artifacts
+**/golden/*.diff.ir

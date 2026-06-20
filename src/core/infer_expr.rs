@@ -154,7 +154,9 @@ impl<'a> Checker<'a> {
                     Type::Name("unknown".into(), vec![])
                 };
                 // Add var to scope
-                scopes.last_mut().expect("scope stack non-empty").insert(var.clone(), elem_ty);
+                if let Some(s) = scopes.last_mut() {
+                    s.insert(var.clone(), elem_ty);
+                }
                 // Infer expression type
                 let expr_ty = self.infer_expr(expr, scopes);
                 // Check guard if present
@@ -302,7 +304,9 @@ impl<'a> Checker<'a> {
                 let param_types: Vec<Type> = params.iter().map(|p| self.resolve_type(&p.ty)).collect();
                 scopes.push(HashMap::new());
                 for p in params {
-                    scopes.last_mut().expect("scope non-empty").insert(p.name.clone(), self.resolve_type(&p.ty));
+                    if let Some(s) = scopes.last_mut() {
+                        s.insert(p.name.clone(), self.resolve_type(&p.ty));
+                    }
                 }
                 let mut body_type = Type::Name("unit".into(), vec![]);
                 for stmt in body {

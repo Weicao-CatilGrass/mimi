@@ -853,7 +853,8 @@ impl<'a> Interpreter<'a> {
                         if i < 0 || i >= len {
                             return Err(InterpError::new(format!("index out of bounds: index {} is not valid for string of length {}", i, len)));
                         }
-                        Ok(Value::String(s.chars().nth(i as usize).unwrap().to_string()))
+                        let ch = s.chars().nth(i as usize).ok_or_else(|| InterpError::new(format!("index out of bounds: index {} is not valid for string of length {}", i, len)))?;
+                        Ok(Value::String(ch.to_string()))
                     }
                     _ => Err(InterpError::new(format!("cannot index {} with {}", type_name(&obj), type_name(&idx)))),
                 }
