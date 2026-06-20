@@ -1,17 +1,13 @@
-#![allow(dead_code, deprecated)]
-
 use crate::ast::*;
 use crate::codegen::types;
-use inkwell::types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum};
-use inkwell::values::{BasicMetadataValueEnum, BasicValueEnum};
 use std::collections::HashMap;
 
 use crate::error::{CompileError, MimiResult};
 
 use super::CodeGenerator;
-use super::VarEntry;
 use inkwell::passes::PassBuilderOptions;
 use inkwell::targets::{InitializationConfig, Target, TargetMachine};
+use inkwell::types::BasicTypeEnum;
 use inkwell::OptimizationLevel;
 
 impl<'ctx> CodeGenerator<'ctx> {
@@ -23,7 +19,7 @@ impl<'ctx> CodeGenerator<'ctx> {
             .map(|(k, v)| format!("{}_{}", k, crate::core::fmt_type(v)))
             .collect();
         parts.sort();
-        format!("{}__{}", base, parts.join("__"))
+        format!("{}${}", base, parts.join("$"))
     }
 
     /// Resolve a type through the current type_map (substitute generic params)

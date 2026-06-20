@@ -1,6 +1,6 @@
 use super::CodeGenerator;
 use super::super::call_try_basic_value;
-use crate::error::MimiResult;
+use crate::error::{CompileError, MimiResult};
 use super::super::CallSiteValueExt;
 use inkwell::types::{BasicMetadataTypeEnum, BasicTypeEnum};
 use inkwell::values::{BasicMetadataValueEnum, BasicValueEnum};
@@ -11,10 +11,10 @@ impl<'ctx> CodeGenerator<'ctx> {
         &self,
         args: &[BasicMetadataValueEnum<'ctx>],
     ) -> MimiResult<BasicValueEnum<'ctx>> {
-                if args.len() != 3 { return Err("[E0711] socket expects 3 arguments".into()); }
-                let domain = match args[0] { BasicMetadataValueEnum::IntValue(iv) => iv, _ => return Err("[E0712] socket: domain must be i32".into()) };
-                let type_ = match args[1] { BasicMetadataValueEnum::IntValue(iv) => iv, _ => return Err("[E0712] socket: type must be i32".into()) };
-                let protocol = match args[2] { BasicMetadataValueEnum::IntValue(iv) => iv, _ => return Err("[E0712] socket: protocol must be i32".into()) };
+                if args.len() != 3 { return Err(CompileError::WrongArgCount("socket expects 3 arguments".to_string())); }
+                let domain = match args[0] { BasicMetadataValueEnum::IntValue(iv) => iv, _ => return Err(CompileError::TypeMismatch("socket: domain must be i32".to_string())) };
+                let type_ = match args[1] { BasicMetadataValueEnum::IntValue(iv) => iv, _ => return Err(CompileError::TypeMismatch("socket: type must be i32".to_string())) };
+                let protocol = match args[2] { BasicMetadataValueEnum::IntValue(iv) => iv, _ => return Err(CompileError::TypeMismatch("socket: protocol must be i32".to_string())) };
                 let func = self.module.get_function("mimi_socket")
                     .ok_or("mimi_socket not declared")?;
                 let result = self.builder.build_call(func, &[
@@ -32,10 +32,10 @@ impl<'ctx> CodeGenerator<'ctx> {
         &self,
         args: &[BasicMetadataValueEnum<'ctx>],
     ) -> MimiResult<BasicValueEnum<'ctx>> {
-                if args.len() != 3 { return Err("[E0711] connect expects 3 arguments (fd, host, port)".into()); }
-                let fd = match args[0] { BasicMetadataValueEnum::IntValue(iv) => iv, _ => return Err("[E0712] connect: fd must be i32".into()) };
+                if args.len() != 3 { return Err(CompileError::WrongArgCount("connect expects 3 arguments (fd, host, port)".to_string())); }
+                let fd = match args[0] { BasicMetadataValueEnum::IntValue(iv) => iv, _ => return Err(CompileError::TypeMismatch("connect: fd must be i32".to_string())) };
                 let host_ptr = self.extract_raw_str_ptr(&args[1])?;
-                let port = match args[2] { BasicMetadataValueEnum::IntValue(iv) => iv, _ => return Err("[E0712] connect: port must be i32".into()) };
+                let port = match args[2] { BasicMetadataValueEnum::IntValue(iv) => iv, _ => return Err(CompileError::TypeMismatch("connect: port must be i32".to_string())) };
                 let func = self.module.get_function("mimi_connect")
                     .ok_or("mimi_connect not declared")?;
                 let result = self.builder.build_call(func, &[
@@ -53,9 +53,9 @@ impl<'ctx> CodeGenerator<'ctx> {
         &self,
         args: &[BasicMetadataValueEnum<'ctx>],
     ) -> MimiResult<BasicValueEnum<'ctx>> {
-                if args.len() != 2 { return Err("[E0711] bind expects 2 arguments (fd, port)".into()); }
-                let fd = match args[0] { BasicMetadataValueEnum::IntValue(iv) => iv, _ => return Err("[E0712] bind: fd must be i32".into()) };
-                let port = match args[1] { BasicMetadataValueEnum::IntValue(iv) => iv, _ => return Err("[E0712] bind: port must be i32".into()) };
+                if args.len() != 2 { return Err(CompileError::WrongArgCount("bind expects 2 arguments (fd, port)".to_string())); }
+                let fd = match args[0] { BasicMetadataValueEnum::IntValue(iv) => iv, _ => return Err(CompileError::TypeMismatch("bind: fd must be i32".to_string())) };
+                let port = match args[1] { BasicMetadataValueEnum::IntValue(iv) => iv, _ => return Err(CompileError::TypeMismatch("bind: port must be i32".to_string())) };
                 let func = self.module.get_function("mimi_bind")
                     .ok_or("mimi_bind not declared")?;
                 let result = self.builder.build_call(func, &[
@@ -72,9 +72,9 @@ impl<'ctx> CodeGenerator<'ctx> {
         &self,
         args: &[BasicMetadataValueEnum<'ctx>],
     ) -> MimiResult<BasicValueEnum<'ctx>> {
-                if args.len() != 2 { return Err("[E0711] listen expects 2 arguments (fd, backlog)".into()); }
-                let fd = match args[0] { BasicMetadataValueEnum::IntValue(iv) => iv, _ => return Err("[E0712] listen: fd must be i32".into()) };
-                let backlog = match args[1] { BasicMetadataValueEnum::IntValue(iv) => iv, _ => return Err("[E0712] listen: backlog must be i32".into()) };
+                if args.len() != 2 { return Err(CompileError::WrongArgCount("listen expects 2 arguments (fd, backlog)".to_string())); }
+                let fd = match args[0] { BasicMetadataValueEnum::IntValue(iv) => iv, _ => return Err(CompileError::TypeMismatch("listen: fd must be i32".to_string())) };
+                let backlog = match args[1] { BasicMetadataValueEnum::IntValue(iv) => iv, _ => return Err(CompileError::TypeMismatch("listen: backlog must be i32".to_string())) };
                 let func = self.module.get_function("mimi_listen")
                     .ok_or("mimi_listen not declared")?;
                 let result = self.builder.build_call(func, &[
@@ -91,8 +91,8 @@ impl<'ctx> CodeGenerator<'ctx> {
         &self,
         args: &[BasicMetadataValueEnum<'ctx>],
     ) -> MimiResult<BasicValueEnum<'ctx>> {
-                if args.len() != 1 { return Err("[E0711] accept expects 1 argument (fd)".into()); }
-                let fd = match args[0] { BasicMetadataValueEnum::IntValue(iv) => iv, _ => return Err("[E0712] accept: fd must be i32".into()) };
+                if args.len() != 1 { return Err(CompileError::WrongArgCount("accept expects 1 argument (fd)".to_string())); }
+                let fd = match args[0] { BasicMetadataValueEnum::IntValue(iv) => iv, _ => return Err(CompileError::TypeMismatch("accept: fd must be i32".to_string())) };
                 let func = self.module.get_function("mimi_accept")
                     .ok_or("mimi_accept not declared")?;
                 let result = self.builder.build_call(func, &[
@@ -108,8 +108,8 @@ impl<'ctx> CodeGenerator<'ctx> {
         &self,
         args: &[BasicMetadataValueEnum<'ctx>],
     ) -> MimiResult<BasicValueEnum<'ctx>> {
-                if args.len() != 2 { return Err("[E0711] send expects 2 arguments (fd, data)".into()); }
-                let fd = match args[0] { BasicMetadataValueEnum::IntValue(iv) => iv, _ => return Err("[E0712] send: fd must be i32".into()) };
+                if args.len() != 2 { return Err(CompileError::WrongArgCount("send expects 2 arguments (fd, data)".to_string())); }
+                let fd = match args[0] { BasicMetadataValueEnum::IntValue(iv) => iv, _ => return Err(CompileError::TypeMismatch("send: fd must be i32".to_string())) };
                 let data_ptr = self.extract_raw_str_ptr(&args[1])?;
                 // Get string length via strlen
                 let strlen_fn = self.module.get_function("strlen")
@@ -138,9 +138,9 @@ impl<'ctx> CodeGenerator<'ctx> {
         &self,
         args: &[BasicMetadataValueEnum<'ctx>],
     ) -> MimiResult<BasicValueEnum<'ctx>> {
-                if args.len() != 2 { return Err("[E0711] recv expects 2 arguments (fd, buf_size)".into()); }
-                let fd = match args[0] { BasicMetadataValueEnum::IntValue(iv) => iv, _ => return Err("[E0712] recv: fd must be i32".into()) };
-                let buf_size = match args[1] { BasicMetadataValueEnum::IntValue(iv) => iv, _ => return Err("[E0712] recv: buf_size must be i32".into()) };
+                if args.len() != 2 { return Err(CompileError::WrongArgCount("recv expects 2 arguments (fd, buf_size)".to_string())); }
+                let fd = match args[0] { BasicMetadataValueEnum::IntValue(iv) => iv, _ => return Err(CompileError::TypeMismatch("recv: fd must be i32".to_string())) };
+                let buf_size = match args[1] { BasicMetadataValueEnum::IntValue(iv) => iv, _ => return Err(CompileError::TypeMismatch("recv: buf_size must be i32".to_string())) };
                 let i8_ptr_ty = self.context.i8_type().ptr_type(inkwell::AddressSpace::default());
                 // Allocate an i64 on stack to receive out_len
                 let out_len_alloca = self.builder.build_alloca(self.context.i64_type(), "recv_out_len")
@@ -185,8 +185,8 @@ impl<'ctx> CodeGenerator<'ctx> {
         &self,
         args: &[BasicMetadataValueEnum<'ctx>],
     ) -> MimiResult<BasicValueEnum<'ctx>> {
-                if args.len() != 1 { return Err("[E0711] close_fd expects 1 argument (fd)".into()); }
-                let fd = match args[0] { BasicMetadataValueEnum::IntValue(iv) => iv, _ => return Err("[E0712] close_fd: fd must be i32".into()) };
+                if args.len() != 1 { return Err(CompileError::WrongArgCount("close_fd expects 1 argument (fd)".to_string())); }
+                let fd = match args[0] { BasicMetadataValueEnum::IntValue(iv) => iv, _ => return Err(CompileError::TypeMismatch("close_fd: fd must be i32".to_string())) };
                 let func = self.module.get_function("mimi_close")
                     .ok_or("mimi_close not declared")?;
                 let result = self.builder.build_call(func, &[
@@ -202,7 +202,7 @@ impl<'ctx> CodeGenerator<'ctx> {
         &self,
         args: &[BasicMetadataValueEnum<'ctx>],
     ) -> MimiResult<BasicValueEnum<'ctx>> {
-                if args.len() != 1 { return Err("[E0711] http_get expects 1 argument (url)".into()); }
+                if args.len() != 1 { return Err(CompileError::WrongArgCount("http_get expects 1 argument (url)".to_string())); }
                 let url_ptr = self.extract_raw_str_ptr(&args[0])?;
                 let func = self.module.get_function("mimi_http_get")
                     .ok_or("mimi_http_get not declared")?;
@@ -247,7 +247,7 @@ impl<'ctx> CodeGenerator<'ctx> {
         &self,
         args: &[BasicMetadataValueEnum<'ctx>],
     ) -> MimiResult<BasicValueEnum<'ctx>> {
-                if args.len() != 2 { return Err("[E0711] http_post expects 2 arguments (url, body)".into()); }
+                if args.len() != 2 { return Err(CompileError::WrongArgCount("http_post expects 2 arguments (url, body)".to_string())); }
                 let url_ptr = self.extract_raw_str_ptr(&args[0])?;
                 let body_ptr = self.extract_raw_str_ptr(&args[1])?;
                 let func = self.module.get_function("mimi_http_post")

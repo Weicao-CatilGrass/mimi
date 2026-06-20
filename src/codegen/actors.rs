@@ -1,10 +1,9 @@
-#![allow(dead_code, deprecated)]
-
 use crate::ast::*;
 use crate::codegen::types;
+use std::collections::HashMap;
+
 use inkwell::types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum};
 use inkwell::values::{BasicMetadataValueEnum, BasicValueEnum};
-use std::collections::HashMap;
 
 use crate::error::{CompileError, MimiResult};
 
