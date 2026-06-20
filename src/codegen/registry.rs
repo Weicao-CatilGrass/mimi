@@ -609,8 +609,9 @@ impl<'ctx> CodeGenerator<'ctx> {
                             // Convert element to i64
                             let elem_i64 = match elem_raw {
                                 BasicValueEnum::IntValue(iv) => iv,
-                                BasicValueEnum::FloatValue(fv) => unsafe {
-                                    // Bitcast f64 bits to i64 via pointer
+                                BasicValueEnum::FloatValue(fv) =>
+                                    // SAFETY: Bitcast f64 bits to i64 via pointer; alloca is valid and freshly created.
+                                    unsafe {
                                     let f_alloca = self.builder.build_alloca(
                                         BasicTypeEnum::FloatType(self.context.f64_type()),
                                         &format!("tf_{}_{}", i, ei))
@@ -663,7 +664,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                                 }
                             };
                             // Store value to array via GEP
-                            // SAFETY: SAFETY: GEP on struct pointer with correct field index 0 (shared_retain).
+                            // SAFETY: GEP on struct pointer with correct field index 0 (shared_retain).
                             let val_gep = unsafe { self.builder.build_gep(
                                 i64_ty, vals_alloca, &[zero, idx],
                                 &format!("tv_gep_{}_{}", i, ei))
@@ -672,8 +673,8 @@ impl<'ctx> CodeGenerator<'ctx> {
                                 .map_err(|e| CompileError::LlvmError(format!("store: {}", e)))?;
                             // Store type tag
                             let tag_val = elem_type_tag(elem_ty);
-                            // SAFETY: SAFETY: GEP on struct pointer with correct field index 1 (type tag).
                             let tag_i64 = i64_ty.const_int(tag_val as u64, false);
+                            // SAFETY: GEP on struct pointer with correct field index 1 (type tag).
                             let ty_gep = unsafe { self.builder.build_gep(
                                 i64_ty, tys_alloca, &[zero, idx],
                                 &format!("tt_gep_{}_{}", i, ei))
@@ -796,7 +797,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                 };
                 if is_tuple_return {
                     // F7: Tuple return — deserialize JSON array back to LLVM struct
-                    let tuple_ty = ef.ret.as_ref().unwrap();
+                    let tuple_ty = ef.ret.as_ref().ok_or_else(|| CompileError::LlvmError("expected tuple return type for extern function".to_string()))?;
                     let elems = match tuple_ty {
                         crate::ast::Type::Tuple(e) => e,
                         _ => return Err(CompileError::LlvmError("expected tuple type".to_string())),
@@ -813,9 +814,9 @@ impl<'ctx> CodeGenerator<'ctx> {
                         .map_err(|e| CompileError::LlvmError(format!("alloca: {}", e)))?;
                     for (ei, elem_ty) in elems.iter().enumerate() {
                         let tag_val = elem_type_tag(elem_ty);
-                        // SAFETY: SAFETY: GEP on struct pointer with correct field index 1 (type tag).
                         let tag_i64 = i64_ty.const_int(tag_val as u64, false);
                         let idx = i32_ty.const_int(ei as u64, false);
+                        // SAFETY: GEP on struct pointer with correct field index 1 (type tag).
                         let ty_gep = unsafe { self.builder.build_gep(
                             i64_ty, tys_alloca, &[zero, idx],
                             &format!("tuple_ret_ty_gep_{}", ei))
@@ -857,10 +858,10 @@ impl<'ctx> CodeGenerator<'ctx> {
                     let struct_ty = types::mimi_type_to_llvm(self.context, tuple_ty)
                         .ok_or_else(|| CompileError::LlvmError("unsupported tuple type".to_string()))?;
                     let struct_alloca = self.builder.build_alloca(struct_ty, "tuple_ret")
-                        // SAFETY: SAFETY: GEP on struct pointer with correct field index 0 (shared_retain).
                         .map_err(|e| CompileError::LlvmError(format!("alloca: {}", e)))?;
                     for (ei, elem_ty) in elems.iter().enumerate() {
                         let idx = i32_ty.const_int(ei as u64, false);
+                        // SAFETY: GEP on struct pointer with correct field index 0 (shared_retain).
                         let val_gep = unsafe { self.builder.build_gep(
                             i64_ty, out_alloca, &[zero, idx],
                             &format!("tuple_ret_val_gep_{}", ei))

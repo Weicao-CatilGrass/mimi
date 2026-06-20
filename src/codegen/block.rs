@@ -121,7 +121,8 @@ impl<'ctx> CodeGenerator<'ctx> {
                             .map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?;
                         self.builder.build_store(vtable_gep, vtable_ptr)
                             .map_err(|e| CompileError::LlvmError(format!("store error: {}", e)))?;
-                        let dyn_type_str = crate::core::fmt_type(&ty.as_ref().unwrap());
+                        let ty_ref = ty.as_ref().ok_or_else(|| CompileError::LlvmError(format!("missing type for variable '{}'", name)))?;
+                        let dyn_type_str = crate::core::fmt_type(ty_ref);
                         self.var_type_names.insert(name.clone(), dyn_type_str);
                         vars.insert(name, (fat_alloca, fat_ty));
                         continue;

@@ -310,6 +310,7 @@ impl Errno {
             95 => Self::ENOLCK,
             96 => Self::ENOTEMPTY,
             _ => {
+                // SAFETY: libc::strerror returns a valid pointer to a thread-local error string for valid errno codes.
                 let name = unsafe {
                     let c_str = libc::strerror(code);
                     if !c_str.is_null() {

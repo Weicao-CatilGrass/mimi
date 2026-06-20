@@ -139,7 +139,8 @@ impl<'a> Interpreter<'a> {
             }
             // Check if this is a newtype constructor - wrap in Value::Newtype
             if *self.newtype_constructors.get(name).unwrap_or(&false) && args.len() == 1 {
-                return Ok(Value::Newtype(Box::new(args.into_iter().next().expect("args.len() == 1 guaranteed single element"))));
+                let val = args.into_iter().next().ok_or_else(|| InterpError::new("newtype constructor: expected one argument"))?;
+                return Ok(Value::Newtype(Box::new(val)));
             }
             return Ok(Value::Variant(name.into(), args));
         }
@@ -279,7 +280,10 @@ impl<'a> Interpreter<'a> {
             let mut interp = Interpreter::new(&file_clone);
             interp.push_scope();
             for (p, a) in func_clone.params.iter().zip(args_clone) {
-                interp.bind(&p.name, a).expect("scope was just pushed");
+                if let Err(e) = interp.bind(&p.name, a) {
+                    let _ = tx.send(Err(e));
+                    return;
+                }
             }
             let block_result = interp.eval_block(&func_clone.body).map(|v| v.unwrap_or(Value::Unit));
             let result = interp.early_return.take()

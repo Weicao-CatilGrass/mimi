@@ -120,25 +120,25 @@ impl SharedHandle {
     /// Execute a closure with a read-only reference to the inner value.
     /// Safe, scoped access — prefer this over raw pointer APIs.
     pub fn with_value<R>(&self, f: impl FnOnce(&Value) -> R) -> R {
-        let guard = self.inner.read().unwrap();
+        let guard = self.inner.read().unwrap_or_else(|e| e.into_inner());
         f(&*guard)
     }
 
     /// Execute a closure with a mutable reference to the inner value.
     /// Safe, scoped access — prefer this over raw pointer APIs.
     pub fn with_value_mut<R>(&self, f: impl FnOnce(&mut Value) -> R) -> R {
-        let mut guard = self.inner.write().unwrap();
+        let mut guard = self.inner.write().unwrap_or_else(|e| e.into_inner());
         f(&mut *guard)
     }
 
     /// Get a read guard for the inner value.
     pub fn borrow(&self) -> RwLockReadGuard<'_, Value> {
-        self.inner.read().unwrap()
+        self.inner.read().unwrap_or_else(|e| e.into_inner())
     }
 
     /// Get a write guard for the inner value.
     pub fn borrow_mut(&self) -> RwLockWriteGuard<'_, Value> {
-        self.inner.write().unwrap()
+        self.inner.write().unwrap_or_else(|e| e.into_inner())
     }
 
 /// Retain: increment the C-side strong reference count.
@@ -287,7 +287,7 @@ pub extern "C" fn mimi_shared_get_ptr(handle: i64) -> *const Value {
 #[no_mangle]
 pub extern "C" fn mimi_value_free(ptr: *mut Value) {
     if !ptr.is_null() {
-        // Safety: ptr is a non-null pointer to a heap-allocated Value, previously obtained via Box::into_raw.
+        // SAFETY: ptr is a non-null pointer to a heap-allocated Value, previously obtained via Box::into_raw.
         unsafe { drop(Box::from_raw(ptr)); }
     }
 }
@@ -298,7 +298,7 @@ pub extern "C" fn mimi_cap_check(cap: i64, name: *const std::ffi::c_char) -> boo
     if name.is_null() {
         return false;
     }
-    // Safety: name is a non-null pointer to a null-terminated C string (null-checked above).
+    // SAFETY: name is a non-null pointer to a null-terminated C string (null-checked above).
     let name_str = unsafe { std::ffi::CStr::from_ptr(name) }
         .to_str()
         .unwrap_or("");
@@ -311,7 +311,7 @@ pub extern "C" fn mimi_cap_consume(cap: i64, name: *const std::ffi::c_char) -> b
     if name.is_null() {
         return false;
     }
-    // Safety: name is a non-null pointer to a null-terminated C string (null-checked above).
+    // SAFETY: name is a non-null pointer to a null-terminated C string (null-checked above).
     let name_str = unsafe { std::ffi::CStr::from_ptr(name) }
         .to_str()
         .unwrap_or("");
@@ -322,7 +322,7 @@ pub extern "C" fn mimi_cap_consume(cap: i64, name: *const std::ffi::c_char) -> b
 #[no_mangle]
 pub extern "C" fn mimi_string_free_raw(c_str: *mut std::ffi::c_char) {
     if !c_str.is_null() {
-        // Safety: c_str is a non-null pointer to a CString previously created via CString::into_raw (null-checked above).
+        // SAFETY: c_str is a non-null pointer to a CString previously created via CString::into_raw (null-checked above).
         unsafe {
             drop(std::ffi::CString::from_raw(c_str));
         }
@@ -338,7 +338,7 @@ pub extern "C" fn mimi_string_as_c_str(mimi_string: *const Value) -> *const std:
     if mimi_string.is_null() {
         return std::ptr::null();
     }
-    // Safety: mimi_string is a non-null pointer to a valid heap-allocated Value (null-checked above).
+    // SAFETY: mimi_string is a non-null pointer to a valid heap-allocated Value (null-checked above).
     unsafe {
         match &*mimi_string {
             Value::String(s) => {
@@ -447,6 +447,7 @@ struct RawTask {
     pending: Arc<Mutex<i32>>,
     completion: Arc<std::sync::Condvar>,
 }
+// SAFETY: RawTask only carries a function pointer and a raw pointer, both of which are Send-safe.
 unsafe impl Send for RawTask {}
 
 impl MimiThreadPool {
@@ -496,10 +497,11 @@ impl MimiThreadPool {
             func: extern "C" fn(*mut u8),
             arg: *mut u8,
         }
+        // SAFETY: ClosureData holds only function pointers and raw pointers, both Send-safe.
         unsafe impl Send for ClosureData {}
 
         extern "C" fn closure_trampoline(data_ptr: *mut u8) {
-            // Safety: data_ptr was created by Box::into_raw and is guaranteed to be a valid heap-allocated Box<dyn FnOnce() + Send>.
+            // SAFETY: data_ptr was created by Box::into_raw and is guaranteed to be a valid heap-allocated Box<dyn FnOnce() + Send>.
             let data = unsafe { Box::from_raw(data_ptr as *mut Box<dyn FnOnce() + Send>) };
             (*data)();
         }
@@ -511,7 +513,7 @@ impl MimiThreadPool {
         });
         let data = Box::into_raw(data);
         extern "C" fn data_trampoline(data_ptr: *mut u8) -> *mut u8 {
-            // Safety: data_ptr was created by Box::into_raw and is guaranteed to be a valid heap-allocated ClosureData.
+            // SAFETY: data_ptr was created by Box::into_raw and is guaranteed to be a valid heap-allocated ClosureData.
             let data = unsafe { Box::from_raw(data_ptr as *mut ClosureData) };
             (data.func)(data.arg);
             std::ptr::null_mut()
@@ -530,7 +532,7 @@ impl MimiThreadPool {
     pub fn join_all(&self) {
         let mut count = self.pending.lock().unwrap_or_else(|e| e.into_inner());
         while *count > 0 {
-            count = self.completion.wait(count).unwrap();
+            count = self.completion.wait(count).unwrap_or_else(|e| e.into_inner());
         }
     }
 }

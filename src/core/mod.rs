@@ -1124,7 +1124,9 @@ impl<'a> Checker<'a> {
             let ty = self.resolve_type(&p.ty);
             // If param is a cap type, track it
             if matches!(&ty, Type::Cap(_)) {
-                self.cap_vars.last_mut().expect("scope stack non-empty").insert(p.name.clone(), false);
+                if let Some(s) = self.cap_vars.last_mut() {
+                    s.insert(p.name.clone(), false);
+                }
             }
             scopes[0].insert(p.name.clone(), ty);
         }
@@ -1273,7 +1275,9 @@ impl<'a> Checker<'a> {
                     _ => false,
                 };
                 if !is_constructor {
-                    scopes.last_mut().expect("scope stack non-empty").insert(name.clone(), subject.clone());
+                    if let Some(s) = scopes.last_mut() {
+                        s.insert(name.clone(), subject.clone());
+                    }
                 }
             }
             Pattern::Literal(l) => {
