@@ -131,13 +131,13 @@ declare ptr @mimi_http_get(ptr)
 
 declare ptr @mimi_http_post(ptr, ptr)
 
-declare i64 @__mimi_extern_strlen(ptr)
+declare i32 @__mimi_extern_strlen(ptr)
 
-define internal i64 @strlen.1({ ptr, i64 } %0) {
+define internal i32 @strlen.1({ ptr, i64 } %0) {
 entry:
   %str_ptr_0 = extractvalue { ptr, i64 } %0, 0
-  %extern_call = call i64 @__mimi_extern_strlen(ptr %str_ptr_0)
-  ret i64 %extern_call
+  %extern_call = call i32 @__mimi_extern_strlen(ptr %str_ptr_0)
+  ret i32 %extern_call
 }
 
 define i64 @main() {

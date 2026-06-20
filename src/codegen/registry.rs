@@ -137,7 +137,7 @@ impl<'ctx> CodeGenerator<'ctx> {
             let i8_ptr = self.context.i8_type().ptr_type(inkwell::AddressSpace::default());
             return BasicTypeEnum::PointerType(i8_ptr);
         }
-        types::mimi_type_to_llvm(self.context, ty)
+        types::mimi_type_to_llvm_extern(self.context, ty)
             .unwrap_or(BasicTypeEnum::IntType(self.context.i64_type()))
     }
 

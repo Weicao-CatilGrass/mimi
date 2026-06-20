@@ -10,6 +10,9 @@ use crate::error::{CompileError, MimiResult};
 
 use super::CodeGenerator;
 use super::VarEntry;
+use inkwell::passes::PassBuilderOptions;
+use inkwell::targets::{InitializationConfig, Target, TargetMachine};
+use inkwell::OptimizationLevel;
 
 impl<'ctx> CodeGenerator<'ctx> {
     pub(super) fn mangle_name(base: &str, type_map: &HashMap<String, crate::ast::Type>) -> String {
@@ -170,5 +173,26 @@ impl<'ctx> CodeGenerator<'ctx> {
             }
         }
         Ok(())
+    }
+
+    /// Run LLVM optimization passes on the module (O2).
+    /// Called from compile_to_object during actual builds.
+    pub fn optimize_module(&self) -> MimiResult<()> {
+        Target::initialize_native(&InitializationConfig::default())
+            .map_err(|e| CompileError::LlvmError(format!("failed to initialize target: {}", e)))?;
+        let triple = TargetMachine::get_default_triple();
+        let target = Target::from_triple(&triple)
+            .map_err(|e| CompileError::LlvmError(format!("failed to find target: {}", e)))?;
+        let cpu = TargetMachine::get_host_cpu_name().to_string();
+        let features = TargetMachine::get_host_cpu_features().to_string();
+        let tm = target.create_target_machine(
+            &triple, &cpu, &features,
+            OptimizationLevel::Aggressive,
+            inkwell::targets::RelocMode::Default,
+            inkwell::targets::CodeModel::Default,
+        ).ok_or_else(|| CompileError::LlvmError("failed to create target machine".to_string()))?;
+        let options = PassBuilderOptions::create();
+        self.module.run_passes("default<O2>", &tm, options)
+            .map_err(|e| CompileError::LlvmError(format!("optimization failed: {}", e)))
     }
 }

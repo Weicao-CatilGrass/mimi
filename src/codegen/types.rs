@@ -136,6 +136,35 @@ pub fn basic_to_metadata<'ctx>(ctx: &'ctx Context, ty: BasicTypeEnum<'ctx>) -> B
     }
 }
 
+/// Map a Mimi Type to LLVM for extern FFI (C ABI). i32 maps to LLVM i32 (int32_t)
+/// instead of the internal i64, ensuring correct ABI compatibility with C functions.
+pub fn mimi_type_to_llvm_extern<'ctx>(ctx: &'ctx Context, ty: &Type) -> Option<BasicTypeEnum<'ctx>> {
+    match ty {
+        Type::Name(name, _args) => match name.as_str() {
+            "i32" => Some(BasicTypeEnum::IntType(ctx.i32_type())),
+            _ => mimi_type_to_llvm(ctx, ty),
+        },
+        // For extern FFI, references are just pointers (no struct wrapping)
+        Type::Ref(_, inner) | Type::RefMut(_, inner) => {
+            let inner_llvm = mimi_type_to_llvm(ctx, inner)?;
+            let ptr = match inner_llvm {
+                BasicTypeEnum::IntType(t) => BasicTypeEnum::PointerType(t.ptr_type(AddressSpace::default())),
+                BasicTypeEnum::FloatType(t) => BasicTypeEnum::PointerType(t.ptr_type(AddressSpace::default())),
+                BasicTypeEnum::PointerType(t) => BasicTypeEnum::PointerType(t.ptr_type(AddressSpace::default())),
+                BasicTypeEnum::StructType(t) => BasicTypeEnum::PointerType(t.ptr_type(AddressSpace::default())),
+                BasicTypeEnum::ArrayType(t) => BasicTypeEnum::PointerType(t.ptr_type(AddressSpace::default())),
+                _ => BasicTypeEnum::PointerType(ctx.i8_type().ptr_type(AddressSpace::default())),
+            };
+            Some(ptr)
+        }
+        Type::Shared(_) | Type::LocalShared(_) | Type::Weak(_) | Type::WeakLocal(_)
+            | Type::CShared(_) | Type::CBorrow(_) | Type::CBorrowMut(_)
+            | Type::RawPtr(_) | Type::RawPtrMut(_) =>
+            Some(BasicTypeEnum::PointerType(ctx.i8_type().ptr_type(AddressSpace::default()))),
+        _ => mimi_type_to_llvm(ctx, ty),
+    }
+}
+
 /// Closure struct type: {fn_ptr: i8*, env_ptr: i8*}
 pub fn closure_struct_type<'ctx>(ctx: &'ctx Context) -> StructType<'ctx> {
     let i8_ptr = ctx.i8_type().ptr_type(AddressSpace::default());
