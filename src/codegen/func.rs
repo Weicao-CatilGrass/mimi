@@ -340,19 +340,29 @@ impl<'ctx> CodeGenerator<'ctx> {
                                     }
                                 }
                             } else if let Expr::Ident(func_name) = callee.as_ref() {
-                                if let Some(fdef) = self.func_defs.get(func_name) {
-                                    if let Some(ret_ty) = &fdef.ret {
-                                        match ret_ty {
-                                            Type::ImplTrait(traits) => {
-                                                self.var_type_names.insert(
-                                                    name.clone(),
-                                                    format!("impl {}", traits.join(" + ")),
-                                                );
+                                match func_name.as_str() {
+                                    "Ok" | "Err" => {
+                                        self.var_type_names.insert(name.clone(), "Result".to_string());
+                                    }
+                                    "Some" | "None" => {
+                                        self.var_type_names.insert(name.clone(), "Option".to_string());
+                                    }
+                                    _ => {
+                                        if let Some(fdef) = self.func_defs.get(func_name) {
+                                            if let Some(ret_ty) = &fdef.ret {
+                                                match ret_ty {
+                                                    Type::ImplTrait(traits) => {
+                                                        self.var_type_names.insert(
+                                                            name.clone(),
+                                                            format!("impl {}", traits.join(" + ")),
+                                                        );
+                                                    }
+                                                    Type::Name(tn, _) => {
+                                                        self.var_type_names.insert(name.clone(), tn.clone());
+                                                    }
+                                                    _ => {}
+                                                }
                                             }
-                                            Type::Name(tn, _) => {
-                                                self.var_type_names.insert(name.clone(), tn.clone());
-                                            }
-                                            _ => {}
                                         }
                                     }
                                 }

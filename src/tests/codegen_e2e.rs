@@ -69,6 +69,44 @@ fn e2e_nested_match() {
     assert_eq!(stdout.trim(), "42\n7");
 }
 
+// ===================== Enum Constructor (codegen) =====================
+
+#[test]
+fn e2e_enum_ctor_data_variant() {
+    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    let stdout = compile_and_run(r#"
+        type MyEnum {
+            VariantA(i32),
+            VariantB,
+        }
+        func main() -> i32 {
+            let x = MyEnum::VariantA(42)
+            println(x)
+            0
+        }
+    "#).unwrap();
+    assert_eq!(stdout.trim(), "42");
+}
+
+#[test]
+fn e2e_enum_ctor_use_in_match() {
+    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    let stdout = compile_and_run(r#"
+        type MyEnum {
+            VariantA(i32),
+            VariantB,
+        }
+        func main() -> i32 {
+            let a = MyEnum::VariantA(100)
+            let b = MyEnum::VariantA(200)
+            println(a)
+            println(b)
+            0
+        }
+    "#).unwrap();
+    assert_eq!(stdout.trim(), "100\n200");
+}
+
 // ===================== Control Flow =====================
 
 #[test]
@@ -1777,7 +1815,6 @@ fn e2e_option_is_some_is_none() {
 }
 
 #[test]
-#[ignore = "type checker needs explicit Result annotation, and Result<T, string> syntax not supported"]
 fn e2e_result_unwrap_or() {
     if !can_link() { eprintln!("SKIP: cc not available"); return; }
     let stdout = compile_and_run(r#"
