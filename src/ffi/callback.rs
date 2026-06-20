@@ -49,20 +49,20 @@ impl CallbackTable {
             ref_count: Arc::new(AtomicI64::new(1)),
             invoker,
         });
-        let mut handles = self.handles.lock().unwrap();
+        let mut handles = self.handles.lock().unwrap_or_else(|e| e.into_inner());
         handles.insert(id, handle);
         id
     }
 
     /// Get a callback handle by ID
     pub fn get(&self, id: i64) -> Option<Arc<CallbackHandle>> {
-        let handles = self.handles.lock().unwrap();
+        let handles = self.handles.lock().unwrap_or_else(|e| e.into_inner());
         handles.get(&id).cloned()
     }
 
     /// Remove a callback handle
     pub fn remove(&self, id: i64) -> bool {
-        let mut handles = self.handles.lock().unwrap();
+        let mut handles = self.handles.lock().unwrap_or_else(|e| e.into_inner());
         handles.remove(&id).is_some()
     }
 }
@@ -88,7 +88,7 @@ pub unsafe extern "C" fn callback_trampoline(
 ) -> i64 {
     if let Some(handle) = CALLBACK_TABLE.get(callback_id) {
         if let Some(ref invoker) = handle.invoker {
-            return invoker(callback_id, &[arg1, arg2, userdata as i64]);
+            return invoker(callback_id, &[arg1, arg2, (userdata as usize) as i64]);
         }
         -1
     } else {
@@ -105,8 +105,8 @@ pub unsafe extern "C" fn qsort_trampoline(
     b: *const std::ffi::c_void,
     userdata: *mut std::ffi::c_void,
 ) -> i32 {
-    let a_val = a as i64;
-    let b_val = b as i64;
+    let a_val = (a as usize) as i64;
+    let b_val = (b as usize) as i64;
     let callback_id = *(userdata as *const i64);
     if let Some(handle) = CALLBACK_TABLE.get(callback_id) {
         if let Some(ref invoker) = handle.invoker {

@@ -36,13 +36,13 @@ static CALLBACK_GLOBAL_STORE: std::sync::LazyLock<Mutex<HashMap<i64, (Value, boo
     std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
 
 /// Holds borrow guards alive during a synchronous FFI C call.
-/// Stores the concrete guard type so it can be held across 'static boundaries.
-/// RefRead/RefWrite hold the Arc alongside the guard to keep the data alive.
+/// Each guard variant pairs the lock guard with the `Arc` that keeps
+/// the underlying data alive — no hidden dependency on `shared_handles`.
+/// The transmute-to-`'static` is sound because the paired `Arc` guarantees
+/// the allocation outlives the guard.
 enum FfiGuard {
-    Read(std::sync::RwLockReadGuard<'static, Value>),
-    Write(std::sync::RwLockWriteGuard<'static, Value>),
-    RefRead(Arc<RwLock<Value>>, std::sync::RwLockReadGuard<'static, Value>),
-    RefWrite(Arc<RwLock<Value>>, std::sync::RwLockWriteGuard<'static, Value>),
+    Read(Arc<RwLock<Value>>, std::sync::RwLockReadGuard<'static, Value>),
+    Write(Arc<RwLock<Value>>, std::sync::RwLockWriteGuard<'static, Value>),
     /// A libffi closure (dynamic C-compatible function pointer) that must
     /// remain alive for the duration of the C call, plus its boxed userdata.
     CallbackClosure {
@@ -273,7 +273,11 @@ impl<'a> Interpreter<'a> {
         }
 
         let lib_path = std::env::var("MIMI_FFI_LIB")
-            .map_err(|_| Errno::Generic("MIMI_FFI_LIB environment variable not set for extern function call".to_string()))?;
+            .map_err(|_| Errno::Generic(
+                "MIMI_FFI_LIB environment variable not set for extern function call.\n\
+                 Set MIMI_FFI_LIB to the path of the shared library containing the extern function.\n\
+                 Example: MIMI_FFI_LIB=/path/to/libfoo.so cargo run".to_string()
+            ))?;
 
         // Load library if not already loaded
         let lib_idx = if let Some(idx) = self.loaded_libs.iter().position(|l| {
@@ -332,13 +336,15 @@ impl<'a> Interpreter<'a> {
                             _ => unreachable!("FFI contract ensures float arg is float or int"),
                         };
                         typed_storage.push(Box::new(f));
-                        let ptr = typed_storage.last().unwrap().downcast_ref::<f64>().unwrap();
+                        let ptr = typed_storage.last().unwrap().downcast_ref::<f64>()
+                            .expect("FFI wrapper: Float contract pushed f64 but downcast failed — type mismatch in typed_storage");
                         ffi_args.push(ffi_arg(ptr));
                     }
                     _ => {
                         let v = c_args[i];
                         typed_storage.push(Box::new(v));
-                        let ptr = typed_storage.last().unwrap().downcast_ref::<i64>().unwrap();
+                        let ptr = typed_storage.last().unwrap().downcast_ref::<i64>()
+                            .expect("FFI wrapper: default contract pushed i64 but downcast failed — type mismatch in typed_storage");
                         ffi_args.push(ffi_arg(ptr));
                     }
                 }
@@ -550,9 +556,11 @@ impl<'a> Interpreter<'a> {
                     if let Some(&existing_id) = shared_dedup.get(&arc_ptr) {
                         if let Some(handle) = SHARED_TABLE.get(existing_id) {
                             shared_handles.push(handle.clone());
-                            let guard = handle.borrow_static();
+                            let guard = handle.borrow();
                             let ptr = &*guard as *const Value as *const () as i64;
-                            ffi_guards.push(FfiGuard::Read(guard));
+                            ffi_guards.push(FfiGuard::Read(Arc::clone(arc), unsafe {
+                                std::mem::transmute::<std::sync::RwLockReadGuard<'_, Value>, std::sync::RwLockReadGuard<'static, Value>>(guard)
+                            }));
                             Ok(ptr)
                         } else {
                             Err(Errno::Generic("FFI wrapper: shared handle missing from table during raw ptr dedup".to_string()))
@@ -563,9 +571,11 @@ impl<'a> Interpreter<'a> {
                         shared_guard.register(handle_id);
                         if let Some(handle) = SHARED_TABLE.get(handle_id) {
                             shared_handles.push(handle.clone());
-                            let guard = handle.borrow_static();
+                            let guard = handle.borrow();
                             let ptr = &*guard as *const Value as *const () as i64;
-                            ffi_guards.push(FfiGuard::Read(guard));
+                            ffi_guards.push(FfiGuard::Read(Arc::clone(arc), unsafe {
+                                std::mem::transmute::<std::sync::RwLockReadGuard<'_, Value>, std::sync::RwLockReadGuard<'static, Value>>(guard)
+                            }));
                             Ok(ptr)
                         } else {
                             Err(Errno::Generic("FFI wrapper: failed to create shared handle for raw pointer".to_string()))
@@ -576,9 +586,9 @@ impl<'a> Interpreter<'a> {
                     let guard = rc.read().map_err(|e| Errno::Generic(format!("read lock failed: {}", e)))?;
                     let ptr = &*guard as *const Value as *const () as i64;
                     // SAFETY: (F5) We hold a clone of the `Arc<RwLock<Value>>` alongside
-                    // the guard in `FfiGuard::RefRead`, so the `Arc` keeps the data alive
+                    // the guard in `FfiGuard::Read`, so the `Arc` keeps the data alive
                     // for the entire duration of the C call.
-                    ffi_guards.push(FfiGuard::RefRead(Arc::clone(rc), unsafe {
+                    ffi_guards.push(FfiGuard::Read(Arc::clone(rc), unsafe {
                         std::mem::transmute::<std::sync::RwLockReadGuard<'_, Value>, std::sync::RwLockReadGuard<'static, Value>>(guard)
                     }));
                     Ok(ptr)
@@ -596,9 +606,11 @@ impl<'a> Interpreter<'a> {
                     if let Some(&existing_id) = shared_dedup.get(&arc_ptr) {
                         if let Some(handle) = SHARED_TABLE.get(existing_id) {
                             shared_handles.push(handle.clone());
-                            let mut guard = handle.borrow_mut_static();
+                            let mut guard = handle.borrow_mut();
                             let ptr = &mut *guard as *mut Value as *mut () as i64;
-                            ffi_guards.push(FfiGuard::Write(guard));
+                            ffi_guards.push(FfiGuard::Write(Arc::clone(arc), unsafe {
+                                std::mem::transmute::<std::sync::RwLockWriteGuard<'_, Value>, std::sync::RwLockWriteGuard<'static, Value>>(guard)
+                            }));
                             Ok(ptr)
                         } else {
                             Err(Errno::Generic("FFI wrapper: shared handle missing from table during raw ptr mut dedup".to_string()))
@@ -609,9 +621,11 @@ impl<'a> Interpreter<'a> {
                         shared_guard.register(handle_id);
                         if let Some(handle) = SHARED_TABLE.get(handle_id) {
                             shared_handles.push(handle.clone());
-                            let mut guard = handle.borrow_mut_static();
+                            let mut guard = handle.borrow_mut();
                             let ptr = &mut *guard as *mut Value as *mut () as i64;
-                            ffi_guards.push(FfiGuard::Write(guard));
+                            ffi_guards.push(FfiGuard::Write(Arc::clone(arc), unsafe {
+                                std::mem::transmute::<std::sync::RwLockWriteGuard<'_, Value>, std::sync::RwLockWriteGuard<'static, Value>>(guard)
+                            }));
                             Ok(ptr)
                         } else {
                             Err(Errno::Generic("FFI wrapper: failed to create shared handle for mutable raw pointer".to_string()))
@@ -622,8 +636,8 @@ impl<'a> Interpreter<'a> {
                     let mut guard = rc.write().map_err(|e| Errno::Generic(format!("write lock failed: {}", e)))?;
                     let ptr = &mut *guard as *mut Value as *mut () as i64;
                     // SAFETY: (F5) We hold a clone of the `Arc<RwLock<Value>>` alongside
-                    // the guard in `FfiGuard::RefWrite`, so the `Arc` keeps the data alive.
-                    ffi_guards.push(FfiGuard::RefWrite(Arc::clone(rc), unsafe {
+                    // the guard in `FfiGuard::Write`, so the `Arc` keeps the data alive.
+                    ffi_guards.push(FfiGuard::Write(Arc::clone(rc), unsafe {
                         std::mem::transmute::<std::sync::RwLockWriteGuard<'_, Value>, std::sync::RwLockWriteGuard<'static, Value>>(guard)
                     }));
                     Ok(ptr)
@@ -647,11 +661,17 @@ impl<'a> Interpreter<'a> {
                         Ok(handle_id)
                     }
                 }
-                Value::LocalShared(_rc) => {
-                    // Convert LocalShared to Shared for handle creation
-                    // Note: This is a limitation - LocalShared cannot be directly used with SharedHandleTable
-                    // For now, return an error
-                    Err(Errno::Generic("FFI wrapper: c_shared does not support local_shared values yet. Use shared instead.".to_string()))
+                Value::LocalShared(rc) => {
+                    // Clone the inner value into an Arc<RwLock> for SharedHandle.
+                    // The original local_shared retains its local refcount; the FFI
+                    // side gets an independent shared copy via the handle table.
+                    let handle_id = {
+                        let value = rc.0.borrow().clone();
+                        let arc = Arc::new(RwLock::new(value));
+                        SHARED_TABLE.create(arc)
+                    };
+                    shared_guard.register(handle_id);
+                    Ok(handle_id)
                 }
                 Value::Int(n) => {
                     // Already an opaque handle (from previous conversion)
@@ -669,9 +689,11 @@ impl<'a> Interpreter<'a> {
                     if let Some(&existing_id) = shared_dedup.get(&arc_ptr) {
                         if let Some(handle) = SHARED_TABLE.get(existing_id) {
                             shared_handles.push(handle.clone());
-                            let guard = handle.borrow_static();
+                            let guard = handle.borrow();
                             let ptr = &*guard as *const Value as *const () as i64;
-                            ffi_guards.push(FfiGuard::Read(guard));
+                            ffi_guards.push(FfiGuard::Read(Arc::clone(arc), unsafe {
+                                std::mem::transmute::<std::sync::RwLockReadGuard<'_, Value>, std::sync::RwLockReadGuard<'static, Value>>(guard)
+                            }));
                             Ok(ptr)
                         } else {
                             Err(Errno::Generic("FFI wrapper: shared handle missing from table during c_borrow dedup".to_string()))
@@ -682,9 +704,11 @@ impl<'a> Interpreter<'a> {
                         shared_guard.register(handle_id);
                         if let Some(handle) = SHARED_TABLE.get(handle_id) {
                             shared_handles.push(handle.clone());
-                            let guard = handle.borrow_static();
+                            let guard = handle.borrow();
                             let ptr = &*guard as *const Value as *const () as i64;
-                            ffi_guards.push(FfiGuard::Read(guard));
+                            ffi_guards.push(FfiGuard::Read(Arc::clone(arc), unsafe {
+                                std::mem::transmute::<std::sync::RwLockReadGuard<'_, Value>, std::sync::RwLockReadGuard<'static, Value>>(guard)
+                            }));
                             Ok(ptr)
                         } else {
                             Err(Errno::Generic("FFI wrapper: failed to create shared handle for c_borrow".to_string()))
@@ -695,8 +719,8 @@ impl<'a> Interpreter<'a> {
                     let guard = rc.read().map_err(|e| Errno::Generic(format!("read lock failed: {}", e)))?;
                     let ptr = &*guard as *const Value as *const () as i64;
                     // SAFETY: (F5) We hold a clone of the `Arc<RwLock<Value>>` alongside
-                    // the guard in `FfiGuard::RefRead`, so the `Arc` keeps the data alive.
-                    ffi_guards.push(FfiGuard::RefRead(Arc::clone(rc), unsafe {
+                    // the guard in `FfiGuard::Read`, so the `Arc` keeps the data alive.
+                    ffi_guards.push(FfiGuard::Read(Arc::clone(rc), unsafe {
                         std::mem::transmute::<std::sync::RwLockReadGuard<'_, Value>, std::sync::RwLockReadGuard<'static, Value>>(guard)
                     }));
                     Ok(ptr)
@@ -716,9 +740,11 @@ impl<'a> Interpreter<'a> {
                     if let Some(&existing_id) = shared_dedup.get(&arc_ptr) {
                         if let Some(handle) = SHARED_TABLE.get(existing_id) {
                             shared_handles.push(handle.clone());
-                            let mut guard = handle.borrow_mut_static();
+                            let mut guard = handle.borrow_mut();
                             let ptr = &mut *guard as *mut Value as *mut () as i64;
-                            ffi_guards.push(FfiGuard::Write(guard));
+                            ffi_guards.push(FfiGuard::Write(Arc::clone(arc), unsafe {
+                                std::mem::transmute::<std::sync::RwLockWriteGuard<'_, Value>, std::sync::RwLockWriteGuard<'static, Value>>(guard)
+                            }));
                             Ok(ptr)
                         } else {
                             Err(Errno::Generic("FFI wrapper: shared handle missing from table during c_borrow_mut dedup".to_string()))
@@ -729,9 +755,11 @@ impl<'a> Interpreter<'a> {
                         shared_guard.register(handle_id);
                         if let Some(handle) = SHARED_TABLE.get(handle_id) {
                             shared_handles.push(handle.clone());
-                            let mut guard = handle.borrow_mut_static();
+                            let mut guard = handle.borrow_mut();
                             let ptr = &mut *guard as *mut Value as *mut () as i64;
-                            ffi_guards.push(FfiGuard::Write(guard));
+                            ffi_guards.push(FfiGuard::Write(Arc::clone(arc), unsafe {
+                                std::mem::transmute::<std::sync::RwLockWriteGuard<'_, Value>, std::sync::RwLockWriteGuard<'static, Value>>(guard)
+                            }));
                             Ok(ptr)
                         } else {
                             Err(Errno::Generic("FFI wrapper: failed to create shared handle for c_borrow_mut".to_string()))
@@ -742,8 +770,8 @@ impl<'a> Interpreter<'a> {
                     let mut guard = rc.write().map_err(|e| Errno::Generic(format!("write lock failed: {}", e)))?;
                     let ptr = &mut *guard as *mut Value as *mut () as i64;
                     // SAFETY: (F5) We hold a clone of the `Arc<RwLock<Value>>` alongside
-                    // the guard in `FfiGuard::RefWrite`, so the `Arc` keeps the data alive.
-                    ffi_guards.push(FfiGuard::RefWrite(Arc::clone(rc), unsafe {
+                    // the guard in `FfiGuard::Write`, so the `Arc` keeps the data alive.
+                    ffi_guards.push(FfiGuard::Write(Arc::clone(rc), unsafe {
                         std::mem::transmute::<std::sync::RwLockWriteGuard<'_, Value>, std::sync::RwLockWriteGuard<'static, Value>>(guard)
                     }));
                     Ok(ptr)
@@ -835,7 +863,7 @@ impl<'a> Interpreter<'a> {
                 // We box the id and store it alongside the closure in FfiGuard.
                 let userdata = Box::new(cb_id);
                 let cb_ref = &*userdata as &i64 as *const i64;
-                // SAFETY: userdata box is leaked and kept alive in FfiGuard
+                // SAFETY: userdata box is kept alive by FfiGuard::CallbackClosure
                 let cb_ref_static: &'static i64 = unsafe { &*cb_ref };
 
                 let ffi_closure = libffi::middle::Closure::new(
@@ -897,7 +925,8 @@ impl<'a> Interpreter<'a> {
                         eprintln!(
                             "[mimi] FFI WARNING: extern function returned 'String' (borrowed). \
                              If C allocated this string, it WILL LEAK. Use 'StringOwned' \
-                             for C-allocated strings that Mimi should free."
+                             for C-allocated strings that Mimi should free, or change the \
+                             return type to 'raw_string' and free via mimi_string_free_raw."
                         );
                     }
                     Ok(Value::String(c_str.to_string_lossy().into_owned()))
