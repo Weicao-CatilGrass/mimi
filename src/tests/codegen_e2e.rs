@@ -1687,15 +1687,14 @@ fn e2e_slice_basic() {
 // ===================== Result/Option Methods (codegen E2E) =====================
 
 #[test]
-#[ignore = "type checker needs explicit Result annotation, and Result<T, string> syntax not supported"]
 fn e2e_result_is_ok_is_err() {
     if !can_link() { eprintln!("SKIP: cc not available"); return; }
     let stdout = compile_and_run(r#"
         func main() -> i32 {
-            let r = Ok(42)
+            let r: Result<i32, string> = Ok(42)
             println(r.is_ok())
             println(r.is_err())
-            let e = Err("fail")
+            let e: Result<i32, string> = Err("fail")
             println(e.is_ok())
             println(e.is_err())
             0
@@ -1775,14 +1774,14 @@ fn e2e_option_ok_or() {
 }
 
 #[test]
-#[ignore = "type checker needs explicit Result annotation, and Result<T, string> syntax not supported"]
+#[ignore = "compile_variant_method: named function arg not yet supported in codegen map/and_then"]
 fn e2e_result_map() {
     if !can_link() { eprintln!("SKIP: cc not available"); return; }
     let stdout = compile_and_run(r#"
         func double(x: i32) -> i32 { x * 2 }
 
         func main() -> i32 {
-            let ok = Ok(21)
+            let ok: Result<i32, string> = Ok(21)
             let mapped = ok.map(double)
             println(mapped.unwrap_or(0))
             0
@@ -1792,7 +1791,7 @@ fn e2e_result_map() {
 }
 
 #[test]
-#[ignore = "type checker needs explicit Result annotation, and Result<T, string> syntax not supported"]
+#[ignore = "compile_variant_method: named function arg not yet supported in codegen map/and_then"]
 fn e2e_result_and_then() {
     if !can_link() { eprintln!("SKIP: cc not available"); return; }
     let stdout = compile_and_run(r#"
@@ -1801,10 +1800,10 @@ fn e2e_result_and_then() {
         }
 
         func main() -> i32 {
-            let ok = Ok(21)
+            let ok: Result<i32, string> = Ok(21)
             let result = ok.and_then(double_if_positive)
             println(result.unwrap_or(0))
-            let err = Err("fail")
+            let err: Result<i32, string> = Err("fail")
             let result2 = err.and_then(double_if_positive)
             println(result2.unwrap_or(0))
             0
@@ -1814,12 +1813,11 @@ fn e2e_result_and_then() {
 }
 
 #[test]
-#[ignore = "type checker needs explicit Result annotation, and Result<T, string> syntax not supported"]
 fn e2e_result_map_err() {
     if !can_link() { eprintln!("SKIP: cc not available"); return; }
     let stdout = compile_and_run(r#"
         func main() -> i32 {
-            let err = Err("fail")
+            let err: Result<i32, string> = Err("fail")
             let result = err.is_err()
             println(result)
             0
