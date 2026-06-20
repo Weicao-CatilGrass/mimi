@@ -5,7 +5,7 @@ MIMI_RUNTIME = ../../src/runtime/mimi_runtime.c
 # Auto-install pybind11 if missing
 PIP_INSTALL := $(shell $(PYTHON) -c "import pybind11" 2>/dev/null || $(PYTHON) -m pip install pybind11 -q 2>&1)
 
-all: check-deps build/math.so build/math$(shell $(PYTHON) -c "import importlib.machinery; print(importlib.machinery.EXTENSION_SUFFIXES[0])")
+all: check-deps build/libmath.so build/math$(shell $(PYTHON) -c "import importlib.machinery; print(importlib.machinery.EXTENSION_SUFFIXES[0])")
 
 check-deps:
 	@$(PYTHON) -c "import pybind11" 2>/dev/null || (echo "Installing pybind11..."; $(PYTHON) -m pip install pybind11 -q)
