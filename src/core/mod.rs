@@ -137,6 +137,8 @@ struct Checker<'a> {
     borrows: Vec<HashMap<String, BorrowState>>,
     /// Track trait definitions: trait_name -> list of method names
     traits: HashMap<String, Vec<String>>,
+    /// Track trait generic params: trait_name -> list of generic param names
+    trait_generics: HashMap<String, Vec<String>>,
     /// Track trait implementations: (trait_name, type_name) -> list of method names
     impls: HashMap<(String, String), Vec<String>>,
     /// Track where clauses for functions: func_name -> (type_param, bounds)
@@ -188,6 +190,7 @@ impl<'a> Checker<'a> {
             cap_vars: vec![HashMap::new()],
             borrows: vec![HashMap::new()],
             traits: HashMap::new(),
+            trait_generics: HashMap::new(),
             impls: HashMap::new(),
             where_clauses: HashMap::new(),
             func_effects: HashMap::new(),
@@ -636,6 +639,10 @@ impl<'a> Checker<'a> {
             Item::Trait(trait_def) => {
                 let method_names: Vec<String> = trait_def.methods.iter().map(|m| m.name.clone()).collect();
                 self.traits.insert(trait_def.name.clone(), method_names.clone());
+                let generic_names: Vec<String> = trait_def.generics.iter().map(|g| g.name.clone()).collect();
+                self.trait_generics.insert(trait_def.name.clone(), generic_names.clone());
+                // Push trait generics into scope so method signatures can reference them
+                self.generic_scope.extend(generic_names.iter().cloned());
                 // Store trait method signatures for argument validation
                 for method in &trait_def.methods {
                     let params: Vec<Type> = method.params.iter().map(|p| self.resolve_type(&p.ty)).collect();
@@ -647,6 +654,7 @@ impl<'a> Checker<'a> {
                         (params, ret),
                     );
                 }
+                self.generic_scope.truncate(self.generic_scope.len() - generic_names.len());
             }
             Item::Impl(impl_def) => {
                 let method_names: Vec<String> = impl_def.methods.iter().map(|m| m.name.clone()).collect();
@@ -662,10 +670,12 @@ impl<'a> Checker<'a> {
                         .push((impl_def.trait_name.clone(), method_name.clone()));
                 }
                 // Also register impl methods as functions with self parameter
+                let impl_generic_names: Vec<String> = impl_def.generics.iter().map(|g| g.name.clone()).collect();
+                self.generic_scope.extend(impl_generic_names.iter().cloned());
                 for method in &impl_def.methods {
                     let generic_names: Vec<String> = method.generics.iter().map(|g| g.name.clone()).collect();
                     self.generic_scope.extend(generic_names.iter().cloned());
-                    let mut params = vec![Type::Name(impl_def.type_name.clone(), vec![])];
+                    let mut params = vec![Type::Name(impl_def.type_name.clone(), impl_def.type_args.clone())];
                     params.extend(method.params.iter().map(|p| self.resolve_type(&p.ty)));
                     let ret = method
                         .ret
@@ -680,6 +690,7 @@ impl<'a> Checker<'a> {
                     let key = format!("{}_{}", impl_def.type_name, method.name);
                     self.funcs.insert(key, (params, ret));
                 }
+                self.generic_scope.truncate(self.generic_scope.len() - impl_generic_names.len());
             }
             Item::ExternBlock(block) => {
                 // Register extern functions for type checking
@@ -868,6 +879,8 @@ impl<'a> Checker<'a> {
                 let generic_names: Vec<String> = trait_def.generics.iter().map(|g| g.name.clone()).collect();
                 self.generic_scope.extend(generic_names.iter().cloned());
                 for method in &trait_def.methods {
+                    let method_generic_names: Vec<String> = method.generics.iter().map(|g| g.name.clone()).collect();
+                    self.generic_scope.extend(method_generic_names.iter().cloned());
                     for param in &method.params {
                         let resolved = self.resolve_type(&param.ty);
                         self.check_type_well_formed(&resolved, &format!("trait '{}' method '{}'", trait_def.name, method.name));
@@ -876,6 +889,7 @@ impl<'a> Checker<'a> {
                         let resolved = self.resolve_type(ret);
                         self.check_type_well_formed(&resolved, &format!("trait '{}' method '{}' return", trait_def.name, method.name));
                     }
+                    self.generic_scope.truncate(self.generic_scope.len() - method_generic_names.len());
                 }
                 self.generic_scope.truncate(self.generic_scope.len() - generic_names.len());
             }
@@ -907,8 +921,12 @@ impl<'a> Checker<'a> {
                     }
                 }
                 // Check impl method bodies with self bound to the implementing type
+                let impl_generic_names: Vec<String> = impl_def.generics.iter().map(|g| g.name.clone()).collect();
+                self.generic_scope.extend(impl_generic_names.iter().cloned());
                 for method in &impl_def.methods {
                     self.set_pos(method.pos.0, method.pos.1);
+                    let method_generic_names: Vec<String> = method.generics.iter().map(|g| g.name.clone()).collect();
+                    self.generic_scope.extend(method_generic_names.iter().cloned());
                     let ret = method
                         .ret
                         .as_ref()
@@ -916,7 +934,7 @@ impl<'a> Checker<'a> {
                         .unwrap_or_else(|| Type::Name("unit".into(), vec![]));
                     let mut scopes: Vec<HashMap<String, Type>> = vec![HashMap::new()];
                     // Bind self with the implementing type
-                    scopes[0].insert("self".to_string(), Type::Name(impl_def.type_name.clone(), vec![]));
+                    scopes[0].insert("self".to_string(), Type::Name(impl_def.type_name.clone(), impl_def.type_args.clone()));
                     for p in &method.params {
                         let ty = self.resolve_type(&p.ty);
                         scopes[0].insert(p.name.clone(), ty);
@@ -927,7 +945,9 @@ impl<'a> Checker<'a> {
                     self.check_unconsumed_caps();
                     self.var_scopes.pop();
                     self.cap_vars.pop();
+                    self.generic_scope.truncate(self.generic_scope.len() - method_generic_names.len());
                 }
+                self.generic_scope.truncate(self.generic_scope.len() - impl_generic_names.len());
             }
             Item::ExternBlock(_) => {
                 // Extern blocks are collected but not type-checked in v1.1

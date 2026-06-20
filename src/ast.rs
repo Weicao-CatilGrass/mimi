@@ -97,14 +97,17 @@ pub struct TraitDef {
 #[derive(Debug, Clone)]
 pub struct TraitMethod {
     pub name: String,
+    pub generics: Vec<GenericParam>,
     pub params: Vec<Param>,
     pub ret: Option<Type>,
 }
 
 #[derive(Debug, Clone)]
 pub struct ImplDef {
+    pub generics: Vec<GenericParam>,
     pub trait_name: String,
     pub type_name: String,
+    pub type_args: Vec<Type>,
     pub methods: Vec<FuncDef>,
 }
 

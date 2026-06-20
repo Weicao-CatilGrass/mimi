@@ -494,6 +494,7 @@ impl Parser {
             // Parse method signature (no body)
             self.expect(TokenKind::Func, "`func`")?;
             let method_name = self.expect_ident()?;
+            let method_generics = self.parse_generic_params()?;
             self.expect(TokenKind::LParen, "`(`")?;
             let params = self.parse_params()?;
             self.expect(TokenKind::RParen, "`)`")?;
@@ -506,6 +507,7 @@ impl Parser {
             self.match_semi();
             methods.push(TraitMethod {
                 name: method_name,
+                generics: method_generics,
                 params,
                 ret,
             });
@@ -521,13 +523,20 @@ impl Parser {
 
     fn parse_impl_def(&mut self) -> Result<ImplDef, ParseError> {
         self.expect(TokenKind::Impl, "`impl`")?;
+        let generics = self.parse_generic_params()?;
         let trait_name = self.expect_ident()?;
         self.expect(TokenKind::For, "`for`")?;
-        // Accept both identifiers and keyword tokens as type names (e.g., "string", "int", "bool")
-        let type_name = if self.at(&TokenKind::Ident("".into())) {
-            self.expect_ident()?
-        } else {
-            self.expect_keyword_as_type_name()?
+        // Parse the type using parse_type() to support List<T>, Result<T,E>, etc.
+        let impl_type = self.parse_type()?;
+        let (type_name, type_args) = match impl_type {
+            Type::Name(name, args) => (name, args),
+            _ => {
+                let tok = self.peek();
+                return Err(ParseError::new(
+                    "expected a named type after `for`",
+                    tok.line, tok.col,
+                ));
+            }
         };
         self.skip_newlines();
         self.expect(TokenKind::LBrace, "`{`")?;
@@ -542,8 +551,10 @@ impl Parser {
         }
         self.expect(TokenKind::RBrace, "`}`")?;
         Ok(ImplDef {
+            generics,
             trait_name,
             type_name,
+            type_args,
             methods,
         })
     }

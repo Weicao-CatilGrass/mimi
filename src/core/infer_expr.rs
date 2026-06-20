@@ -142,9 +142,29 @@ impl<'a> Checker<'a> {
                                 if let Some((trait_name, _)) = methods.iter().find(|(_, m)| m == method_name) {
                                     let trait_name = trait_name.clone();
                                     if let Some((params, ret)) = self.trait_method_sigs.get(&(trait_name.clone(), method_name.clone())).cloned() {
+                                        // Substitute trait generic params using receiver type args
+                                        let (method_params, method_ret) = if let Some(trait_generic_names) = self.trait_generics.get(&trait_name) {
+                                            if !trait_generic_names.is_empty() && trait_generic_names.len() == type_args.len() {
+                                                let type_map: HashMap<String, Type> = trait_generic_names.iter()
+                                                    .zip(type_args.iter())
+                                                    .map(|(g, a)| (g.clone(), a.clone()))
+                                                    .collect();
+                                                let gen_slice: Vec<GenericParam> = trait_generic_names.iter()
+                                                    .map(|g| GenericParam { name: g.clone(), bounds: vec![] })
+                                                    .collect();
+                                                let subst_params: Vec<Type> = params.iter()
+                                                    .map(|p| subst_type_params(p, &gen_slice, &type_map))
+                                                    .collect();
+                                                let subst_ret = subst_type_params(&ret, &gen_slice, &type_map);
+                                                (subst_params, subst_ret)
+                                            } else {
+                                                (params, ret)
+                                            }
+                                        } else {
+                                            (params, ret)
+                                        };
                                         // Validate arguments against method params (no self in trait sigs)
                                         let user_args = &args;
-                                        let method_params = &params;
                                         if user_args.len() != method_params.len() {
                                             self.emit_code(crate::diagnostic::codes::E0257, format!(
                                                 "method '{}' of trait '{}' expects {} arguments, got {}",
@@ -161,7 +181,7 @@ impl<'a> Checker<'a> {
                                                 }
                                             }
                                         }
-                                        return ret;
+                                        return method_ret;
                                     }
                                 }
                             }
