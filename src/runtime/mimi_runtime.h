@@ -118,6 +118,11 @@ char* mimi_http_post(const char* url, const char* body);
 /* Contract violation: print message and abort */
 void mimi_runtime_abort(const char* msg);
 
+/* Set a custom error handler for contract violations.
+   When set, mimi_runtime_abort calls this handler instead of abort().
+   Pass NULL to clear. Useful for pybind11 wrappers that throw C++ exceptions. */
+void mimi_runtime_set_error_handler(void (*handler)(const char*));
+
 /* Refcounted heap allocation for shared values.
    mimi_rc_alloc(size) allocates sizeof(MimiRcHeader) + size bytes,
    initializes refcount to 1, and returns a pointer to the user data.
