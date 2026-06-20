@@ -299,10 +299,10 @@ impl<'a> Checker<'a> {
                 self.infer_expr(expr, scopes)
             }
             Expr::Lambda { params, ret, body } => {
-                let param_types: Vec<Type> = params.iter().map(|p| p.ty.clone()).collect();
+                let param_types: Vec<Type> = params.iter().map(|p| self.resolve_type(&p.ty)).collect();
                 scopes.push(HashMap::new());
                 for p in params {
-                    scopes.last_mut().expect("scope non-empty").insert(p.name.clone(), p.ty.clone());
+                    scopes.last_mut().expect("scope non-empty").insert(p.name.clone(), self.resolve_type(&p.ty));
                 }
                 let mut body_type = Type::Name("unit".into(), vec![]);
                 for stmt in body {

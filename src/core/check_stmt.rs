@@ -152,7 +152,7 @@ impl<'a> Checker<'a> {
                             // _ type: infer from init expression
                             init_ty.clone()
                         } else {
-                            if !same_type(&d, &init_ty) && !is_trait_coercion(&d, &init_ty) {
+                            if !same_type(&d, &init_ty) && !is_trait_coercion(&d, &init_ty, &self.impls) {
                                 self.emit_code(crate::diagnostic::codes::E0209, format!(
                                     "pattern declared as {} but initialized with {}",
                                     fmt_type(&d),

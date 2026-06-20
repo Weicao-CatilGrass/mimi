@@ -90,15 +90,16 @@ impl Parser {
 
     /// Skip tokens until we reach a synchronization point.
     /// Returns true if we found a sync point, false if we reached EOF.
-    /// Always consumes the sync token to guarantee progress.
+    /// Does NOT consume the sync token — the caller must consume it.
+    /// NOTE: The caller MUST ensure progress after this returns; callers
+    /// that find themselves in a loop on the same token should advance.
     fn recover_to_sync(&mut self, sync_tokens: &[TokenKind]) -> bool {
         let max_skip = 100;
         let mut skipped = 0;
         while !self.at(&TokenKind::Eof) && skipped < max_skip {
             for sync in sync_tokens {
                 if self.at(sync) {
-                    self.advance(); // consume sync token to guarantee progress
-                    return true;
+                    return true; // DON'T consume — caller will parse the sync token
                 }
             }
             self.advance();
@@ -126,7 +127,18 @@ impl Parser {
     }
 
     fn peek(&self) -> &Token {
-        &self.tokens[self.pos]
+        if self.pos >= self.tokens.len() {
+            use crate::ast::Commitment;
+            static EOF: Token = Token {
+                kind: TokenKind::Eof,
+                commitment: Commitment::None,
+                line: 0,
+                col: 0,
+            };
+            &EOF
+        } else {
+            &self.tokens[self.pos]
+        }
     }
 
     fn peek_kind(&self) -> &TokenKind {
@@ -301,6 +313,11 @@ impl Parser {
                         TokenKind::Impl, TokenKind::Extern, TokenKind::Use,
                         TokenKind::RBrace, TokenKind::Eof,
                     ]);
+                    // If still at Use and recover didn't advance, force-advance
+                    // to avoid infinite loop on malformed import.
+                    if self.at(&TokenKind::Use) {
+                        self.advance();
+                    }
                 }
             }
             self.skip_newlines();
@@ -312,6 +329,7 @@ impl Parser {
             if self.at(&TokenKind::Eof) {
                 break;
             }
+            let pos_before = self.pos;
             match self.parse_item() {
                 Ok(item) => items.push(item),
                 Err(e) => {
@@ -323,6 +341,12 @@ impl Parser {
                         TokenKind::Impl, TokenKind::Extern, TokenKind::Use,
                         TokenKind::RBrace, TokenKind::Eof,
                     ]);
+                    // Ensure progress: if recover_to_sync didn't advance
+                    // (e.g. sync token was a structural token not consumed
+                    // by parse_item), force-advance past it to avoid infinite loop.
+                    if self.pos == pos_before {
+                        self.advance();
+                    }
                 }
             }
         }
