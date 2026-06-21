@@ -1092,6 +1092,89 @@ impl<'a> Checker<'a> {
                 }
                 return Type::Name("unit".into(), vec![]);
             }
+            "assert_approx_eq" => {
+                if args.len() != 2 {
+                    self.emit_code(crate::diagnostic::codes::E0242, "assert_approx_eq expects 2 arguments");
+                } else {
+                    let t1 = self.infer_expr(&args[0], scopes);
+                    let t2 = self.infer_expr(&args[1], scopes);
+                    if !same_type(&t1, &t2) {
+                        self.emit_code(crate::diagnostic::codes::E0242, format!("assert_approx_eq expects matching types, found {} and {}", fmt_type(&t1), fmt_type(&t2)));
+                    }
+                }
+                return Type::Name("unit".into(), vec![]);
+            }
+            "enumerate" => {
+                if args.len() != 1 {
+                    self.emit_code(crate::diagnostic::codes::E0242, "enumerate expects 1 argument (list)");
+                } else {
+                    self.infer_expr(&args[0], scopes);
+                }
+                return Type::Name("List".into(), vec![Type::Name("unknown".into(), vec![])]);
+            }
+            "exit" => {
+                if args.len() > 1 {
+                    self.emit_code(crate::diagnostic::codes::E0242, "exit expects 0 or 1 argument (exit code)");
+                } else if args.len() == 1 {
+                    let t = self.infer_expr(&args[0], scopes);
+                    if !is_int(&t) {
+                        self.emit_code(crate::diagnostic::codes::E0242, "exit expects an integer exit code");
+                    }
+                }
+                return Type::Name("unit".into(), vec![]);
+            }
+            "lexer" => {
+                if args.len() != 1 {
+                    self.emit_code(crate::diagnostic::codes::E0242, "lexer expects 1 argument (source string)");
+                } else {
+                    self.infer_expr(&args[0], scopes);
+                }
+                return Type::Name("List".into(), vec![Type::Name("unknown".into(), vec![])]);
+            }
+            "parse" => {
+                if args.len() != 1 {
+                    self.emit_code(crate::diagnostic::codes::E0242, "parse expects 1 argument (source string)");
+                } else {
+                    self.infer_expr(&args[0], scopes);
+                }
+                return Type::Name("unknown".into(), vec![]);
+            }
+            "args" => {
+                if !args.is_empty() {
+                    self.emit_code(crate::diagnostic::codes::E0242, "args expects 0 arguments");
+                }
+                return Type::Name("List".into(), vec![Type::Name("string".into(), vec![])]);
+            }
+            "getenv" => {
+                if args.len() != 1 {
+                    self.emit_code(crate::diagnostic::codes::E0242, "getenv expects 1 argument (name)");
+                } else {
+                    self.infer_expr(&args[0], scopes);
+                }
+                return Type::Result(
+                    Box::new(Type::Name("string".into(), vec![])),
+                    Box::new(Type::Name("string".into(), vec![])),
+                );
+            }
+            "to_json" => {
+                if args.len() != 1 {
+                    self.emit_code(crate::diagnostic::codes::E0242, "to_json expects 1 argument");
+                } else {
+                    self.infer_expr(&args[0], scopes);
+                }
+                return Type::Name("string".into(), vec![]);
+            }
+            "from_int" => {
+                if args.len() != 1 {
+                    self.emit_code(crate::diagnostic::codes::E0242, "from_int expects 1 argument");
+                } else {
+                    let t = self.infer_expr(&args[0], scopes);
+                    if !is_int(&t) {
+                        self.emit_code(crate::diagnostic::codes::E0242, "from_int expects an integer argument");
+                    }
+                }
+                return Type::Name("i32".into(), vec![]);
+            }
             "input" => {
                 return Type::Result(
                     Box::new(Type::Name("string".into(), vec![])),
@@ -1218,6 +1301,53 @@ impl<'a> Checker<'a> {
                     self.infer_expr(&args[1], scopes);
                 }
                 return Type::Name("bool".into(), vec![]);
+            }
+            "map_new" => {
+                return Type::Name("unknown".into(), vec![]);
+            }
+            "map_get" => {
+                if args.len() != 2 {
+                    self.emit_code(crate::diagnostic::codes::E0242, "map_get expects 2 arguments (map, key)");
+                } else {
+                    self.infer_expr(&args[0], scopes);
+                    self.infer_expr(&args[1], scopes);
+                }
+                return Type::Name("unknown".into(), vec![]);
+            }
+            "map_set" => {
+                if args.len() != 3 {
+                    self.emit_code(crate::diagnostic::codes::E0242, "map_set expects 3 arguments (map, key, value)");
+                } else {
+                    self.infer_expr(&args[0], scopes);
+                    self.infer_expr(&args[1], scopes);
+                    self.infer_expr(&args[2], scopes);
+                }
+                return Type::Name("unknown".into(), vec![]);
+            }
+            "map_remove" => {
+                if args.len() != 2 {
+                    self.emit_code(crate::diagnostic::codes::E0242, "map_remove expects 2 arguments (map, key)");
+                } else {
+                    self.infer_expr(&args[0], scopes);
+                    self.infer_expr(&args[1], scopes);
+                }
+                return Type::Name("unknown".into(), vec![]);
+            }
+            "map_size" => {
+                if args.len() != 1 {
+                    self.emit_code(crate::diagnostic::codes::E0242, "map_size expects 1 argument");
+                } else {
+                    self.infer_expr(&args[0], scopes);
+                }
+                return Type::Name("i32".into(), vec![]);
+            }
+            "map_from_list" => {
+                if args.len() != 1 {
+                    self.emit_code(crate::diagnostic::codes::E0242, "map_from_list expects 1 argument (list of (key, value) tuples)");
+                } else {
+                    self.infer_expr(&args[0], scopes);
+                }
+                return Type::Name("unknown".into(), vec![]);
             }
             "print" => {
                 for a in args {
@@ -1446,6 +1576,96 @@ impl<'a> Checker<'a> {
             "json_get_element" => {
                 if args.len() != 2 {
                     self.emit_code(crate::diagnostic::codes::E0242, "json_get_element expects 2 arguments");
+                } else {
+                    self.infer_expr(&args[0], scopes);
+                    self.infer_expr(&args[1], scopes);
+                }
+                return Type::Name("string".into(), vec![]);
+            }
+            "socket" => {
+                if args.len() != 3 {
+                    self.emit_code(crate::diagnostic::codes::E0242, "socket expects 3 arguments (domain, type, protocol)");
+                } else {
+                    self.infer_expr(&args[0], scopes);
+                    self.infer_expr(&args[1], scopes);
+                    self.infer_expr(&args[2], scopes);
+                }
+                return Type::Name("i64".into(), vec![]);
+            }
+            "connect" => {
+                if args.len() != 3 {
+                    self.emit_code(crate::diagnostic::codes::E0242, "connect expects 3 arguments (fd, host, port)");
+                } else {
+                    self.infer_expr(&args[0], scopes);
+                    self.infer_expr(&args[1], scopes);
+                    self.infer_expr(&args[2], scopes);
+                }
+                return Type::Name("i64".into(), vec![]);
+            }
+            "bind" => {
+                if args.len() != 2 {
+                    self.emit_code(crate::diagnostic::codes::E0242, "bind expects 2 arguments (fd, port)");
+                } else {
+                    self.infer_expr(&args[0], scopes);
+                    self.infer_expr(&args[1], scopes);
+                }
+                return Type::Name("i64".into(), vec![]);
+            }
+            "listen" => {
+                if args.len() != 2 {
+                    self.emit_code(crate::diagnostic::codes::E0242, "listen expects 2 arguments (fd, backlog)");
+                } else {
+                    self.infer_expr(&args[0], scopes);
+                    self.infer_expr(&args[1], scopes);
+                }
+                return Type::Name("i64".into(), vec![]);
+            }
+            "accept" => {
+                if args.len() != 1 {
+                    self.emit_code(crate::diagnostic::codes::E0242, "accept expects 1 argument (fd)");
+                } else {
+                    self.infer_expr(&args[0], scopes);
+                }
+                return Type::Name("i64".into(), vec![]);
+            }
+            "send" => {
+                if args.len() != 3 {
+                    self.emit_code(crate::diagnostic::codes::E0242, "send expects 3 arguments (fd, data, len)");
+                } else {
+                    self.infer_expr(&args[0], scopes);
+                    self.infer_expr(&args[1], scopes);
+                    self.infer_expr(&args[2], scopes);
+                }
+                return Type::Name("i64".into(), vec![]);
+            }
+            "recv" => {
+                if args.len() != 2 {
+                    self.emit_code(crate::diagnostic::codes::E0242, "recv expects 2 arguments (fd, buf_size)");
+                } else {
+                    self.infer_expr(&args[0], scopes);
+                    self.infer_expr(&args[1], scopes);
+                }
+                return Type::Name("string".into(), vec![]);
+            }
+            "close_fd" => {
+                if args.len() != 1 {
+                    self.emit_code(crate::diagnostic::codes::E0242, "close_fd expects 1 argument (fd)");
+                } else {
+                    self.infer_expr(&args[0], scopes);
+                }
+                return Type::Name("i64".into(), vec![]);
+            }
+            "http_get" => {
+                if args.len() != 1 {
+                    self.emit_code(crate::diagnostic::codes::E0242, "http_get expects 1 argument (url)");
+                } else {
+                    self.infer_expr(&args[0], scopes);
+                }
+                return Type::Name("string".into(), vec![]);
+            }
+            "http_post" => {
+                if args.len() != 2 {
+                    self.emit_code(crate::diagnostic::codes::E0242, "http_post expects 2 arguments (url, body)");
                 } else {
                     self.infer_expr(&args[0], scopes);
                     self.infer_expr(&args[1], scopes);
