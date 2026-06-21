@@ -16,7 +16,7 @@ mod ffi;
 mod fmt;
 #[path = "../interp/mod.rs"]
 mod interp;
-#[path = "../lexer.rs"]
+#[path = "../lexer/mod.rs"]
 mod lexer;
 #[path = "../lint.rs"]
 mod lint;
