@@ -17,11 +17,15 @@ impl<'ctx> CodeGenerator<'ctx> {
                 BasicTypeEnum::StructType(self.context.struct_type(&field_tys, false))
             }
             crate::ast::TypeDefKind::Enum(variants) => {
+                // Sort variants by name so ordinals are deterministic (not dependent on
+                // declaration order). Matches the interp's string-based tag comparison.
+                let mut sorted_variants: Vec<&crate::ast::Variant> = variants.iter().collect();
+                sorted_variants.sort_by_key(|v| &v.name);
                 if t.attributes.contains(&TypeAttribute::ReprC) {
                     // #[repr(C)] enums are plain i32 (matching C int / enum)
                     let enum_ty = BasicTypeEnum::IntType(self.context.i32_type());
                     // Register constructor functions for each variant
-                    for (ordinal, v) in variants.iter().enumerate() {
+                    for (ordinal, v) in sorted_variants.iter().enumerate() {
                         let ctor_name = format!("{}_{}", t.name, v.name);
                         if self.module.get_function(&ctor_name).is_none() {
                             let fn_type = self.context.i32_type().fn_type(&[], false);
@@ -45,7 +49,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                         BasicTypeEnum::IntType(self.context.i32_type()),
                         BasicTypeEnum::IntType(self.context.i64_type()),
                     ], false);
-                    for (ordinal, v) in variants.iter().enumerate() {
+                    for (ordinal, v) in sorted_variants.iter().enumerate() {
                         let ctor_name = format!("{}_{}", t.name, v.name);
                         if self.module.get_function(&ctor_name).is_none() {
                             let fn_type = struct_ty.fn_type(&[

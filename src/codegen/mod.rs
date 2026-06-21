@@ -249,7 +249,9 @@ impl<'ctx> CodeGenerator<'ctx> {
     pub(super) fn find_variant_ordinal(&self, name: &str) -> Result<u64, CompileError> {
         for td in self.type_defs.values() {
             if let crate::ast::TypeDefKind::Enum(variants) = &td.kind {
-                for (i, v) in variants.iter().enumerate() {
+                let mut sorted: Vec<&crate::ast::Variant> = variants.iter().collect();
+                sorted.sort_by_key(|v| &v.name);
+                for (i, v) in sorted.iter().enumerate() {
                     if v.name == name {
                         return Ok(i as u64);
                     }
