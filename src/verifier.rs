@@ -574,6 +574,56 @@ impl Verifier {
         }
     }
 
+    /// Try to resolve an expression to a concrete f64 value from the model.
+    fn resolve_to_f64(expr: &Expr, model: &z3::Model, vars: &Z3VarMap) -> Option<f64> {
+        match expr {
+            Expr::Literal(Lit::Int(n)) => Some(*n as f64),
+            Expr::Literal(Lit::Float(f)) => Some(*f),
+            Expr::Ident(name) => {
+                vars.get_real(name).and_then(|z3_var| {
+                    model.eval(z3_var, true)
+                        .and_then(|v| v.as_real())
+                        .map(|(num, den)| num as f64 / den as f64)
+                }).or_else(|| {
+                    vars.get_int(name).and_then(|z3_var| {
+                        model.eval(z3_var, true).and_then(|v| v.as_i64())
+                    }).map(|v| v as f64)
+                })
+            }
+            Expr::Old(inner) => {
+                if let Expr::Ident(name) = inner.as_ref() {
+                    let old_name = format!("old_{}", name);
+                    vars.get_real(&old_name).and_then(|z3_var| {
+                        model.eval(z3_var, true)
+                            .and_then(|v| v.as_real())
+                            .map(|(num, den)| num as f64 / den as f64)
+                    }).or_else(|| {
+                        vars.get_int(&old_name).and_then(|z3_var| {
+                            model.eval(z3_var, true).and_then(|v| v.as_i64())
+                        }).map(|v| v as f64)
+                    })
+                } else {
+                    None
+                }
+            }
+            Expr::Binary(op, lhs, rhs) => {
+                let l = Self::resolve_to_f64(lhs, model, vars)?;
+                let r = Self::resolve_to_f64(rhs, model, vars)?;
+                match op {
+                    BinOp::Add => Some(l + r),
+                    BinOp::Sub => Some(l - r),
+                    BinOp::Mul => Some(l * r),
+                    BinOp::Div => Some(l / r),
+                    _ => None,
+                }
+            }
+            Expr::Unary(UnOp::Neg, inner) => {
+                Self::resolve_to_f64(inner, model, vars).map(|v| -v)
+            }
+            _ => None,
+        }
+    }
+
     fn eval_expr_on_model(expr: &Expr, model: &z3::Model, vars: &Z3VarMap) -> bool {
         match expr {
             Expr::Literal(Lit::Bool(b)) => *b,
@@ -617,37 +667,67 @@ impl Verifier {
                     BinOp::EqCmp => {
                         match (Self::resolve_to_i64(lhs, model, vars), Self::resolve_to_i64(rhs, model, vars)) {
                             (Some(l), Some(r)) => l == r,
-                            _ => false,
+                            _ => {
+                                match (Self::resolve_to_f64(lhs, model, vars), Self::resolve_to_f64(rhs, model, vars)) {
+                                    (Some(l), Some(r)) => l == r,
+                                    _ => false,
+                                }
+                            }
                         }
                     }
                     BinOp::NeCmp => {
                         match (Self::resolve_to_i64(lhs, model, vars), Self::resolve_to_i64(rhs, model, vars)) {
                             (Some(l), Some(r)) => l != r,
-                            _ => false,
+                            _ => {
+                                match (Self::resolve_to_f64(lhs, model, vars), Self::resolve_to_f64(rhs, model, vars)) {
+                                    (Some(l), Some(r)) => l != r,
+                                    _ => false,
+                                }
+                            }
                         }
                     }
                     BinOp::Lt => {
                         match (Self::resolve_to_i64(lhs, model, vars), Self::resolve_to_i64(rhs, model, vars)) {
                             (Some(l), Some(r)) => l < r,
-                            _ => false,
+                            _ => {
+                                match (Self::resolve_to_f64(lhs, model, vars), Self::resolve_to_f64(rhs, model, vars)) {
+                                    (Some(l), Some(r)) => l < r,
+                                    _ => false,
+                                }
+                            }
                         }
                     }
                     BinOp::Gt => {
                         match (Self::resolve_to_i64(lhs, model, vars), Self::resolve_to_i64(rhs, model, vars)) {
                             (Some(l), Some(r)) => l > r,
-                            _ => false,
+                            _ => {
+                                match (Self::resolve_to_f64(lhs, model, vars), Self::resolve_to_f64(rhs, model, vars)) {
+                                    (Some(l), Some(r)) => l > r,
+                                    _ => false,
+                                }
+                            }
                         }
                     }
                     BinOp::Le => {
                         match (Self::resolve_to_i64(lhs, model, vars), Self::resolve_to_i64(rhs, model, vars)) {
                             (Some(l), Some(r)) => l <= r,
-                            _ => false,
+                            _ => {
+                                match (Self::resolve_to_f64(lhs, model, vars), Self::resolve_to_f64(rhs, model, vars)) {
+                                    (Some(l), Some(r)) => l <= r,
+                                    _ => false,
+                                }
+                            }
                         }
                     }
                     BinOp::Ge => {
                         match (Self::resolve_to_i64(lhs, model, vars), Self::resolve_to_i64(rhs, model, vars)) {
                             (Some(l), Some(r)) => l >= r,
-                            _ => false,
+                            _ => {
+                                match (Self::resolve_to_f64(lhs, model, vars), Self::resolve_to_f64(rhs, model, vars)) {
+                                    (Some(l), Some(r)) => l >= r,
+                                    _ => false,
+                                }
+                            }
                         }
                     }
                     _ => {
@@ -824,6 +904,16 @@ impl Verifier {
                 let v = self.expr_to_z3_int(inner, vars)?;
                 Some(v.unary_minus())
             }
+            Expr::If { cond, then_, else_ } => {
+                let cond_z3 = self.expr_to_z3_bool(cond, vars)?;
+                let then_z3 = block_tail_expr(then_)
+                    .and_then(|e| self.expr_to_z3_int(&e, vars))?;
+                let else_z3 = else_.as_ref()
+                    .and_then(|b| block_tail_expr(b))
+                    .and_then(|e| self.expr_to_z3_int(&e, vars))
+                    .unwrap_or_else(|| Z3Int::from_i64(0));
+                Some(cond_z3.ite(&then_z3, &else_z3))
+            }
             _ => None,
         }
     }
@@ -875,6 +965,16 @@ impl Verifier {
             Expr::Unary(UnOp::Neg, inner) => {
                 let v = self.expr_to_z3_real(inner, vars)?;
                 Some(-v)
+            }
+            Expr::If { cond, then_, else_ } => {
+                let cond_z3 = self.expr_to_z3_bool(cond, vars)?;
+                let then_z3 = block_tail_expr(then_)
+                    .and_then(|e| self.expr_to_z3_real(&e, vars))?;
+                let else_z3 = else_.as_ref()
+                    .and_then(|b| block_tail_expr(b))
+                    .and_then(|e| self.expr_to_z3_real(&e, vars))
+                    .unwrap_or_else(|| Z3Real::from_int(&Z3Int::from_i64(0)));
+                Some(cond_z3.ite(&then_z3, &else_z3))
             }
             _ => None,
         }
@@ -980,6 +1080,16 @@ impl Verifier {
                 let v = self.expr_to_z3_bool(inner, vars)?;
                 Some(v.not())
             }
+            Expr::If { cond, then_, else_ } => {
+                let cond_z3 = self.expr_to_z3_bool(cond, vars)?;
+                let then_z3 = block_tail_expr(then_)
+                    .and_then(|e| self.expr_to_z3_bool(&e, vars))?;
+                let else_z3 = else_.as_ref()
+                    .and_then(|b| block_tail_expr(b))
+                    .and_then(|e| self.expr_to_z3_bool(&e, vars))
+                    .unwrap_or_else(|| Z3Bool::from_bool(true));
+                Some(cond_z3.ite(&then_z3, &else_z3))
+            }
             _ => None,
         }
     }
@@ -1003,23 +1113,60 @@ impl Verifier {
     }
 }
 
-fn extract_body_return(block: &Block) -> Option<Expr> {
+/// Extract the final value-producing expression from a block.
+/// Used in `expr_to_z3_*` to evaluate the tail expression of an if-else branch.
+fn block_tail_expr(block: &[Stmt]) -> Option<Expr> {
     for stmt in block.iter().rev() {
         match stmt {
-            Stmt::Return(Some(expr)) => return Some(expr.clone()),
+            Stmt::Expr(e) => return Some(e.clone()),
+            Stmt::Return(Some(e)) => return Some(e.clone()),
             Stmt::Return(None) => return Some(Expr::Literal(Lit::Unit)),
             _ => {}
         }
     }
+    None
+}
+
+/// Extract the return/tail expression from a function body, handling if-else branching.
+/// Uses `Expr::If` to represent conditional paths so the Z3 layer can encode them via `ite`.
+fn extract_body_return(block: &[Stmt]) -> Option<Expr> {
+    // First pass: look for explicit returns and if-else expressions
+    for stmt in block.iter().rev() {
+        match stmt {
+            Stmt::Return(Some(expr)) => return Some(expr.clone()),
+            Stmt::Return(None) => return Some(Expr::Literal(Lit::Unit)),
+            Stmt::If { cond, then_, else_ } => {
+                return extract_if_return(cond, then_, else_);
+            }
+            _ => {}
+        }
+    }
+    // Second pass: look for implicit return (tail expression)
     for stmt in block.iter().rev() {
         match stmt {
             Stmt::Expr(expr) => return Some(expr.clone()),
+            Stmt::If { cond, then_, else_ } => {
+                return extract_if_return(cond, then_, else_);
+            }
             Stmt::Requires(_, _) | Stmt::Ensures(_, _) | Stmt::Math(_)
             | Stmt::Desc(..) | Stmt::MmsBlock { .. } => continue,
             _ => break,
         }
     }
     None
+}
+
+/// Build an `Expr::If` from the condition and both branches' return expressions.
+fn extract_if_return(cond: &Expr, then_: &[Stmt], else_: &Option<Block>) -> Option<Expr> {
+    let then_expr = extract_body_return(then_)?;
+    let else_expr = else_.as_ref()
+        .and_then(|b| extract_body_return(b))
+        .unwrap_or(Expr::Literal(Lit::Unit));
+    Some(Expr::If {
+        cond: Box::new(cond.clone()),
+        then_: vec![Stmt::Expr(then_expr)],
+        else_: Some(vec![Stmt::Expr(else_expr)]),
+    })
 }
 
 fn format_expr(expr: &Expr) -> String {
@@ -1480,5 +1627,101 @@ func main() -> i64 {
         let func_names: Vec<&str> = results.iter().map(|r| r.func_name.as_str()).collect();
         assert!(func_names.contains(&"extern identity"), "extern identity should be in results: {:?}", func_names);
         assert!(func_names.contains(&"main"), "main should be in results: {:?}", func_names);
+    }
+
+    // --- extract_body_return: if/else branch coverage ---
+
+    #[test]
+    fn verify_if_else_body_all_paths_verified() {
+        let src = r#"
+func abs(x: i32) -> i32 {
+    requires: true
+    ensures: result >= 0
+    if x >= 0 { x } else { -x }
+}
+"#;
+        let results = verify_source(src).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].status, VerifStatus::Verified,
+            "abs with if/else should be verified: {}", results[0].message);
+    }
+
+    #[test]
+    fn verify_if_else_body_violation_detected() {
+        let src = r#"
+func bad_abs(x: i32) -> i32 {
+    requires: true
+    ensures: result >= 0
+    if x >= 0 { x } else { x - 1 }
+}
+"#;
+        let results = verify_source(src).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].status, VerifStatus::Failed,
+            "bad_abs with if/else should fail (else branch x-1 can be negative)");
+    }
+
+    #[test]
+    fn verify_nested_if_else_body() {
+        let src = r#"
+func sign(x: i32) -> i32 {
+    requires: true
+    ensures: result == 1 || result == 0 || result == -1
+    if x > 0 { 1 } else { if x < 0 { -1 } else { 0 } }
+}
+"#;
+        let results = verify_source(src).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].status, VerifStatus::Verified,
+            "nested if/else should be verified: {}", results[0].message);
+    }
+
+    #[test]
+    fn verify_if_else_body_with_requires() {
+        let src = r#"
+func add_or_mul(x: i32, y: i32) -> i32 {
+    requires: x >= 0 && y >= 0
+    ensures: result >= 0
+    if x > y { x + y } else { x * y }
+}
+"#;
+        let results = verify_source(src).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].status, VerifStatus::Verified,
+            "add_or_mul with if/else should be verified: {}", results[0].message);
+    }
+
+    // --- eval_expr_on_model: f64 boolean degeneracy ---
+
+    #[test]
+    fn verify_f64_ensures() {
+        let src = r#"
+func positive(x: f64) -> f64 {
+    requires: x > 0.0
+    ensures: result > 0.0
+    x
+}
+"#;
+        let results = verify_source(src).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].status, VerifStatus::Verified,
+            "f64 ensures should be verified: {}", results[0].message);
+    }
+
+    #[test]
+    fn verify_f64_ensures_violation() {
+        let src = r#"
+func negate(x: f64) -> f64 {
+    requires: x > 0.0
+    ensures: result > 0.0
+    -x
+}
+"#;
+        let results = verify_source(src).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].status, VerifStatus::Failed,
+            "negate should fail: result = -x violates ensures result > 0.0");
+        let diag = results[0].diagnostic.as_ref().unwrap();
+        assert!(diag.message.contains("result"), "should include result in narrative");
     }
 }
