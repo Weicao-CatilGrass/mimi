@@ -9,12 +9,14 @@ mod checker;
 mod helpers;
 
 mod check_stmt;
+mod infer;
 mod infer_expr;
 
-pub(crate) use borrow::BorrowState;
 pub(crate) use checker::Checker;
 pub use helpers::{fmt_type, is_type_param, subst_type_params};
-pub(crate) use helpers::{is_bool, is_int, is_numeric, is_string, same_type, is_trait_coercion, suggest_name};
+pub(crate) use helpers::{is_bool, same_type, is_trait_coercion};
+#[cfg(test)]
+pub(crate) use helpers::{is_int, is_numeric, is_string};
 
 pub fn check(file: &File) -> Result<(), Vec<Diagnostic>> {
     let mut checker = Checker::new(file);
