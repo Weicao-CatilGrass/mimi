@@ -35,8 +35,36 @@ impl<'ctx> CodeGenerator<'ctx> {
                             BasicMetadataValueEnum::IntValue(iv),
                         ], "sprintf_call")
                             .map_err(|e| CompileError::LlvmError(format!("sprintf error: {}", e)))?;
-                        // NOTE: not registered — returned value owns the allocation
-                        Ok(buf.into())
+                        // Build {i8*, i64} struct from the buffer
+                        let str_ty = self.context.struct_type(&[
+                            BasicTypeEnum::PointerType(
+                                self.context.i8_type().ptr_type(inkwell::AddressSpace::default())
+                            ),
+                            BasicTypeEnum::IntType(self.context.i64_type()),
+                        ], false);
+                        let alloca = self.builder.build_alloca(str_ty, "str_result")
+                            .map_err(|e| CompileError::LlvmError(format!("alloca error: {}", e)))?;
+                        let ptr_gep = self.builder.build_struct_gep(str_ty, alloca, 0, "str_ptr")
+                            .map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?;
+                        self.builder.build_store(ptr_gep, buf)
+                            .map_err(|e| CompileError::LlvmError(format!("store error: {}", e)))?;
+                        let strlen_fn = self.module.get_function("strlen")
+                            .ok_or_else(|| "strlen not declared".to_string())?;
+                        let len = self.builder.build_call(strlen_fn, &[BasicMetadataValueEnum::PointerValue(buf)], "strlen_to_s")
+                            .map_err(|e| CompileError::LlvmError(format!("strlen error: {}", e)))?
+                            .try_as_basic_value_opt()
+                            .ok_or_else(|| CompileError::LlvmError("strlen returned void".to_string()))?
+                            .into_int_value();
+                        let len_gep = self.builder.build_struct_gep(str_ty, alloca, 1, "str_len")
+                            .map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?;
+                        self.builder.build_store(len_gep, len)
+                            .map_err(|e| CompileError::LlvmError(format!("store error: {}", e)))?;
+                        let result = self.builder.build_load(
+                            BasicTypeEnum::StructType(str_ty),
+                            alloca,
+                            "str_result"
+                        ).map_err(|e| CompileError::LlvmError(format!("load error: {}", e)))?;
+                        Ok(result)
                     }
                     BasicMetadataValueEnum::FloatValue(fv) => {
                         let alloc_size = self.context.i64_type().const_int(32, false);
@@ -59,8 +87,36 @@ impl<'ctx> CodeGenerator<'ctx> {
                             BasicMetadataValueEnum::FloatValue(fv),
                         ], "sprintf_call")
                             .map_err(|e| CompileError::LlvmError(format!("sprintf error: {}", e)))?;
-                        // NOTE: not registered — returned value owns the allocation
-                        Ok(buf.into())
+                        // Build {i8*, i64} struct from the buffer
+                        let str_ty = self.context.struct_type(&[
+                            BasicTypeEnum::PointerType(
+                                self.context.i8_type().ptr_type(inkwell::AddressSpace::default())
+                            ),
+                            BasicTypeEnum::IntType(self.context.i64_type()),
+                        ], false);
+                        let alloca = self.builder.build_alloca(str_ty, "str_result")
+                            .map_err(|e| CompileError::LlvmError(format!("alloca error: {}", e)))?;
+                        let ptr_gep = self.builder.build_struct_gep(str_ty, alloca, 0, "str_ptr")
+                            .map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?;
+                        self.builder.build_store(ptr_gep, buf)
+                            .map_err(|e| CompileError::LlvmError(format!("store error: {}", e)))?;
+                        let strlen_fn = self.module.get_function("strlen")
+                            .ok_or_else(|| "strlen not declared".to_string())?;
+                        let len = self.builder.build_call(strlen_fn, &[BasicMetadataValueEnum::PointerValue(buf)], "strlen_to_s")
+                            .map_err(|e| CompileError::LlvmError(format!("strlen error: {}", e)))?
+                            .try_as_basic_value_opt()
+                            .ok_or_else(|| CompileError::LlvmError("strlen returned void".to_string()))?
+                            .into_int_value();
+                        let len_gep = self.builder.build_struct_gep(str_ty, alloca, 1, "str_len")
+                            .map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?;
+                        self.builder.build_store(len_gep, len)
+                            .map_err(|e| CompileError::LlvmError(format!("store error: {}", e)))?;
+                        let result = self.builder.build_load(
+                            BasicTypeEnum::StructType(str_ty),
+                            alloca,
+                            "str_result"
+                        ).map_err(|e| CompileError::LlvmError(format!("load error: {}", e)))?;
+                        Ok(result)
                     }
                     _ => Err(CompileError::TypeMismatch("to_string: unsupported type".to_string())),
                 }

@@ -860,6 +860,17 @@ impl<'ctx> CodeGenerator<'ctx> {
                             let mangled = format!("{}__{}__{}", obj_type, trait_name, method_name);
                             if let Some(function) = self.module.get_function(&mangled) {
                                 let obj_val = self.compile_expr(obj, vars)?;
+                                let obj_val = match obj_val {
+                                    BasicValueEnum::StructValue(sv) => {
+                                        let struct_ty = sv.get_type();
+                                        let alloca = self.builder.build_alloca(struct_ty, "self_tmp")
+                                            .map_err(|e| format!("alloca error: {}", e))?;
+                                        self.builder.build_store(alloca, sv)
+                                            .map_err(|e| format!("store error: {}", e))?;
+                                        BasicValueEnum::PointerValue(alloca)
+                                    }
+                                    other => other,
+                                };
                                 let mut compiled_args = Vec::new();
                                 compiled_args.push(obj_val);
                                 for arg in args {
@@ -998,6 +1009,17 @@ impl<'ctx> CodeGenerator<'ctx> {
                                     let mangled = format!("{}__{}__{}", type_name, trait_name, method_name);
                                     if let Some(function) = self.module.get_function(&mangled) {
                                         let obj_val = self.compile_expr(obj, vars)?;
+                                        let obj_val = match obj_val {
+                                            BasicValueEnum::StructValue(sv) => {
+                                                let struct_ty = sv.get_type();
+                                                let alloca = self.builder.build_alloca(struct_ty, "self_tmp")
+                                                    .map_err(|e| format!("alloca error: {}", e))?;
+                                                self.builder.build_store(alloca, sv)
+                                                    .map_err(|e| format!("store error: {}", e))?;
+                                                BasicValueEnum::PointerValue(alloca)
+                                            }
+                                            other => other,
+                                        };
                                         let mut compiled_args = Vec::new();
                                         compiled_args.push(obj_val);
                                         for arg in args {
