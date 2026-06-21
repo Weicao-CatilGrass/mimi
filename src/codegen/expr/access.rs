@@ -1,0 +1,159 @@
+use crate::ast::*;
+use crate::codegen::types;
+use crate::codegen::{CodeGenerator, VarEntry};
+use crate::error::CompileError;
+
+use inkwell::types::BasicTypeEnum;
+use inkwell::values::BasicValueEnum;
+use std::collections::HashMap;
+
+impl<'ctx> CodeGenerator<'ctx> {
+    pub(in crate::codegen) fn compile_field_expr(
+        &mut self,
+        obj: &Expr,
+        field_name: &str,
+        vars: &HashMap<String, VarEntry<'ctx>>,
+    ) -> Result<BasicValueEnum<'ctx>, CompileError> {
+        // Field access: obj.field
+        let obj_val = self.compile_expr(obj, vars)?;
+        let obj_type = self.infer_object_type(obj, vars);
+        let field_ptr = match obj_val {
+            BasicValueEnum::PointerValue(pv) => pv,
+            BasicValueEnum::StructValue(sv) => {
+                if let Some(BasicTypeEnum::StructType(sty)) = self.type_llvm.get(&obj_type) {
+                    let alloca = self.builder.build_alloca(*sty, "tmp")
+                        .map_err(|e| CompileError::LlvmError(format!("alloca error: {}", e)))?;
+                    self.builder.build_store(alloca, sv)
+                        .map_err(|e| CompileError::LlvmError(format!("store error: {}", e)))?;
+                    alloca
+                } else {
+                    return Err(format!("[E0707] cannot access field on type '{}'", obj_type).into());
+                }
+            }
+            _ => return Err(CompileError::Generic(format!("field access requires a struct or actor type, got {}", obj_val.get_type().to_string()))),
+        };
+        let sty = match self.type_llvm.get(&obj_type) {
+            Some(BasicTypeEnum::StructType(s)) => *s,
+            _ => return Err(format!("type '{}' is not a struct", obj_type).into()),
+        };
+        if let Some(td) = self.type_defs.get(&obj_type) {
+            if let TypeDefKind::Record(fields) = &td.kind {
+                if let Some(idx) = fields.iter().position(|f| f.name == *field_name) {
+                    let gep = self.builder.build_struct_gep(sty, field_ptr, idx as u32, field_name)
+                        .map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?;
+                    let field_ty = types::mimi_type_to_llvm(self.context, &fields[idx].ty)
+                        .unwrap_or(BasicTypeEnum::IntType(self.context.i64_type()));
+                    return self.builder.build_load(field_ty, gep, field_name)
+                        .map_err(|e| CompileError::LlvmError(format!("load error: {}", e)));
+                }
+            }
+        }
+        // Fallback: numeric field index
+        if let Ok(idx) = field_name.parse::<u32>() {
+            let gep = self.builder.build_struct_gep(sty, field_ptr, idx, field_name)
+                .map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?;
+            return self.builder.build_load(BasicTypeEnum::IntType(self.context.i64_type()), gep, field_name)
+                .map_err(|e| CompileError::LlvmError(format!("load error: {}", e)));
+        }
+        Err(format!("field '{}' not found on type '{}'", field_name, obj_type).into())
+    }
+
+
+    pub(in crate::codegen) fn compile_index_expr(
+        &mut self,
+        obj: &Expr,
+        idx_expr: &Expr,
+        vars: &HashMap<String, VarEntry<'ctx>>,
+    ) -> Result<BasicValueEnum<'ctx>, CompileError> {
+        // list[i] or arr[i] - load from array/list
+        let obj_val = self.compile_expr(obj, vars)?;
+        let idx_val = self.compile_expr(idx_expr, vars)?;
+        match obj_val {
+            BasicValueEnum::PointerValue(pv) => {
+                let idx_iv = match idx_val {
+                    BasicValueEnum::IntValue(iv) => iv,
+                    _ => return Err("index must be i64".into()),
+                };
+                // Try list struct first: { i64 len, i8* data }
+                let list_ty = self.context.struct_type(&[
+                    BasicTypeEnum::IntType(self.context.i64_type()),
+                    BasicTypeEnum::PointerType(self.context.ptr_type(inkwell::AddressSpace::default())),
+                ], false);
+                // Check if this looks like a list struct by trying to GEP field 0 (len)
+                if let Ok(_len_gep) = self.builder.build_struct_gep(list_ty, pv, 0, "list.len_check") {
+                    // It's a list struct - load data pointer and index into it
+                    let data_gep = self.builder.build_struct_gep(list_ty, pv, 1, "list.data")
+                        .map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?;
+                    let data_ptr = self.builder.build_load(
+                        BasicTypeEnum::PointerType(self.context.ptr_type(inkwell::AddressSpace::default())),
+                        data_gep, "data")
+                        .map_err(|e| CompileError::LlvmError(format!("load error: {}", e)))?
+                        .into_pointer_value();
+                    let data_ptr_i64 = self.builder.build_bit_cast(data_ptr,
+                        self.context.i64_type().ptr_type(inkwell::AddressSpace::default()),
+                        "data_i64")
+                        .map_err(|e| CompileError::LlvmError(format!("bitcast error: {}", e)))?
+                        .into_pointer_value();
+                    // SAFETY: build_gep requires valid pointer and index types; the pointer is derived from a valid LLVM-typed allocation and indices are correctly-typed i64 values.
+                    let elem_ptr = unsafe {
+                        self.builder.build_gep(self.context.i64_type(), data_ptr_i64, &[idx_iv], "elem")
+                    }.map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?;
+                    return self.builder.build_load(BasicTypeEnum::IntType(self.context.i64_type()), elem_ptr, "elem_val")
+                        .map_err(|e| CompileError::LlvmError(format!("load error: {}", e)));
+                }
+                // Fallback: treat as raw pointer to i64 array
+                // SAFETY: build_gep requires valid pointer and index types; the pointer is derived from a valid LLVM-typed allocation and indices are correctly-typed i64 values.
+                let elem_ptr = unsafe {
+                    self.builder.build_gep(self.context.i64_type(), pv, &[idx_iv], "elem")
+                }.map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?;
+                self.builder.build_load(BasicTypeEnum::IntType(self.context.i64_type()), elem_ptr, "elem_val")
+                    .map_err(|e| CompileError::LlvmError(format!("load error: {}", e)))
+            }
+            BasicValueEnum::ArrayValue(_av) => {
+                // Direct LLVM array value: extract element by index
+                let idx = match idx_val {
+                    BasicValueEnum::IntValue(iv) => {
+                        // Convert runtime i64 index to constant u32 for extractvalue
+                        iv.get_zero_extended_constant()
+                            .ok_or_else(|| "array index must be a compile-time constant".to_string())? as u32
+                    }
+                    _ => return Err("index must be i64".into()),
+                };
+                let elem = self.builder.build_extract_value(obj_val.into_array_value(), idx, "arr_elem")
+                    .map_err(|e| CompileError::LlvmError(format!("extractvalue error: {}", e)))?;
+                Ok(elem)
+            }
+            _ => Err("index requires a list/array pointer".into()),
+        }
+    }
+
+
+    pub(in crate::codegen) fn compile_tuple_index_expr(
+        &mut self,
+        tuple_expr: &Expr,
+        index: usize,
+        vars: &HashMap<String, VarEntry<'ctx>>,
+    ) -> Result<BasicValueEnum<'ctx>, CompileError> {
+        let tuple_val = self.compile_expr(tuple_expr, vars)?;
+        match tuple_val {
+            BasicValueEnum::PointerValue(pv) => {
+                let struct_ty = self.tuple_type_stack.last()
+                    .ok_or_else(|| "tuple type stack empty".to_string())?;
+                let field_gep = self.builder.build_struct_gep(*struct_ty, pv, index as u32, &format!("tuple_field_{}", index))
+                    .map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?;
+                let field_types = struct_ty.get_field_types();
+                let field_ty = field_types.get(index)
+                    .ok_or_else(|| format!("tuple field {} out of bounds", index))?;
+                let field_ty = *field_ty;
+                self.builder.build_load(field_ty, field_gep, &format!("tuple_{}", index))
+                    .map_err(|e| CompileError::LlvmError(format!("load error: {}", e)))
+            }
+            BasicValueEnum::StructValue(sv) => {
+                self.builder.build_extract_value(sv, index as u32, &format!("tuple_{}", index))
+                    .map_err(|e| CompileError::LlvmError(format!("extract tuple field {} error: {}", index, e)))
+            }
+            _ => Err(CompileError::Generic(format!("tuple index requires a tuple value, got {:?}", tuple_val))),
+        }
+    }
+
+}
