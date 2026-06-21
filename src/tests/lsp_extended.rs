@@ -605,7 +605,7 @@ fn workspace_symbols_empty_query_returns_all() {
 
 #[test]
 fn workspace_symbols_no_documents_empty() {
-    let mut server = LspServer::new();
+    let server = LspServer::new();
     let symbols = server.compute_workspace_symbols("");
     assert!(symbols.is_empty(), "no documents should yield no symbols");
 }

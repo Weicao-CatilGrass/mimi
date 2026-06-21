@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use crate::ast::*;
 use crate::diagnostic::Diagnostic;
 use crate::span::Span;
@@ -1193,6 +1195,12 @@ impl<'a> Checker<'a> {
         if let Some(last) = block.last() {
             match last {
                 Stmt::Return(_) => return true,
+                Stmt::Expr(Expr::Match(_, arms)) => {
+                    return arms.iter().all(|arm| {
+                        let block = vec![Stmt::Expr(arm.body.clone())];
+                        self.block_returns_on_all_paths(&block)
+                    });
+                }
                 Stmt::Expr(_) => return true, // implicit return via last expression
                 Stmt::If { then_, else_, .. } => {
                     let then_returns = self.block_returns_on_all_paths(then_);
@@ -1217,12 +1225,6 @@ impl<'a> Checker<'a> {
                     if self.block_returns_on_all_paths(body) {
                         return true;
                     }
-                }
-                Stmt::Expr(Expr::Match(_, arms)) => {
-                    return arms.iter().all(|arm| {
-                        let block = vec![Stmt::Expr(arm.body.clone())];
-                        self.block_returns_on_all_paths(&block)
-                    });
                 }
                 _ => {}
             }

@@ -14,7 +14,7 @@ impl<'a> Interpreter<'a> {
         Ok(Value::Unit)
     }
 
-    pub(crate) fn builtin_input(&mut self, args: Vec<Value>) -> Result<Value, InterpError> {
+    pub(crate) fn builtin_input(&mut self, _args: Vec<Value>) -> Result<Value, InterpError> {
         use std::io::{self, BufRead};
         let mut line = String::new();
         match io::stdin().lock().read_line(&mut line) {
@@ -166,7 +166,7 @@ impl<'a> Interpreter<'a> {
         }
     }
 
-    pub(crate) fn builtin_random(&self, args: Vec<Value>) -> Result<Value, InterpError> {
+    pub(crate) fn builtin_random(&self, _args: Vec<Value>) -> Result<Value, InterpError> {
         use std::collections::hash_map::RandomState;
         use std::hash::{BuildHasher, Hasher};
         let s = RandomState::new();
@@ -179,7 +179,7 @@ impl<'a> Interpreter<'a> {
         Ok(Value::Float((bits as f64) / (u64::MAX as f64)))
     }
 
-    pub(crate) fn builtin_pi(&self, args: Vec<Value>) -> Result<Value, InterpError> {
+    pub(crate) fn builtin_pi(&self, _args: Vec<Value>) -> Result<Value, InterpError> {
         Ok(Value::Float(std::f64::consts::PI))
     }
 
@@ -761,7 +761,7 @@ impl<'a> Interpreter<'a> {
     }
 
     // === Map/Record utilities ===
-    pub(crate) fn builtin_map_new(&self, args: Vec<Value>) -> Result<Value, InterpError> {
+    pub(crate) fn builtin_map_new(&self, _args: Vec<Value>) -> Result<Value, InterpError> {
         Ok(Value::Record(None, std::collections::HashMap::new()))
     }
 
@@ -1035,15 +1035,15 @@ impl<'a> Interpreter<'a> {
     }
 
     // === Allocator ===
-    pub(crate) fn builtin_allocator_system(&self, args: Vec<Value>) -> Result<Value, InterpError> {
+    pub(crate) fn builtin_allocator_system(&self, _args: Vec<Value>) -> Result<Value, InterpError> {
         Ok(Value::Allocator(AllocatorKind::System))
     }
 
-    pub(crate) fn builtin_allocator_arena(&self, args: Vec<Value>) -> Result<Value, InterpError> {
+    pub(crate) fn builtin_allocator_arena(&self, _args: Vec<Value>) -> Result<Value, InterpError> {
         Ok(Value::Allocator(AllocatorKind::Arena))
     }
 
-    pub(crate) fn builtin_allocator_bump(&self, args: Vec<Value>) -> Result<Value, InterpError> {
+    pub(crate) fn builtin_allocator_bump(&self, _args: Vec<Value>) -> Result<Value, InterpError> {
         Ok(Value::Allocator(AllocatorKind::Bump))
     }
 
@@ -1085,7 +1085,7 @@ impl<'a> Interpreter<'a> {
         }
     }
 
-    pub(crate) fn builtin_arena_reset(&mut self, args: Vec<Value>) -> Result<Value, InterpError> {
+    pub(crate) fn builtin_arena_reset(&mut self, _args: Vec<Value>) -> Result<Value, InterpError> {
         // arena_reset() - reset all arena allocations
         if !self.arenas.is_empty() {
             let arena_id = self.arenas.len() - 1;
@@ -1094,7 +1094,7 @@ impl<'a> Interpreter<'a> {
         Ok(Value::Unit)
     }
 
-    pub(crate) fn builtin_bump_used(&self, args: Vec<Value>) -> Result<Value, InterpError> {
+    pub(crate) fn builtin_bump_used(&self, _args: Vec<Value>) -> Result<Value, InterpError> {
         // bump_used() - return the number of bump allocations
         if self.arenas.is_empty() {
             return Ok(Value::Int(0));

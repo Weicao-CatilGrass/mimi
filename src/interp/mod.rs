@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 mod value;
 mod closure_utils;
 mod eval;
@@ -733,6 +735,15 @@ impl<'a> Interpreter<'a> {
             }
         }
         None
+    }
+
+    fn is_mutable(&self, name: &str) -> bool {
+        for mut_scope in self.mut_vars.iter().rev() {
+            if let Some(&is_mut) = mut_scope.get(name) {
+                return is_mut;
+            }
+        }
+        false
     }
 
     fn is_moved(&self, name: &str) -> bool {

@@ -1,10 +1,9 @@
 #![allow(dead_code, deprecated)]
 
 use crate::ast::*;
-use crate::codegen::CallSiteValueExt;
 use crate::codegen::call_try_basic_value;
 use crate::codegen::types;
-use inkwell::types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum};
+use inkwell::types::{BasicMetadataTypeEnum, BasicTypeEnum};
 use inkwell::values::{BasicMetadataValueEnum, BasicValueEnum};
 use std::collections::HashMap;
 

@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use crate::ast::*;
 use crate::interp::error::InterpError;
 use std::cell::RefCell;

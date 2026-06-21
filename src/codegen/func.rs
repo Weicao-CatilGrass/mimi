@@ -5,8 +5,6 @@ use std::collections::HashMap;
 use inkwell::types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum};
 use inkwell::values::{BasicMetadataValueEnum, BasicValueEnum};
 
-use crate::codegen::builtins;
-use crate::codegen::call_try_basic_value;
 use crate::error::{CompileError, MimiResult};
 
 use super::CodeGenerator;
@@ -71,7 +69,7 @@ impl<'ctx> CodeGenerator<'ctx> {
             Stmt::Expr(expr) | Stmt::Return(Some(expr)) => match expr {
                 Expr::Record { ty, .. } => ty.clone(),
                 Expr::Call(callee, _) => {
-                    if let Expr::Ident(fname) = callee.as_ref() {
+                    if let Expr::Ident(_fname) = callee.as_ref() {
                         // We can't look up func_defs here (static context),
                         // so return None; caller must handle this case
                         None

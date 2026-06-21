@@ -1,3 +1,5 @@
+#![allow(unused_doc_comments)]
+
 use super::harness::arb_mimi_program;
 use crate::{core, lexer, parser};
 

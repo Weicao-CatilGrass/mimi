@@ -2125,7 +2125,7 @@ impl<'a> Checker<'a> {
     }
 
     /// Type-check a method call on List<T>
-    fn check_list_method(&mut self, method: &str, args: &[Expr], scopes: &mut Vec<HashMap<String, Type>>) -> Type {
+    fn check_list_method(&mut self, method: &str, _args: &[Expr], _scopes: &mut Vec<HashMap<String, Type>>) -> Type {
         match method {
             "len" => Type::Name("i32".into(), vec![]),
             _ => {

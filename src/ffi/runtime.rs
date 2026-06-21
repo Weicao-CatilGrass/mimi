@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 //! FFI runtime infrastructure: CapTable and SharedHandle management.
 //!
 //! This module provides the runtime support needed for the dual-stack FFI

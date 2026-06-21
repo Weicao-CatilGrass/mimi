@@ -260,7 +260,7 @@ func main() -> i32 {
 #[test]
 fn raw_string_uses_string_owned_contract() {
     use crate::ffi::contract::{FfiContract, FfiRetContract};
-    use crate::ast::{ExternFunc, ExternParam, Type};
+    use crate::ast::{ExternFunc, Type};
 
     let func = ExternFunc {
         name: "get_string".to_string(),

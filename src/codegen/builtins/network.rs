@@ -2,7 +2,7 @@ use super::CodeGenerator;
 use super::super::call_try_basic_value;
 use crate::error::{CompileError, MimiResult};
 use super::super::CallSiteValueExt;
-use inkwell::types::{BasicMetadataTypeEnum, BasicTypeEnum};
+use inkwell::types::BasicTypeEnum;
 use inkwell::values::{BasicMetadataValueEnum, BasicValueEnum};
 
 impl<'ctx> CodeGenerator<'ctx> {

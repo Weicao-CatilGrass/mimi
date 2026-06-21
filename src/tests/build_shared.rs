@@ -68,7 +68,7 @@ fn build_shared_library() {
 
     let src = "extern \"C\" func add(a: i64, b: i64) -> i64 { a + b }";
     let obj_path = tmp.join("math.o");
-    let output_so = tmp.join("math.so");
+    let _output_so = tmp.join("math.so");
 
     compile_to_object(src, "math", &obj_path);
 
@@ -116,7 +116,7 @@ fn emit_py_bindings_with_mimi_lib() {
 
     let mut extern_funcs = Vec::new();
     let mut exported_funcs = Vec::new();
-    let mut type_defs = std::collections::HashMap::new();
+    let type_defs = std::collections::HashMap::new();
 
     // Collect extern declarations
     for item in &file.items {

@@ -17,7 +17,7 @@ pub(crate) mod target_codegen;
 pub(crate) mod corpus;
 
 use crate::interp;
-use crate::{core, lexer, parser};
+use crate::{lexer, parser};
 
 // ==============================
 // Exhaustive match checking

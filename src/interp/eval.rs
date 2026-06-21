@@ -597,7 +597,23 @@ impl<'a> Interpreter<'a> {
                     args.iter().map(|a| self.eval_expr(a)).collect();
                 let vals = vals?;
                 match callee.as_ref() {
-                    Expr::Ident(name) => self.call_named(name, vals),
+                    Expr::Ident(name) => {
+                        let result = self.call_named(name, vals)?;
+                        // push(list, elem) mutates the list variable in place in the interpreter,
+                        // matching the codegen semantics where the list pointer is modified.
+                        if name == "push" && !args.is_empty() {
+                            if let Expr::Ident(var_name) = &args[0] {
+                                if let Value::List(_) = &result {
+                                    // Only mutate the source variable if it was declared mut;
+                                    // otherwise push behaves as a pure function returning a new list.
+                                    if self.is_mutable(var_name) {
+                                        self.assign(var_name, result.clone())?;
+                                    }
+                                }
+                            }
+                        }
+                        Ok(result)
+                    }
                     Expr::Field(obj, method) => {
                         // Handle Type.spawn() - actor constructor
                         if method == "spawn" {

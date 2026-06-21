@@ -295,8 +295,6 @@ pub fn describe(code: &str) -> &'static str {
         E0713 => "LLVM IR generation error",
         E0721 => "unsupported binary operator",
         E0722 => "unsupported expression in codegen",
-        E0741 => "FFI wrapper error",
-        E0742 => "value is not callable",
 
         E0750 => "requires libc or I/O error",
         E0751 => "assertion failed",

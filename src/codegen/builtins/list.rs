@@ -1,5 +1,5 @@
 use super::CodeGenerator;
-use inkwell::types::{BasicMetadataTypeEnum, BasicTypeEnum};
+use inkwell::types::BasicTypeEnum;
 use super::super::CallSiteValueExt;
 use crate::error::{CompileError, MimiResult};
 use inkwell::values::{BasicMetadataValueEnum, BasicValueEnum};

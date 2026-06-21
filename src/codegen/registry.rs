@@ -612,9 +612,8 @@ impl<'ctx> CodeGenerator<'ctx> {
                             // Convert element to i64
                             let elem_i64 = match elem_raw {
                                 BasicValueEnum::IntValue(iv) => iv,
-                                BasicValueEnum::FloatValue(fv) =>
-                                    // SAFETY: Bitcast f64 bits to i64 via pointer; alloca is valid and freshly created.
-                                    unsafe {
+                                BasicValueEnum::FloatValue(fv) => {
+                                    // Bitcast f64 bits to i64 via pointer; alloca is valid and freshly created.
                                     let f_alloca = self.builder.build_alloca(
                                         BasicTypeEnum::FloatType(self.context.f64_type()),
                                         &format!("tf_{}_{}", i, ei))
@@ -901,7 +900,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                                         .map_err(|e| CompileError::LlvmError(format!("cast: {}", e)))?
                                 )
                             },
-                            BasicTypeEnum::PointerType(pt) => {
+                            BasicTypeEnum::PointerType(_pt) => {
                                 let i8_ptr_ty = self.context.i8_type().ptr_type(inkwell::AddressSpace::default());
                                 let int_to_ptr = self.builder.build_int_to_ptr(raw_i64, i8_ptr_ty,
                                     &format!("ptr_cast_{}", ei))
