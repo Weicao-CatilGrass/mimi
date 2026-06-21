@@ -145,6 +145,15 @@ impl<'ctx> CodeGenerator<'ctx> {
                             Ok(len)
                         }
                     }
+                    BasicMetadataValueEnum::StructValue(sv) => {
+                        if self.pending_len_is_string {
+                            // String struct {i8*, i64} — field 1 is the length directly
+                            self.builder.build_extract_value(sv, 1, "str_len")
+                                .map_err(|e| CompileError::LlvmError(format!("extract error: {}", e)))
+                        } else {
+                            Err(CompileError::TypeMismatch("len: expected a string or list".to_string()))
+                        }
+                    }
                     _ => Err(CompileError::TypeMismatch("len expects a list or string pointer".to_string())),
                 }
 
