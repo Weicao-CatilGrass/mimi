@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 //! Python binding generator (pybind11) from Mimi extern declarations.
 //!
 //! Generates a `.cpp` file that wraps Mimi's C API using pybind11,
@@ -13,7 +15,7 @@
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 
-use crate::ast::{ExternFunc, Type, TypeAttribute, TypeDef, TypeDefKind};
+use crate::ast::{ExternFunc, Type, TypeDef};
 use crate::ffi::contract::{FfiArgContract, FfiContract, ERRNO_CHECK_FUNC_NAMES};
 
 /// Python binding generator — produces a pybind11 `.cpp` file.

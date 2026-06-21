@@ -2,8 +2,8 @@ use crate::ast::*;
 use crate::codegen::types;
 use std::collections::HashMap;
 
-use inkwell::types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum};
-use inkwell::values::{BasicMetadataValueEnum, BasicValueEnum};
+use inkwell::types::BasicTypeEnum;
+use inkwell::values::BasicValueEnum;
 
 use crate::error::{CompileError, MimiResult};
 

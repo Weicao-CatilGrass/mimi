@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use crate::ast::*;
 use crate::diagnostic::Diagnostic;
 use crate::lexer::{Token, TokenKind};

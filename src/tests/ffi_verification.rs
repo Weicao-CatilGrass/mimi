@@ -3,7 +3,7 @@
 
 #[cfg(test)]
 mod ffi_verification_tests {
-    use crate::ast::{Type, TypeDef, TypeDefKind, ExternFunc, ExternParam};
+    use crate::ast::{Type, ExternFunc, ExternParam};
     use crate::ffi::contract::{FfiContract, FfiArgContract};
     use crate::parser::Parser;
     use crate::lexer::Lexer;

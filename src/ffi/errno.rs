@@ -1,4 +1,5 @@
-use std::fmt;
+#![allow(dead_code)]
+
 use thiserror::Error;
 
 /// Structured POSIX errno codes for FFI error handling.

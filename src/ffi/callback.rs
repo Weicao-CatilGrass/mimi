@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 //! FFI callback support: passing Mimi closures to C functions.
 //!
 //! This module provides the infrastructure for passing Mimi closures as C

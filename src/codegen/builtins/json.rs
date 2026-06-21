@@ -70,25 +70,21 @@ impl<'ctx> CodeGenerator<'ctx> {
                         self.builder.build_conditional_branch(cmp, true_bb, false_bb)
                             .map_err(|e| format!("branch error: {}", e))?;
                         self.builder.position_at_end(true_bb);
-                        // SAFETY: strcpy from known-valid static string to freshly allocated buffer.
-                        unsafe {
-                            self.builder.build_call(strcpy_fn, &[
-                                BasicMetadataValueEnum::PointerValue(buf),
-                                BasicMetadataValueEnum::PointerValue(true_str.as_pointer_value()),
-                            ], "json_strcpy_true")
-                                .map_err(|e| format!("strcpy error: {}", e))?;
-                        }
+                        // strcpy from known-valid static string to freshly allocated buffer.
+                        self.builder.build_call(strcpy_fn, &[
+                            BasicMetadataValueEnum::PointerValue(buf),
+                            BasicMetadataValueEnum::PointerValue(true_str.as_pointer_value()),
+                        ], "json_strcpy_true")
+                            .map_err(|e| format!("strcpy error: {}", e))?;
                         self.builder.build_unconditional_branch(merge_bb)
                             .map_err(|e| format!("branch error: {}", e))?;
                         self.builder.position_at_end(false_bb);
-                        // SAFETY: strcpy from known-valid static string to freshly allocated buffer.
-                        unsafe {
-                            self.builder.build_call(strcpy_fn, &[
-                                BasicMetadataValueEnum::PointerValue(buf),
-                                BasicMetadataValueEnum::PointerValue(false_str.as_pointer_value()),
-                            ], "json_strcpy_false")
+                        // strcpy from known-valid static string to freshly allocated buffer.
+                        self.builder.build_call(strcpy_fn, &[
+                            BasicMetadataValueEnum::PointerValue(buf),
+                            BasicMetadataValueEnum::PointerValue(false_str.as_pointer_value()),
+                        ], "json_strcpy_false")
                                 .map_err(|e| format!("strcpy error: {}", e))?;
-                        }
                         self.builder.build_unconditional_branch(merge_bb)
                             .map_err(|e| format!("branch error: {}", e))?;
                         self.builder.position_at_end(merge_bb);
@@ -122,14 +118,12 @@ impl<'ctx> CodeGenerator<'ctx> {
                             // Complex type (List, Record, etc.) — return stub "{}"
                             let stub = self.builder.build_global_string_ptr("{}", "json_stub")
                                 .map_err(|e| format!("fmt error: {}", e))?;
-                            // SAFETY: strcpy from known-valid static string to freshly allocated buffer.
-                            unsafe {
-                                self.builder.build_call(strcpy_fn, &[
-                                    BasicMetadataValueEnum::PointerValue(buf),
-                                    BasicMetadataValueEnum::PointerValue(stub.as_pointer_value()),
-                                ], "json_strcpy_stub")
-                                    .map_err(|e| format!("strcpy error: {}", e))?;
-                            }
+                            // strcpy from known-valid static string to freshly allocated buffer.
+                            self.builder.build_call(strcpy_fn, &[
+                                BasicMetadataValueEnum::PointerValue(buf),
+                                BasicMetadataValueEnum::PointerValue(stub.as_pointer_value()),
+                            ], "json_strcpy_stub")
+                                .map_err(|e| format!("strcpy error: {}", e))?;
                             Ok(buf.into())
                         }
                     }

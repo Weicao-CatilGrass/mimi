@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use super::*;
 use crate::ffi::{FfiArgContract, FfiContract, FfiRetContract, CAP_TABLE, SHARED_TABLE, CALLBACK_TABLE, Errno};
 use libffi::middle::{Cif, Type as FfiType, CodePtr, arg as ffi_arg};
@@ -1289,8 +1291,8 @@ impl<'a> Interpreter<'a> {
             std::thread::sleep(std::time::Duration::from_millis(50));
         }
 
-        if unsafe { libc::WIFSIGNALED(status) } {
-            let sig = unsafe { libc::WTERMSIG(status) };
+        if libc::WIFSIGNALED(status) {
+            let sig = libc::WTERMSIG(status);
             let sig_name = match sig {
                 6 => "SIGABRT", 11 => "SIGSEGV", 7 => "SIGBUS",
                 4 => "SIGILL", 8 => "SIGFPE", _ => "unknown signal",

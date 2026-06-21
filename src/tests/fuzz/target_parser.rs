@@ -1,3 +1,5 @@
+#![allow(unused_doc_comments)]
+
 use super::harness::arb_random_source;
 use crate::{lexer, parser};
 

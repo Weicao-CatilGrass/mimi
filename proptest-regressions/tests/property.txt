@@ -10,3 +10,4 @@ cc 2e97e9f4f89e9929abc4b519ba7affede19a79eeda1c174261ded95d3c292d46 # shrinks to
 cc 95d8d78a4c58f28657e1550eddee25c437bed083806987287dce8bcc882cd96e # shrinks to src = "a"
 cc fb7b1ab5ad66db7a8dce691e11195b35b243c5bc5e0cb14bbfea071e9a26f2f8 # shrinks to t = Infer
 cc 8ea1cb2165d88738044947df6492c8a50e44c9e587d677e281c2d5f658a69f35 # shrinks to t = Name("unknown", [])
+cc a8b8f687d655da53f7cb0670938596895dda4b08e6826775a6db0ca27012d0c7 # shrinks to a = Name("Option", [Name("unknown", [])]), b = Option(Name("unknown", []))

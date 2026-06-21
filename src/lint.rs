@@ -6,8 +6,8 @@
 /// - W003: `...` placeholder residual (in .mimi files)
 /// - W004: Function naming convention (snake_case)
 
-use crate::ast::{File, Item, FuncDef, Stmt, Commitment};
-use crate::diagnostic::{Diagnostic, Severity};
+use crate::ast::{File, Item, FuncDef};
+use crate::diagnostic::Diagnostic;
 use crate::diagnostic::codes::{W001, W002, W003, W004};
 use crate::span::Span;
 

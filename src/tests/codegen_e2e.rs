@@ -2168,7 +2168,6 @@ fn e2e_text_count_lines() {
 }
 
 #[test]
-#[ignore = "push() does not work correctly in interpreter"]
 fn e2e_text_indent() {
     let val = run_source(r#"
         func indent_text(s: string, n: i32) -> string {

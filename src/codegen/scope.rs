@@ -1,8 +1,7 @@
 #![allow(dead_code, deprecated)]
 
 use crate::ast::*;
-use crate::codegen::types;
-use inkwell::types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum};
+use inkwell::types::BasicMetadataTypeEnum;
 use inkwell::values::{BasicMetadataValueEnum, BasicValueEnum};
 use std::collections::HashMap;
 

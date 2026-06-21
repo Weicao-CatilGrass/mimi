@@ -749,7 +749,6 @@ typedef struct {
 static pthread_mutex_t pool_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t pool_cond = PTHREAD_COND_INITIALIZER;
 static PoolTask pool_tasks[POOL_MAX_TASKS];
-static int pool_task_count = 0;
 static size_t pool_task_head = 0;
 static size_t pool_task_tail = 0;
 static int pool_shutdown = 0;
@@ -762,7 +761,6 @@ static void* pool_worker(void* arg) {
     (void)arg;
     while (1) {
         PoolTask task;
-        int got_task = 0;
 
         pthread_mutex_lock(&pool_mutex);
         while (pool_task_head == pool_task_tail && !pool_shutdown) {
@@ -1270,7 +1268,6 @@ static int parse_http_url(const char* url, char* host, int hostlen,
     /* Extract host */
     const char* colon = strchr(p, ':');
     const char* slash = strchr(p, '/');
-    const char* host_end;
     if (colon && (!slash || colon < slash)) {
         /* host:port */
         size_t hlen = (size_t)(colon - p);

@@ -1401,7 +1401,7 @@ impl<'ctx> CodeGenerator<'ctx> {
 
             // Arm body — bind pattern variables and compile arm expression
             self.builder.position_at_end(arm_bb);
-            let mut local_vars = self.bind_pattern_variables(arm, scrutinee_val, scrutinee_iv, vars)?;
+            let local_vars = self.bind_pattern_variables(arm, scrutinee_val, scrutinee_iv, vars)?;
             let arm_val = self.compile_expr(&arm.body, &local_vars)?;
             incoming_vals.push(arm_val);
             incoming_bbs.push(arm_bb);
@@ -2380,7 +2380,7 @@ impl<'ctx> CodeGenerator<'ctx> {
     fn compile_typeof_expr(
         &mut self,
         inner: &Box<Expr>,
-        vars: &HashMap<String, VarEntry<'ctx>>,
+        _vars: &HashMap<String, VarEntry<'ctx>>,
     ) -> Result<BasicValueEnum<'ctx>, CompileError> {
         // type_name(x): resolve type name at compile time
         let type_str = match inner.as_ref() {
@@ -3898,7 +3898,7 @@ impl<'ctx> CodeGenerator<'ctx> {
 
     /// Determine the Mimi Type of an expression by resolving through the
     /// caller's type_map. Used to infer callee generic bindings at call sites.
-    fn expr_type_of(&self, expr: &Expr, vars: &HashMap<String, VarEntry<'ctx>>) -> Option<Type> {
+    fn expr_type_of(&self, expr: &Expr, _vars: &HashMap<String, VarEntry<'ctx>>) -> Option<Type> {
         match expr {
             Expr::Ident(name) => {
                 if let Some(tn) = self.var_type_names.get(name) {

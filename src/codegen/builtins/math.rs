@@ -1,6 +1,6 @@
 use super::CodeGenerator;
 use crate::error::{CompileError, MimiResult};
-use inkwell::types::{BasicMetadataTypeEnum, BasicTypeEnum};
+use inkwell::types::BasicMetadataTypeEnum;
 use inkwell::values::{BasicMetadataValueEnum, BasicValueEnum};
 
 impl<'ctx> CodeGenerator<'ctx> {
@@ -155,7 +155,7 @@ impl<'ctx> CodeGenerator<'ctx> {
 
     pub(super) fn compile_random(
         &self,
-        args: &[BasicMetadataValueEnum<'ctx>],
+        _args: &[BasicMetadataValueEnum<'ctx>],
     ) -> MimiResult<BasicValueEnum<'ctx>> {
                 // Call libc random() and normalize to f64 in [0, 1)
                 let f64_ty = self.context.f64_type();
@@ -180,7 +180,7 @@ impl<'ctx> CodeGenerator<'ctx> {
 
     pub(super) fn compile_pi(
         &self,
-        args: &[BasicMetadataValueEnum<'ctx>],
+        _args: &[BasicMetadataValueEnum<'ctx>],
     ) -> MimiResult<BasicValueEnum<'ctx>> {
                 // Return constant pi as f64
                 Ok(self.context.f64_type().const_float(std::f64::consts::PI).into())

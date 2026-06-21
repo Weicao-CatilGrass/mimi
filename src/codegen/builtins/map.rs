@@ -2,14 +2,14 @@ use super::CodeGenerator;
 use super::super::call_try_basic_value;
 use crate::error::MimiResult;
 use super::super::CallSiteValueExt;
-use inkwell::types::{BasicMetadataTypeEnum, BasicTypeEnum};
+use inkwell::types::BasicTypeEnum;
 use inkwell::values::{BasicMetadataValueEnum, BasicValueEnum};
 
 impl<'ctx> CodeGenerator<'ctx> {
 
     pub(super) fn compile_map_new(
         &self,
-        args: &[BasicMetadataValueEnum<'ctx>],
+        _args: &[BasicMetadataValueEnum<'ctx>],
     ) -> MimiResult<BasicValueEnum<'ctx>> {
                 let func = self.module.get_function("mimi_map_new")
                     .ok_or("mimi_map_new not declared")?;

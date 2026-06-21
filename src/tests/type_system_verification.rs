@@ -3,8 +3,8 @@
 
 #[cfg(test)]
 mod type_system_verification {
-    use crate::ast::{Type, TypeDef, TypeDefKind, ExternFunc, ExternParam};
-    use crate::ffi::contract::{FfiContract, FfiArgContract, FfiRetContract};
+    use crate::ast::{Type, ExternFunc, ExternParam};
+    use crate::ffi::contract::{FfiContract, FfiArgContract};
     use crate::core::check;
 
     fn parse_and_check(src: &str) -> Result<(), String> {

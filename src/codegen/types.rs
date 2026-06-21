@@ -1,6 +1,6 @@
 use crate::ast::Type;
 use inkwell::context::Context;
-use inkwell::types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum, StructType};
+use inkwell::types::{BasicMetadataTypeEnum, BasicTypeEnum, StructType};
 use inkwell::AddressSpace;
 
 pub fn mimi_type_to_llvm<'ctx>(ctx: &'ctx Context, ty: &Type) -> Option<BasicTypeEnum<'ctx>> {
@@ -84,7 +84,7 @@ pub fn mimi_type_to_llvm<'ctx>(ctx: &'ctx Context, ty: &Type) -> Option<BasicTyp
             let disc = BasicTypeEnum::IntType(ctx.bool_type());
             Some(BasicTypeEnum::StructType(ctx.struct_type(&[disc, inner_llvm], false)))
         }
-        Type::Result(ok, err) => {
+        Type::Result(ok, _err) => {
             // Result<T, E> represented as {i1, T, i64} — discriminant + ok payload + err payload (as i64).
             // The error field uses i64 to keep the struct layout consistent across all E types.
             // Integer values are sign-extended from their native width; pointer values use ptrtoint.
@@ -131,7 +131,7 @@ pub fn basic_to_metadata<'ctx>(ctx: &'ctx Context, ty: BasicTypeEnum<'ctx>) -> B
         BasicTypeEnum::PointerType(t) => BasicMetadataTypeEnum::PointerType(t),
         BasicTypeEnum::StructType(t) => BasicMetadataTypeEnum::StructType(t),
         BasicTypeEnum::ArrayType(t) => BasicMetadataTypeEnum::ArrayType(t),
-        BasicTypeEnum::VectorType(t) => BasicMetadataTypeEnum::IntType(ctx.i64_type()),
+        BasicTypeEnum::VectorType(_t) => BasicMetadataTypeEnum::IntType(ctx.i64_type()),
         BasicTypeEnum::ScalableVectorType(_) => BasicMetadataTypeEnum::IntType(ctx.i64_type()),
     }
 }

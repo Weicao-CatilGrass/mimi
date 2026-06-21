@@ -1,9 +1,9 @@
 use crate::{core, lexer, parser, fmt};
-use crate::ast::{Item, Expr, Stmt, FuncDef, TypeDef, TypeDefKind, Type};
-use crate::verifier::{Verifier, VerifStatus, VerificationResult};
+use crate::ast::{Item, Expr, Stmt, FuncDef, TypeDefKind, Type};
+use crate::verifier::{Verifier, VerifStatus};
 use std::collections::{HashMap, VecDeque};
 use std::io::{self, BufRead, Read, Write};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 const MAX_CONTENT_LENGTH: usize = 16 * 1024 * 1024; // 16MB
 
@@ -2052,7 +2052,7 @@ impl LspServer {
         for diag in diagnostics {
             let Some(code) = diag.get("code").and_then(|c| c.as_str()) else { continue };
             let Some(msg) = diag.get("message").and_then(|m| m.as_str()) else { continue };
-            let range = diag.get("range").cloned().unwrap_or_default();
+            let _range = diag.get("range").cloned().unwrap_or_default();
             match code {
                 crate::diagnostic::codes::E0400 => {
                     if let Some(name) = extract_quoted_name(msg) {

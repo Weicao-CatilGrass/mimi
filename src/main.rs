@@ -1442,7 +1442,7 @@ fn emit_py_bindings(path: Option<&Path>, output: Option<&Path>, mimi_lib: Option
                 println!("✓ Generated Python type stubs: {}", pyi_out.display());
             }
             // Also emit a CMakeLists.txt next to the output
-            let cmake_out = out_path.with_extension("cmake");
+            let _cmake_out = out_path.with_extension("cmake");
             let cmake_out = out_path.with_extension("cmake");
             let mimi_lib_str = mimi_lib.map(|p| p.display().to_string()).unwrap_or_default();
             let cmake = ffi::py_bind::generate_cmake_snippet(

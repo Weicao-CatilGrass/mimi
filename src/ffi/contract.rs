@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 //! FFI contract: describes how a single extern function signature crosses the
 //! Mimi <-> C boundary.
 //!

@@ -7,7 +7,7 @@
 //! and create `benches/*.rs` files with `harness = false`.
 
 use std::time::Instant;
-use crate::{core, interp, lexer, parser};
+use crate::{core, lexer, parser};
 use crate::interp::Interpreter;
 
 /// Time a closure, print result, return the value.
@@ -105,7 +105,7 @@ fn bench_parser_deep_nesting() {
 fn bench_typecheck_simple() {
     let src = "func main() -> i32 { 42 }";
     let file = parser::Parser::new(lexer::Lexer::new(src).tokenize().unwrap()).parse_file().unwrap();
-    bench("typecheck_simple", 500, || {
+    let _ = bench("typecheck_simple", 500, || {
         core::check(&file)
     });
 }
@@ -126,7 +126,7 @@ func unwrap(x: Opt) -> i32 {
 func main() -> i32 { unwrap(Some(42)) }
 "#;
     let file = parser::Parser::new(lexer::Lexer::new(src).tokenize().unwrap()).parse_file().unwrap();
-    bench("typecheck_complex", 500, || {
+    let _ = bench("typecheck_complex", 500, || {
         core::check(&file)
     });
 }
@@ -139,7 +139,7 @@ func main() -> i32 { unwrap(Some(42)) }
 fn bench_interp_simple() {
     let file = parser::Parser::new(lexer::Lexer::new("func main() -> i32 { 42 }").tokenize().unwrap()).parse_file().unwrap();
     let mut interp = Interpreter::new(&file);
-    bench("interp_simple", 500, || interp.run());
+    let _ = bench("interp_simple", 500, || interp.run());
 }
 
 #[test]
@@ -152,5 +152,5 @@ func fib(n: i32) -> i32 {
 "#;
     let file = parser::Parser::new(lexer::Lexer::new(src).tokenize().unwrap()).parse_file().unwrap();
     let mut interp = Interpreter::new(&file);
-    bench("interp_fib_5", 50, || interp.run());
+    let _ = bench("interp_fib_5", 50, || interp.run());
 }

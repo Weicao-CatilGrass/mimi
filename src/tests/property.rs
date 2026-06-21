@@ -1,5 +1,7 @@
+#![allow(dead_code)]
+
 use crate::ast::Type;
-use crate::core::{self, fmt_type, same_type, is_int, is_numeric, is_bool, is_string};
+use crate::core::{self, fmt_type, is_int, is_numeric, is_bool, is_string};
 use crate::tests::*;
 use proptest::prelude::*;
 

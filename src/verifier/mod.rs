@@ -1,10 +1,12 @@
+#![allow(dead_code)]
+
 pub mod ffi;
 
 use crate::ast::*;
 use crate::contracts;
 use crate::diagnostic::Diagnostic;
 use crate::span::Span;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::time::Instant;
 use z3::ast::{Bool as Z3Bool, Int as Z3Int, Real as Z3Real};
 use z3::{SatResult, Solver};
@@ -518,7 +520,7 @@ impl Verifier {
             for (name, z3_var) in &vars.real_vars {
                 if name == "result" || name.starts_with("old_") { continue; }
                 if let Some(val) = model.eval(z3_var, true) {
-                    if let Some((num, den)) = val.as_real() {
+                    if let Some((num, den)) = val.as_rational() {
                         let f = (num as f64) / (den as f64);
                         real_assignments.push((name.clone(), f));
                     }
@@ -526,7 +528,7 @@ impl Verifier {
             }
             if let Some(z3_var) = vars.real_vars.get("result") {
                 if let Some(val) = model.eval(z3_var, true) {
-                    if let Some((num, den)) = val.as_real() {
+                    if let Some((num, den)) = val.as_rational() {
                         let f = (num as f64) / (den as f64);
                         real_assignments.push(("result".to_string(), f));
                     }
@@ -604,7 +606,7 @@ impl Verifier {
             Expr::Ident(name) => {
                 vars.get_real(name).and_then(|z3_var| {
                     model.eval(z3_var, true)
-                        .and_then(|v| v.as_real())
+                        .and_then(|v| v.as_rational())
                         .map(|(num, den)| num as f64 / den as f64)
                 }).or_else(|| {
                     vars.get_int(name).and_then(|z3_var| {
@@ -617,7 +619,7 @@ impl Verifier {
                     let old_name = format!("old_{}", name);
                     vars.get_real(&old_name).and_then(|z3_var| {
                         model.eval(z3_var, true)
-                            .and_then(|v| v.as_real())
+                            .and_then(|v| v.as_rational())
                             .map(|(num, den)| num as f64 / den as f64)
                     }).or_else(|| {
                         vars.get_int(&old_name).and_then(|z3_var| {
@@ -657,7 +659,7 @@ impl Verifier {
                     }
                 } else if let Some(z3_var) = vars.get_real(name) {
                     model.eval(z3_var, true)
-                        .and_then(|v| v.as_real())
+                        .and_then(|v| v.as_rational())
                         .map(|(num, _den)| num != 0)
                         .unwrap_or(false)
                 } else {
@@ -674,7 +676,7 @@ impl Verifier {
                         }
                     } else if let Some(z3_var) = vars.get_real(&old_name) {
                         model.eval(z3_var, true)
-                            .and_then(|v| v.as_real())
+                            .and_then(|v| v.as_rational())
                             .map(|(num, _den)| num != 0)
                             .unwrap_or(false)
                     } else {

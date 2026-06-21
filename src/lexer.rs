@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use crate::ast::Commitment;
 use std::fmt;
 
