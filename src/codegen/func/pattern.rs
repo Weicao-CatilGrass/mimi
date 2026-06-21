@@ -69,7 +69,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                         // We need the struct type - use a default layout
                         let i64_ty = self.context.i64_type();
                         let struct_ty = self.context.struct_type(&[
-                            BasicTypeEnum::IntType(self.context.bool_type()),
+                            BasicTypeEnum::IntType(self.context.i32_type()),
                             BasicTypeEnum::IntType(i64_ty),
                         ], false);
                         let loaded = self.builder.build_load(struct_ty, pv, "ctor_loaded")
