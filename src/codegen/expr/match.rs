@@ -166,6 +166,129 @@ impl<'ctx> CodeGenerator<'ctx> {
     }
 
 
+    /// Generate element-wise comparison for a tuple pattern.
+    /// Returns `Some(i1)` if any element requires comparison, `None` for wildcard-only patterns.
+    fn compile_tuple_pattern(
+        &self,
+        scrutinee: BasicValueEnum<'ctx>,
+        inner_pats: &[Pattern],
+    ) -> Result<Option<inkwell::values::IntValue<'ctx>>, CompileError> {
+        let i64_ty = self.context.i64_type();
+        let tuple_ptr = match scrutinee {
+            BasicValueEnum::PointerValue(pv) => pv,
+            BasicValueEnum::StructValue(sv) => {
+                let alloca = self.builder.build_alloca(sv.get_type(), "tuple_alloca")
+                    .map_err(|e| CompileError::LlvmError(format!("alloca: {}", e)))?;
+                self.builder.build_store(alloca, sv)
+                    .map_err(|e| CompileError::LlvmError(format!("store: {}", e)))?;
+                alloca
+            }
+            _ => return Err("tuple pattern requires struct value".into()),
+        };
+        let mut agg: Option<inkwell::values::IntValue<'ctx>> = None;
+        for (j, pat) in inner_pats.iter().enumerate() {
+            let lit_val = match pat {
+                Pattern::Literal(lit) => match lit {
+                    Lit::Int(n) => Some(i64_ty.const_int(*n as u64, true)),
+                    Lit::Bool(b) => Some(i64_ty.const_int(*b as u64, false)),
+                    Lit::Unit => Some(i64_ty.const_int(0, false)),
+                    _ => return Err("unsupported tuple element literal type".into()),
+                },
+                _ => None,
+            };
+            if let Some(expected) = lit_val {
+                let elem_ptr = self.builder.build_struct_gep(
+                    BasicTypeEnum::IntType(i64_ty), tuple_ptr, j as u32,
+                    &format!("tup_el{}", j),
+                ).map_err(|e| CompileError::LlvmError(format!("gep: {}", e)))?;
+                let elem_val = self.builder.build_load(
+                    BasicTypeEnum::IntType(i64_ty), elem_ptr, &format!("tup_v{}", j),
+                ).map_err(|e| CompileError::LlvmError(format!("load: {}", e)))?
+                    .into_int_value();
+                let eq = self.builder.build_int_compare(
+                    inkwell::IntPredicate::EQ, elem_val, expected, &format!("tup_cmp{}", j),
+                ).map_err(|e| CompileError::LlvmError(format!("cmp: {}", e)))?;
+                agg = Some(match agg {
+                    Some(prev) => self.builder.build_and(prev, eq, "tup_and")
+                        .map_err(|e| CompileError::LlvmError(format!("and: {}", e)))?,
+                    None => eq,
+                });
+            }
+        }
+        Ok(agg)
+    }
+
+    /// Generate element-wise comparison for an array pattern.
+    /// Returns `Some(i1)` if any element requires comparison, `None` for wildcard-only patterns.
+    fn compile_array_pattern(
+        &self,
+        scrutinee: BasicValueEnum<'ctx>,
+        inner_pats: &[Pattern],
+    ) -> Result<Option<inkwell::values::IntValue<'ctx>>, CompileError> {
+        let i64_ty = self.context.i64_type();
+        let scrutinee_ptr = match scrutinee {
+            BasicValueEnum::PointerValue(pv) => pv,
+            _ => return Ok(None),
+        };
+        let list_ty = self.context.struct_type(&[
+            BasicTypeEnum::IntType(i64_ty),
+            BasicTypeEnum::PointerType(self.context.ptr_type(inkwell::AddressSpace::default())),
+        ], false);
+        let data_gep = self.builder.build_struct_gep(list_ty, scrutinee_ptr, 1, "list_data")
+            .map_err(|e| CompileError::LlvmError(format!("gep: {}", e)))?;
+        let data_i8 = self.builder.build_load(
+            BasicTypeEnum::PointerType(self.context.ptr_type(inkwell::AddressSpace::default())),
+            data_gep, "data",
+        ).map_err(|e| CompileError::LlvmError(format!("load: {}", e)))?.into_pointer_value();
+        let data_ptr = self.builder.build_bit_cast(data_i8,
+            i64_ty.ptr_type(inkwell::AddressSpace::default()), "data_i64")
+            .map_err(|e| CompileError::LlvmError(format!("bitcast: {}", e)))?.into_pointer_value();
+        let mut agg: Option<inkwell::values::IntValue<'ctx>> = None;
+        for (j, pat) in inner_pats.iter().enumerate() {
+            let lit_val = match pat {
+                Pattern::Literal(lit) => match lit {
+                    Lit::Int(n) => Some(i64_ty.const_int(*n as u64, true)),
+                    Lit::Bool(b) => Some(i64_ty.const_int(*b as u64, false)),
+                    Lit::Unit => Some(i64_ty.const_int(0, false)),
+                    _ => return Err("unsupported array element literal type".into()),
+                },
+                _ => None,
+            };
+            if let Some(expected) = lit_val {
+                let idx = i64_ty.const_int(j as u64, false);
+                // SAFETY: pointer derived from valid list data allocation
+                let elem_ptr = unsafe {
+                    self.builder.build_gep(i64_ty, data_ptr, &[idx], &format!("arr_el{}", j))
+                }.map_err(|e| CompileError::LlvmError(format!("gep: {}", e)))?;
+                let elem_val = self.builder.build_load(
+                    BasicTypeEnum::IntType(i64_ty), elem_ptr, &format!("arr_v{}", j),
+                ).map_err(|e| CompileError::LlvmError(format!("load: {}", e)))?
+                    .into_int_value();
+                let eq = self.builder.build_int_compare(
+                    inkwell::IntPredicate::EQ, elem_val, expected, &format!("arr_cmp{}", j),
+                ).map_err(|e| CompileError::LlvmError(format!("cmp: {}", e)))?;
+                agg = Some(match agg {
+                    Some(prev) => self.builder.build_and(prev, eq, "arr_and")
+                        .map_err(|e| CompileError::LlvmError(format!("and: {}", e)))?,
+                    None => eq,
+                });
+            }
+        }
+        Ok(agg)
+    }
+
+    /// Generate element-wise comparison for a slice pattern.
+    /// Returns `Some(i1)` if any element requires comparison, `None` for wildcard-only patterns.
+    fn compile_slice_pattern(
+        &self,
+        scrutinee: BasicValueEnum<'ctx>,
+        inner_pats: &[Pattern],
+        _rest: &Option<Box<Pattern>>,
+    ) -> Result<Option<inkwell::values::IntValue<'ctx>>, CompileError> {
+        // Same data access as array patterns, only comparing prefix elements
+        self.compile_array_pattern(scrutinee, inner_pats)
+    }
+
     pub(in crate::codegen) fn compile_match_expr(
         &mut self,
         scrutinee: &Expr,
@@ -173,10 +296,28 @@ impl<'ctx> CodeGenerator<'ctx> {
         vars: &HashMap<String, VarEntry<'ctx>>,
     ) -> Result<BasicValueEnum<'ctx>, CompileError> {
         let scrutinee_val = self.compile_expr(scrutinee, vars)?;
-        let scrutinee_iv = if let BasicValueEnum::IntValue(iv) = scrutinee_val {
-            iv
-        } else {
-            return Err("match scrutinee must be integer (enum tag)".into());
+        let scrutinee_iv = match scrutinee_val {
+            BasicValueEnum::IntValue(iv) => iv,
+            BasicValueEnum::StructValue(sv) => {
+                let tag = self.builder.build_extract_value(sv, 0, "enum_tag")
+                    .map_err(|e| CompileError::LlvmError(format!("extract enum tag: {}", e)))?
+                    .into_int_value();
+                self.builder.build_int_cast(tag, self.context.i64_type(), "tag_ext")
+                    .map_err(|e| CompileError::LlvmError(format!("extend tag: {}", e)))?
+            }
+            BasicValueEnum::PointerValue(pv) => {
+                let i32_ty = self.context.i32_type();
+                let struct_ptr = self.builder.build_struct_gep(
+                    BasicTypeEnum::IntType(i32_ty), pv, 0, "tag_gep",
+                ).map_err(|e| CompileError::LlvmError(format!("tag gep: {}", e)))?;
+                let tag = self.builder.build_load(
+                    BasicTypeEnum::IntType(i32_ty), struct_ptr, "tag_load",
+                ).map_err(|e| CompileError::LlvmError(format!("tag load: {}", e)))?
+                    .into_int_value();
+                self.builder.build_int_cast(tag, self.context.i64_type(), "tag_ext")
+                    .map_err(|e| CompileError::LlvmError(format!("extend tag: {}", e)))?
+            }
+            _ => return Err("match scrutinee must be integer or enum struct".into()),
         };
 
         let function = self.current_function().ok_or_else(|| "codegen: no current function for match".to_string())?;
@@ -245,43 +386,100 @@ impl<'ctx> CodeGenerator<'ctx> {
                         .map_err(|e| CompileError::LlvmError(format!("branch error: {}", e)))?;
                     else_bb = next_bb;
                 }
-                Pattern::Tuple(_inner_pats) => {
-                    // Tuple pattern: match each element of the tuple struct
-                    // Treat as always-matching for now (full element-wise comparison is complex)
-                    // but bind inner variables by loading from the struct
+                Pattern::Tuple(inner_pats) => {
                     self.builder.position_at_end(else_bb);
+                    let match_cmp = self.compile_tuple_pattern(scrutinee_val, inner_pats)?;
                     let next_bb = self.context.append_basic_block(function, &format!("next{}", i));
-                    self.builder.build_unconditional_branch(arm_bb)
-                        .map_err(|e| CompileError::LlvmError(format!("branch error: {}", e)))?;
+                    match match_cmp {
+                        Some(cmp) => {
+                            self.builder.build_conditional_branch(cmp, arm_bb, next_bb)
+                                .map_err(|e| CompileError::LlvmError(format!("branch error: {}", e)))?;
+                        }
+                        None => {
+                            self.builder.build_unconditional_branch(arm_bb)
+                                .map_err(|e| CompileError::LlvmError(format!("branch error: {}", e)))?;
+                        }
+                    }
                     else_bb = next_bb;
                 }
-                Pattern::Array(_inner_pats) => {
-                    // Array pattern: match each element of the list
-                    // Treat as always-matching for now, bind inner variables
+                Pattern::Array(inner_pats) => {
                     self.builder.position_at_end(else_bb);
+                    let match_cmp = self.compile_array_pattern(scrutinee_val, inner_pats)?;
                     let next_bb = self.context.append_basic_block(function, &format!("next{}", i));
-                    self.builder.build_unconditional_branch(arm_bb)
-                        .map_err(|e| CompileError::LlvmError(format!("branch error: {}", e)))?;
+                    match match_cmp {
+                        Some(cmp) => {
+                            self.builder.build_conditional_branch(cmp, arm_bb, next_bb)
+                                .map_err(|e| CompileError::LlvmError(format!("branch error: {}", e)))?;
+                        }
+                        None => {
+                            self.builder.build_unconditional_branch(arm_bb)
+                                .map_err(|e| CompileError::LlvmError(format!("branch error: {}", e)))?;
+                        }
+                    }
                     else_bb = next_bb;
                 }
-                Pattern::Slice(_inner_pats, _rest) => {
-                    // Slice pattern: match prefix elements, bind rest
+                Pattern::Slice(inner_pats, rest) => {
                     self.builder.position_at_end(else_bb);
+                    let match_cmp = self.compile_slice_pattern(scrutinee_val, inner_pats, rest)?;
                     let next_bb = self.context.append_basic_block(function, &format!("next{}", i));
-                    self.builder.build_unconditional_branch(arm_bb)
-                        .map_err(|e| CompileError::LlvmError(format!("branch error: {}", e)))?;
+                    match match_cmp {
+                        Some(cmp) => {
+                            self.builder.build_conditional_branch(cmp, arm_bb, next_bb)
+                                .map_err(|e| CompileError::LlvmError(format!("branch error: {}", e)))?;
+                        }
+                        None => {
+                            self.builder.build_unconditional_branch(arm_bb)
+                                .map_err(|e| CompileError::LlvmError(format!("branch error: {}", e)))?;
+                        }
+                    }
                     else_bb = next_bb;
                 }
             }
 
-            // Arm body — bind pattern variables and compile arm expression
+            // Arm body — bind pattern variables
             self.builder.position_at_end(arm_bb);
             let local_vars = self.bind_pattern_variables(arm, scrutinee_val, scrutinee_iv, vars)?;
-            let arm_val = self.compile_expr(&arm.body, &local_vars)?;
-            incoming_vals.push(arm_val);
-            incoming_bbs.push(arm_bb);
-            self.builder.build_unconditional_branch(merge_bb)
-                .map_err(|e| CompileError::LlvmError(format!("branch error: {}", e)))?;
+            match &arm.guard {
+                Some(guard) => {
+                    let guard_val = self.compile_expr(guard, &local_vars)?;
+                    let guard_bool = match guard_val {
+                        BasicValueEnum::IntValue(iv) => {
+                            self.builder.build_int_compare(
+                                inkwell::IntPredicate::NE,
+                                iv,
+                                self.context.i64_type().const_int(0, false),
+                                "guard_cmp",
+                            ).map_err(|e| CompileError::LlvmError(format!("guard cmp: {}", e)))?
+                        }
+                        BasicValueEnum::PointerValue(pv) => {
+                            // Not-null means truthy (non-null pointers are valid values)
+                            let is_null = self.builder.build_is_null(pv, "guard_null")
+                                .map_err(|e| CompileError::LlvmError(format!("guard null: {}", e)))?;
+                            let zero = self.context.bool_type().const_int(0, false);
+                            self.builder.build_int_compare(
+                                inkwell::IntPredicate::EQ, is_null, zero, "guard_notnull",
+                            ).map_err(|e| CompileError::LlvmError(format!("guard notnull: {}", e)))?
+                        }
+                        _ => return Err("match guard must be boolean or pointer".into()),
+                    };
+                    let arm_body_bb = self.context.append_basic_block(function, &format!("arm_body{}", i));
+                    self.builder.build_conditional_branch(guard_bool, arm_body_bb, else_bb)
+                        .map_err(|e| CompileError::LlvmError(format!("guard branch: {}", e)))?;
+                    self.builder.position_at_end(arm_body_bb);
+                    let arm_val = self.compile_expr(&arm.body, &local_vars)?;
+                    incoming_vals.push(arm_val);
+                    incoming_bbs.push(arm_body_bb);
+                    self.builder.build_unconditional_branch(merge_bb)
+                        .map_err(|e| CompileError::LlvmError(format!("branch error: {}", e)))?;
+                }
+                None => {
+                    let arm_val = self.compile_expr(&arm.body, &local_vars)?;
+                    incoming_vals.push(arm_val);
+                    incoming_bbs.push(arm_bb);
+                    self.builder.build_unconditional_branch(merge_bb)
+                        .map_err(|e| CompileError::LlvmError(format!("branch error: {}", e)))?;
+                }
+            }
         }
 
         // Unreachable else block (should not be reached if match is exhaustive).
