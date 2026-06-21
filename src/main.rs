@@ -1183,7 +1183,7 @@ fn build(path: Option<&Path>, output: Option<&Path>, emit_ir: bool, strict: bool
     codegen.verify_contracts = verify_contracts;
     codegen.shared = shared;
 
-    codegen.compile_file(&merged_file).map_err(|e| e.to_string())?;
+    codegen.compile_file(&merged_file).map_err(|e| e.to_diagnostic().to_string())?;
 
     if emit_ir {
         println!("{}", codegen.emit_ir());
@@ -1201,7 +1201,7 @@ fn build(path: Option<&Path>, output: Option<&Path>, emit_ir: bool, strict: bool
     });
     let output_path = output.unwrap_or(&output_path_buf);
 
-    codegen.compile_to_object(&output_path.with_extension("o")).map_err(|e| e.to_string())?;
+    codegen.compile_to_object(&output_path.with_extension("o")).map_err(|e| e.to_diagnostic().to_string())?;
 
     // Compile and link C runtime
     let obj_path = output_path.with_extension("o");

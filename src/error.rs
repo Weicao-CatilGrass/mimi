@@ -1,5 +1,8 @@
 use thiserror::Error;
 
+use crate::diagnostic::Diagnostic;
+use crate::span::Span;
+
 pub type MimiResult<T> = std::result::Result<T, CompileError>;
 
 #[derive(Debug, Error)]
@@ -131,6 +134,13 @@ impl CompileError {
             Self::Generic(_) => E0700,
         }
     }
+
+    /// Convert to a Diagnostic with error code and message (no span — AST does not carry positions).
+    pub fn to_diagnostic(&self) -> Diagnostic {
+        let code = self.code();
+        let msg = self.to_string();
+        Diagnostic::error_code(code, msg, Span::single(0, 0))
+    }
 }
 
 impl From<String> for CompileError {
@@ -142,5 +152,11 @@ impl From<String> for CompileError {
 impl From<&str> for CompileError {
     fn from(msg: &str) -> Self {
         CompileError::Generic(msg.to_string())
+    }
+}
+
+impl From<CompileError> for Diagnostic {
+    fn from(err: CompileError) -> Self {
+        err.to_diagnostic()
     }
 }
