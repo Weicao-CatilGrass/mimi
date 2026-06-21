@@ -23,7 +23,7 @@ impl super::Verifier {
                 if calls.is_empty() {
                     continue;
                 }
-                self.solver.reset();
+                self.solver.push();
                 let vars = self.setup_ffi_func_vars(func);
                 self.assert_func_requires(func, &vars);
 
@@ -35,6 +35,7 @@ impl super::Verifier {
                         results.push(result);
                     }
                 }
+                self.solver.pop(1);
             }
         }
         results

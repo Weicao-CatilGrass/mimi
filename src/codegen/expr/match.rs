@@ -231,7 +231,8 @@ impl<'ctx> CodeGenerator<'ctx> {
                     // Constructor pattern: compare tag using ordinal index
                     self.builder.position_at_end(else_bb);
                     // Look up the variant ordinal index from type definitions
-                    let ordinal = self.find_variant_ordinal(name);
+                    let ordinal = self.find_variant_ordinal(name)
+                        .map_err(|e| CompileError::LlvmError(format!("match arm variant lookup: {}", e)))?;
                     let tag_val = self.context.i64_type().const_int(ordinal, false);
                     let cmp = self.builder.build_int_compare(
                         inkwell::IntPredicate::EQ,

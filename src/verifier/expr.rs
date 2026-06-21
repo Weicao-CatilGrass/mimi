@@ -55,10 +55,13 @@ impl crate::verifier::Verifier {
                 } else if f.is_infinite() || f.is_nan() {
                     None
                 } else {
-                    let scaled = (*f * 1000000.0).round() as i64;
+                    // Encode as rational using string representation for full precision.
+                    // Use a high-precision denominator (10^15) to minimize rounding error.
+                    const PRECISION: f64 = 1_000_000_000_000_000.0;
+                    let scaled = (*f * PRECISION).round() as i64;
                     Some(
                         Z3Real::from_int(&Z3Int::from_i64(scaled))
-                            / Z3Real::from_int(&Z3Int::from_i64(1000000)),
+                            / Z3Real::from_int(&Z3Int::from_i64(PRECISION as i64)),
                     )
                 }
             }

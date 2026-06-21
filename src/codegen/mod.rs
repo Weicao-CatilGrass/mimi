@@ -246,20 +246,19 @@ impl<'ctx> CodeGenerator<'ctx> {
     }
 
     /// G2: Find the ordinal index of an enum variant name across all registered types.
-    pub(super) fn find_variant_ordinal(&self, name: &str) -> u64 {
+    pub(super) fn find_variant_ordinal(&self, name: &str) -> Result<u64, CompileError> {
         for td in self.type_defs.values() {
             if let crate::ast::TypeDefKind::Enum(variants) = &td.kind {
                 for (i, v) in variants.iter().enumerate() {
                     if v.name == name {
-                        return i as u64;
+                        return Ok(i as u64);
                     }
                 }
             }
         }
-        // Fallback: preserve old hash behavior if type not found
-        let fallback = name.bytes().fold(0u64, |acc, b| acc.wrapping_mul(31).wrapping_add(b as u64));
-        eprintln!("[codegen] warning: variant '{}' not found in any enum type definition, using fallback hash", name);
-        fallback
+        Err(CompileError::Generic(format!(
+            "enum variant '{}' not found in any registered enum type definition", name
+        )))
     }
 
     /// Compute the size in bytes of an LLVM type using a portable layout.
