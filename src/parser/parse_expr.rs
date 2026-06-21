@@ -2,6 +2,14 @@ use super::*;
 
 impl Parser {
     pub(crate) fn parse_expr(&mut self, min_prec: u8) -> Result<Expr, ParseError> {
+        self.check_depth()?;
+        self.inc_depth();
+        let result = self.parse_expr_inner(min_prec);
+        self.dec_depth();
+        result
+    }
+
+    fn parse_expr_inner(&mut self, min_prec: u8) -> Result<Expr, ParseError> {
         let mut lhs = self.parse_unary()?;
         loop {
             let (op, prec, right_assoc) = match self.peek_kind() {
@@ -40,6 +48,8 @@ impl Parser {
 
     /// Parse an expression without consuming `..` (used for slice start parsing)
     fn parse_expr_without_range(&mut self) -> Result<Expr, ParseError> {
+        self.check_depth()?;
+        self.inc_depth();
         let mut lhs = self.parse_unary()?;
         loop {
             let (op, prec, right_assoc) = match self.peek_kind() {
@@ -71,10 +81,19 @@ impl Parser {
             let rhs = self.parse_expr(next_min)?;
             lhs = Expr::Binary(op, Box::new(lhs), Box::new(rhs));
         }
+        self.dec_depth();
         Ok(lhs)
     }
 
     fn parse_unary(&mut self) -> Result<Expr, ParseError> {
+        self.check_depth()?;
+        self.inc_depth();
+        let result = self.parse_unary_inner();
+        self.dec_depth();
+        result
+    }
+
+    fn parse_unary_inner(&mut self) -> Result<Expr, ParseError> {
         match self.peek_kind() {
             TokenKind::If => self.parse_if_expr(),
             TokenKind::Minus => {

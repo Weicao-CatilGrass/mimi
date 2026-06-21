@@ -33,7 +33,7 @@ pub(crate) fn extract_string_empty_cmp(lhs: &Expr, rhs: &Expr, op: &BinOp) -> (S
     match (lhs, rhs) {
         (Expr::Ident(name), Expr::Literal(Lit::String(_))) => (name.clone(), *op),
         (Expr::Literal(Lit::String(_)), Expr::Ident(name)) => (name.clone(), *op),
-        _ => unreachable!(),
+        _ => (String::new(), *op),
     }
 }
 

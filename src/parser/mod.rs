@@ -174,10 +174,14 @@ impl Parser {
     }
 
     pub(crate) fn parse_block(&mut self) -> Result<Block, ParseError> {
-        if self.is_sketch() {
+        self.check_depth()?;
+        self.inc_depth();
+        let result = if self.is_sketch() {
             self.parse_indent_block()
         } else {
             self.parse_brace_block()
-        }
+        };
+        self.dec_depth();
+        result
     }
 }

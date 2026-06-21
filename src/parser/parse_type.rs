@@ -2,7 +2,11 @@ use super::*;
 
 impl Parser {
     pub(crate) fn parse_type(&mut self) -> Result<Type, ParseError> {
-        self.parse_type_optional(false)
+        self.check_depth()?;
+        self.inc_depth();
+        let result = self.parse_type_optional(false);
+        self.dec_depth();
+        result
     }
 
     fn parse_type_optional(&mut self, allow_func: bool) -> Result<Type, ParseError> {
