@@ -14,6 +14,9 @@ pub(crate) mod target_parser;
 pub(crate) mod target_typechecker;
 pub(crate) mod target_interpreter;
 pub(crate) mod target_codegen;
+pub(crate) mod target_differential;
+pub(crate) mod target_ffi_contract;
+pub(crate) mod target_typesoundness;
 pub(crate) mod corpus;
 
 use crate::interp;
