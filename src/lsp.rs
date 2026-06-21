@@ -1,5 +1,6 @@
 use crate::{core, lexer, parser, fmt};
 use crate::ast::{Item, Expr, Stmt, FuncDef, TypeDef, TypeDefKind, Type};
+use crate::verifier::{Verifier, VerifStatus, VerificationResult};
 use std::collections::{HashMap, VecDeque};
 use std::io::{self, BufRead, Read, Write};
 use std::path::{Path, PathBuf};
@@ -11,6 +12,9 @@ pub struct LspServer {
     pub(crate) documents: HashMap<String, String>,
     access_order: VecDeque<String>,
     workspace_root: Option<PathBuf>,
+    last_cursor_line: usize,
+    verification_cache: HashMap<String, (u64, VerifStatus, String)>,
+    verifier: Option<Verifier>,
 }
 
 const MAX_DOCUMENTS: usize = 256;
@@ -21,6 +25,9 @@ impl LspServer {
             documents: HashMap::new(),
             access_order: VecDeque::new(),
             workspace_root: None,
+            last_cursor_line: 0,
+            verification_cache: HashMap::new(),
+            verifier: None,
         }
     }
 
@@ -203,7 +210,9 @@ impl LspServer {
                     .get("text")?
                     .as_str()?;
                 self.cache_put(uri.to_string(), text.to_string());
-                let diagnostics = self.compute_diagnostics(text);
+                let mut diagnostics = self.compute_diagnostics(text);
+                let verif_diags = self.compute_verification_diagnostics(text, self.last_cursor_line);
+                diagnostics.extend(verif_diags);
                 Some(serde_json::json!({
                     "jsonrpc": "2.0",
                     "method": "textDocument/publishDiagnostics",
@@ -250,6 +259,7 @@ impl LspServer {
                     .map(|pos| (pos.get("line").and_then(|l| l.as_u64()).unwrap_or(0) as usize,
                                 pos.get("character").and_then(|c| c.as_u64()).unwrap_or(0) as usize))
                     .unwrap_or((0, 0));
+                self.last_cursor_line = line;
                 let text = self.documents.get(uri)?;
                 let items = self.compute_completion(text, line, character);
                 Some(serde_json::json!({
@@ -270,6 +280,7 @@ impl LspServer {
                     .get("position")?;
                 let line = position.get("line")?.as_u64()? as usize;
                 let character = position.get("character")?.as_u64()? as usize;
+                self.last_cursor_line = line;
                 let text = self.documents.get(uri)?;
                 let hover = self.compute_hover(text, line, character);
                 Some(serde_json::json!({
@@ -287,6 +298,7 @@ impl LspServer {
                     .get("position")?;
                 let line = position.get("line")?.as_u64()? as usize;
                 let character = position.get("character")?.as_u64()? as usize;
+                self.last_cursor_line = line;
                 let text = self.documents.get(uri)?;
                 let definition = self.compute_definition(text, line, character, uri);
                 Some(serde_json::json!({
@@ -304,6 +316,7 @@ impl LspServer {
                     .get("position")?;
                 let line = position.get("line")?.as_u64()? as usize;
                 let character = position.get("character")?.as_u64()? as usize;
+                self.last_cursor_line = line;
                 let text = self.documents.get(uri)?;
                 let impls = self.compute_go_to_implementation(text, line, character, uri);
                 Some(serde_json::json!({
@@ -334,6 +347,7 @@ impl LspServer {
                     .get("position")?;
                 let line = position.get("line")?.as_u64()? as usize;
                 let character = position.get("character")?.as_u64()? as usize;
+                self.last_cursor_line = line;
                 let text = self.documents.get(uri)?;
                 let include_decl = msg.get("params")?
                     .get("context")?
@@ -356,6 +370,7 @@ impl LspServer {
                     .get("position")?;
                 let line = position.get("line")?.as_u64()? as usize;
                 let character = position.get("character")?.as_u64()? as usize;
+                self.last_cursor_line = line;
                 let text = self.documents.get(uri)?;
                 let word = self.get_word_at(text, line, character);
                 if word.is_empty() {
@@ -379,6 +394,7 @@ impl LspServer {
                     .get("position")?;
                 let line = position.get("line")?.as_u64()? as usize;
                 let character = position.get("character")?.as_u64()? as usize;
+                self.last_cursor_line = line;
                 let new_name = msg.get("params")?
                     .get("newName")?
                     .as_str()?;
@@ -399,6 +415,7 @@ impl LspServer {
                     .get("position")?;
                 let line = position.get("line")?.as_u64()? as usize;
                 let character = position.get("character")?.as_u64()? as usize;
+                self.last_cursor_line = line;
                 let text = self.documents.get(uri)?;
                 let sig_help = self.compute_signature_help(text, line, character);
                 Some(serde_json::json!({
@@ -647,6 +664,90 @@ impl LspServer {
                     "code": code,
                     "message": err.message
                 }));
+            }
+        }
+
+        diagnostics
+    }
+
+    /// Compute Z3 verification diagnostics for the function at the given cursor line.
+    /// Returns verification errors/warnings as LSP diagnostics.
+    /// Uses caching: if the function body hasn't changed, skips re-verification.
+    /// Returns empty vec on timeout, parser failure, or when no function is at cursor.
+    pub fn compute_verification_diagnostics(&mut self, text: &str, cursor_line: usize) -> Vec<serde_json::Value> {
+        let mut diagnostics = Vec::new();
+
+        if cursor_line == 0 { return diagnostics; }
+
+        // Parse
+        let tokens = match lexer::Lexer::new(text).tokenize() {
+            Ok(t) => t,
+            Err(_) => return diagnostics,
+        };
+        let (file, _errors) = parser::Parser::new(tokens).parse_file_with_recovery();
+
+        // Find the enclosing function at cursor line
+        let func = match find_enclosing_func_in_items(&file.items, text, cursor_line) {
+            Some(f) => f,
+            None => return diagnostics,
+        };
+
+        // Only verify if function has contracts
+        let has_contracts = func.body.iter().any(|s| matches!(s, Stmt::Requires(_, _) | Stmt::Ensures(_, _) | Stmt::MmsBlock { .. }));
+        if !has_contracts { return diagnostics; }
+
+        // Compute body hash for caching
+        let body_hash = hash_func_body(text, func);
+        let cache_key = func.name.clone();
+
+        // Check cache
+        if let Some((cached_hash, ref status, ref msg)) = self.verification_cache.get(&cache_key) {
+            if *cached_hash == body_hash {
+                match status {
+                    VerifStatus::Failed => {
+                        diagnostics.push(serde_json::json!({
+                            "range": {
+                                "start": { "line": func.pos.0.saturating_sub(1), "character": 0 },
+                                "end": { "line": func.pos.0.saturating_sub(1), "character": 100 }
+                            },
+                            "severity": 1,
+                            "source": "mimi-verify",
+                            "message": msg
+                        }));
+                    }
+                    _ => {} // Verified or Unknown: no diagnostic
+                }
+                return diagnostics;
+            }
+        }
+
+        // Lazily initialize the Z3 verifier with short timeout
+        let verifier = self.verifier.get_or_insert(match Verifier::with_timeout(100) {
+            Ok(v) => v,
+            Err(_) => return diagnostics, // Z3 not available
+        });
+
+        // Run verification
+        let results = verifier.verify_file(&file);
+        for result in &results {
+            if result.func_name != func.name { continue; }
+            // Update cache
+            self.verification_cache.insert(cache_key.clone(), (body_hash, result.status.clone(), result.message.clone()));
+
+            match result.status {
+                VerifStatus::Verified => {} // No diagnostic
+                VerifStatus::Unknown => {}  // No diagnostic
+                VerifStatus::Failed => {
+                    diagnostics.push(serde_json::json!({
+                        "range": {
+                            "start": { "line": func.pos.0.saturating_sub(1), "character": 0 },
+                            "end": { "line": func.pos.0.saturating_sub(1), "character": 100 }
+                        },
+                        "severity": 1,
+                        "source": "mimi-verify",
+                        "message": result.message
+                    }));
+                }
             }
         }
 
@@ -2599,4 +2700,58 @@ fn collect_calls_from_expr(
         }
         _ => {}
     }
+}
+
+/// Compute a hash of the function body source text for cache invalidation.
+fn hash_func_body(text: &str, func: &FuncDef) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let end_line = find_func_end_line(text, func.pos.0);
+    let lines: Vec<&str> = text.lines().collect();
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    for i in func.pos.0..=end_line.min(lines.len().saturating_sub(1)) {
+        lines[i].hash(&mut hasher);
+    }
+    hasher.finish()
+}
+
+/// Find the closing brace line for a function starting at `start_line`.
+fn find_func_end_line(text: &str, start_line: usize) -> usize {
+    let lines: Vec<&str> = text.lines().collect();
+    if start_line >= lines.len() { return start_line; }
+    let mut depth = 0;
+    let mut started = false;
+    for i in start_line..lines.len() {
+        for ch in lines[i].chars() {
+            match ch {
+                '{' => { depth += 1; started = true; }
+                '}' if depth > 0 => { depth -= 1; }
+                _ => {}
+            }
+        }
+        if started && depth == 0 {
+            return i;
+        }
+    }
+    lines.len().saturating_sub(1)
+}
+
+/// Find the function containing the cursor line, searching recursively through modules.
+fn find_enclosing_func_in_items<'a>(items: &'a [Item], text: &str, cursor_line: usize) -> Option<&'a FuncDef> {
+    for item in items {
+        match item {
+            Item::Func(f) => {
+                let end = find_func_end_line(text, f.pos.0);
+                if cursor_line >= f.pos.0 && cursor_line <= end {
+                    return Some(f);
+                }
+            }
+            Item::Module(m) => {
+                if let Some(f) = find_enclosing_func_in_items(&m.items, text, cursor_line) {
+                    return Some(f);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
 }
