@@ -1,4 +1,5 @@
 use std::collections::{HashMap, VecDeque};
+use std::fs;
 use std::io::{self, BufRead, Read, Write};
 use std::path::PathBuf;
 
@@ -24,6 +25,19 @@ pub(crate) mod util;
 const MAX_CONTENT_LENGTH: usize = 16 * 1024 * 1024; // 16MB
 const MAX_DOCUMENTS: usize = 256;
 
+#[derive(serde::Serialize, serde::Deserialize)]
+struct CacheEntry {
+    body_hash: u64,
+    status: String,
+    message: String,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Default)]
+struct PersistentCache {
+    version: u32,
+    entries: HashMap<String, CacheEntry>,
+}
+
 /// LSP server for Mimi language
 pub struct LspServer {
     pub(crate) documents: HashMap<String, String>,
@@ -32,6 +46,7 @@ pub struct LspServer {
     last_cursor_line: usize,
     verification_cache: HashMap<String, (u64, VerifStatus, String)>,
     verifier: Option<Verifier>,
+    cache_path: Option<PathBuf>,
 }
 
 impl LspServer {
@@ -43,6 +58,72 @@ impl LspServer {
             last_cursor_line: 0,
             verification_cache: HashMap::new(),
             verifier: None,
+            cache_path: None,
+        }
+    }
+
+    fn cache_file_path(&self) -> Option<PathBuf> {
+        self.workspace_root
+            .as_ref()
+            .map(|root| root.join(".mimi").join("verify_cache.json"))
+    }
+
+    pub(crate) fn load_cache(&mut self) {
+        let path = self.cache_file_path();
+        self.cache_path = path.clone();
+        let Some(path) = path else { return };
+        let data = match fs::read_to_string(&path) {
+            Ok(d) => d,
+            Err(_) => return,
+        };
+        let cache: PersistentCache = match serde_json::from_str(&data) {
+            Ok(c) => c,
+            Err(_) => return,
+        };
+        if cache.version != 1 {
+            return;
+        }
+        for (key, entry) in &cache.entries {
+            let status = match entry.status.as_str() {
+                "Verified" => VerifStatus::Verified,
+                "Failed" => VerifStatus::Failed,
+                _ => VerifStatus::Unknown,
+            };
+            self.verification_cache
+                .insert(key.clone(), (entry.body_hash, status, entry.message.clone()));
+        }
+    }
+
+    pub(crate) fn save_cache(&self) {
+        let Some(ref path) = self.cache_path else { return };
+        let entries: HashMap<String, CacheEntry> = self
+            .verification_cache
+            .iter()
+            .map(|(key, (hash, status, msg))| {
+                let status_str = match status {
+                    VerifStatus::Verified => "Verified",
+                    VerifStatus::Failed => "Failed",
+                    VerifStatus::Unknown => "Unknown",
+                };
+                (
+                    key.clone(),
+                    CacheEntry {
+                        body_hash: *hash,
+                        status: status_str.to_string(),
+                        message: msg.clone(),
+                    },
+                )
+            })
+            .collect();
+        let cache = PersistentCache {
+            version: 1,
+            entries,
+        };
+        if let Some(parent) = path.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        if let Ok(data) = serde_json::to_string(&cache) {
+            let _ = fs::write(path, data);
         }
     }
 

@@ -206,8 +206,8 @@ impl super::Verifier {
         self.solver.assert(&z3_requires.not());
         let constraint_count = 1;
 
-        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.solver.check())) {
-            Ok(SatResult::Unsat) => {
+        match self.check_safe() {
+            SatResult::Unsat => {
                 self.solver.pop(1);
                 VerificationResult {
                     func_name,
@@ -218,7 +218,7 @@ impl super::Verifier {
                     constraint_count,
                 }
             }
-            Ok(SatResult::Sat) => {
+            SatResult::Sat => {
                 self.solver.pop(1);
                 let diag = Diagnostic::error(
                     format!(
@@ -236,23 +236,12 @@ impl super::Verifier {
                     constraint_count,
                 }
             }
-            Ok(SatResult::Unknown) => {
+            SatResult::Unknown => {
                 self.solver.pop(1);
                 VerificationResult {
                     func_name,
                     status: VerifStatus::Unknown,
                     message: "precondition satisfiability unknown".into(),
-                    diagnostic: None,
-                    duration_us: start.elapsed().as_micros() as u64,
-                    constraint_count,
-                }
-            }
-            Err(_) => {
-                self.solver.pop(1);
-                VerificationResult {
-                    func_name,
-                    status: VerifStatus::Unknown,
-                    message: "verification timed out or crashed".into(),
                     diagnostic: None,
                     duration_us: start.elapsed().as_micros() as u64,
                     constraint_count,

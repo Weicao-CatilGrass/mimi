@@ -121,11 +121,20 @@ impl LspServer {
             }
         }
 
-        // Lazily initialize the Z3 verifier with short timeout
-        let verifier = self.verifier.get_or_insert(match Verifier::with_timeout(100) {
+        // Dynamic timeout based on function complexity
+        let func_body_lines = func.pos.1.saturating_sub(func.pos.0).max(1);
+        let param_count = func.params.len();
+        let dynamic_timeout = (func_body_lines * 50 + param_count * 100)
+            .max(200)
+            .min(5000) as u64;
+
+        // Lazily initialize the Z3 verifier with dynamic timeout
+        let verifier = self.verifier.get_or_insert(match Verifier::with_timeout(dynamic_timeout) {
             Ok(v) => v,
             Err(_) => return diagnostics, // Z3 not available
         });
+        // Update timeout for this invocation (reuses existing verifier)
+        verifier.set_timeout(dynamic_timeout);
 
         // Run verification
         let results = verifier.verify_file(&file);
@@ -151,6 +160,9 @@ impl LspServer {
                 }));
             }
         }
+
+        // Persist cache to disk
+        self.save_cache();
 
         diagnostics
     }
