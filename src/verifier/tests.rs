@@ -62,6 +62,7 @@ func wrong(x: i32) -> i32 {
 
     #[test]
     fn verify_result_binding_in_counterexample() {
+        require_z3!();
         let src = r#"
 func add_one(x: i32) -> i32 {
     requires: x > 0

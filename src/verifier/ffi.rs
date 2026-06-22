@@ -226,7 +226,11 @@ impl super::Verifier {
                         extern_func.name, requires,
                     ),
                     Span::single(0, 0),
-                );
+                )
+                .with_help(format!(
+                    "check call site of '{}' (source location tracking for extern calls is not yet implemented)",
+                    extern_func.name,
+                ));
                 VerificationResult {
                     func_name,
                     status: VerifStatus::Failed,

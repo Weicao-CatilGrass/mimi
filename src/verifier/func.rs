@@ -116,7 +116,7 @@ impl crate::verifier::Verifier {
                                     func_name: format!("extern {}", func.name),
                                     status: VerifStatus::Verified,
                                     message:
-                                        "extern contracts are consistent (runtime verification required)"
+                                        "extern contracts are consistent (preconditions do not statically guarantee postconditions; runtime verification required)"
                                             .into(),
                                     diagnostic: None,
                                     duration_us: start.elapsed().as_micros() as u64,
@@ -318,6 +318,19 @@ impl crate::verifier::Verifier {
             } else if let Some(body_z3) = self.expr_to_z3_int(return_expr, &mut vars) {
                 if let Some(i) = vars.get_int("result") {
                     self.solver.assert(&i.eq(&body_z3));
+                }
+            }
+        } else if func.ret.is_some() {
+            // No return expression found but function has a return type:
+            // bind result to 0 so postconditions don't pass vacuously.
+            if returns_real {
+                if let Some(r) = vars.get_real("result") {
+                    let zero = Z3Real::from_int(&Z3Int::from_i64(0));
+                    self.solver.assert(&r.eq(&zero));
+                }
+            } else {
+                if let Some(i) = vars.get_int("result") {
+                    self.solver.assert(&i.eq(&Z3Int::from_i64(0)));
                 }
             }
         }
