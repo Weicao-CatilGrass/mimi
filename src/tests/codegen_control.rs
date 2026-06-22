@@ -940,6 +940,24 @@ fn codegen_cap_extern_pass() {
     assert!(ir.contains("mimi_cap_check"), "IR should contain cap_check for extern param");
 }
 
+#[test]
+fn codegen_cap_fail_declares_exit() {
+    // Cap check failure path must always declare `exit` so the abort works
+    // even in no_std mode where `exit` is not otherwise declared.
+    let ir = compile_to_ir(r#"
+        cap FileReadCap;
+        extern "C" {
+            func use_cap(c: FileReadCap) -> i32;
+        }
+        func main() -> i32 {
+            let c = FileReadCap
+            use_cap(c)
+        }
+    "#);
+    assert!(ir.contains("declare void @exit(i32)") || ir.contains("declare void @exit"),
+        "IR must declare exit for cap_check failure path:\n{}", ir);
+}
+
 // ===================== Phase B: Stdlib Module Tests =====================
 
 #[test]
