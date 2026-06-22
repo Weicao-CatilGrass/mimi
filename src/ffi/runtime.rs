@@ -1,4 +1,7 @@
 #![allow(dead_code)]
+// Mutex/RwLock poisoning panics are intentional — inconsistent data after a
+// poisoned lock is unrecoverable; aborting is the safe choice.
+#![cfg_attr(not(test), allow(clippy::unwrap_used))]
 
 //! FFI runtime infrastructure: CapTable and SharedHandle management.
 //!

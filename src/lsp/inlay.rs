@@ -140,49 +140,53 @@ impl LspServer {
                 };
                 // For each argument that is non-trivial, add a param hint
                 let mut depth = 0i32;
-                let mut arg_start = paren_pos + 1;
+                let mut arg_start_byte = paren_pos + 1;
+                let mut arg_start_char = line_content[..paren_pos + 1].chars().count();
                 let mut arg_idx = 0;
-                for (ch_idx, ch) in line_content.chars().enumerate() {
-                    if ch_idx < paren_pos + 1 {
-                        continue;
-                    }
+                let mut byte_pos = paren_pos + 1;
+                let mut char_pos = line_content[..byte_pos].chars().count();
+                for (_, ch) in line_content[byte_pos..].char_indices() {
+                    let ch_byte_len = ch.len_utf8();
                     match ch {
                         '(' | '[' | '{' => depth += 1,
                         ')' | ']' | '}' => depth -= 1,
                         ',' if depth == 0 => {
                             if arg_idx < args.len() && arg_idx < param_names.len() {
-                                let arg_str = line_content[arg_start..ch_idx].trim();
+                                let arg_str = line_content[arg_start_byte..byte_pos].trim();
                                 if !arg_str.is_empty()
                                     && !arg_str.chars().all(|c| c.is_alphanumeric() || c == '_')
                                 {
                                     hints.push(serde_json::json!({
                                         "position": {
                                             "line": cl,
-                                            "character": arg_start as u64
+                                            "character": arg_start_char as u64
                                         },
                                         "label": format!("{}:", param_names[arg_idx]),
-                                        "kind": 2,  // Parameter
+                                        "kind": 2,
                                         "paddingRight": true
                                     }));
                                 }
                             }
-                            arg_start = ch_idx + 1;
+                            arg_start_byte = byte_pos + ch_byte_len;
+                            arg_start_char = char_pos + 1;
                             arg_idx += 1;
                         }
                         _ => {}
                     }
+                    byte_pos += ch_byte_len;
+                    char_pos += 1;
                 }
                 // Last argument
                 if arg_idx < args.len() && arg_idx < param_names.len() {
                     let end_pos = line_content.rfind(')').unwrap_or(line_content.len());
-                    let arg_str = line_content[arg_start..end_pos].trim();
+                    let arg_str = line_content[arg_start_byte..end_pos].trim();
                     if !arg_str.is_empty()
                         && !arg_str.chars().all(|c| c.is_alphanumeric() || c == '_')
                     {
                         hints.push(serde_json::json!({
                             "position": {
                                 "line": cl,
-                                "character": arg_start as u64
+                                "character": arg_start_char as u64
                             },
                             "label": format!("{}:", param_names[arg_idx]),
                             "kind": 2,

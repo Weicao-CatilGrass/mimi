@@ -8,6 +8,8 @@
 //! `register_with_invoker`, which stores a Rust closure alongside the
 //! Mimi closure for efficient C callback dispatch.
 
+// Mutex poisoning panics are intentional.
+#![cfg_attr(not(test), allow(clippy::unwrap_used))]
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::{Arc, Mutex};

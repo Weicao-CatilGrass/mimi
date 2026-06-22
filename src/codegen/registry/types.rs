@@ -73,7 +73,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                             let payload_is_struct = matches!(payload_llvm, Some(BasicTypeEnum::StructType(_)));
                             let fn_type = if v.payload.is_some() {
                                 if payload_is_struct {
-                                    struct_ty.fn_type(&[types::basic_to_metadata(self.context, payload_llvm.unwrap())], false)
+                                    struct_ty.fn_type(&[types::basic_to_metadata(self.context, payload_llvm.expect("payload_llvm is Some when payload_is_struct"))], false)
                                 } else {
                                     struct_ty.fn_type(&[meta_payload_ty], false)
                                 }
@@ -97,7 +97,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                                 if payload_is_struct {
                                     // Struct-typed payload: malloc, store, ptrtoint to i64
                                     let payload_struct = payload_arg.into_struct_value();
-                                    let payload_struct_ty = payload_llvm.unwrap();
+                                    let payload_struct_ty = payload_llvm.expect("payload_llvm is Some when payload_is_struct");
                                     let struct_size = payload_struct_ty.size_of()
                                         .ok_or_else(|| CompileError::LlvmError("cannot get payload struct size".to_string()))?;
                                     let malloc_fn = self.module.get_function("malloc")
