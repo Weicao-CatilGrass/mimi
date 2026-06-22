@@ -15,7 +15,6 @@ pub mod lockfile;
 pub mod lsp;
 pub mod manifest;
 pub mod parser;
-pub mod safe_arith;
 pub mod span;
 pub mod verifier;
 

@@ -301,7 +301,7 @@ impl<'a> Interpreter<'a> {
                 match op {
                     BinOp::Add => {
                         match (&lv, &rv) {
-                            (Value::Int(a), Value::Int(b)) => crate::safe_arith::checked_add(*a, *b)
+                            (Value::Int(a), Value::Int(b)) => a.checked_add(*b)
                                 .ok_or_else(|| InterpError::new(format!("integer overflow in addition: {} + {}", a, b)))
                                 .map(Value::Int),
                             (Value::Float(a), Value::Float(b)) => {
@@ -315,7 +315,7 @@ impl<'a> Interpreter<'a> {
                     }
                     BinOp::Sub => {
                         match (&lv, &rv) {
-                            (Value::Int(a), Value::Int(b)) => crate::safe_arith::checked_sub(*a, *b)
+                            (Value::Int(a), Value::Int(b)) => a.checked_sub(*b)
                                 .ok_or_else(|| InterpError::new(format!("integer overflow in subtraction: {} - {}", a, b)))
                                 .map(Value::Int),
                             (Value::Float(a), Value::Float(b)) => {
@@ -328,7 +328,7 @@ impl<'a> Interpreter<'a> {
                     }
                     BinOp::Mul => {
                         match (&lv, &rv) {
-                            (Value::Int(a), Value::Int(b)) => crate::safe_arith::checked_mul(*a, *b)
+                            (Value::Int(a), Value::Int(b)) => a.checked_mul(*b)
                                 .ok_or_else(|| InterpError::new(format!("integer overflow in multiplication: {} * {}", a, b)))
                                 .map(Value::Int),
                             (Value::Float(a), Value::Float(b)) => {
@@ -341,7 +341,7 @@ impl<'a> Interpreter<'a> {
                     }
                     BinOp::Div => {
                         match (&lv, &rv) {
-                            (Value::Int(a), Value::Int(b)) => crate::safe_arith::checked_div(*a, *b)
+                            (Value::Int(a), Value::Int(b)) => a.checked_div(*b)
                                 .ok_or_else(|| InterpError::new(format!("integer overflow or division by zero: {} / {}", a, b)))
                                 .map(Value::Int),
                             (Value::Float(a), Value::Float(b)) => {
@@ -415,7 +415,7 @@ impl<'a> Interpreter<'a> {
                 let v = self.eval_quoted_ast(e)?;
                 match op {
                     UnOp::Neg => match v {
-                        Value::Int(n) => crate::safe_arith::checked_neg(n)
+                        Value::Int(n) => n.checked_neg()
                             .ok_or_else(|| InterpError::new(format!("integer overflow in negation: -{}", n)))
                             .map(Value::Int),
                         Value::Float(n) => Ok(Value::Float(-n)),
