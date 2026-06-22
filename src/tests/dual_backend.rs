@@ -1888,7 +1888,6 @@ fn dual_deduction_mixed_calls() {
 // ─── 36.  Extern / FFI (3 tests) ───────────────────────────────
 
 #[test]
-#[ignore]
 fn dual_extern_declaration() {
     if !can_link() { return; }
     dual_assert!(r#"
@@ -1903,7 +1902,6 @@ fn dual_extern_declaration() {
 }
 
 #[test]
-#[ignore]
 fn dual_extern_multiple_funcs() {
     if !can_link() { return; }
     dual_assert!(r#"
@@ -1919,7 +1917,6 @@ fn dual_extern_multiple_funcs() {
 }
 
 #[test]
-#[ignore]
 fn dual_extern_with_cap() {
     if !can_link() { return; }
     dual_assert!(r#"

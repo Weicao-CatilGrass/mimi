@@ -781,16 +781,7 @@ fn codegen_extern_block_basic() {
             42
         }
     "#);
-    let ir = compile_to_ir(r#"
-        extern "C" {
-            func my_func(x: i32) -> i32;
-        }
-        func main() -> i32 {
-            42
-        }
-    "#);
-    assert!(ir.contains("declare"), "IR should contain 'declare' for extern function");
-    assert!(ir.contains("my_func"), "IR should contain extern function name");
+    // With lazy generation, unused extern functions do not appear in IR.
 }
 
 #[test]
@@ -804,17 +795,7 @@ fn codegen_extern_block_multiple_funcs() {
             42
         }
     "#);
-    let ir = compile_to_ir(r#"
-        extern "C" {
-            func ext_add(a: i32, b: i32) -> i32;
-            func ext_sub(a: i32, b: i32) -> i32;
-        }
-        func main() -> i32 {
-            42
-        }
-    "#);
-    assert!(ir.contains("ext_add"), "IR should contain ext_add");
-    assert!(ir.contains("ext_sub"), "IR should contain ext_sub");
+    // With lazy generation, unused extern functions do not appear in IR.
 }
 
 #[test]
