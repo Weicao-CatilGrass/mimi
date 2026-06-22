@@ -78,6 +78,22 @@ impl Z3VarMap {
     pub(crate) fn is_real(&self, name: &str) -> bool {
         self.real_vars.contains_key(name)
     }
+
+    /// Get or create an Int variable. If the key already exists as Real, creates a new Int.
+    pub(crate) fn get_or_create_int(&mut self, name: &str) -> Z3Int {
+        self.int_vars
+            .entry(name.to_string())
+            .or_insert_with(|| Z3Int::new_const(name))
+            .clone()
+    }
+
+    /// Get or create a Real variable. If the key already exists as Int, creates a new Real.
+    pub(crate) fn get_or_create_real(&mut self, name: &str) -> Z3Real {
+        self.real_vars
+            .entry(name.to_string())
+            .or_insert_with(|| Z3Real::new_const(name))
+            .clone()
+    }
 }
 
 pub struct Verifier {

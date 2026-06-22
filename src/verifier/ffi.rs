@@ -24,13 +24,13 @@ impl super::Verifier {
                     continue;
                 }
                 self.solver.push();
-                let vars = self.setup_ffi_func_vars(func);
-                self.assert_func_requires(func, &vars);
+                let mut vars = self.setup_ffi_func_vars(func);
+                self.assert_func_requires(func, &mut vars);
 
                 for (extern_name, args) in &calls {
                     if let Some(extern_func) = externs.get(extern_name.as_str()) {
                         let result = self.check_extern_call(
-                            &func.name, extern_func, args, &vars,
+                            &func.name, extern_func, args, &mut vars,
                         );
                         results.push(result);
                     }
@@ -156,7 +156,7 @@ impl super::Verifier {
         vars
     }
 
-    fn assert_func_requires(&mut self, func: &FuncDef, vars: &Z3VarMap) {
+    fn assert_func_requires(&mut self, func: &FuncDef, vars: &mut Z3VarMap) {
         for stmt in &func.body {
             if let Stmt::Requires(expr, _) = stmt {
                 if let Some(z3_bool) = self.expr_to_z3_bool(expr, vars) {
@@ -167,7 +167,7 @@ impl super::Verifier {
     }
 
     fn check_extern_call(
-        &mut self, caller_name: &str, extern_func: &ExternFunc, args: &[Expr], vars: &Z3VarMap,
+        &mut self, caller_name: &str, extern_func: &ExternFunc, args: &[Expr], vars: &mut Z3VarMap,
     ) -> VerificationResult {
         let start = Instant::now();
         let func_name = format!("{} calls {}", caller_name, extern_func.name);
