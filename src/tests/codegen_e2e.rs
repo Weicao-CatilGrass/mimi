@@ -1917,7 +1917,6 @@ fn e2e_result_is_ok_is_err() {
 }
 
 #[test]
-#[ignore = "requires bare None expression support in Mimi"]
 fn e2e_option_is_some_is_none() {
     if !can_link() { eprintln!("SKIP: cc not available"); return; }
     let stdout = compile_and_run(r#"
@@ -1950,7 +1949,6 @@ fn e2e_result_unwrap_or() {
 }
 
 #[test]
-#[ignore = "requires bare None expression support in Mimi"]
 fn e2e_option_unwrap_or() {
     if !can_link() { eprintln!("SKIP: cc not available"); return; }
     let stdout = compile_and_run(r#"
@@ -1966,7 +1964,6 @@ fn e2e_option_unwrap_or() {
 }
 
 #[test]
-#[ignore = "requires bare None expression support in Mimi"]
 fn e2e_option_ok_or() {
     if !can_link() { eprintln!("SKIP: cc not available"); return; }
     let stdout = compile_and_run(r#"
