@@ -221,3 +221,144 @@ func main() -> i32 {
     let v = run_source(src);
     assert_eq!(v, interp::Value::Int(5));
 }
+
+fn can_link() -> bool {
+    std::process::Command::new("cc").arg("--version").output().is_ok()
+}
+
+#[test]
+fn ensures_string_concat_with_old_runtime_check() {
+    let src = r#"
+func greet(name: string) -> string {
+    ensures: result == "Hello, " + old(name)
+    return "Hello, " + name;
+}
+
+func main() -> i32 {
+    let g = greet("World");
+    println(g);
+    0
+}
+"#;
+    let result = run_source_result(src);
+    assert!(result.is_ok(), "string ensures via --verify-contracts should pass: {:?}", result);
+}
+
+#[test]
+fn ensures_string_requires_violation_caught() {
+    let src = r#"
+func greet(name: string) -> string {
+    requires: len(name) > 0
+    return "Hello, " + name;
+}
+
+func main() -> i32 {
+    let g = greet("");
+    println(g);
+    0
+}
+"#;
+    let v = run_source_result(src);
+    assert!(v.is_err(), "string requires violation should be caught");
+}
+
+#[test]
+fn ensures_string_requires_ok() {
+    let src = r#"
+func greet(name: string) -> string {
+    requires: len(name) > 0
+    return "Hello, " + name;
+}
+
+func main() -> i32 {
+    let g = greet("World");
+    println(g);
+    0
+}
+"#;
+    let v = run_source_result(src);
+    assert!(v.is_ok(), "string requires with valid input should pass: {:?}", v);
+}
+
+#[test]
+fn ensures_string_concat_with_old_snapshot() {
+    let src = r#"
+func append_world(s: string) -> string {
+    ensures: result == old(s) + "world"
+    return s + "world";
+}
+
+func main() -> string {
+    append_world("hello")
+}
+"#;
+    let v = run_source(src);
+    assert_eq!(v, interp::Value::String("helloworld".to_string()));
+}
+
+#[test]
+fn codegen_contract_string_requires_nonempty() {
+    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    let stdout = compile_and_verify_contracts(r#"
+func greet(name: string) -> i32 {
+    requires: name != ""
+    println(name);
+    0
+}
+
+func main() -> i32 {
+    greet("World")
+}
+"#).expect("string requires should pass under codegen");
+    assert_eq!(stdout.trim(), "World");
+}
+
+#[test]
+fn codegen_contract_string_requires_nonempty_fails() {
+    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    let result = compile_and_verify_contracts(r#"
+func greet(name: string) -> i32 {
+    requires: name != ""
+    println(name);
+    0
+}
+
+func main() -> i32 {
+    greet("")
+}
+"#);
+    assert!(result.is_err(), "empty string should fail requires");
+}
+
+#[test]
+fn dual_contract_string_requires_nonempty() {
+    if !can_link() { return; }
+    dual_assert_contract_ok(r#"
+func greet(name: string) -> i32 {
+    requires: name != ""
+    println(name);
+    0
+}
+
+func main() -> i32 {
+    greet("World")
+}
+"#);
+}
+
+#[test]
+fn dual_contract_string_nonempty_ensures() {
+    if !can_link() { return; }
+    dual_assert_contract_ok(r#"
+func greet(name: string) -> i32 {
+    requires: name != ""
+    ensures: result == 0
+    println(name);
+    0
+}
+
+func main() -> i32 {
+    greet("World")
+}
+"#);
+}
