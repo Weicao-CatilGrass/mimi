@@ -38,7 +38,7 @@ impl<'a> Interpreter<'a> {
         match op {
             UnOp::Neg => match v {
                 Value::Int(x) => {
-                    crate::safe_arith::checked_neg(x)
+                    x.checked_neg()
                         .ok_or_else(|| InterpError::new(format!("integer overflow in negation: -{}", x)))
                         .map(Value::Int)
                 }
@@ -107,7 +107,7 @@ impl<'a> Interpreter<'a> {
             BinOp::Add => match (&left, &right) {
                 (Value::String(a), Value::String(b)) => Ok(Value::String(format!("{}{}", a, b))),
                 (Value::Int(a), Value::Int(b)) => {
-                    crate::safe_arith::checked_add(*a, *b)
+                    a.checked_add(*b)
                         .ok_or_else(|| InterpError::new(format!("integer overflow in addition: {} + {}", a, b)))
                         .map(Value::Int)
                 }
@@ -117,7 +117,7 @@ impl<'a> Interpreter<'a> {
             },
             BinOp::Sub => match (&left, &right) {
                 (Value::Int(a), Value::Int(b)) => {
-                    crate::safe_arith::checked_sub(*a, *b)
+                    a.checked_sub(*b)
                         .ok_or_else(|| InterpError::new(format!("integer overflow in subtraction: {} - {}", a, b)))
                         .map(Value::Int)
                 }
@@ -128,7 +128,7 @@ impl<'a> Interpreter<'a> {
             },
             BinOp::Mul => match (&left, &right) {
                 (Value::Int(a), Value::Int(b)) => {
-                    crate::safe_arith::checked_mul(*a, *b)
+                    a.checked_mul(*b)
                         .ok_or_else(|| InterpError::new(format!("integer overflow in multiplication: {} * {}", a, b)))
                         .map(Value::Int)
                 }
@@ -139,7 +139,7 @@ impl<'a> Interpreter<'a> {
             BinOp::Div => match (&left, &right) {
                 (Value::Int(_), Value::Int(0)) => Err(InterpError::new("division by zero")),
                 (Value::Int(a), Value::Int(b)) => {
-                    crate::safe_arith::checked_div(*a, *b)
+                    a.checked_div(*b)
                         .ok_or_else(|| InterpError::new(format!("integer overflow in division: {} / {}", a, b)))
                         .map(Value::Int)
                 }
@@ -151,7 +151,7 @@ impl<'a> Interpreter<'a> {
             BinOp::Mod => match (&left, &right) {
                 (Value::Int(_), Value::Int(0)) => Err(InterpError::new("modulo by zero")),
                 (Value::Int(a), Value::Int(b)) => {
-                    crate::safe_arith::checked_rem(*a, *b)
+                    a.checked_rem(*b)
                         .ok_or_else(|| InterpError::new(format!("integer overflow in modulo: {} % {}", a, b)))
                         .map(Value::Int)
                 }
@@ -160,7 +160,7 @@ impl<'a> Interpreter<'a> {
             BinOp::Pow => match (&left, &right) {
                 (Value::Int(_), Value::Int(b)) if *b < 0 => Err(InterpError::new("negative exponent not supported for integers")),
                 (Value::Int(a), Value::Int(b)) => {
-                    crate::safe_arith::checked_pow(*a, *b as u32)
+                    a.checked_pow(*b as u32)
                         .ok_or_else(|| InterpError::new(format!("integer overflow in power: {} ^ {}", a, b)))
                         .map(Value::Int)
                 }
@@ -188,13 +188,13 @@ impl<'a> Interpreter<'a> {
                 _ => Err(InterpError::new(format!("cannot apply '^' to {} and {}", type_name(&left), type_name(&right)))),
             },
             BinOp::Shl => match (&left, &right) {
-                (Value::Int(a), Value::Int(b)) => crate::safe_arith::checked_shl(*a, *b as u32)
+                (Value::Int(a), Value::Int(b)) => a.checked_shl(*b as u32)
                     .ok_or_else(|| InterpError::new(format!("shift left overflow: {} << {}", a, b)))
                     .map(Value::Int),
                 _ => Err(InterpError::new(format!("cannot apply '<<' to {} and {}", type_name(&left), type_name(&right)))),
             },
             BinOp::Shr => match (&left, &right) {
-                (Value::Int(a), Value::Int(b)) => crate::safe_arith::checked_shr(*a, *b as u32)
+                (Value::Int(a), Value::Int(b)) => a.checked_shr(*b as u32)
                     .ok_or_else(|| InterpError::new(format!("shift right overflow: {} >> {}", a, b)))
                     .map(Value::Int),
                 _ => Err(InterpError::new(format!("cannot apply '>>' to {} and {}", type_name(&left), type_name(&right)))),
