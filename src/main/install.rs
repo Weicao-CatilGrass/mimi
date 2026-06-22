@@ -59,7 +59,8 @@ pub(crate) fn install(_all: bool) -> Result<(), String> {
                 tag_arg.to_string()
             };
             println!("  ✓ {} (git: {} @ {} -> {})", dep.name, git_url, tag_arg, resolved_version);
-            lock.add_package(&dep.name, &resolved_version, Some(&format!("git+{}", git_url)), None);
+            let checksum = pkg_registry::compute_dir_checksum(&clone_dir).ok();
+            lock.add_package(&dep.name, &resolved_version, Some(&format!("git+{}", git_url)), checksum.as_deref());
             installed += 1;
         } else {
             let source = dep.path.as_deref().unwrap_or("registry");
@@ -93,7 +94,8 @@ pub(crate) fn install(_all: bool) -> Result<(), String> {
                     pkg_registry::copy_dir_recursive(&src, &dst)
                         .map_err(|e| format!("failed to copy {}: {}", dep.name, e))?;
                     println!("  ✓ {} v{}", dep.name, v);
-                    lock.add_package(&dep.name, &v, Some("registry"), None);
+                    let checksum = pkg_registry::compute_dir_checksum(&dst).ok();
+                    lock.add_package(&dep.name, &v, Some("registry"), checksum.as_deref());
                     installed += 1;
                 }
                 None => {
@@ -114,7 +116,8 @@ pub(crate) fn install(_all: bool) -> Result<(), String> {
             pkg_registry::copy_dir_recursive(&src, &dst)
                 .map_err(|e| format!("failed to copy {}: {}", dep.name, e))?;
             println!("  ✓ {} (path: {})", dep.name, source);
-            lock.add_package(&dep.name, "*", Some(&format!("path:{}", source)), None);
+            let checksum = pkg_registry::compute_dir_checksum(&dst).ok();
+            lock.add_package(&dep.name, "*", Some(&format!("path:{}", source)), checksum.as_deref());
             installed += 1;
         }
         }
