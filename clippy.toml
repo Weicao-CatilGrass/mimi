@@ -1,5 +1,9 @@
-# Deny unwrap/expect in production code.
-# Use proper error propagation (? operator) or safe defaults instead.
-# Test modules are exempt via #[allow(clippy::unwrap_used)].
-disallowed-macros = []
-
+# clippy.toml — Mimi project-wide clippy configuration
+#
+# unwrap/expect enforcement strategy (not via clippy.toml):
+# - main/mod.rs: #![cfg_attr(not(test), deny(clippy::unwrap_used))]
+#   catches .unwrap() in production code
+# - Parser modules: #[allow(clippy::unwrap_used)] (intentional self.expect() pattern)
+# - FFI runtime modules: #[allow(clippy::unwrap_used)] (Mutex poisoning is intentional)
+# - .expect() is NOT caught by clippy::unwrap_used; use is evaluated case-by-case
+#
