@@ -25,7 +25,7 @@ impl<'ctx> CodeGenerator<'ctx> {
         let i8_ptr = i8_type.ptr_type(inkwell::AddressSpace::default());
         let join_fn = self.module.get_function("pthread_join");
         if let Some(join_fn) = join_fn {
-            for &thread_id in &self.parasteps_thread_ids {
+            for &(thread_id, _) in &self.parasteps_thread_ids {
                 self.builder.build_call(join_fn, &[
                     BasicMetadataValueEnum::IntValue(thread_id),
                     BasicMetadataValueEnum::PointerValue(i8_ptr.const_null()),

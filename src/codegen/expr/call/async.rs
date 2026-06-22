@@ -13,21 +13,22 @@ impl<'ctx> CodeGenerator<'ctx> {
     ) -> Result<BasicValueEnum<'ctx>, CompileError> {
         // Create a real pthread for spawn both inside and outside parasteps.
         // Inside parasteps, track the thread ID for joining at the barrier.
-        let thread_id = self.compile_spawn_pthread(expr, vars)?;
+        let (thread_id, result_type) = self.compile_spawn_pthread(expr, vars)?;
         if self.in_parasteps {
             if let BasicValueEnum::IntValue(tid) = thread_id {
-                self.parasteps_thread_ids.push(tid);
+                self.parasteps_thread_ids.push((tid, result_type));
             }
         }
         Ok(thread_id)
     }
 
     /// Full wrapper-based spawn for standalone (outside parasteps) — uses pthread_create.
+    /// Returns (thread_id, result_type).
     fn compile_spawn_pthread(
         &mut self,
         expr: &Expr,
         vars: &HashMap<String, VarEntry<'ctx>>,
-    ) -> Result<BasicValueEnum<'ctx>, CompileError> {
+    ) -> Result<(BasicValueEnum<'ctx>, BasicTypeEnum<'ctx>), CompileError> {
         let parent_fn = self.current_function().ok_or_else(|| "codegen: no current function for spawn".to_string())?;
         let parent_name = parent_fn.get_name().to_str().unwrap_or("unknown").to_string();
         let wrapper_name = format!("{}{}__spawn_wrapper", parent_name, self.spawn_counter).to_string();
@@ -76,14 +77,12 @@ impl<'ctx> CodeGenerator<'ctx> {
         }
         
         let result = self.compile_expr(expr, &wrapper_vars)?;
+        let result_type = result.get_type();
         
         let i64_ty = self.context.i64_type();
         let malloc_fn = self.module.get_function("malloc")
             .ok_or_else(|| "malloc not declared".to_string())?;
-        let result_llvm_ty_for_size = result.get_type();
-        let byte_size_val = result_llvm_ty_for_size.size_of()
-            .and_then(|v: inkwell::values::IntValue<'ctx>| v.get_zero_extended_constant())
-            .unwrap_or(0) as u64;
+        let byte_size_val = self.llvm_type_size_bytes(result_type);
         let byte_size = i64_ty.const_int(byte_size_val, false);
         let result_storage = self.builder.build_call(malloc_fn, &[
             BasicMetadataValueEnum::IntValue(byte_size),
@@ -172,7 +171,9 @@ impl<'ctx> CodeGenerator<'ctx> {
 
         let thread_id_val = self.builder.build_load(BasicTypeEnum::IntType(i64_ty), thread_alloca, "thread_id")
             .map_err(|e| CompileError::LlvmError(format!("load error: {}", e)))?;
-        Ok(thread_id_val)
+        // Track the spawn result type so compile_await_expr can load with the correct type
+        self.pending_spawn_type = Some(result_type);
+        Ok((thread_id_val, result_type))
     }
     pub(in crate::codegen) fn compile_await_expr(
         &mut self,
@@ -196,9 +197,25 @@ impl<'ctx> CodeGenerator<'ctx> {
         self.builder.build_store(retval_storage, i8_ptr.const_null())
             .map_err(|e| CompileError::LlvmError(format!("store error: {}", e)))?;
         
+        // Determine the result type: for parasteps, look up by thread ID;
+        // for standalone, use the pending spawn type tracked by compile_spawn_pthread.
+        let result_type = if self.in_parasteps {
+            let pos = self.parasteps_thread_ids.iter().position(|(id, _)| *id == handle);
+            if let Some(pos) = pos {
+                let (_, ty) = self.parasteps_thread_ids.remove(pos);
+                ty
+            } else {
+                self.pending_spawn_type.take()
+                    .unwrap_or_else(|| self.context.i64_type().into())
+            }
+        } else {
+            self.pending_spawn_type.take()
+                .unwrap_or_else(|| self.context.i64_type().into())
+        };
+        
         if self.in_parasteps {
-            // Remove from parasteps tracking (already awaited, avoid double-join at block end)
-            self.parasteps_thread_ids.retain(|&id| id != handle);
+            // Also remove any remaining entries that match (defensive clean-up)
+            self.parasteps_thread_ids.retain(|(id, _)| *id != handle);
         }
 
         let pthread_join_fn = self.module.get_function("pthread_join")
@@ -220,7 +237,6 @@ impl<'ctx> CodeGenerator<'ctx> {
             return Err("expected pointer from pthread_join".into());
         };
         
-        let result_type = self.pending_spawn_type.take().unwrap_or_else(|| self.context.i64_type().into());
         let result_typed = self.builder.build_pointer_cast(
             result_ptr,
             result_type.ptr_type(inkwell::AddressSpace::default()),
