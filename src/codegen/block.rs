@@ -420,6 +420,9 @@ impl<'ctx> CodeGenerator<'ctx> {
                     let val = self.compile_expr(init, vars)?;
                     self.compile_pattern_bind(pat, val, vars)?;
                     if let Pattern::Variable(name) = pat {
+                        if self.expr_is_string(init) {
+                            self.var_type_names.insert(name.clone(), "string".to_string());
+                        }
                         if let Expr::Ident(fn_name) = init {
                             if self.module.get_function(fn_name.as_str()).is_some() {
                                 self.fn_ptr_var_names.insert(name.clone());
