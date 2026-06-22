@@ -207,7 +207,7 @@ dual_assert_contract_ok(program)
 ### 已知 Codegen 差距速查
 
 当前未解决的已知 codegen 差距：
-- **HTTP server (net.rs)**: 3 个 TCP echo 测试仅 interpreter 路径。codegen 端需 `tcp_accept`/`recv`/`send` 的 C runtime 实现(当前 interpreter 直接用 `libc`)。(tests/net.rs, interpreter-only)
+- **HTTP server (net.rs)**: 3 个 TCP echo 测试仅 interpreter 路径。codegen 端需 `tcp_accept`/`recv`/`send` 的 C runtime 实现(当前 interpreter 直接用 `libc`)。规划在 v0.12 补齐。(tests/net.rs, interpreter-only)
 
 以下差距已在本轮 IDD 修复中关闭：
 - 正则表达式: interpreter 使用 Rust `regex` crate，codegen 使用 POSIX `regex.h`（`regcomp`/`regexec`），双后端等价。
@@ -228,14 +228,14 @@ CI 中 `cargo test dual_` 必须 100% 通过（忽略的测试除外）。新增
 ## CI 门禁顺序
 
 ```
-1.  cargo test                          # 所有测试（1,910 个）
+1.  cargo test                          # 所有测试（1,951 个）
 2.  cargo test dual_                    # 双后端等价性（L1，~177 个）
 3.  cargo test "typecheck::"            # 类型系统健全性（L2）
 4.  cargo test "adv_comptime|adv_quote" # 编译时错误信息
 5.  cargo test ffi_                     # FFI 契约等价性
 6.  cargo test codegen_e2e              # 代码生成 E2E
 7.  cargo test "fmt_type"               # 类型格式化一致性
-8.  cargo test dual_gap_ -- --ignored   # 已知差距（必须编译通过，允许失败）
+8.  cargo test -- --ignored             # 已知差距（必须编译通过，允许失败）
 9.  cargo miri test interp ffi          # Miri 下 UB 检测（L3）
 10. cargo test codegen_e2e -- valgrind  # Valgrind 下内存安全（L3）
 ```
