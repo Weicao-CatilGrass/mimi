@@ -309,7 +309,7 @@ fn codegen_match_nested() {
     assert_compiles(r#"
         type MyResult { Ok(i32) | Err(i32) }
         type Outer { Value(MyResult) | Empty }
-        func flatten(o: Outer) -> i32 {
+        func get_val(o: Outer) -> i32 {
             match o {
                 Value(r) => match r {
                     Ok(v) => v

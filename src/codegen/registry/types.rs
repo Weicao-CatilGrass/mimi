@@ -2,7 +2,7 @@ use crate::ast::*;
 use crate::codegen::types;
 use crate::codegen::CodeGenerator;
 use crate::error::{CompileError, MimiResult};
-use inkwell::types::{BasicType, BasicTypeEnum};
+use inkwell::types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum};
 
 impl<'ctx> CodeGenerator<'ctx> {
     pub(in crate::codegen) fn register_type_def(&mut self, t: &crate::ast::TypeDef) -> MimiResult<()> {
@@ -40,36 +40,56 @@ impl<'ctx> CodeGenerator<'ctx> {
                     }
                     enum_ty
                 } else {
-                    // Internal enum representation: i32 tag + i64 payload
+                    // Internal enum representation: i32 tag + payload
+                    // Resolve the actual payload type from the first non-unit variant.
+                    let payload_ty = sorted_variants.iter()
+                        .find_map(|v| v.payload.as_ref())
+                        .and_then(|p| match p {
+                            VariantPayload::Tuple(types) if types.len() == 1 => self.llvm_type_for(&types[0]),
+                            _ => None,
+                        })
+                        .unwrap_or(BasicTypeEnum::IntType(self.context.i64_type()));
                     let tag_ty = BasicTypeEnum::IntType(self.context.i32_type());
-                    let payload_ty = BasicTypeEnum::IntType(self.context.i64_type());
                     let enum_ty = BasicTypeEnum::StructType(self.context.struct_type(&[tag_ty, payload_ty], false));
                     // Register constructor functions for each variant
                     let struct_ty = self.context.struct_type(&[
                         BasicTypeEnum::IntType(self.context.i32_type()),
-                        BasicTypeEnum::IntType(self.context.i64_type()),
+                        payload_ty,
                     ], false);
+                    // Metadata type for constructor parameter
+                    let meta_payload_ty = match payload_ty {
+                        BasicTypeEnum::IntType(t) => BasicMetadataTypeEnum::IntType(t),
+                        BasicTypeEnum::FloatType(t) => BasicMetadataTypeEnum::FloatType(t),
+                        BasicTypeEnum::PointerType(t) => BasicMetadataTypeEnum::PointerType(t),
+                        BasicTypeEnum::StructType(t) => BasicMetadataTypeEnum::StructType(t),
+                        BasicTypeEnum::ArrayType(t) => BasicMetadataTypeEnum::ArrayType(t),
+                        _ => BasicMetadataTypeEnum::IntType(self.context.i64_type()),
+                    };
                     for (ordinal, v) in sorted_variants.iter().enumerate() {
                         let ctor_name = format!("{}_{}", t.name, v.name);
                         if self.module.get_function(&ctor_name).is_none() {
-                            let fn_type = struct_ty.fn_type(&[
-                                inkwell::types::BasicMetadataTypeEnum::IntType(self.context.i64_type()),
-                            ], false);
+                            let fn_type = if v.payload.is_some() {
+                                struct_ty.fn_type(&[meta_payload_ty], false)
+                            } else {
+                                struct_ty.fn_type(&[], false)
+                            };
                             let ctor = self.module.add_function(&ctor_name, fn_type, Some(inkwell::module::Linkage::Internal));
                             let entry = self.context.append_basic_block(ctor, "entry");
                             let prev_block = self.builder.get_insert_block();
                             self.builder.position_at_end(entry);
-                            let payload = ctor.get_nth_param(0).ok_or_else(|| CompileError::LlvmError("missing payload param".to_string()))?;
                             let alloca = self.builder.build_alloca(struct_ty, &ctor_name)
                                 .map_err(|e| CompileError::LlvmError(format!("alloca error: {}", e)))?;
                             let tag_gep = self.builder.build_struct_gep(struct_ty, alloca, 0, "tag")
                                 .map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?;
                             self.builder.build_store(tag_gep, self.context.i32_type().const_int(ordinal as u64, false))
                                 .map_err(|e| CompileError::LlvmError(format!("store error: {}", e)))?;
-                            let payload_gep = self.builder.build_struct_gep(struct_ty, alloca, 1, "payload")
-                                .map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?;
-                            self.builder.build_store(payload_gep, payload)
-                                .map_err(|e| CompileError::LlvmError(format!("store error: {}", e)))?;
+                            if v.payload.is_some() {
+                                let payload_arg = ctor.get_nth_param(0).ok_or_else(|| CompileError::LlvmError("missing payload param".to_string()))?;
+                                let payload_gep = self.builder.build_struct_gep(struct_ty, alloca, 1, "payload")
+                                    .map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?;
+                                self.builder.build_store(payload_gep, payload_arg)
+                                    .map_err(|e| CompileError::LlvmError(format!("store error: {}", e)))?;
+                            }
                             let loaded = self.builder.build_load(struct_ty, alloca, &ctor_name)
                                 .map_err(|e| CompileError::LlvmError(format!("load error: {}", e)))?;
                             self.builder.build_return(Some(&loaded))

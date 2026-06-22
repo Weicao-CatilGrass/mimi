@@ -1183,6 +1183,30 @@ fn dual_push_mut_read_back() {
 }
 
 #[test]
+fn dual_nested_enum_match() {
+    if !can_link() { return; }
+    dual_assert!(r#"
+        type MyResult { Ok(i32) | Err(i32) }
+        type Outer { Value(MyResult) | Empty }
+        func get_val(o: Outer) -> i32 {
+            match o {
+                Value(r) => match r {
+                    Ok(v) => v
+                    Err(e) => e
+                }
+                Empty => 0
+            }
+        }
+        func main() -> i32 {
+            println(get_val(Value(Ok(42))))
+            println(get_val(Value(Err(99))))
+            println(get_val(Empty))
+            0
+        }
+    "#, "42\n99\n0");
+}
+
+#[test]
 fn dual_block_match_multi_stmt() {
     if !can_link() { return; }
     dual_assert!(r#"
