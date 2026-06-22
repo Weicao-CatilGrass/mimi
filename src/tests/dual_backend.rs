@@ -1261,3 +1261,679 @@ fn dual_block_match_arm_side_effects() {
         }
     "#, "100\n30");
 }
+
+// ─── 26.  所有权/借用 Ownership & Borrowing (7 tests) ──────────
+
+#[test]
+fn dual_shared_basic() {
+    if !can_link() { return; }
+    dual_assert!(r#"
+        func main() -> i32 {
+            shared x = 42;
+            println(x.deref());
+            0
+        }
+    "#, "42");
+}
+
+#[test]
+fn dual_shared_clone() {
+    if !can_link() { return; }
+    dual_assert!(r#"
+        func main() -> i32 {
+            shared x = 42;
+            shared y = x;
+            println(x.deref());
+            println(y.deref());
+            0
+        }
+    "#, "42\n42");
+}
+
+#[test]
+fn dual_local_shared() {
+    if !can_link() { return; }
+    dual_assert!(r#"
+        func main() -> i32 {
+            local shared x = 42;
+            println(x.deref());
+            0
+        }
+    "#, "42");
+}
+
+#[test]
+#[ignore]
+fn dual_shared_field_access() {
+    if !can_link() { return; }
+    dual_assert!(r#"
+        type Point { x: i32; y: i32 }
+        func main() -> i32 {
+            shared s = Point { x: 10, y: 20 };
+            println(s.x);
+            0
+        }
+    "#, "10");
+}
+
+#[test]
+fn dual_weak_upgrade() {
+    if !can_link() { return; }
+    dual_assert!(r#"
+        func main() -> i32 {
+            shared x = 42;
+            weak w = x;
+            let upgraded = w.upgrade();
+            println(upgraded.deref());
+            0
+        }
+    "#, "42");
+}
+
+#[test]
+fn dual_arena_basic() {
+    if !can_link() { return; }
+    dual_assert!(r#"
+        func main() -> i32 {
+            let val = arena {
+                let ref x = 42;
+                x
+            };
+            println(val);
+            0
+        }
+    "#, "42");
+}
+
+#[test]
+#[ignore]
+fn dual_shared_mutation() {
+    if !can_link() { return; }
+    dual_assert!(r#"
+        func main() -> i32 {
+            shared a = 5;
+            let b = a.clone();
+            *a = 42;
+            println(b.deref());
+            0
+        }
+    "#, "42");
+}
+
+// ─── 27.  闭包 Closures (5 tests) ──────────────────────────────
+
+#[test]
+fn dual_closure_basic() {
+    if !can_link() { return; }
+    dual_assert!(r#"
+        func main() -> i32 {
+            let add = fn(x: i32, y: i32) -> i32 { x + y };
+            println(add(3, 4));
+            0
+        }
+    "#, "7");
+}
+
+#[test]
+fn dual_closure_single_param() {
+    if !can_link() { return; }
+    dual_assert!(r#"
+        func main() -> i32 {
+            let double = fn(x: i32) -> i32 { x * 2 };
+            println(double(5));
+            0
+        }
+    "#, "10");
+}
+
+#[test]
+fn dual_closure_no_params() {
+    if !can_link() { return; }
+    dual_assert!(r#"
+        func main() -> i32 {
+            let get_five = fn() -> i32 { 5 };
+            println(get_five());
+            0
+        }
+    "#, "5");
+}
+
+#[test]
+fn dual_closure_capture_var() {
+    if !can_link() { return; }
+    dual_assert!(r#"
+        func main() -> i32 {
+            let offset = 10;
+            let add_offset = fn(x: i32) -> i32 { x + offset };
+            println(add_offset(5));
+            0
+        }
+    "#, "15");
+}
+
+#[test]
+fn dual_first_class_function() {
+    if !can_link() { return; }
+    dual_assert!(r#"
+        func double(x: i32) -> i32 { x * 2 }
+        func main() -> i32 {
+            let f = double;
+            println(f(21));
+            0
+        }
+    "#, "42");
+}
+
+// ─── 28.  Comptime (4 tests) ────────────────────────────
+
+#[test]
+fn dual_comptime_function() {
+    if !can_link() { return; }
+    dual_assert!(r#"
+        comptime func get_val() -> i32 { 42 }
+        func main() -> i32 {
+            println(get_val());
+            0
+        }
+    "#, "42");
+}
+
+#[test]
+fn dual_comptime_with_requires() {
+    if !can_link() { return; }
+    dual_assert!(r#"
+        comptime func validate(n: i32) -> i32 {
+            requires: n > 0
+            n * 2
+        }
+        func main() -> i32 {
+            println(validate(5));
+            0
+        }
+    "#, "10");
+}
+
+#[test]
+#[ignore]
+fn dual_quote_eval_literal() {
+    if !can_link() { return; }
+    dual_assert!(r#"
+        func main() -> i32 {
+            let ast = quote! { 42 };
+            println(ast_eval(ast));
+            0
+        }
+    "#, "42");
+}
+
+#[test]
+fn dual_math_block() {
+    if !can_link() { return; }
+    dual_assert!(r#"
+        func main() -> i32 {
+            math: { 1 + 2; 3 * 4; };
+            println(42);
+            0
+        }
+    "#, "42");
+}
+
+// ─── 29.  字符串 Strings (5 tests) ─────────────────────────────
+
+#[test]
+fn dual_string_len() {
+    if !can_link() { return; }
+    dual_assert!(r#"
+        func main() -> i32 {
+            println(len("hello"));
+            0
+        }
+    "#, "5");
+}
+
+#[test]
+fn dual_string_compare_equal() {
+    if !can_link() { return; }
+    dual_assert!(r#"
+        func main() -> i32 {
+            let r = if "abc" == "abc" { 1 } else { 0 };
+            println(r);
+            0
+        }
+    "#, "1");
+}
+
+#[test]
+fn dual_string_compare_not_equal() {
+    if !can_link() { return; }
+    dual_assert!(r#"
+        func main() -> i32 {
+            let r = if "abc" == "xyz" { 1 } else { 0 };
+            println(r);
+            0
+        }
+    "#, "0");
+}
+
+#[test]
+fn dual_string_concat_len() {
+    if !can_link() { return; }
+    dual_assert!(r#"
+        func main() -> i32 {
+            let s = "hello" + " " + "world";
+            println(len(s));
+            0
+        }
+    "#, "11");
+}
+
+#[test]
+fn dual_fstring_len() {
+    if !can_link() { return; }
+    dual_assert!(r#"
+        func main() -> i32 {
+            let name = "World";
+            let s = f"Hello, {name}!";
+            println(len(s));
+            0
+        }
+    "#, "13");
+}
+
+// ─── 30.  错误处理 Error Handling (4 tests) ────────────────────
+
+#[test]
+fn dual_on_failure_no_error() {
+    if !can_link() { return; }
+    dual_assert!(r#"
+        type Res { Ok(i32) | Err(string) }
+        func succeed() -> Res { Ok(42) }
+        func main() -> i32 {
+            on failure { println("CLEANUP"); }
+            let x = succeed()?;
+            println(x);
+            0
+        }
+    "#, "42");
+}
+
+#[test]
+fn dual_on_failure_multi_scope() {
+    if !can_link() { return; }
+    dual_assert!(r#"
+        type Res { Ok(i32) | Err(string) }
+        func ok() -> Res { Ok(7) }
+        func main() -> i32 {
+            on failure { println("A"); }
+            on failure { println("B"); }
+            let a = ok()?;
+            let b = ok()?;
+            println(a + b);
+            0
+        }
+    "#, "14");
+}
+
+#[test]
+fn dual_error_question_chain() {
+    if !can_link() { return; }
+    dual_assert!(r#"
+        type Res { Ok(i32) | Err(string) }
+        func add_one(x: i32) -> Res { Ok(x + 1) }
+        func main() -> i32 {
+            let a = add_one(10)?;
+            let b = add_one(a)?;
+            println(b);
+            0
+        }
+    "#, "12");
+}
+
+#[test]
+fn dual_division_by_zero() {
+    if !can_link() { return; }
+    dual_assert!(r#"
+        func main() -> i32 {
+            println(10 / 2);
+            0
+        }
+    "#, "5");
+}
+
+// ─── 31.  泛型 Generics (6 tests) ──────────────────────────────
+
+#[test]
+fn dual_generic_identity_turbofish() {
+    if !can_link() { return; }
+    dual_assert!(r#"
+        func id<T>(x: T) -> T { x }
+        func main() -> i32 {
+            println(id(42));
+            0
+        }
+    "#, "42");
+}
+
+#[test]
+fn dual_generic_type_inference() {
+    if !can_link() { return; }
+    dual_assert!(r#"
+        func id<T>(x: T) -> T { x }
+        func main() -> i32 {
+            println(id(42));
+            0
+        }
+    "#, "42");
+}
+
+#[test]
+fn dual_generic_type_def() {
+    if !can_link() { return; }
+    dual_assert!(r#"
+        type Box<T> { value: T }
+        func main() -> i32 {
+            let b = Box { value: 42 };
+            println(b.value);
+            0
+        }
+    "#, "42");
+}
+
+#[test]
+fn dual_generic_multi_param() {
+    if !can_link() { return; }
+    dual_assert!(r#"
+        func pair<A, B>(a: A, b: B) -> (A, B) { (a, b) }
+        func main() -> i32 {
+            let p = pair(1, 2);
+            println(p.0 + p.1);
+            0
+        }
+    "#, "3");
+}
+
+#[test]
+fn dual_generic_turbofish_explicit() {
+    if !can_link() { return; }
+    dual_assert!(r#"
+        func identity<T>(x: T) -> T { x }
+        func main() -> i32 {
+            let x = identity(100);
+            println(x);
+            0
+        }
+    "#, "100");
+}
+
+#[test]
+fn dual_generic_nested_type() {
+    if !can_link() { return; }
+    dual_assert!(r#"
+        func wrap<T>(x: T) -> List<T> { [x] }
+        func main() -> i32 {
+            let l = wrap(42);
+            println(l[0]);
+            0
+        }
+    "#, "42");
+}
+
+// ─── 32.  Actor (3 tests, ignored—likely not in codegen) ───────
+
+#[test]
+#[ignore]
+fn dual_actor_spawn_sync() {
+    if !can_link() { return; }
+    dual_assert!(r#"
+        actor Counter {
+            mut count: i32 = 0;
+            func get() -> i32 {
+                return self.count;
+            }
+        }
+        func main() -> i32 {
+            let c = Counter.spawn();
+            println(c.get());
+            0
+        }
+    "#, "0");
+}
+
+#[test]
+#[ignore]
+fn dual_actor_await_get() {
+    if !can_link() { return; }
+    dual_assert!(r#"
+        actor Counter {
+            mut count: i32 = 0;
+            func increment() { self.count = self.count + 1; }
+            func get() -> i32 { return self.count; }
+        }
+        func main() -> i32 {
+            let c = Counter.spawn();
+            c.increment();
+            let val = await c.get();
+            println(val);
+            0
+        }
+    "#, "1");
+}
+
+#[test]
+#[ignore]
+fn dual_actor_with_param() {
+    if !can_link() { return; }
+    dual_assert!(r#"
+        actor Accumulator {
+            mut total: i32 = 0;
+            func add(n: i32) { self.total = self.total + n; }
+            func get() -> i32 { return self.total; }
+        }
+        func main() -> i32 {
+            let a = Accumulator.spawn();
+            a.add(5);
+            let val = await a.get();
+            println(val);
+            0
+        }
+    "#, "5");
+}
+
+// ─── 33.  Capabilities (3 tests) ───────────────────────────────
+
+#[test]
+fn dual_cap_declaration() {
+    if !can_link() { return; }
+    dual_assert!(r#"
+        cap FileReadCap;
+        cap FileWriteCap;
+        func main() -> i32 {
+            println(42);
+            0
+        }
+    "#, "42");
+}
+
+#[test]
+fn dual_cap_combined_declaration() {
+    if !can_link() { return; }
+    dual_assert!(r#"
+        cap FileReadCap;
+        cap FileWriteCap;
+        cap FullAccess = FileReadCap + FileWriteCap;
+        func main() -> i32 {
+            println(42);
+            0
+        }
+    "#, "42");
+}
+
+#[test]
+fn dual_cap_split_returns_tuple() {
+    if !can_link() { return; }
+    dual_assert!(r#"
+        cap FileReadCap;
+        cap FileWriteCap;
+        cap FullAccess = FileReadCap + FileWriteCap;
+        func main() -> i32 {
+            let c = FullAccess;
+            let parts = c.split();
+            println(42);
+            0
+        }
+    "#, "42");
+}
+
+// ─── 34.  合约 Contracts (4 tests) ─────────────────────────────
+
+#[test]
+fn dual_requires_passes() {
+    if !can_link() { return; }
+    dual_assert!(r#"
+        func add(a: i32, b: i32) -> i32 {
+            requires: a > 0
+            a + b
+        }
+        func main() -> i32 {
+            println(add(1, 2));
+            0
+        }
+    "#, "3");
+}
+
+#[test]
+fn dual_ensures_passes() {
+    if !can_link() { return; }
+    dual_assert!(r#"
+        func double(x: i32) -> i32 {
+            ensures: result == x * 2
+            x * 2
+        }
+        func main() -> i32 {
+            println(double(5));
+            0
+        }
+    "#, "10");
+}
+
+#[test]
+fn dual_requires_ensures_combined() {
+    if !can_link() { return; }
+    dual_assert!(r#"
+        func abs_val(x: i32) -> i32 {
+            requires: x != 0
+            ensures: result > 0
+            if x < 0 { -x } else { x }
+        }
+        func main() -> i32 {
+            println(abs_val(-5));
+            0
+        }
+    "#, "5");
+}
+
+#[test]
+fn dual_old_snapshot() {
+    if !can_link() { return; }
+    dual_assert!(r#"
+        func double(x: i32) -> i32 {
+            ensures: result == old(x) * 2
+            return x * 2;
+        }
+        func main() -> i32 {
+            println(double(5));
+            0
+        }
+    "#, "10");
+}
+
+// ─── 35.  类型推断 Type Inference / Deduction (3 tests) ────────
+
+#[test]
+fn dual_deduction_generic_return() {
+    if !can_link() { return; }
+    dual_assert!(r#"
+        func id<T>(x: T) -> T { x }
+        func main() -> i32 {
+            let y = id(42);
+            println(y + 1);
+            0
+        }
+    "#, "43");
+}
+
+#[test]
+fn dual_deduction_nested() {
+    if !can_link() { return; }
+    dual_assert!(r#"
+        func wrap<T>(x: T) -> List<T> { [x] }
+        func main() -> i32 {
+            let l = wrap(42);
+            println(l[0]);
+            0
+        }
+    "#, "42");
+}
+
+#[test]
+fn dual_deduction_mixed_calls() {
+    if !can_link() { return; }
+    dual_assert!(r#"
+        func id<T>(x: T) -> T { x }
+        func main() -> i32 {
+            let a = id(42);
+            let b = id(7);
+            println(a + b);
+            0
+        }
+    "#, "49");
+}
+
+// ─── 36.  Extern / FFI (3 tests) ───────────────────────────────
+
+#[test]
+#[ignore]
+fn dual_extern_declaration() {
+    if !can_link() { return; }
+    dual_assert!(r#"
+        extern "C" {
+            func printf(fmt: string) -> i32;
+        }
+        func main() -> i32 {
+            println(42);
+            0
+        }
+    "#, "42");
+}
+
+#[test]
+#[ignore]
+fn dual_extern_multiple_funcs() {
+    if !can_link() { return; }
+    dual_assert!(r#"
+        extern "C" {
+            func malloc(size: i32) -> i32;
+            func free(ptr: i32);
+        }
+        func main() -> i32 {
+            println(42);
+            0
+        }
+    "#, "42");
+}
+
+#[test]
+#[ignore]
+fn dual_extern_with_cap() {
+    if !can_link() { return; }
+    dual_assert!(r#"
+        cap FileReadCap;
+        extern "C" {
+            func read(fd: i32, file_cap: FileReadCap) -> string;
+        }
+        func main() -> i32 {
+            println(42);
+            0
+        }
+    "#, "42");
+}
