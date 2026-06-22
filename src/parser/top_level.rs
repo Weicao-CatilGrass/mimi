@@ -21,9 +21,10 @@ impl Parser {
         } else {
             false
         };
-        // Parse optional #[derive(...)] and #[repr(...)] attributes
+        // Parse optional #[derive(...)], #[repr(...)], and #[no_panic] attributes
         let mut derives = Vec::new();
         let mut attributes = Vec::new();
+        let mut no_panic_block = false;
         while self.at(&TokenKind::Hash) && self.pos + 1 < self.tokens.len() && self.tokens[self.pos + 1].kind == TokenKind::LBracket {
             self.advance(); // skip #
             self.advance(); // skip [
@@ -48,6 +49,9 @@ impl Parser {
                     _ => { /* unknown repr, ignore */ }
                 }
                 self.expect(TokenKind::RParen, "`)`")?;
+            } else if self.at(&TokenKind::Ident("no_panic".to_string())) {
+                self.advance(); // skip "no_panic"
+                no_panic_block = true;
             }
             self.expect(TokenKind::RBracket, "`]`")?;
             self.skip_newlines();
@@ -120,7 +124,7 @@ impl Parser {
                         return Ok(Item::Func(f));
                     }
                 }
-                Ok(Item::ExternBlock(self.parse_extern_block()?))
+                Ok(Item::ExternBlock(self.parse_extern_block_with_no_panic(no_panic_block)?))
             }
             _ => {
                 let tok = self.peek();
@@ -261,7 +265,7 @@ impl Parser {
         })
     }
 
-    fn parse_extern_block(&mut self) -> Result<ExternBlock, ParseError> {
+    fn parse_extern_block_with_no_panic(&mut self, no_panic: bool) -> Result<ExternBlock, ParseError> {
         self.expect(TokenKind::Extern, "`extern`")?;
         // Parse optional ABI string: extern "C" { ... }
         let abi = if matches!(self.peek_kind(), TokenKind::String(_)) {
@@ -360,10 +364,11 @@ impl Parser {
                 requires,
                 ensures,
                 variadic,
+                no_panic,
             });
         }
         self.expect(TokenKind::RBrace, "`}`")?;
-        Ok(ExternBlock { abi, funcs })
+        Ok(ExternBlock { abi, funcs, no_panic })
     }
 
     fn parse_actor_def(&mut self) -> Result<ActorDef, ParseError> {

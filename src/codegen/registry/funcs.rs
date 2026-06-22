@@ -745,6 +745,17 @@ impl<'ctx> CodeGenerator<'ctx> {
             }
         }
 
+        // Phase 4n: Install #[no_panic] crash-recovery signal handlers if requested
+        if ef.no_panic {
+            let void_fty = self.context.void_type().fn_type(&[], false);
+            let install_fn = match self.module.get_function("mimi_install_no_panic_handlers") {
+                Some(f) => f,
+                None => self.module.add_function("mimi_install_no_panic_handlers", void_fty, None),
+            };
+            self.builder.build_call(install_fn, &[], "no_panic_install")
+                .map_err(|e| CompileError::LlvmError(format!("no_panic_install: {}", e)))?;
+        }
+
         let call = self.builder
             .build_call(extern_fn, &wrapper_args, "extern_call")
             .map_err(|e| CompileError::LlvmError(format!("failed to build extern wrapper call: {}", e)))?;
@@ -779,6 +790,17 @@ impl<'ctx> CodeGenerator<'ctx> {
                 ], &format!("release_{}", i))
                     .map_err(|e| CompileError::LlvmError(format!("release error: {}", e)))?;
             }
+        }
+
+        // Phase 4n: Restore signal handlers after #[no_panic] C call
+        if ef.no_panic {
+            let void_fty = self.context.void_type().fn_type(&[], false);
+            let restore_fn = match self.module.get_function("mimi_restore_no_panic_handlers") {
+                Some(f) => f,
+                None => self.module.add_function("mimi_restore_no_panic_handlers", void_fty, None),
+            };
+            self.builder.build_call(restore_fn, &[], "no_panic_restore")
+                .map_err(|e| CompileError::LlvmError(format!("no_panic_restore: {}", e)))?;
         }
 
         // Phase 5: Check ensures contract after C call

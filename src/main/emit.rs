@@ -63,6 +63,7 @@ pub(crate) fn emit_py_bindings(path: Option<&Path>, output: Option<&Path>, mimi_
             requires: None,
             ensures: None,
             variadic: false,
+                no_panic: false,
         };
         extern_funcs.push(extern_func);
     }

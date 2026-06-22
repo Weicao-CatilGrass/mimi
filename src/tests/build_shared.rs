@@ -136,6 +136,7 @@ fn emit_py_bindings_with_mimi_lib() {
                         }).collect(),
                         ret: f.ret.clone(),
                         requires: None, ensures: None, variadic: false,
+                no_panic: false,
                     };
                     extern_funcs.push(extern_func);
                     exported_funcs.push(f.clone());

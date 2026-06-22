@@ -35,6 +35,7 @@ mod type_system_verification {
             requires: None,
             ensures: None,
             variadic: false,
+                no_panic: false,
         };
         let contract = FfiContract::from_extern(&func);
         assert!(matches!(contract.args[0], FfiArgContract::RawPtr(_)));
@@ -66,6 +67,7 @@ mod type_system_verification {
             requires: Some(crate::ast::Expr::Literal(crate::ast::Lit::Bool(true))),
             ensures: Some(crate::ast::Expr::Literal(crate::ast::Lit::Bool(true))),
             variadic: false,
+                no_panic: false,
         };
         let contract = FfiContract::from_extern(&func);
         assert!(contract.requires.is_some());

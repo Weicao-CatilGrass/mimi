@@ -55,7 +55,28 @@ pub extern "C" fn mimi_callback_deregister(callback_id: i64) {
 // Reads the Mimi closure from the thread-local context by callback_id,
 // converts C args to Mimi Values, calls the closure, and writes the result.
 // SAFETY: Called from C (extern "C" context) during a synchronous FFI call.
+// The entire body is wrapped in catch_unwind so no Rust panic can cross
+// the C-ABI boundary (which would be undefined behavior).
 unsafe extern "C" fn mimi_callback_trampoline_fn(
+    cif: &ffi_low::ffi_cif,
+    result: &mut i64,
+    args: *const *const std::ffi::c_void,
+    userdata: &i64,
+) {
+    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        // SAFETY: args and userdata are valid for the duration of this call
+        // because C holds the reference until the trampoline returns.
+        unsafe { callback_trampoline_inner(cif, result, args, userdata) }
+    }));
+    if outcome.is_err() {
+        eprintln!("[mimi] FFI safety: Rust panic caught in C callback trampoline");
+        *result = i64::MIN;
+    }
+}
+
+/// Inner body of the callback trampoline, extracted for catch_unwind wrapping.
+/// SAFETY: args and interp_ptr are raw pointers that must be valid.
+unsafe fn callback_trampoline_inner(
     cif: &ffi_low::ffi_cif,
     result: &mut i64,
     args: *const *const std::ffi::c_void,
@@ -87,10 +108,7 @@ unsafe extern "C" fn mimi_callback_trampoline_fn(
     let mut mimi_args: Vec<Value> = Vec::with_capacity(nargs);
     for i in 0..nargs {
         let arg_ptr = *args.add(i);
-        if arg_ptr.is_null() {
-            mimi_args.push(Value::Int(0));
-            continue;
-        }
+        if arg_ptr.is_null() { mimi_args.push(Value::Int(0)); continue; }
         // For V1, treat all args as i64. Float is handled via to_bits.
         let val = *(arg_ptr as *const i64);
         mimi_args.push(Value::Int(val));
@@ -99,11 +117,6 @@ unsafe extern "C" fn mimi_callback_trampoline_fn(
     // Call the Mimi closure via interpreter
     let interp_ptr = FFI_CALLBACK_CTX.with(|c| c.borrow().interp);
     if interp_ptr.is_null() {
-        // F3: Closure found in global store but no interpreter available.
-        // This happens when C invokes the callback off-thread or after the
-        // original synchronous FFI call has returned and TLS was cleared.
-        // Full async/off-thread callback evaluation is a known limitation
-        // tracked in the MimiSpec FFI roadmap.
         eprintln!(
             "[mimi] WARNING: callback {} invoked without an interpreter context. \
              Returning 0. Async/off-thread callback evaluation is not yet supported.",
@@ -128,21 +141,14 @@ unsafe extern "C" fn mimi_callback_trampoline_fn(
                     Value::Bool(b) => b as i64,
                     Value::Float(f) => f.to_bits() as i64,
                     Value::Unit => 0,
-                    _ => {
-                        *result = i64::MIN;
-                        return;
-                    }
+                    _ => { *result = i64::MIN; return; }
                 };
             }
         }
-        Err(_) => {
-            *result = i64::MIN;
-        }
+        Err(_) => { *result = i64::MIN; }
     }
 
     // F6: Free C-allocated string pointers that Mimi takes ownership of.
-    // Convention: callback args typed as `string` / `RawString` / `CBuffer`
-    // are treated as transfer ownership — C allocated them, Mimi frees them.
     for (i, &should_free) in arg_free_mask.iter().enumerate() {
         if should_free && i < nargs {
             let arg_ptr = *args.add(i);

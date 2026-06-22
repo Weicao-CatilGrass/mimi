@@ -27,6 +27,9 @@ pub enum Item {
 pub struct ExternBlock {
     pub abi: String,
     pub funcs: Vec<ExternFunc>,
+    /// If true, the compiler wraps all FFI calls in this block with
+    /// catch_unwind (Rust panics) and signal handlers (SIGSEGV/SIGABRT).
+    pub no_panic: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -40,6 +43,9 @@ pub struct ExternFunc {
     pub ensures: Option<Expr>,
     /// Whether this is a variadic function (e.g., printf).
     pub variadic: bool,
+    /// If true, FFI calls to this function are wrapped in catch_unwind
+    /// (Rust panics) and signal handlers (C crashes).
+    pub no_panic: bool,
 }
 
 #[derive(Debug, Clone)]

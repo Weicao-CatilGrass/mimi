@@ -306,8 +306,14 @@ impl<'a> Interpreter<'a> {
             .collect();
         match item {
             Item::ExternBlock(block) => {
+                let no_panic = block.no_panic;
                 for func in &block.funcs {
-                    out.insert(func.name.clone(), func.clone());
+                    let mut f = func.clone();
+                    // Propagate block-level no_panic to each function
+                    if no_panic {
+                        f.no_panic = true;
+                    }
+                    out.insert(f.name.clone(), f);
                     contracts.insert(func.name.clone(), FfiContract::from_extern_with_caps(func, &cap_names, &record_type_names));
                 }
             }

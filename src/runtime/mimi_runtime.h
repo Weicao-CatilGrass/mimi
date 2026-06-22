@@ -122,6 +122,12 @@ char* mimi_http_get(const char* url);
    Returns NULL on error. */
 char* mimi_http_post(const char* url, const char* body);
 
+/* #[no_panic] crash-recovery signal handlers.
+   mimi_install_no_panic_handlers() installs SIGSEGV/SIGABRT/etc. handlers
+   that siglongjmp to a recovery point. Must be paired with restore. */
+void mimi_install_no_panic_handlers(void);
+void mimi_restore_no_panic_handlers(void);
+
 /* Contract violation: print message and abort */
 void mimi_runtime_abort(const char* msg);
 

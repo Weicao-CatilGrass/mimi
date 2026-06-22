@@ -3,6 +3,23 @@
 use super::super::*;
 use crate::ffi::FfiRetContract;
 use libffi::middle::{Cif, CodePtr};
+use std::cell::RefCell;
+
+// sigsetjmp / siglongjmp are not bound in the libc crate, so we declare
+// them directly. The jmp_buf size matches glibc's __jmp_buf_tag on x86_64.
+// On other platforms, the struct size may differ (handled via cfg).
+#[cfg(target_arch = "x86_64")]
+type SigJmpBuf = [i64; 40]; // 320 bytes covers glibc's sigjmp_buf on x86_64
+#[cfg(not(target_arch = "x86_64"))]
+type SigJmpBuf = [i64; 64]; // generous fallback for other archs
+
+// glibc exposes sigsetjmp as __sigsetjmp (the macro in <setjmp.h> expands to it).
+// siglongjmp is the actual symbol name. We use #[link_name] to remap.
+extern "C" {
+    #[link_name = "__sigsetjmp"]
+    fn sigsetjmp_impl(env: *mut SigJmpBuf, savemask: i32) -> i32;
+    fn siglongjmp(env: *mut SigJmpBuf, val: i32) -> !;
+}
 
 /// Global fork lock: acquired before fork() to prevent concurrent
 /// FFI operations (thread pool, callbacks) during the fork window.
@@ -12,6 +29,66 @@ static FORK_LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLoc
 fn ensure_fork_lock() -> &'static std::sync::Mutex<()> {
     FORK_LOCK.get_or_init(|| std::sync::Mutex::new(()))
 }
+
+// ===================== #[no_panic] Signal / Panic Protection =====================
+
+thread_local! {
+    /// Thread-local jump buffer for signal-based crash recovery.
+    /// Set before a #[no_panic] FFI call; the signal handler siglongjmps here.
+    static FFI_CRASH_JUMP_BUF: RefCell<Option<*mut SigJmpBuf>> = const { RefCell::new(None) };
+}
+
+/// Signal handler for C-level crashes (SIGSEGV, SIGABRT, etc.).
+/// First restores SIG_DFL (so a second crash actually kills us),
+/// then longjmps back to the jump buffer installed before the FFI call.
+extern "C" fn ffi_crash_signal_handler(sig: i32) {
+    unsafe {
+        let mut dfl: libc::sigaction = std::mem::zeroed();
+        dfl.sa_sigaction = libc::SIG_DFL as usize;
+        libc::sigaction(libc::SIGSEGV, &dfl, std::ptr::null_mut());
+        libc::sigaction(libc::SIGABRT, &dfl, std::ptr::null_mut());
+        libc::sigaction(libc::SIGBUS, &dfl, std::ptr::null_mut());
+        libc::sigaction(libc::SIGILL, &dfl, std::ptr::null_mut());
+        libc::sigaction(libc::SIGFPE, &dfl, std::ptr::null_mut());
+    }
+    FFI_CRASH_JUMP_BUF.with(|cell| {
+        if let Some(buf) = *cell.borrow() {
+            unsafe { siglongjmp(buf, sig as i32); }
+        }
+    });
+}
+
+/// Temporarily install crash-recovery signal handlers.
+/// Returns the old handlers so they can be restored later.
+fn install_crash_handlers() -> [libc::sigaction; 5] {
+    let mut sa: libc::sigaction = unsafe { std::mem::zeroed() };
+    unsafe { libc::sigemptyset(&mut sa.sa_mask) };
+    sa.sa_flags = libc::SA_NODEFER;
+    sa.sa_sigaction = ffi_crash_signal_handler as extern "C" fn(i32) as usize;
+
+    let mut old = [
+        unsafe { std::mem::zeroed() },
+        unsafe { std::mem::zeroed() },
+        unsafe { std::mem::zeroed() },
+        unsafe { std::mem::zeroed() },
+        unsafe { std::mem::zeroed() },
+    ];
+    let sigs = [libc::SIGSEGV, libc::SIGABRT, libc::SIGBUS, libc::SIGILL, libc::SIGFPE];
+    for (i, &s) in sigs.iter().enumerate() {
+        unsafe { libc::sigaction(s, &sa, &mut old[i]); }
+    }
+    old
+}
+
+/// Restore previously saved signal handlers.
+fn restore_crash_handlers(old: &[libc::sigaction; 5]) {
+    let sigs = [libc::SIGSEGV, libc::SIGABRT, libc::SIGBUS, libc::SIGILL, libc::SIGFPE];
+    for (i, &s) in sigs.iter().enumerate() {
+        unsafe { libc::sigaction(s, &old[i], std::ptr::null_mut()); }
+    }
+}
+
+// ===================== FFI Call Methods =====================
 
 impl<'a> Interpreter<'a> {
     /// Call a C function via libffi (raw, standalone — no self access).
@@ -49,6 +126,76 @@ impl<'a> Interpreter<'a> {
         }
     }
 
+    /// Call a C function with full #[no_panic] protection:
+    ///   1. Install crash-recovery signal handlers (SIGSEGV/SIGABRT/SIGBUS/…)
+    ///   2. sigsetjmp recovery point for C-level crashes
+    ///   3. catch_unwind for Rust panics in callbacks
+    ///
+    /// On success: Ok(result)
+    /// On C crash (signal): Err("FFI safety: C function crashed with SIG*")
+    /// On Rust panic: Err("FFI safety: Rust panic in extern function: …")
+    pub(in crate::interp) fn call_ffi_no_panic(
+        &self,
+        cif: &Cif,
+        code_ptr: CodePtr,
+        ffi_args: &[libffi::middle::Arg],
+        ret_contract: &FfiRetContract,
+    ) -> Result<i64, String> {
+        // 1. Install signal handlers and save old ones
+        let old_handlers = install_crash_handlers();
+
+        // 2. Allocate jump buffer on the heap (survives siglongjmp)
+        let jump_buf = Box::new(unsafe { std::mem::zeroed::<SigJmpBuf>() });
+        let buf_ptr = Box::into_raw(jump_buf) as *mut SigJmpBuf;
+
+        // 3. Register jump buffer in TLS so the signal handler can find it
+        FFI_CRASH_JUMP_BUF.with(|cell| {
+            *cell.borrow_mut() = Some(buf_ptr);
+        });
+
+        // 4. sigsetjmp — recovery point for C crashes
+        //    First call returns 0; siglongjmp returns with sig >= 1
+        let sig = unsafe { sigsetjmp_impl(buf_ptr, 1) };
+        if sig != 0 {
+            // C crash: signal handler already set handlers to SIG_DFL.
+            // Free the heap-allocated jump buffer.
+            unsafe { let _ = Box::from_raw(buf_ptr); }
+            let sig_name = match sig {
+                6 => "SIGABRT", 11 => "SIGSEGV", 7 => "SIGBUS",
+                4 => "SIGILL", 8 => "SIGFPE", n => {
+                    return Err(format!("FFI safety: C function crashed with signal {}", n));
+                }
+            };
+            return Err(format!("FFI safety: C function crashed with {} (signal {})", sig_name, sig));
+        }
+
+        // 5. Call the actual C function, wrapped in catch_unwind for Rust panics
+        let result = std::panic::catch_unwind(|| {
+            unsafe { Self::call_ffi_raw(cif, code_ptr, ffi_args, ret_contract) }
+        });
+
+        // 6. Normal path: restore signal handlers and free jump buffer
+        FFI_CRASH_JUMP_BUF.with(|cell| {
+            *cell.borrow_mut() = None;
+        });
+        restore_crash_handlers(&old_handlers);
+        unsafe { let _ = Box::from_raw(buf_ptr); }
+
+        match result {
+            Ok(val) => Ok(val),
+            Err(panic_info) => {
+                let msg = if let Some(s) = panic_info.downcast_ref::<&str>() {
+                    s.to_string()
+                } else if let Some(s) = panic_info.downcast_ref::<String>() {
+                    s.clone()
+                } else {
+                    "unknown cause".to_string()
+                };
+                Err(format!("FFI safety: Rust panic in extern function: {}", msg))
+            }
+        }
+    }
+
     /// Call a C function with crash isolation via fork().
     /// If the child process crashes (SIGSEGV, SIGBUS, etc.), returns an Err.
     ///
@@ -75,12 +222,7 @@ impl<'a> Interpreter<'a> {
 
         let pid = unsafe { libc::fork() };
         if pid == 0 {
-            // CHILD: run the C call via raw trampoline, send result, _exit.
-            // The child must NOT touch any Rust stdlib types (Arc, Mutex, etc.)
-            // because they may be in an inconsistent state after fork.
             unsafe { libc::close(pipe_fds[0]); }
-            // SAFETY: call_ffi_raw is safe to call after fork() because it
-            // doesn't touch any Rust data structures beyond the raw CIF/args.
             let result_code = unsafe { Self::call_ffi_raw(cif, code_ptr, ffi_args, ret_contract) };
             unsafe {
                 libc::write(pipe_fds[1], &result_code as *const i64 as *const libc::c_void,
@@ -93,8 +235,6 @@ impl<'a> Interpreter<'a> {
         // PARENT
         unsafe { libc::close(pipe_fds[1]); }
 
-        // Set pipe read end to non-blocking so we never deadlock if the
-        // child crashes without writing (e.g., panic unwind, SIGKILL before write).
         unsafe {
             let flags = libc::fcntl(pipe_fds[0], libc::F_GETFL, 0);
             if flags >= 0 {
@@ -102,8 +242,6 @@ impl<'a> Interpreter<'a> {
             }
         }
 
-        // F4: poll waitpid with WNOHANG + timeout so a hung C function does not
-        // permanently block the Mimi process.
         let ffi_timeout_ms = std::env::var("MIMI_FFI_TIMEOUT_MS")
             .ok()
             .and_then(|s| s.parse::<u64>().ok())
@@ -116,7 +254,7 @@ impl<'a> Interpreter<'a> {
         loop {
             let ret = unsafe { libc::waitpid(pid, &mut status, libc::WNOHANG) };
             if ret == pid {
-                break; // child exited
+                break;
             }
             if ret == -1 {
                 let err = std::io::Error::last_os_error();
@@ -124,9 +262,7 @@ impl<'a> Interpreter<'a> {
                 return Err(format!("FFI safety: waitpid error: {}", err));
             }
             if std::time::Instant::now() >= deadline {
-                // Timeout — kill the child forcefully
                 unsafe { libc::kill(pid, libc::SIGKILL); }
-                // Reap the zombie
                 unsafe { libc::waitpid(pid, &mut status, 0); }
                 unsafe { libc::close(pipe_fds[0]); }
                 return Err(format!(
@@ -156,8 +292,6 @@ impl<'a> Interpreter<'a> {
         };
 
         if nread <= 0 {
-            // Pipe was empty or error — child exited without writing result.
-            // This is unexpected (child _exit should only run after write).
             Err("FFI safety: C function exited without producing a result".to_string())
         } else if result == i64::MIN {
             Err("FFI safety: C function returned an error".to_string())

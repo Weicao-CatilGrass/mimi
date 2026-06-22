@@ -176,6 +176,8 @@ impl<'a> Interpreter<'a> {
             // Call via libffi with correct ABI and crash protection
             let call_result = if self.verify_ffi {
                 self.call_ffi_with_fork_isolation(&cif, code_ptr, &ffi_args, &contract.ret)
+            } else if extern_func.no_panic {
+                self.call_ffi_no_panic(&cif, code_ptr, &ffi_args, &contract.ret)
             } else {
                 self.call_ffi_direct(&cif, code_ptr, &ffi_args, &contract.ret)
             };
