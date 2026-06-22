@@ -72,7 +72,8 @@ pub struct CodeGenerator<'ctx> {
     pub shared: bool,
     pub verify_contracts: bool,
     in_parasteps: bool,
-    parasteps_thread_ids: Vec<inkwell::values::IntValue<'ctx>>,
+    /// Pairs of (thread_id, result_type) for spawned threads inside parasteps.
+    parasteps_thread_ids: Vec<(inkwell::values::IntValue<'ctx>, BasicTypeEnum<'ctx>)>,
 
     compensation_blocks: Vec<Vec<Stmt>>,
     comp_scope_stack: Vec<usize>,
@@ -312,7 +313,7 @@ impl<'ctx> CodeGenerator<'ctx> {
 
     /// Compute the size in bytes of an LLVM type using a portable layout.
     /// This does not rely on the module data layout being set.
-    fn llvm_type_size_bytes(&self, ty: BasicTypeEnum<'ctx>) -> u64 {
+    pub(in crate::codegen) fn llvm_type_size_bytes(&self, ty: BasicTypeEnum<'ctx>) -> u64 {
         match ty {
             BasicTypeEnum::IntType(t) => (t.get_bit_width() / 8) as u64,
             BasicTypeEnum::FloatType(_) => 8,
