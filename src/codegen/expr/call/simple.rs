@@ -338,7 +338,11 @@ impl<'ctx> CodeGenerator<'ctx> {
             _ => {}
         }
 
-        if let Some(function) = self.module.get_function(name) {
+            // Check if this is a lazily-generated extern function
+            if self.extern_func_defs.contains_key(name) {
+                self.generate_extern_fn(name)?;
+            }
+            if let Some(function) = self.module.get_function(name) {
             let call = self.builder.build_call(function, &metadata_args, "call")
                 .map_err(|e| CompileError::LlvmError(format!("call error: {}", e)))?;
             Ok(call_try_basic_value(&call).unwrap_or(

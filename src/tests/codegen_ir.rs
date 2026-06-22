@@ -346,19 +346,20 @@ fn ir_for_list_blocks() {
 fn ir_extern_declare() {
     let ir = compile_to_ir(r#"
         extern "C" { func my_func(x: i32) -> i32; }
-        func main() -> i32 { 42 }
+        func main() -> i32 { my_func(0) }
     "#);
     assert!(ir.contains("declare"), "extern func should have declare");
-    assert!(ir.contains("@my_func"), "extern func name should be declared");
+    assert!(ir.contains("@__mimi_extern_my_func"), "extern func name should be declared");
 }
 
 #[test]
 fn ir_extern_multiple_funcs() {
     let ir = compile_to_ir(r#"
-        extern "C" { func add(a: i32, b: i32) -> i32; func sub(a: i32, b: i32) -> i32; }
-        func main() -> i32 { 42 }
+        extern "C" { func my_add(a: i32, b: i32) -> i32; func my_sub(a: i32, b: i32) -> i32; }
+        func main() -> i32 { my_add(1, 2) + my_sub(3, 4) }
     "#);
-    assert!(ir.contains("@add") && ir.contains("@sub"), "multiple extern funcs");
+    assert!(ir.contains("@__mimi_extern_my_add") && ir.contains("@__mimi_extern_my_sub"),
+        "multiple extern funcs should be declared");
 }
 
 #[test]
