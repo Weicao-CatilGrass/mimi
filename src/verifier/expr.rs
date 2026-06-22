@@ -4,7 +4,9 @@ use crate::verifier::helpers::{block_tail_expr, extract_string_empty_cmp, is_str
 use z3::ast::{Bool as Z3Bool, Int as Z3Int, Real as Z3Real};
 
 impl crate::verifier::Verifier {
-    pub(crate) fn expr_to_z3_int(&self, expr: &Expr, vars: &Z3VarMap) -> Option<Z3Int> {
+    /// Encode an expression as a Z3 Int term.
+    /// May create field access variables on-the-fly when encountering Expr::Field.
+    pub(crate) fn expr_to_z3_int(&mut self, expr: &Expr, vars: &mut Z3VarMap) -> Option<Z3Int> {
         match expr {
             Expr::Literal(Lit::Int(n)) => Some(Z3Int::from_i64(*n)),
             Expr::Ident(name) => vars.get_int(name).cloned(),
@@ -14,6 +16,16 @@ impl crate::verifier::Verifier {
                     return vars.get_int(&old_name).cloned();
                 }
                 None
+            }
+            Expr::Field(obj, field) => {
+                let base = self.field_var_name(obj);
+                let key = format!("{}_{}", base, field);
+                Some(vars.get_or_create_int(&key))
+            }
+            Expr::TupleIndex(obj, idx) => {
+                let base = self.field_var_name(obj);
+                let key = format!("{}_t{}", base, idx);
+                Some(vars.get_or_create_int(&key))
             }
             Expr::Binary(op, lhs, rhs) => {
                 let l = self.expr_to_z3_int(lhs, vars)?;
@@ -46,7 +58,26 @@ impl crate::verifier::Verifier {
         }
     }
 
-    pub(crate) fn expr_to_z3_real(&self, expr: &Expr, vars: &Z3VarMap) -> Option<Z3Real> {
+    /// Convert an expression to a Z3 variable name for field/identity access.
+    /// Handles nested identities (e.g. p.x -> "p", old(p).x -> "old_p").
+    fn field_var_name(&self, expr: &Expr) -> String {
+        match expr {
+            Expr::Ident(name) => name.clone(),
+            Expr::Old(inner) => {
+                if let Expr::Ident(name) = inner.as_ref() {
+                    format!("old_{}", name)
+                } else {
+                    format!("old_{}", self.field_var_name(inner))
+                }
+            }
+            Expr::Field(obj, field) => {
+                format!("{}_{}", self.field_var_name(obj), field)
+            }
+            _ => format!("_{:?}", expr),
+        }
+    }
+
+    pub(crate) fn expr_to_z3_real(&mut self, expr: &Expr, vars: &mut Z3VarMap) -> Option<Z3Real> {
         match expr {
             Expr::Literal(Lit::Int(n)) => Some(Z3Real::from_int(&Z3Int::from_i64(*n))),
             Expr::Literal(Lit::Float(f)) => {
@@ -82,6 +113,28 @@ impl crate::verifier::Verifier {
                 }
                 None
             }
+            Expr::Field(obj, field) => {
+                let base = self.field_var_name(obj);
+                let key = format!("{}_{}", base, field);
+                if let Some(v) = vars.get_real(&key) {
+                    Some(v.clone())
+                } else if let Some(v) = vars.get_int(&key) {
+                    Some(Z3Real::from_int(v))
+                } else {
+                    Some(vars.get_or_create_real(&key))
+                }
+            }
+            Expr::TupleIndex(obj, idx) => {
+                let base = self.field_var_name(obj);
+                let key = format!("{}_t{}", base, idx);
+                if let Some(v) = vars.get_real(&key) {
+                    Some(v.clone())
+                } else if let Some(v) = vars.get_int(&key) {
+                    Some(Z3Real::from_int(v))
+                } else {
+                    Some(vars.get_or_create_real(&key))
+                }
+            }
             Expr::Binary(op, lhs, rhs) => {
                 let l = self.expr_to_z3_real(lhs, vars)?;
                 let r = self.expr_to_z3_real(rhs, vars)?;
@@ -112,7 +165,7 @@ impl crate::verifier::Verifier {
         }
     }
 
-    pub(crate) fn expr_to_z3_bool(&self, expr: &Expr, vars: &Z3VarMap) -> Option<Z3Bool> {
+    pub(crate) fn expr_to_z3_bool(&mut self, expr: &Expr, vars: &mut Z3VarMap) -> Option<Z3Bool> {
         match expr {
             Expr::Literal(Lit::Bool(b)) => Some(Z3Bool::from_bool(*b)),
             Expr::Ident(name) => {
@@ -130,6 +183,30 @@ impl crate::verifier::Verifier {
                     }
                 }
                 None
+            }
+            Expr::Field(obj, field) => {
+                let base = self.field_var_name(obj);
+                let key = format!("{}_{}", base, field);
+                if vars.get_int(&key).is_some() {
+                    Some(vars.get_int(&key).unwrap().ne(&Z3Int::from_i64(0)))
+                } else if vars.get_real(&key).is_some() {
+                    Some(vars.get_real(&key).unwrap().ne(&Z3Real::from_int(&Z3Int::from_i64(0))))
+                } else {
+                    let fresh = vars.get_or_create_int(&key);
+                    Some(fresh.ne(&Z3Int::from_i64(0)))
+                }
+            }
+            Expr::TupleIndex(obj, idx) => {
+                let base = self.field_var_name(obj);
+                let key = format!("{}_t{}", base, idx);
+                if vars.get_int(&key).is_some() {
+                    Some(vars.get_int(&key).unwrap().ne(&Z3Int::from_i64(0)))
+                } else if vars.get_real(&key).is_some() {
+                    Some(vars.get_real(&key).unwrap().ne(&Z3Real::from_int(&Z3Int::from_i64(0))))
+                } else {
+                    let fresh = vars.get_or_create_int(&key);
+                    Some(fresh.ne(&Z3Int::from_i64(0)))
+                }
             }
             Expr::Binary(op, lhs, rhs) => {
                 // Check string emptiness comparison before int/real

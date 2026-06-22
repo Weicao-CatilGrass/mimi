@@ -534,3 +534,37 @@ func scale_add(x: f64) -> f64 {
         assert_eq!(results[0].status, VerifStatus::Verified,
             "f64 add and compare should verify: {:?}", results[0]);
     }
+
+    #[test]
+    fn verify_record_field_access_int() {
+        require_z3!();
+        let src = r#"
+type Point { x: i32, y: i32 }
+func point_x_positive(p: Point) -> i32 {
+    requires: p.x > 0
+    ensures: result > 0
+    p.x
+}
+"#;
+        let results = verify_source(src).expect("src/verifier/tests.rs: verify_record_field_access_int");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].status, VerifStatus::Verified,
+            "record field access in contract should verify: {:?}", results[0]);
+    }
+
+    #[test]
+    fn verify_record_field_violation() {
+        require_z3!();
+        let src = r#"
+type Point { x: i32, y: i32 }
+func bad_point_x(p: Point) -> i32 {
+    requires: p.x > 0
+    ensures: result > p.x
+    p.x
+}
+"#;
+        let results = verify_source(src).expect("src/verifier/tests.rs: verify_record_field_violation");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].status, VerifStatus::Failed,
+            "record field violation should be detected: {:?}", results[0]);
+    }

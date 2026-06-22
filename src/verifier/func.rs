@@ -63,7 +63,7 @@ impl crate::verifier::Verifier {
             (requires_expr.is_some() as usize) + (ensures_expr.is_some() as usize);
 
         if let Some(req) = requires_expr {
-            if let Some(z3_bool) = self.expr_to_z3_bool(req, &vars) {
+            if let Some(z3_bool) = self.expr_to_z3_bool(req, &mut vars) {
                 self.solver.assert(&z3_bool);
             }
         }
@@ -95,7 +95,7 @@ impl crate::verifier::Verifier {
             SatResult::Sat => {
                 if let Some(ens) = ensures_expr {
                     self.solver.push();
-                    if let Some(z3_not_ens) = self.expr_to_z3_bool(ens, &vars).map(|b| b.not()) {
+                    if let Some(z3_not_ens) = self.expr_to_z3_bool(ens, &mut vars).map(|b| b.not()) {
                         self.solver.assert(&z3_not_ens);
                         match self.check_safe() {
                             SatResult::Unsat => {
@@ -283,19 +283,19 @@ impl crate::verifier::Verifier {
         let body_return = extract_body_return(&func.body);
 
         for req in &requires_exprs {
-            if let Some(z3_bool) = self.expr_to_z3_bool(req, &vars) {
+            if let Some(z3_bool) = self.expr_to_z3_bool(req, &mut vars) {
                 self.solver.assert(&z3_bool);
             }
         }
 
         for math in &math_exprs {
-            if let Some(z3_bool) = self.expr_to_z3_bool(math, &vars) {
+            if let Some(z3_bool) = self.expr_to_z3_bool(math, &mut vars) {
                 self.solver.assert(&z3_bool);
             }
         }
 
         for inv in &invariant_exprs {
-            if let Some(z3_bool) = self.expr_to_z3_bool(inv, &vars) {
+            if let Some(z3_bool) = self.expr_to_z3_bool(inv, &mut vars) {
                 self.solver.assert(&z3_bool);
             }
         }
@@ -320,12 +320,12 @@ impl crate::verifier::Verifier {
 
         if let Some(ref return_expr) = body_return {
             if returns_real {
-                if let Some(body_z3) = self.expr_to_z3_real(return_expr, &vars) {
+                if let Some(body_z3) = self.expr_to_z3_real(return_expr, &mut vars) {
                     if let Some(r) = vars.get_real("result") {
                         self.solver.assert(&r.eq(&body_z3));
                     }
                 }
-            } else if let Some(body_z3) = self.expr_to_z3_int(return_expr, &vars) {
+            } else if let Some(body_z3) = self.expr_to_z3_int(return_expr, &mut vars) {
                 if let Some(i) = vars.get_int("result") {
                     self.solver.assert(&i.eq(&body_z3));
                 }
@@ -349,7 +349,7 @@ impl crate::verifier::Verifier {
                 if !ensures_exprs.is_empty() {
                     self.solver.push();
                     for ens in &ensures_exprs {
-                        if let Some(z3_bool) = self.expr_to_z3_bool(ens, &vars) {
+                        if let Some(z3_bool) = self.expr_to_z3_bool(ens, &mut vars) {
                             self.solver.assert(&z3_bool.not());
                         }
                     }
