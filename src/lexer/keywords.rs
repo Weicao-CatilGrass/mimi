@@ -21,8 +21,7 @@ pub fn is_keyword_kind(kind: &TokenKind) -> bool {
         TokenKind::Rule | TokenKind::Mms | TokenKind::With | TokenKind::And |
         TokenKind::Or | TokenKind::Not | TokenKind::Async | TokenKind::Comptime |
         TokenKind::Spawn | TokenKind::Await | TokenKind::Quote | TokenKind::Old |
-        TokenKind::I32 | TokenKind::I64 |
-        TokenKind::F64 | TokenKind::Bool | TokenKind::StringKw | TokenKind::Nothing |
+        TokenKind::Nothing |
         TokenKind::True | TokenKind::False | TokenKind::Unit
     )
 }
@@ -89,11 +88,7 @@ pub fn keyword_or_ident(name: &str) -> TokenKind {
         "true" => TokenKind::True,
         "false" => TokenKind::False,
         "unit" => TokenKind::Unit,
-        "i32" => TokenKind::I32,
-        "i64" => TokenKind::I64,
-        "f64" => TokenKind::F64,
-        "bool" => TokenKind::Bool,
-        "string" => TokenKind::StringKw,
+        "i32" | "i64" | "f64" | "bool" | "string" => TokenKind::Ident(name.into()),
         "nothing" => TokenKind::Nothing,
         _ => TokenKind::Ident(name.into()),
     }

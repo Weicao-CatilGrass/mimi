@@ -71,11 +71,6 @@ impl Parser {
                 self.advance();
                 Ok(Type::Name(name, Vec::new()))
             }
-            TokenKind::I32 | TokenKind::I64 | TokenKind::F64 | TokenKind::Bool | TokenKind::StringKw => {
-                let name = tok.kind.to_string();
-                self.advance();
-                Ok(Type::Name(name, Vec::new()))
-            }
             TokenKind::Alloc => {
                 self.advance();
                 Ok(Type::Allocator)

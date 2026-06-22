@@ -143,27 +143,6 @@ impl Parser {
         }
     }
 
-    /// Expect a keyword token that doubles as a type name (i32, i64, f64, bool, string, unit)
-    pub(crate) fn expect_keyword_as_type_name(&mut self) -> Result<String, ParseError> {
-        let tok = self.peek();
-        let name = match &tok.kind {
-            TokenKind::I32 => "i32",
-            TokenKind::I64 => "i64",
-            TokenKind::F64 => "f64",
-            TokenKind::Bool => "bool",
-            TokenKind::StringKw => "string",
-            TokenKind::Unit => "unit",
-            _ => return Err(ParseError::new(
-                format!("expected type name, found {}", tok.kind),
-                tok.line,
-                tok.col,
-            )),
-        };
-        let name = name.to_string();
-        self.advance();
-        Ok(name)
-    }
-
     pub(crate) fn skip_newlines(&mut self) {
         while matches!(self.peek_kind(), TokenKind::Newline) {
             self.advance();

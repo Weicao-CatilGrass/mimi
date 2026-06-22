@@ -46,11 +46,6 @@ impl LspServer {
                             lexer::TokenKind::Async => 5,
                             lexer::TokenKind::True => 4,
                             lexer::TokenKind::False => 5,
-                            lexer::TokenKind::I32 => 3,
-                            lexer::TokenKind::I64 => 3,
-                            lexer::TokenKind::F64 => 3,
-                            lexer::TokenKind::Bool => 4,
-                            lexer::TokenKind::StringKw => 6,
                             _ => 1,
                         }
                     }

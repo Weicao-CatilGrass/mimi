@@ -74,11 +74,6 @@ pub enum TokenKind {
     Not,
 
     // Types
-    I32,
-    I64,
-    F64,
-    Bool,
-    StringKw,
     Nothing,
 
     // Operators
@@ -211,11 +206,6 @@ impl fmt::Display for TokenKind {
             TokenKind::And => "and",
             TokenKind::Or => "or",
             TokenKind::Not => "not",
-            TokenKind::I32 => "i32",
-            TokenKind::I64 => "i64",
-            TokenKind::F64 => "f64",
-            TokenKind::Bool => "bool",
-            TokenKind::StringKw => "string",
             TokenKind::Nothing => "nothing",
             TokenKind::Plus => "+",
             TokenKind::Minus => "-",
@@ -345,11 +335,6 @@ impl TokenKind {
             TokenKind::And => "and",
             TokenKind::Or => "or",
             TokenKind::Not => "not",
-            TokenKind::I32 => "i32",
-            TokenKind::I64 => "i64",
-            TokenKind::F64 => "f64",
-            TokenKind::Bool => "bool",
-            TokenKind::StringKw => "string",
             TokenKind::Nothing => "nothing",
             TokenKind::Plus => "+",
             TokenKind::Minus => "-",
