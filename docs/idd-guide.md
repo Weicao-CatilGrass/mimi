@@ -189,11 +189,7 @@ dual_assert_contract_ok(program)
 
 ### 已知 Codegen 差距速查
 
-运行 `cargo test dual_gap_ -- --ignored` 查看所有已知差距及其断言：
-
-| 差距 | 影响 | 测试 | 根本原因 |
-|------|------|------|---------|
-| 嵌套 enum 作为 payload | 外层 enum 的 payload 字段为单一 `i64`，无法完整保存内层 enum 的 `{i32, i64}` 结构 | `codegen_match_nested`（仅验证 IR 生成） | `register_type_def` 对 payload 类型统一使用 `i64` |
+当前无未解决的已知 codegen 差距。
 
 以下差距已在本轮 IDD 修复中关闭：
 
@@ -202,6 +198,8 @@ dual_assert_contract_ok(program)
 - 单元/负载枚举变体构造函数与匹配
 - `push()` 就地变异
 - `contains()` SIGSEGV
+- 嵌套 enum 作为 payload（通过 heap-allocated struct payload 机制已修复，`dual_nested_enum_match` ✅）
+- `quote!` + `ast_eval`（编译期折叠：literal-only quote 块在 codegen 中直接求值，`dual_quote_eval_literal` ✅）
 
 CI 中 `cargo test dual_` 必须 100% 通过（忽略的测试除外）。新增功能的 L1 测试不可跳过；和代码一起提交。
 

@@ -525,9 +525,12 @@ fn adv_comptime_func_call_works() {
 #[test]
 fn adv_quote_block_error_message() {
     // eedf8be: quote blocks get specific error message
+    // (note: literal-only quote! blocks are now folded at compile time
+    //  and no longer produce errors; use runtime-dependent content to test)
     let src = r#"
         func main() -> i64 {
-            let ast = quote! { 42 };
+            let x = 10;
+            let ast = quote! { x + 1 };
             0
         }
     "#;

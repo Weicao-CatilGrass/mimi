@@ -107,7 +107,7 @@ mod tests {
         ("arena_reset", false, true, true),
         ("bump_used", false, true, true),
         ("ast_dump", false, true, true),
-        ("ast_eval", false, true, true),
+        ("ast_eval", true, true, true),
         ("filter", false, true, true),
         ("map", false, true, true),
         ("reduce", false, true, true),
