@@ -57,6 +57,7 @@ pub(crate) mod ffi_interp_e2e;
 pub(crate) mod type_system_verification;
 pub(crate) mod actor_concurrent;
 pub(crate) mod net;
+pub(crate) mod cross_compile;
 pub(crate) mod borrow_boundary;
 pub(crate) mod debug_info;
 pub(crate) mod derive_methods;
