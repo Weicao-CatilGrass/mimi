@@ -197,6 +197,7 @@ dual_assert_contract_ok(program)
 | `3b0e102` | v0.10 bug 修复: spawn+await 类型跟踪 + malloc 尺寸 | `e2e_parasteps_spawn_and_await` ✅ | — |
 | `ed48315` | 操作符修复: EqCmp/NeCmp/Add struct-typed string 参数 | `ensures_string_concat_with_old_runtime_check` ✅, `codegen_contract_string_requires_nonempty` ✅, `dual_contract_string_requires_nonempty` ✅ | — |
 | `342976c` | 正则表达式标准库: regex_match/find/replace | `dual_regex_match` ✅, `dual_regex_find` ✅, `dual_regex_replace` ✅ | `typecheck_regex_match_wrong_args` ✅, `typecheck_regex_replace_wrong_args` ✅ |
+| `58407c2` | Windows 移植: C runtime POSIX→Win32 | *所有 1907 测试 Linux 通过* | — |
 
 ✅ = 通过且启用 | (已忽略) = `#[ignore]` 标记的已知 codegen 差距
 
