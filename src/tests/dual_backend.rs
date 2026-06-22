@@ -1999,3 +1999,138 @@ fn dual_numeric_coercion_i64_f64_mul() {
         }
     "#, "14.000000");
 }
+
+// ===== Stage 4: Concurrency — dual-backend equivalence tests =====
+//
+// v1.0 concurrency model:
+// - parasteps: spawns submitted to thread pool; await INSIDE parasteps
+//   is BROKEN (compile_await_expr returns placeholder thread ID 0 →
+//   pthread_join(0) → ESRCH). mimi_pool_join_all in leave_parasteps works.
+// - Standalone spawn (outside parasteps): real pthread_create + pthread_join
+// - Actor spawn is interpreter-only
+//
+// Known gaps documented in AGENTS.mimi.md §12:
+// - await inside parasteps broken (pthread_join(0) bug)
+// - Actor spawn not supported in codegen
+
+#[test]
+fn dual_parasteps_no_spawn() {
+    if !can_link() { return; }
+    // Parasteps with sequential code (no spawn) — both backends run sequentially
+    dual_assert!(r#"
+        func main() -> i32 {
+            let mut t = 0;
+            parasteps {
+                t = t + 1;
+                t = t + 2;
+                t = t + 3;
+            }
+            println(t);
+            0
+        }
+    "#, "6");
+}
+
+#[test]
+fn dual_parasteps_spawn_discard() {
+    if !can_link() { return; }
+    // Spawn inside parasteps, discard result — pool tasks run, join at block end
+    dual_assert!(r#"
+        func compute(n: i32) -> i32 { n * 2 }
+        func main() -> i32 {
+            parasteps {
+                spawn compute(10);
+                spawn compute(20);
+            }
+            println(42);
+            0
+        }
+    "#, "42");
+}
+
+#[test]
+#[ignore = "codegen gap: await inside parasteps calls pthread_join(0) which returns ESRCH"]
+fn dual_parasteps_spawn_await() {
+    if !can_link() { return; }
+    // Interpreter runs correctly (thread pool + mpsc channel).
+    // Codegen: spawn returns placeholder 0 inside parasteps →
+    // pthread_join(0) returns ESRCH → program crashes.
+    dual_assert!(r#"
+        func double(n: i32) -> i32 { n * 2 }
+        func main() -> i32 {
+            let mut r = 0;
+            parasteps {
+                let a = spawn double(10);
+                let b = spawn double(5);
+                r = await a + await b
+            }
+            println(r);
+            0
+        }
+    "#, "30");
+}
+
+#[test]
+fn dual_spawn_await_simple() {
+    if !can_link() { return; }
+    // Standalone spawn/await (outside parasteps) — uses real pthread_create
+    dual_assert!(r#"
+        func double(n: i32) -> i32 { n * 2 }
+        func main() -> i32 {
+            let task = spawn double(21);
+            let r = await task;
+            println(r);
+            0
+        }
+    "#, "42");
+}
+
+#[test]
+fn dual_spawn_multiple() {
+    if !can_link() { return; }
+    // Multiple standalone spawns — each gets a real thread
+    dual_assert!(r#"
+        func add(a: i32, b: i32) -> i32 { a + b }
+        func main() -> i32 {
+            let t1 = spawn add(10, 20);
+            let t2 = spawn add(30, 40);
+            let r1 = await t1;
+            let r2 = await t2;
+            println(r1 + r2);
+            0
+        }
+    "#, "100");
+}
+
+#[test]
+fn dual_spawn_chain() {
+    if !can_link() { return; }
+    // Sequential spawn/await: second spawn after first completes
+    dual_assert!(r#"
+        func double(n: i32) -> i32 { n * 2 }
+        func main() -> i32 {
+            let t1 = spawn double(3);
+            let r1 = await t1;
+            let t2 = spawn double(r1);
+            let r2 = await t2;
+            println(r2);
+            0
+        }
+    "#, "12");
+}
+
+#[test]
+fn dual_parasteps_shared_capture() {
+    if !can_link() { return; }
+    // shared value captured in parasteps (allowed by typechecker)
+    dual_assert!(r#"
+        func main() -> i32 {
+            shared x = 42;
+            parasteps {
+                println(x);
+            }
+            println(-1);
+            0
+        }
+    "#, "42\n-1");
+}

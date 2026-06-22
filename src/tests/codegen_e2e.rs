@@ -2289,3 +2289,180 @@ fn e2e_datetime_time_constants() {
     "#);
     assert_eq!(val, interp::Value::Int(91060));
 }
+
+// ===== Stage 4: Concurrency — codegen E2E tests =====
+//
+// These tests verify the LLVM codegen's concurrent execution capabilities.
+// The thread pool (mimi_runtime.c) is a real pthread pool with NCPU workers.
+// Standalone spawn uses raw pthread_create/pthread_join.
+//
+// Known gaps documented in AGENTS.mimi.md §12:
+// - await inside parasteps uses pthread_join(0) — broken
+// - Actor spawn not supported in codegen
+
+#[test]
+fn e2e_parasteps_spawn_discard() {
+    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    // Spawn and discard — tasks submitted to pool, results never collected
+    let src = r#"
+func compute(n: i32) -> i32 { n * 2 }
+func main() -> i32 {
+    parasteps {
+        spawn compute(1);
+        spawn compute(2);
+        spawn compute(3);
+    }
+    println(99);
+    0
+}
+"#;
+    assert_eq!(compile_and_run(src).unwrap().trim(), "99");
+}
+
+#[test]
+#[ignore = "codegen gap: await inside parasteps uses pthread_join(0)"]
+fn e2e_parasteps_spawn_and_await() {
+    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    // Would work with interpreter; codegen breaks because spawn
+    // returns placeholder 0 inside parasteps.
+    let src = r#"
+func double(n: i32) -> i32 { n * 2 }
+func main() -> i32 {
+    let mut sum = 0;
+    parasteps {
+        let a = spawn double(5);
+        let b = spawn double(10);
+        let c = spawn double(15);
+        sum = await a + await b + await c
+    }
+    println(sum);
+    0
+}
+"#;
+    assert_eq!(compile_and_run(src).unwrap().trim(), "60");
+}
+
+#[test]
+fn e2e_spawn_concurrent_tasks() {
+    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    // Multiple standalone spawns run concurrently via pthread_create.
+    // Each computes a sum from 0 to n-1 in a separate thread.
+    let src = r#"
+func sum_to(n: i32) -> i32 {
+    let mut acc = 0;
+    let mut i = 0;
+    while i < n {
+        acc = acc + i;
+        i = i + 1
+    }
+    acc
+}
+func main() -> i32 {
+    let t1 = spawn sum_to(1000);
+    let t2 = spawn sum_to(2000);
+    let t3 = spawn sum_to(3000);
+    let r1 = await t1;
+    let r2 = await t2;
+    let r3 = await t3;
+    println(r1);
+    println(r2);
+    println(r3);
+    0
+}
+"#;
+    let out = compile_and_run(src).unwrap();
+    let lines: Vec<&str> = out.trim().lines().collect();
+    assert_eq!(lines.len(), 3, "expected 3 output lines");
+    assert_eq!(lines[0], "499500",  "sum 0..999");
+    assert_eq!(lines[1], "1999000", "sum 0..1999");
+    assert_eq!(lines[2], "4498500", "sum 0..2999");
+}
+
+#[test]
+fn e2e_spawn_many_independent() {
+    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    // Multiple spawns with simple identity function — tests concurrent threads.
+    let src = r#"
+func id(x: i32) -> i32 { x }
+func main() -> i32 {
+    let t0 = spawn id(10);
+    let t1 = spawn id(20);
+    let t2 = spawn id(30);
+    let r0 = await t0;
+    let r1 = await t1;
+    let r2 = await t2;
+    println(r0 + r1 + r2);
+    0
+}
+"#;
+    assert_eq!(compile_and_run(src).unwrap().trim(), "60");
+}
+
+#[test]
+fn e2e_spawn_println_from_thread() {
+    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    // Verify that spawned threads can call println (side-effect in spawn).
+    let src = r#"
+func greet(msg: i32) -> i32 { println(msg); msg }
+func main() -> i32 {
+    let t = spawn greet(42);
+    let r = await t;
+    println(r);
+    0
+}
+"#;
+    assert_eq!(compile_and_run(src).unwrap().trim(), "42\n42");
+}
+
+#[test]
+fn e2e_shared_rc_parasteps_capture() {
+    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    // shared value captured in parasteps — verifies atomic RC via println
+    let src = r#"
+func main() -> i32 {
+    shared x = 100;
+    parasteps {
+        println(x);
+    }
+    shared y = x;
+    println(y);
+    0
+}
+"#;
+    assert_eq!(compile_and_run(src).unwrap().trim(), "100\n100");
+}
+
+#[test]
+fn e2e_spawn_nested_calls() {
+    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    // Spawn calls that themselves call other functions
+    let src = r#"
+func inner(x: i32) -> i32 { x + 1 }
+func outer(x: i32) -> i32 { inner(x * 2) }
+func main() -> i32 {
+    let t = spawn outer(20);
+    let r = await t;
+    println(r);
+    0
+}
+"#;
+    assert_eq!(compile_and_run(src).unwrap().trim(), "41");
+}
+
+#[test]
+fn e2e_spawn_identity_noop() {
+    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    // Identity function via spawn — simplest possible thread execution
+    let src = r#"
+func id(x: i32) -> i32 { x }
+func main() -> i32 {
+    let t = spawn id(42);
+    let r = await t;
+    println(r);
+    0
+}
+"#;
+    assert_eq!(compile_and_run(src).unwrap().trim(), "42");
+}
+
+
