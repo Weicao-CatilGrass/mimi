@@ -284,8 +284,8 @@ pub func surround(s: string, left: string, right: string) -> string {
     left + s + right
 }
 
-// quote: Wraps s in double quotes.
-pub func quote(s: string) -> string {
+// quote_str: Wraps s in double quotes.
+pub func quote_str(s: string) -> string {
     surround(s, "\"", "\"")
 }
 

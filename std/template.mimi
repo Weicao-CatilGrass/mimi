@@ -1,0 +1,82 @@
+// template.mimi — String template rendering
+//
+// Features:
+//   - {{key}} — variable substitution from a record
+//   - {{key|default}} — variable with default value
+
+// simple_render: Replaces {{key}} with values from vars.
+// vars is a record where keys are variable names.
+pub func simple_render(template: string, vars: Record) -> string {
+    let mut result = template
+    let ks = keys(vars)
+    let vs = values(vars)
+
+    let mut ki = 0
+    while ki < len(ks) {
+        let key = ks[ki]
+        let val = vs[ki]
+        result = str_replace(result, "{{" + key + "}}", to_string(val))
+        ki = ki + 1
+    }
+
+    result
+}
+
+// render: Replaces {{key}} with values from a lookup function.
+pub func render(template: string, lookup: func(string) -> string) -> string {
+    let mut result = template
+    let mut pos = 0
+    let mut n = len(result)
+
+    while pos < n {
+        let start_idx = str_index_of(str_substring(result, pos, n), "{{")
+        if !start_idx.0 { break }
+
+        let var_start = pos + start_idx.1 + 2
+        let end_idx = str_index_of(str_substring(result, var_start, n), "}}")
+        if !end_idx.0 { break }
+
+        let var_end = var_start + end_idx.1
+        let var_name = str_substring(result, var_start, var_end)
+        let replacement = lookup(var_name)
+
+        let before = str_substring(result, 0, var_start - 2)
+        let after = str_substring(result, var_end + 2, n)
+        result = before + replacement + after
+        n = len(result)
+        pos = var_start - 2 + len(replacement)
+    }
+
+    result
+}
+
+// render_with_defaults: Like render, but returns default for unknown keys.
+pub func render_with_defaults(template: string, vars: Record, default_val: string) -> string {
+    render(template, func(key: string) -> string {
+        let ks = keys(vars)
+        let vs = values(vars)
+        let mut ki = 0
+        while ki < len(ks) {
+            if ks[ki] == key {
+                return to_string(vs[ki])
+            }
+            ki = ki + 1
+        }
+        default_val
+    })
+}
+
+// render_csv: Renders CSV rows using {{col_0}}, {{col_1}}, etc.
+pub func render_csv(template: string, rows: List<List<string>>) -> string {
+    let mut results = []
+    for row in rows {
+        let mut vars = map_new()
+        let mut ci = 0
+        while ci < len(row) {
+            vars = map_set(vars, "col_" + to_string(ci), row[ci])
+            ci = ci + 1
+        }
+        results = push(results, simple_render(template, vars))
+    }
+    str_join(results, "\n")
+}
