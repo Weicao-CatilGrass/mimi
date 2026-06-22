@@ -425,12 +425,12 @@ impl Parser {
             }
             TokenKind::Spawn => {
                 self.advance();
-                let e = self.parse_expr(0)?;
+                let e = self.parse_expr(12)?;
                 return self.parse_postfix(Expr::Spawn(Box::new(e)));
             }
             TokenKind::Await => {
                 self.advance();
-                let e = self.parse_expr(0)?;
+                let e = self.parse_expr(12)?;
                 return self.parse_postfix(Expr::Await(Box::new(e)));
             }
             TokenKind::Arena => {

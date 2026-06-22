@@ -20,18 +20,11 @@ impl<'ctx> CodeGenerator<'ctx> {
         if !self.in_parasteps {
             return Ok(());
         }
-        if self.parasteps_thread_ids.is_empty() {
-            // Pool-based parasteps: wait for all pool tasks to complete
-            let join_all_fn = self.module.get_function("mimi_pool_join_all")
-                .ok_or_else(|| CompileError::LlvmError("mimi_pool_join_all not declared".to_string()))?;
-            self.builder.build_call(join_all_fn, &[], "pool_join_all")
-                .map_err(|e| CompileError::LlvmError(format!("pool_join_all error: {}", e)))?;
-        } else {
-            // Legacy pthread-based parasteps: join individual threads
-            let i8_type = self.context.i8_type();
-            let i8_ptr = i8_type.ptr_type(inkwell::AddressSpace::default());
-            let join_fn = self.module.get_function("pthread_join")
-                .ok_or_else(|| CompileError::LlvmError("pthread_join not declared".to_string()))?;
+        // Join any threads not yet awaited
+        let i8_type = self.context.i8_type();
+        let i8_ptr = i8_type.ptr_type(inkwell::AddressSpace::default());
+        let join_fn = self.module.get_function("pthread_join");
+        if let Some(join_fn) = join_fn {
             for &thread_id in &self.parasteps_thread_ids {
                 self.builder.build_call(join_fn, &[
                     BasicMetadataValueEnum::IntValue(thread_id),

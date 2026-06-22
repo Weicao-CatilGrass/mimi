@@ -2616,11 +2616,10 @@ fn e2e_datetime_time_constants() {
 // ===== Stage 4: Concurrency — codegen E2E tests =====
 //
 // These tests verify the LLVM codegen's concurrent execution capabilities.
-// The thread pool (mimi_runtime.c) is a real pthread pool with NCPU workers.
-// Standalone spawn uses raw pthread_create/pthread_join.
+// Both standalone spawn and spawn inside parasteps use raw
+// pthread_create/pthread_join.
 //
 // Known gaps documented in AGENTS.mimi.md §12:
-// - await inside parasteps uses pthread_join(0) — broken
 // - Actor spawn not supported in codegen
 
 #[test]
@@ -2645,8 +2644,7 @@ func main() -> i32 {
 #[test]
 fn e2e_parasteps_spawn_and_await() {
     if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    // Would work with interpreter; codegen breaks because spawn
-    // returns placeholder 0 inside parasteps.
+    // Spawn inside parasteps uses real pthread_create; await joins the thread.
     let src = r#"
 func double(n: i32) -> i32 { n * 2 }
 func main() -> i32 {
