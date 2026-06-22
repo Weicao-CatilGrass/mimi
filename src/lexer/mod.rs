@@ -1,9 +1,10 @@
 pub mod errors;
-mod keywords;
+pub(crate) mod keywords;
 mod scan;
 pub mod token;
 
 pub use errors::LexerError;
+pub use keywords::is_keyword_kind;
 pub use token::{LexerMode, Token, TokenKind};
 
 pub struct Lexer<'a> {

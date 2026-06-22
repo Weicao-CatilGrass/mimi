@@ -503,25 +503,7 @@ impl Parser {
                         let field = self.expect_ident()?;
                         e = Expr::Field(Box::new(e), field);
                     } else if self.at(&TokenKind::LBracket) {
-                        self.advance();
-                        let first = self.parse_expr(0)?;
-                        if self.at(&TokenKind::DotDot) {
-                            self.advance();
-                            let end = if self.at(&TokenKind::RBracket) {
-                                None
-                            } else {
-                                Some(Box::new(self.parse_expr(0)?))
-                            };
-                            self.expect(TokenKind::RBracket, "`]`")?;
-                            e = Expr::SliceExpr {
-                                target: Box::new(e),
-                                start: Some(Box::new(first)),
-                                end,
-                            };
-                        } else {
-                            self.expect(TokenKind::RBracket, "`]`")?;
-                            e = Expr::Index(Box::new(e), Box::new(first));
-                        }
+                        e = self.parse_slice_or_index(e)?;
                     } else {
                         break;
                     }
@@ -566,17 +548,7 @@ impl Parser {
                     expr = Expr::Field(Box::new(expr), field);
                 }
             } else if self.at(&TokenKind::LBracket) {
-                self.advance();
-                let first = self.parse_expr(0)?;
-                if self.at(&TokenKind::DotDot) {
-                    self.advance();
-                    let end = if self.at(&TokenKind::RBracket) { None } else { Some(Box::new(self.parse_expr(0)?)) };
-                    self.expect(TokenKind::RBracket, "`]`")?;
-                    expr = Expr::SliceExpr { target: Box::new(expr), start: Some(Box::new(first)), end };
-                } else {
-                    self.expect(TokenKind::RBracket, "`]`")?;
-                    expr = Expr::Index(Box::new(expr), Box::new(first));
-                }
+                expr = self.parse_slice_or_index(expr)?;
             } else {
                 break;
             }
@@ -692,24 +664,8 @@ impl Parser {
     }
 }
 
-/// Check if a token kind is a keyword that can be used as an identifier in expression context.
+/// Delegates to the canonical keyword check in `lexer::keywords`.
+/// Add new keywords there, not here.
 fn is_keyword_token(kind: &TokenKind) -> bool {
-    matches!(kind,
-        TokenKind::Module | TokenKind::Type | TokenKind::Func | TokenKind::Fn |
-        TokenKind::Actor | TokenKind::Newtype | TokenKind::Let | TokenKind::Mut |
-        TokenKind::Ref | TokenKind::Shared | TokenKind::LocalShared | TokenKind::Weak |
-        TokenKind::WeakLocal | TokenKind::CShared | TokenKind::CBorrow |
-        TokenKind::CBorrowMut | TokenKind::RawString |
-        TokenKind::Arena | TokenKind::Alloc | TokenKind::Cap | TokenKind::Trait | TokenKind::Impl |
-        TokenKind::Dyn | TokenKind::Where | TokenKind::Extern | TokenKind::Unsafe |
-        TokenKind::Use | TokenKind::Pub | TokenKind::In |
-        TokenKind::Drop | TokenKind::Steps | TokenKind::Parasteps | TokenKind::Failure |
-        TokenKind::Requires | TokenKind::Ensures | TokenKind::Math | TokenKind::Desc |
-        TokenKind::Rule | TokenKind::Mms | TokenKind::With | TokenKind::And |
-        TokenKind::Or | TokenKind::Not | TokenKind::Async | TokenKind::Comptime |
-        TokenKind::Spawn | TokenKind::Await | TokenKind::Quote | TokenKind::Old |
-        TokenKind::I32 | TokenKind::I64 |
-        TokenKind::F64 | TokenKind::Bool | TokenKind::StringKw | TokenKind::Nothing |
-        TokenKind::True | TokenKind::False | TokenKind::Unit
-    )
+    crate::lexer::is_keyword_kind(kind)
 }

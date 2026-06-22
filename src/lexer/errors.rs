@@ -1,41 +1,80 @@
-pub type LexerError = String;
+use std::fmt;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LexerError {
+    TabsNotAllowed { line: usize, col: usize },
+    IndentNotMultipleOfFour { line: usize, col: usize },
+    DedentMismatch { line: usize, col: usize },
+    UnexpectedDollar { line: usize, col: usize },
+    UnexpectedCharacter { c: char, line: usize, col: usize },
+    UnterminatedString,
+    UnterminatedEscape,
+    UnterminatedFString,
+    UnterminatedFStringEscape,
+    UnterminatedInterpolation,
+}
+
+impl fmt::Display for LexerError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            LexerError::TabsNotAllowed { line, col } => write!(f, "tabs are not allowed for indentation at {}:{}", line, col),
+            LexerError::IndentNotMultipleOfFour { line, col } => write!(f, "indentation must be a multiple of 4 spaces at {}:{}", line, col),
+            LexerError::DedentMismatch { line, col } => write!(f, "dedent does not match any indentation level at {}:{}", line, col),
+            LexerError::UnexpectedDollar { line, col } => write!(f, "unexpected '$' at {}:{}", line, col),
+            LexerError::UnexpectedCharacter { c, line, col } => write!(f, "unexpected character '{}' at {}:{}", c, line, col),
+            LexerError::UnterminatedString => write!(f, "unterminated string"),
+            LexerError::UnterminatedEscape => write!(f, "unterminated escape"),
+            LexerError::UnterminatedFString => write!(f, "unterminated f-string"),
+            LexerError::UnterminatedFStringEscape => write!(f, "unterminated escape in f-string"),
+            LexerError::UnterminatedInterpolation => write!(f, "unterminated interpolation in f-string"),
+        }
+    }
+}
+
+impl From<LexerError> for String {
+    fn from(e: LexerError) -> Self {
+        e.to_string()
+    }
+}
+
+impl std::error::Error for LexerError {}
 
 pub fn tabs_not_allowed(line: usize, col: usize) -> LexerError {
-    format!("tabs are not allowed for indentation at {}:{}", line, col)
+    LexerError::TabsNotAllowed { line, col }
 }
 
 pub fn indent_not_multiple_of_four(line: usize, col: usize) -> LexerError {
-    format!("indentation must be a multiple of 4 spaces at {}:{}", line, col)
+    LexerError::IndentNotMultipleOfFour { line, col }
 }
 
 pub fn dedent_mismatch(line: usize, col: usize) -> LexerError {
-    format!("dedent does not match any indentation level at {}:{}", line, col)
+    LexerError::DedentMismatch { line, col }
 }
 
 pub fn unexpected_dollar(line: usize, col: usize) -> LexerError {
-    format!("unexpected '$' at {}:{}", line, col)
+    LexerError::UnexpectedDollar { line, col }
 }
 
 pub fn unexpected_character(c: char, line: usize, col: usize) -> LexerError {
-    format!("unexpected character '{}' at {}:{}", c, line, col)
+    LexerError::UnexpectedCharacter { c, line, col }
 }
 
 pub fn unterminated_string() -> LexerError {
-    "unterminated string".into()
+    LexerError::UnterminatedString
 }
 
 pub fn unterminated_escape() -> LexerError {
-    "unterminated escape".into()
+    LexerError::UnterminatedEscape
 }
 
 pub fn unterminated_fstring() -> LexerError {
-    "unterminated f-string".into()
+    LexerError::UnterminatedFString
 }
 
 pub fn unterminated_fstring_escape() -> LexerError {
-    "unterminated escape in f-string".into()
+    LexerError::UnterminatedFStringEscape
 }
 
 pub fn unterminated_interpolation() -> LexerError {
-    "unterminated interpolation in f-string".into()
+    LexerError::UnterminatedInterpolation
 }

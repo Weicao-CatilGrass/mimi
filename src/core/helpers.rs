@@ -2,10 +2,12 @@ use crate::ast::*;
 use std::collections::HashMap;
 
 /// Compute the Levenshtein edit distance between two strings.
-#[allow(clippy::needless_range_loop)]
+/// Uses grapheme clusters (char-level) for correct non-ASCII comparison.
 fn edit_distance(a: &str, b: &str) -> usize {
-    let a_len = a.len();
-    let b_len = b.len();
+    let a_chars: Vec<char> = a.chars().collect();
+    let b_chars: Vec<char> = b.chars().collect();
+    let a_len = a_chars.len();
+    let b_len = b_chars.len();
     let mut matrix = vec![vec![0usize; b_len + 1]; a_len + 1];
 
     for i in 0..=a_len {
@@ -17,7 +19,7 @@ fn edit_distance(a: &str, b: &str) -> usize {
 
     for i in 1..=a_len {
         for j in 1..=b_len {
-            let cost = if a.as_bytes()[i - 1] == b.as_bytes()[j - 1] { 0 } else { 1 };
+            let cost = if a_chars[i - 1] == b_chars[j - 1] { 0 } else { 1 };
             matrix[i][j] = std::cmp::min(
                 std::cmp::min(
                     matrix[i - 1][j] + 1,      // deletion

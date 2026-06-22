@@ -39,7 +39,7 @@ impl LspServer {
         let tokens = match lexer::Lexer::new(text).tokenize() {
             Ok(t) => t,
             Err(e) => {
-                diagnostics.push(diagnostic::simple_error_diagnostic(&e));
+                diagnostics.push(diagnostic::simple_error_diagnostic(&e.to_string()));
                 return diagnostics;
             }
         };
