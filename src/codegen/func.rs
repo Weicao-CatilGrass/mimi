@@ -382,6 +382,8 @@ impl<'ctx> CodeGenerator<'ctx> {
                     if let Pattern::Variable(name) = pat {
                         if let Some(Type::Name(tn, _)) = &ty {
                             self.var_type_names.insert(name.clone(), tn.clone());
+                        } else if self.expr_is_string(init) {
+                            self.var_type_names.insert(name.clone(), "string".to_string());
                         } else if let Expr::Record { ty: Some(tn), .. } = init {
                             self.var_type_names.insert(name.clone(), tn.clone());
                         } else if let Expr::Call(callee, _) = init {
