@@ -386,6 +386,67 @@ func main() -> i32 {
     assert_eq!(run_source(src), interp::Value::Int(30));
 }
 
+#[test]
+fn generic_with_requires() {
+    let src = r#"
+func add_one<T>(x: T) -> T {
+    requires: x > 0
+    x + 1
+}
+func main() -> i32 {
+    add_one(41)
+}
+"#;
+    let v = run_source(src);
+    assert_eq!(v, interp::Value::Int(42));
+}
+
+#[test]
+fn generic_with_ensures() {
+    let src = r#"
+func double<T>(x: T) -> T {
+    ensures: result == x * 2
+    x * 2
+}
+func main() -> i32 {
+    double(21)
+}
+"#;
+    let v = run_source(src);
+    assert_eq!(v, interp::Value::Int(42));
+}
+
+#[test]
+fn generic_with_requires_ensures_combined() {
+    let src = r#"
+func abs_val<T>(x: T) -> T {
+    requires: x != 0
+    ensures: result > 0
+    if x < 0 { -x } else { x }
+}
+func main() -> i32 {
+    abs_val(-21)
+}
+"#;
+    let v = run_source(src);
+    assert_eq!(v, interp::Value::Int(21));
+}
+
+#[test]
+fn generic_with_old_snapshot() {
+    let src = r#"
+func inc_ref<T>(x: T) -> T {
+    ensures: result == old(x) + 1
+    return x + 1;
+}
+func main() -> i32 {
+    inc_ref(41)
+}
+"#;
+    let v = run_source(src);
+    assert_eq!(v, interp::Value::Int(42));
+}
+
 // ===== T301: Trait 方法静态分派测试 =====
 
 

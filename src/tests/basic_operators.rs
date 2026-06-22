@@ -178,3 +178,73 @@ func main() -> i32 {
     let v = run_source(src);
     assert_eq!(v, interp::Value::Int(32));
 }
+
+#[test]
+fn interp_eprintln_basic() {
+    let src = r#"
+func main() -> i32 {
+    eprintln("stderr test");
+    0
+}
+"#;
+    let v = run_source(src);
+    assert_eq!(v, interp::Value::Int(0));
+}
+
+#[test]
+fn interp_print_basic() {
+    let src = r#"
+func main() -> i32 {
+    print(42);
+    0
+}
+"#;
+    let v = run_source(src);
+    assert_eq!(v, interp::Value::Int(0));
+}
+
+#[test]
+fn interp_print_string() {
+    let src = r#"
+func main() -> i32 {
+    print("hello");
+    0
+}
+"#;
+    let v = run_source(src);
+    assert_eq!(v, interp::Value::Int(0));
+}
+
+#[test]
+fn interp_from_int_basic() {
+    let src = r#"
+func main() -> i32 {
+    from_int(42)
+}
+"#;
+    let v = run_source(src);
+    assert_eq!(v, interp::Value::Int(42));
+}
+
+#[test]
+fn interp_from_int_negative() {
+    let src = r#"
+func main() -> i32 {
+    from_int(-7)
+}
+"#;
+    let v = run_source(src);
+    assert_eq!(v, interp::Value::Int(-7));
+}
+
+#[test]
+fn interp_eprintln_int() {
+    let src = r#"
+func main() -> i32 {
+    eprintln(99);
+    0
+}
+"#;
+    let v = run_source(src);
+    assert_eq!(v, interp::Value::Int(0));
+}

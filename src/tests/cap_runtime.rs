@@ -70,3 +70,31 @@ func main() -> i32 {
     let result = check_source(src);
     assert!(result.is_ok());
 }
+
+#[test]
+fn cap_closure_consume() {
+    let src = r#"
+cap IO;
+func use_io(f: i32) with IO { println(f) }
+func main() -> i32 {
+    let runner = fn(x: i32) -> i32 { println(x); x };
+    runner(42)
+}
+"#;
+    let result = run_source_result(src);
+    assert!(result.is_ok(), "cap closure should work: {:?}", result);
+}
+
+#[test]
+fn cap_closure_capture_drop() {
+    let src = r#"
+cap Resource;
+func main() -> i32 {
+    let r = Resource;
+    let f = fn() -> i32 { drop(r); 42 };
+    f()
+}
+"#;
+    let result = run_source_result(src);
+    assert!(result.is_ok(), "cap drop in closure should work: {:?}", result);
+}
