@@ -3,7 +3,7 @@ use crate::codegen::types;
 use crate::codegen::{CodeGenerator, VarEntry};
 use crate::error::CompileError;
 
-use inkwell::types::BasicTypeEnum;
+use inkwell::types::{BasicType, BasicTypeEnum};
 use inkwell::values::BasicValueEnum;
 use std::collections::HashMap;
 
@@ -14,6 +14,34 @@ impl<'ctx> CodeGenerator<'ctx> {
         field_name: &str,
         vars: &HashMap<String, VarEntry<'ctx>>,
     ) -> Result<BasicValueEnum<'ctx>, CompileError> {
+        // Shared variable fast path: obj is a shared var, load heap ptr directly
+        if let Expr::Ident(name) = obj {
+            if self.shared_var_names.contains(name.as_str()) {
+                if let Some(&(alloca, ty)) = vars.get(name.as_str()) {
+                    let obj_type = self.infer_object_type(obj, vars);
+                    if let Some(td) = self.type_defs.get(&obj_type) {
+                        if let TypeDefKind::Record(fields) = &td.kind {
+                            if let Some(idx) = fields.iter().position(|f| f.name == *field_name) {
+                                let ptr_ty = ty.ptr_type(inkwell::AddressSpace::default());
+                                let heap_ptr = self.builder.build_load(
+                                    BasicTypeEnum::PointerType(ptr_ty), alloca,
+                                    &format!("{}_heap_ptr", name),
+                                ).map_err(|e| CompileError::LlvmError(format!("shared heap ptr load: {}", e)))?.into_pointer_value();
+                                let sty = self.type_llvm.get(&obj_type)
+                                    .and_then(|bt| match bt { BasicTypeEnum::StructType(s) => Some(*s), _ => None })
+                                    .ok_or_else(|| CompileError::Generic(format!("type '{}' is not a struct", obj_type)))?;
+                                let gep = self.builder.build_struct_gep(sty, heap_ptr, idx as u32, field_name)
+                                    .map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?;
+                                let field_ty = types::mimi_type_to_llvm(self.context, &fields[idx].ty)
+                                    .unwrap_or(BasicTypeEnum::IntType(self.context.i64_type()));
+                                return self.builder.build_load(field_ty, gep, field_name)
+                                    .map_err(|e| CompileError::LlvmError(format!("load error: {}", e)));
+                            }
+                        }
+                    }
+                }
+            }
+        }
         // Field access: obj.field
         let obj_val = self.compile_expr(obj, vars)?;
         let obj_type = self.infer_object_type(obj, vars);
