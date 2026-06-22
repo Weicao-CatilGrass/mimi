@@ -279,10 +279,103 @@ void* mimi_rc_upgrade(void* ptr) {
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include <unistd.h>
 #include <time.h>
-#include <pthread.h>
 #include <stdatomic.h>
+
+/* ─── Platform-specific includes ─── */
+#ifdef _WIN32
+  #define WIN32_LEAN_AND_MEAN 1
+  #include <windows.h>
+  #include <winsock2.h>
+  #include <ws2tcpip.h>
+  #include <io.h>
+  #include <process.h>
+
+  /* POSIX compat macros */
+  #define strdup _strdup
+  #define close _close           /* file close only; use closesocket() for sockets */
+  #define ssize_t int
+  #define socklen_t int
+
+  /* strndup — not available on MSVC */
+  static inline char* win32_strndup(const char* s, size_t n) {
+      size_t len = 0;
+      while (len < n && s[len]) len++;
+      char* p = (char*)malloc(len + 1);
+      if (p) { memcpy(p, s, len); p[len] = '\0'; }
+      return p;
+  }
+  #define strndup win32_strndup
+
+  /* ─── pthread compat layer for Win32 ───
+     Maps the pthread subset used by Mimi runtime to Win32 primitives.
+     Uses SRWLOCK (zero-initializable, no cleanup needed) + CONDITION_VARIABLE. */
+  typedef SRWLOCK pthread_mutex_t;
+  typedef CONDITION_VARIABLE pthread_cond_t;
+  #define PTHREAD_MUTEX_INITIALIZER SRWLOCK_INIT
+  #define PTHREAD_COND_INITIALIZER CONDITION_VARIABLE_INIT
+
+  static inline int win32_mutex_lock(pthread_mutex_t* m) {
+      AcquireSRWLockExclusive(m); return 0;
+  }
+  static inline int win32_mutex_unlock(pthread_mutex_t* m) {
+      ReleaseSRWLockExclusive(m); return 0;
+  }
+  static inline int win32_cond_wait(pthread_cond_t* cv, pthread_mutex_t* m) {
+      return SleepConditionVariableSRW(cv, m, INFINITE, 0) ? 0 : -1;
+  }
+  static inline int win32_cond_signal(pthread_cond_t* cv) {
+      WakeConditionVariable(cv); return 0;
+  }
+  static inline int win32_cond_broadcast(pthread_cond_t* cv) {
+      WakeAllConditionVariable(cv); return 0;
+  }
+  #define pthread_mutex_lock(m)    win32_mutex_lock(m)
+  #define pthread_mutex_unlock(m)  win32_mutex_unlock(m)
+  #define pthread_cond_wait(c,m)   win32_cond_wait(c,m)
+  #define pthread_cond_signal(c)   win32_cond_signal(c)
+  #define pthread_cond_broadcast(c) win32_cond_broadcast(c)
+
+  typedef HANDLE pthread_t;
+  static inline int win32_pthread_create(pthread_t* t, void* attr,
+                                         void* (*fn)(void*), void* arg) {
+      (void)attr;
+      *t = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)fn, arg, 0, NULL);
+      return *t != NULL ? 0 : -1;
+  }
+  static inline int win32_pthread_join(pthread_t t, void** ret) {
+      (void)ret;
+      DWORD r = WaitForSingleObject(t, INFINITE);
+      if (r == WAIT_OBJECT_0) { CloseHandle(t); return 0; }
+      return -1;
+  }
+  #define pthread_create(t,a,f,a2) win32_pthread_create(t,a,f,a2)
+  #define pthread_join(t,r)        win32_pthread_join(t,r)
+
+  /* Thread-local storage */
+  #define THREAD_LOCAL __declspec(thread)
+
+  /* Winsock must be initialized before any socket call */
+  static int win32_wsa_init(void) {
+      WSADATA wsa;
+      return WSAStartup(MAKEWORD(2,2), &wsa) == 0 ? 0 : -1;
+  }
+  static void win32_wsa_cleanup(void) { WSACleanup(); }
+#else
+  #include <unistd.h>
+  #include <pthread.h>
+  #include <regex.h>
+  #include <sys/socket.h>
+  #include <netinet/in.h>
+  #include <netdb.h>
+  #include <arpa/inet.h>
+  #include <fcntl.h>
+
+  #define THREAD_LOCAL __thread
+
+  static int win32_wsa_init(void) { return 0; }
+  static void win32_wsa_cleanup(void) {}
+#endif
 
 /* Reference-counted heap allocation.
    Layout: [ strong_count | weak_count | user data ... ]
@@ -884,7 +977,14 @@ static void pool_ensure_init(void) {
         pthread_mutex_unlock(&pool_mutex);
         return;
     }
-    int ncpu = sysconf(_SC_NPROCESSORS_ONLN);
+    int ncpu;
+#ifdef _WIN32
+    SYSTEM_INFO sysinfo;
+    GetSystemInfo(&sysinfo);
+    ncpu = (int)sysinfo.dwNumberOfProcessors;
+#else
+    ncpu = (int)sysconf(_SC_NPROCESSORS_ONLN);
+#endif
     if (ncpu < 1) ncpu = 4;
     if (ncpu > POOL_MAX_THREADS) ncpu = POOL_MAX_THREADS;
     pool_thread_count = ncpu;
@@ -921,6 +1021,30 @@ void mimi_pool_join_all(void) {
 
 /* ========== Time functions ========== */
 
+#ifdef _WIN32
+int64_t mimi_now(void) {
+    FILETIME ft;
+    GetSystemTimeAsFileTime(&ft);
+    ULARGE_INTEGER li;
+    li.LowPart = ft.dwLowDateTime;
+    li.HighPart = ft.dwHighDateTime;
+    /* FILETIME is 100-ns intervals since 1601-01-01. Convert to Unix epoch. */
+    return (int64_t)((li.QuadPart - 116444736000000000ULL) / 10000000);
+}
+
+int64_t mimi_now_ms(void) {
+    FILETIME ft;
+    GetSystemTimeAsFileTime(&ft);
+    ULARGE_INTEGER li;
+    li.LowPart = ft.dwLowDateTime;
+    li.HighPart = ft.dwHighDateTime;
+    return (int64_t)((li.QuadPart - 116444736000000000ULL) / 10000);
+}
+
+void mimi_sleep(int64_t ms) {
+    if (ms > 0) Sleep((DWORD)ms);
+}
+#else
 int64_t mimi_now(void) {
     struct timespec ts;
     clock_gettime(CLOCK_REALTIME, &ts);
@@ -939,6 +1063,7 @@ void mimi_sleep(int64_t ms) {
     ts.tv_nsec = (ms % 1000) * 1000000;
     nanosleep(&ts, NULL);
 }
+#endif
 
 /* ========== Environment/CLI functions ========== */
 
@@ -1258,11 +1383,147 @@ const char* json_get_element(const char* json_str, int64_t index) {
     return NULL;
 }
 
-/* ========== Regex functions (POSIX regex.h) ========== */
+/* ========== Regex functions ========== */
 
 #ifndef MIMI_NO_STD
 
-#include <regex.h>
+/* ─── Platform-specific POSIX regex API ─── */
+#ifdef _WIN32
+
+/* Minimal POSIX regex shim for Win32.
+   Recursive backtracking NFA matcher supporting: . * + \d \w \s
+   [a-z] [^...] ^ $ and literal characters. */
+#include <ctype.h>
+
+typedef struct { char* pattern; } regex_t;
+typedef struct { regoff_t rm_so, rm_eo; } regmatch_t;
+#define REG_EXTENDED 1
+
+static int regcomp(regex_t* preg, const char* pattern, int cflags) {
+    (void)cflags;
+    preg->pattern = _strdup(pattern);
+    return preg->pattern ? 0 : -1;
+}
+
+/* Advance past one pattern element (class, escape, literal). */
+static const char* skip_elem(const char* p) {
+    if (p[0] == '\\' && p[1]) return p + 2;
+    if (p[0] == '[') {
+        const char* e = p + 1;
+        if (*e == '^') e++;
+        while (*e && *e != ']') {
+            if (*e == '\\' && *(e+1)) e += 2; else e++;
+        }
+        return *e == ']' ? e + 1 : e;
+    }
+    return p + 1;
+}
+
+/* Does pattern element at *pp match character c?  Advances *pp past element. */
+static int elem_match(const char** pp, char c) {
+    const char* p = *pp;
+    if (p[0] == '\\') {
+        int m = 0;
+        switch (p[1]) {
+            case 'd': m = isdigit((unsigned char)c); break;
+            case 'D': m = !isdigit((unsigned char)c); break;
+            case 'w': m = isalnum((unsigned char)c) || c == '_'; break;
+            case 'W': m = !(isalnum((unsigned char)c) || c == '_'); break;
+            case 's': m = isspace((unsigned char)c); break;
+            case 'S': m = !isspace((unsigned char)c); break;
+            default:  m = (c == p[1]); break;
+        }
+        *pp = p + 2; return m;
+    }
+    if (p[0] == '[') {
+        const char* end = p + 1;
+        int neg = 0;
+        if (*end == '^') { neg = 1; end++; }
+        int m = 0;
+        while (*end && *end != ']') {
+            if (end[1] == '-' && end[2] && end[2] != ']') {
+                if (c >= end[0] && c <= end[2]) { m = 1; break; }
+                end += 3;
+            } else {
+                if (c == end[0]) { m = 1; break; }
+                end++;
+            }
+        }
+        while (*end && *end != ']') {
+            if (*end == '\\' && *(end+1)) end += 2; else end++;
+        }
+        *pp = (*end == ']') ? end + 1 : end;
+        return neg ? !m : m;
+    }
+    if (p[0] == '.') { *pp = p + 1; return c != '\0' && c != '\n'; }
+    *pp = p + 1; return c == p[0];
+}
+
+/* Recursive match: pattern at p against text at s.
+   Returns the total number of text chars consumed on success, -1 on failure. */
+static int match_here(const char* p, const char* s) {
+    while (*p == '^') p++;
+    for (;;) {
+        if (!*p) return 0;                           /* done */
+        if (p[0] == '$' && p[1] == '\0') return *s ? -1 : 0;
+        const char* elem = p;
+        const char* next = skip_elem(p);
+        int has_star = (next[0] == '*');
+        int has_plus = (next[0] == '+');
+        if (has_star || has_plus) {
+            const char* after_q = next + 1;
+            /* Count how many elem matches starting at s */
+            int max_n = 0;
+            const char* t;
+            for (t = s; *t; ) {
+                const char* tmp = p;
+                if (!elem_match(&tmp, *t)) break;
+                t++; max_n++;
+            }
+            int min_n = has_plus ? 1 : 0;
+            /* Try from max_n down to min_n (greedy) */
+            for (int n = max_n; n >= min_n; n--) {
+                int r = match_here(after_q, s + n);
+                if (r >= 0) return n + r;
+            }
+            return -1;
+        }
+        if (!*s) return -1;
+        const char* tmp = p;
+        if (!elem_match(&tmp, *s)) return -1;
+        p = tmp; s++;
+    }
+}
+
+static int regexec(const regex_t* preg, const char* string, size_t nmatch,
+                   regmatch_t* pmatch, int eflags) {
+    (void)eflags;
+    if (!preg->pattern || !string) return 1;
+    int anchored = (preg->pattern[0] == '^');
+    for (const char* start = string; ; start++) {
+        int r = match_here(preg->pattern, start);
+        if (r >= 0) {
+            if (pmatch && nmatch > 0) {
+                pmatch[0].rm_so = (regoff_t)(start - string);
+                pmatch[0].rm_eo = (regoff_t)((start - string) + r);
+            }
+            return 0;
+        }
+        if (anchored || !*start) break;
+    }
+    return 1; /* REG_NOMATCH */
+}
+
+static void regfree(regex_t* preg) {
+    free(preg->pattern);
+    preg->pattern = NULL;
+}
+
+#else /* POSIX */
+  #include <regex.h>
+#endif /* _WIN32 / POSIX */
+
+/* ─── Platform-independent Mimi regex wrappers ─── */
 
 /* regex_match(text, pattern) -> int (0 or 1) */
 int mimi_regex_match(const char* text, const char* pattern) {
@@ -1353,18 +1614,21 @@ char* mimi_regex_replace(const char* text, const char* pattern, const char* repl
     return result;
 }
 
-/* ========== Network / Socket functions (POSIX only) ========== */
 
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <netdb.h>
-#include <arpa/inet.h>
-#include <unistd.h>
-#include <fcntl.h>
+/* ========== Network / Socket functions ========== */
+
+/* Socket API is provided by platform headers at the top of the file.
+   On Win32, Winsock2 provides mostly-identical function signatures
+   but requires closesocket() instead of close() for socket cleanup. */
 
 int64_t mimi_socket(int64_t domain, int64_t type, int64_t protocol) {
+#ifdef _WIN32
+    SOCKET fd = socket((int)domain, (int)type, (int)protocol);
+    return (fd == INVALID_SOCKET) ? -1 : (int64_t)fd;
+#else
     int fd = socket((int)domain, (int)type, (int)protocol);
     return (int64_t)fd;
+#endif
 }
 
 int64_t mimi_connect(int64_t fd, const char* host, int64_t port) {
@@ -1374,10 +1638,14 @@ int64_t mimi_connect(int64_t fd, const char* host, int64_t port) {
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
     char port_str[16];
-    snprintf(port_str, sizeof(port_str), "%ld", (long)port);
+    snprintf(port_str, sizeof(port_str), "%lld", (long long)port);
     int err = getaddrinfo(host, port_str, &hints, &res);
     if (err != 0 || !res) return -1;
+#ifdef _WIN32
+    int ret = connect((SOCKET)fd, res->ai_addr, (int)res->ai_addrlen);
+#else
     int ret = connect((int)fd, res->ai_addr, res->ai_addrlen);
+#endif
     freeaddrinfo(res);
     return (int64_t)ret;
 }
@@ -1389,27 +1657,44 @@ int64_t mimi_bind(int64_t fd, int64_t port) {
     addr.sin_family = AF_INET;
     addr.sin_port = htons((uint16_t)port);
     addr.sin_addr.s_addr = INADDR_ANY;
+#ifdef _WIN32
+    int ret = bind((SOCKET)fd, (struct sockaddr*)&addr, sizeof(addr));
+#else
     int ret = bind((int)fd, (struct sockaddr*)&addr, sizeof(addr));
+#endif
     return (int64_t)ret;
 }
 
 int64_t mimi_listen(int64_t fd, int64_t backlog) {
     if (fd < 0) return -1;
+#ifdef _WIN32
+    int ret = listen((SOCKET)fd, (int)backlog);
+#else
     int ret = listen((int)fd, (int)backlog);
+#endif
     return (int64_t)ret;
 }
 
 int64_t mimi_accept(int64_t fd) {
     if (fd < 0) return -1;
     struct sockaddr_in client_addr;
-    socklen_t addr_len = sizeof(client_addr);
+    socklen_t addr_len = (socklen_t)sizeof(client_addr);
+#ifdef _WIN32
+    SOCKET client_fd = accept((SOCKET)fd, (struct sockaddr*)&client_addr, &addr_len);
+    return (client_fd == INVALID_SOCKET) ? -1 : (int64_t)client_fd;
+#else
     int client_fd = accept((int)fd, (struct sockaddr*)&client_addr, &addr_len);
     return (int64_t)client_fd;
+#endif
 }
 
 int64_t mimi_send(int64_t fd, const char* data, int64_t len) {
     if (fd < 0 || !data) return -1;
+#ifdef _WIN32
+    int sent = send((SOCKET)fd, data, (int)len, 0);
+#else
     ssize_t sent = send((int)fd, data, (size_t)len, 0);
+#endif
     return (int64_t)sent;
 }
 
@@ -1417,7 +1702,11 @@ char* mimi_recv(int64_t fd, int64_t buf_size, int64_t* out_len) {
     if (fd < 0 || buf_size <= 0) return NULL;
     char* buf = (char*)malloc((size_t)buf_size + 1);
     if (!buf) return NULL;
+#ifdef _WIN32
+    int n = recv((SOCKET)fd, buf, (int)buf_size, 0);
+#else
     ssize_t n = recv((int)fd, buf, (size_t)buf_size, 0);
+#endif
     if (n <= 0) {
         free(buf);
         if (out_len) *out_len = 0;
@@ -1430,7 +1719,11 @@ char* mimi_recv(int64_t fd, int64_t buf_size, int64_t* out_len) {
 
 int64_t mimi_close(int64_t fd) {
     if (fd < 0) return -1;
+#ifdef _WIN32
+    int ret = closesocket((SOCKET)fd);
+#else
     int ret = close((int)fd);
+#endif
     return (int64_t)ret;
 }
 
@@ -1929,7 +2222,7 @@ int    test_callback(int x, int (*cb)(int)) { return __mimi_extern_test_callback
 // Thread-local error handler for contract violations.
 // When set (by pybind11 wrappers), mimi_runtime_abort calls the handler instead of abort().
 // The handler may throw a C++ exception or longjmp to a recovery point.
-static __thread void (*mimi_runtime_error_handler)(const char*) = NULL;
+static THREAD_LOCAL void (*mimi_runtime_error_handler)(const char*) = NULL;
 
 void mimi_runtime_set_error_handler(void (*handler)(const char*)) {
     mimi_runtime_error_handler = handler;
