@@ -2003,14 +2003,10 @@ fn dual_numeric_coercion_i64_f64_mul() {
 // ===== Stage 4: Concurrency — dual-backend equivalence tests =====
 //
 // v1.0 concurrency model:
-// - parasteps: spawns submitted to thread pool; await INSIDE parasteps
-//   is BROKEN (compile_await_expr returns placeholder thread ID 0 →
-//   pthread_join(0) → ESRCH). mimi_pool_join_all in leave_parasteps works.
-// - Standalone spawn (outside parasteps): real pthread_create + pthread_join
+// - parasteps: spawn uses real pthread_create/pthread_join (same as standalone)
 // - Actor spawn is interpreter-only
 //
 // Known gaps documented in AGENTS.mimi.md §12:
-// - await inside parasteps broken (pthread_join(0) bug)
 // - Actor spawn not supported in codegen
 
 #[test]
@@ -2051,9 +2047,7 @@ fn dual_parasteps_spawn_discard() {
 #[test]
 fn dual_parasteps_spawn_await() {
     if !can_link() { return; }
-    // Interpreter runs correctly (thread pool + mpsc channel).
-    // Codegen: spawn returns placeholder 0 inside parasteps →
-    // pthread_join(0) returns ESRCH → program crashes.
+    // Both interpreter and codegen use real spawn/await with pthread.
     dual_assert!(r#"
         func double(n: i32) -> i32 { n * 2 }
         func main() -> i32 {

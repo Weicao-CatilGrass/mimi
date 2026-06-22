@@ -11,14 +11,15 @@ impl<'ctx> CodeGenerator<'ctx> {
         expr: &Expr,
         vars: &HashMap<String, VarEntry<'ctx>>,
     ) -> Result<BasicValueEnum<'ctx>, CompileError> {
+        // Create a real pthread for spawn both inside and outside parasteps.
+        // Inside parasteps, track the thread ID for joining at the barrier.
+        let thread_id = self.compile_spawn_pthread(expr, vars)?;
         if self.in_parasteps {
-            // Parasteps: evaluate directly (same thread).
-            // `await` inside parasteps receives this value and returns it as-is.
-            self.compile_expr(expr, vars)
-        } else {
-            // === Standalone: real pthread_create ===
-            self.compile_spawn_pthread(expr, vars)
+            if let BasicValueEnum::IntValue(tid) = thread_id {
+                self.parasteps_thread_ids.push(tid);
+            }
         }
+        Ok(thread_id)
     }
 
     /// Full wrapper-based spawn for standalone (outside parasteps) — uses pthread_create.
@@ -189,22 +190,17 @@ impl<'ctx> CodeGenerator<'ctx> {
             _ => return Err("await requires a thread (i64) value".into()),
         };
 
-        if self.in_parasteps {
-            // Parasteps: spawn already computed the value directly.
-            // `compile_expr(expr, vars)` returned the actual result value.
-            return Ok(handle_val);
-        }
-
-        // === Standalone: pthread_join ===
         let i8_ptr = self.context.i8_type().ptr_type(inkwell::AddressSpace::default());
         let retval_storage = self.builder.build_alloca(i8_ptr, "retval_ptr")
             .map_err(|e| CompileError::LlvmError(format!("alloca error: {}", e)))?;
         self.builder.build_store(retval_storage, i8_ptr.const_null())
             .map_err(|e| CompileError::LlvmError(format!("store error: {}", e)))?;
         
-        // Remove from parasteps tracking (already awaited, avoid double-join at block end)
-        self.parasteps_thread_ids.retain(|&id| id != handle);
-        
+        if self.in_parasteps {
+            // Remove from parasteps tracking (already awaited, avoid double-join at block end)
+            self.parasteps_thread_ids.retain(|&id| id != handle);
+        }
+
         let pthread_join_fn = self.module.get_function("pthread_join")
             .ok_or("pthread_join not declared")?;
         self.builder.build_call(pthread_join_fn, &[
