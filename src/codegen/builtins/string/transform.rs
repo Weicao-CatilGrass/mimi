@@ -116,6 +116,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     .map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?;
                 self.builder.build_store(ptr_gep, buf)
                     .map_err(|e| CompileError::LlvmError(format!("store error: {}", e)))?;
+                self.register_heap_gep(ptr_gep);
                 let len_gep = self.builder.build_struct_gep(string_ty, str_alloca, 1, "str_len")
                     .map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?;
                 self.builder.build_store(len_gep, total)
@@ -287,6 +288,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     .map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?;
                 self.builder.build_store(ptr_gep, buf)
                     .map_err(|e| CompileError::LlvmError(format!("store error: {}", e)))?;
+                self.register_heap_gep(ptr_gep);
                 let len_gep = self.builder.build_struct_gep(string_ty, str_alloca, 1, "str_len")
                     .map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?;
                 self.builder.build_store(len_gep, trimmed_len)
@@ -394,6 +396,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     .map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?;
                 self.builder.build_store(ptr_gep, buf)
                     .map_err(|e| CompileError::LlvmError(format!("store error: {}", e)))?;
+                self.register_heap_gep(ptr_gep);
                 let len_gep = self.builder.build_struct_gep(string_ty, str_alloca, 1, "str_len")
                     .map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?;
                 self.builder.build_store(len_gep, s_len)
@@ -496,6 +499,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     .map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?;
                 self.builder.build_store(ptr_gep, buf)
                     .map_err(|e| CompileError::LlvmError(format!("store error: {}", e)))?;
+                self.register_heap_gep(ptr_gep);
                 let len_gep = self.builder.build_struct_gep(string_ty, str_alloca, 1, "str_len")
                     .map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?;
                 self.builder.build_store(len_gep, s_len)
@@ -569,6 +573,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     .map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?;
                 self.builder.build_store(ptr_gep, buf)
                     .map_err(|e| CompileError::LlvmError(format!("store error: {}", e)))?;
+                self.register_heap_gep(ptr_gep);
                 let len_gep = self.builder.build_struct_gep(string_ty, str_alloca, 1, "str_len")
                     .map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?;
                 self.builder.build_store(len_gep, sub_len)
