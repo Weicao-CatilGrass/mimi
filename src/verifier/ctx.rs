@@ -115,18 +115,28 @@ impl Verifier {
         Ok(Self { solver, timeout_ms })
     }
 
-    /// Check satisfiability with timeout protection.
+    /// Check satisfiability with timeout and crash protection.
     /// Returns Unknown on timeout/crash instead of panicking.
-    /// Uses catch_unwind for robustness against Z3 crashes.
-    /// The Z3 solver internal timeout (set via params) handles timing.
-    pub(crate) fn check_safe(&self) -> SatResult {
+    /// If Z3 panics/crashes (e.g. segfault in libz3), recreates the solver
+    /// because Z3's C API does not guarantee a usable solver state after a
+    /// crash. The old solver is dropped and a fresh one is created.
+    pub(crate) fn check_safe(&mut self) -> SatResult {
         let result =
             std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.solver.check()))
                 .ok();
         match result {
             Some(SatResult::Sat) => SatResult::Sat,
             Some(SatResult::Unsat) => SatResult::Unsat,
-            _ => SatResult::Unknown,
+            _ => {
+                // Z3 crashed or timed out — solver may be corrupt.
+                // Drop it and create a fresh solver.
+                let mut params = z3::Params::new();
+                params.set_u32("timeout", self.timeout_ms as u32);
+                let new_solver = Solver::new();
+                new_solver.set_params(&params);
+                std::mem::replace(&mut self.solver, new_solver);
+                SatResult::Unknown
+            }
         }
     }
 
