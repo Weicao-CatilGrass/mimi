@@ -68,8 +68,8 @@ impl crate::verifier::Verifier {
             }
         }
 
-        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.solver.check())) {
-            Ok(SatResult::Unsat) => VerificationResult {
+        match self.check_safe() {
+            SatResult::Unsat => VerificationResult {
                 func_name: format!("extern {}", func.name),
                 status: VerifStatus::Failed,
                 message: "preconditions are unsatisfiable".into(),
@@ -84,7 +84,7 @@ impl crate::verifier::Verifier {
                 duration_us: start.elapsed().as_micros() as u64,
                 constraint_count,
             },
-            Ok(SatResult::Unknown) => VerificationResult {
+            SatResult::Unknown => VerificationResult {
                 func_name: format!("extern {}", func.name),
                 status: VerifStatus::Unknown,
                 message: "precondition satisfiability unknown".into(),
@@ -92,12 +92,12 @@ impl crate::verifier::Verifier {
                 duration_us: start.elapsed().as_micros() as u64,
                 constraint_count,
             },
-            Ok(SatResult::Sat) => {
+            SatResult::Sat => {
                 if let Some(ens) = ensures_expr {
                     self.solver.push();
                     if let Some(z3_not_ens) = self.expr_to_z3_bool(ens, &vars).map(|b| b.not()) {
                         self.solver.assert(&z3_not_ens);
-                        match self.solver.check() {
+                        match self.check_safe() {
                             SatResult::Unsat => {
                                 self.solver.pop(1);
                                 VerificationResult {
@@ -146,14 +146,6 @@ impl crate::verifier::Verifier {
                     }
                 }
             }
-            Err(_) => VerificationResult {
-                func_name: format!("extern {}", func.name),
-                status: VerifStatus::Unknown,
-                message: "verification timed out or crashed".into(),
-                diagnostic: None,
-                duration_us: start.elapsed().as_micros() as u64,
-                constraint_count,
-            },
         }
     }
 
@@ -339,8 +331,8 @@ impl crate::verifier::Verifier {
             + num_real_params // old_* equality constraints (real)
             + if body_return.is_some() { 1 } else { 0 };
 
-        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.solver.check())) {
-            Ok(SatResult::Sat) => {
+        match self.check_safe() {
+            SatResult::Sat => {
                 if !ensures_exprs.is_empty() {
                     self.solver.push();
                     for ens in &ensures_exprs {
@@ -348,7 +340,7 @@ impl crate::verifier::Verifier {
                             self.solver.assert(&z3_bool.not());
                         }
                     }
-                    match self.solver.check() {
+                    match self.check_safe() {
                         SatResult::Unsat => {
                             self.solver.pop(1);
                             VerificationResult {
@@ -405,7 +397,7 @@ impl crate::verifier::Verifier {
                     }
                 }
             }
-            Ok(SatResult::Unsat) => {
+            SatResult::Unsat => {
                 let req_span = requires_spans
                     .first()
                     .copied()
@@ -424,18 +416,10 @@ impl crate::verifier::Verifier {
                     constraint_count,
                 }
             }
-            Ok(SatResult::Unknown) => VerificationResult {
+            SatResult::Unknown => VerificationResult {
                 func_name: func.name.clone(),
                 status: VerifStatus::Unknown,
                 message: "precondition satisfiability unknown".into(),
-                diagnostic: None,
-                duration_us: start.elapsed().as_micros() as u64,
-                constraint_count,
-            },
-            Err(_) => VerificationResult {
-                func_name: func.name.clone(),
-                status: VerifStatus::Unknown,
-                message: "verification timed out or crashed".into(),
                 diagnostic: None,
                 duration_us: start.elapsed().as_micros() as u64,
                 constraint_count,

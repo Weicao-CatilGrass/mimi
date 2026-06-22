@@ -31,6 +31,8 @@ pub(crate) fn handle_message(
                     .and_then(|p| p.as_str())
                     .map(PathBuf::from);
             }
+            // Load persistent verification cache after workspace root is set
+            server.load_cache();
             let result = serde_json::json!({
                 "capabilities": {
                     "textDocumentSync": {

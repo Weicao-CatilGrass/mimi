@@ -2,6 +2,7 @@ use crate::ast::File;
 use crate::diagnostic::Diagnostic;
 use std::collections::HashMap;
 use z3::ast::{Bool as Z3Bool, Int as Z3Int, Real as Z3Real};
+use z3::SatResult;
 use z3::Solver;
 
 const DEFAULT_TIMEOUT_MS: u64 = 5000;
@@ -81,6 +82,7 @@ impl Z3VarMap {
 
 pub struct Verifier {
     pub(crate) solver: Solver,
+    pub(crate) timeout_ms: u64,
 }
 
 impl Verifier {
@@ -94,7 +96,30 @@ impl Verifier {
         let mut params = z3::Params::new();
         params.set_u32("timeout", timeout_ms as u32);
         solver.set_params(&params);
-        Ok(Self { solver })
+        Ok(Self { solver, timeout_ms })
+    }
+
+    /// Check satisfiability with timeout protection.
+    /// Returns Unknown on timeout/crash instead of panicking.
+    /// Uses catch_unwind for robustness against Z3 crashes.
+    /// The Z3 solver internal timeout (set via params) handles timing.
+    pub(crate) fn check_safe(&self) -> SatResult {
+        let result =
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.solver.check()))
+                .ok();
+        match result {
+            Some(SatResult::Sat) => SatResult::Sat,
+            Some(SatResult::Unsat) => SatResult::Unsat,
+            _ => SatResult::Unknown,
+        }
+    }
+
+    /// Update the solver timeout. Useful for LSP dynamic timeout adjustment.
+    pub fn set_timeout(&mut self, timeout_ms: u64) {
+        self.timeout_ms = timeout_ms;
+        let mut params = z3::Params::new();
+        params.set_u32("timeout", timeout_ms as u32);
+        self.solver.set_params(&params);
     }
 
     pub fn verify_file(&mut self, file: &File) -> Vec<VerificationResult> {
