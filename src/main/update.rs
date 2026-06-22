@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use mimi::{lockfile, manifest};
 use mimi::pkg_registry;
 
@@ -8,7 +9,7 @@ pub(crate) fn update() -> Result<(), String> {
         None => return Err("no mimi.toml found; run 'mimi init' first".into()),
     };
 
-    let deps = match &manifest.dependencies {
+    let direct_deps = match &manifest.dependencies {
         Some(d) if !d.is_empty() => d.clone(),
         _ => {
             println!("No dependencies to update.");
@@ -19,24 +20,31 @@ pub(crate) fn update() -> Result<(), String> {
     let reg = pkg_registry::registry_dir()?;
     let deps_dir = dir.join(".mimi").join("deps");
 
-    let mut updated = 0;
     let mut lock = lockfile::Lockfile::load(&dir)?
         .unwrap_or_else(lockfile::Lockfile::new);
+    let mut visited: HashSet<String> = HashSet::new();
+    let mut queue: Vec<manifest::Dependency> = direct_deps;
+    let mut updated_count = 0;
 
-    for dep in &deps {
+    while let Some(dep) = queue.pop() {
+        if !visited.insert(dep.name.clone()) {
+            continue;
+        }
+
+        let dst = deps_dir.join(&dep.name);
+
         if let Some(git_url) = &dep.git {
-            let clone_dir = deps_dir.join(&dep.name);
             let tag_arg = dep.tag.as_deref().unwrap_or("main");
 
-            if clone_dir.exists() {
-                std::fs::remove_dir_all(&clone_dir)
+            if dst.exists() {
+                std::fs::remove_dir_all(&dst)
                     .map_err(|e| format!("failed to remove old {}: {}", dep.name, e))?;
             }
 
             let status = std::process::Command::new("git")
                 .arg("clone").arg("--branch").arg(tag_arg)
                 .arg("--depth").arg("1")
-                .arg(git_url).arg(&clone_dir)
+                .arg(git_url).arg(&dst)
                 .status()
                 .map_err(|e| format!("git clone failed: {}", e))?;
             if !status.success() {
@@ -45,7 +53,7 @@ pub(crate) fn update() -> Result<(), String> {
             }
             let resolved_version = if let Ok(output) = std::process::Command::new("git")
                 .arg("rev-parse").arg("--short").arg("HEAD")
-                .current_dir(&clone_dir)
+                .current_dir(&dst)
                 .output()
             {
                 String::from_utf8_lossy(&output.stdout).trim().to_string()
@@ -54,14 +62,14 @@ pub(crate) fn update() -> Result<(), String> {
             };
 
             let old_version = lock.get_package(&dep.name).map(|p| p.version.clone());
-            let checksum = pkg_registry::compute_dir_checksum(&clone_dir).ok();
+            let checksum = pkg_registry::compute_dir_checksum(&dst).ok();
             lock.add_package(&dep.name, &resolved_version, Some(&format!("git+{}", git_url)), checksum.as_deref());
             match old_version {
                 Some(v) if v != resolved_version => println!("  ↑ {} ({} → {})", dep.name, v, resolved_version),
                 Some(v) => println!("  = {} ({})", dep.name, v),
                 None => println!("  ✓ {} (git: {} @ {})", dep.name, git_url, tag_arg),
             }
-            updated += 1;
+            updated_count += 1;
         } else {
             let source = dep.path.as_deref().unwrap_or("registry");
 
@@ -79,14 +87,12 @@ pub(crate) fn update() -> Result<(), String> {
                     .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
                     .filter_map(|e| e.file_name().to_str().map(|s| s.to_string()))
                     .collect();
-
                 let version_refs: Vec<&str> = versions.iter().map(|s| s.as_str()).collect();
                 let resolved = lockfile::Lockfile::resolve_version(version, &version_refs);
 
                 match resolved {
                     Some(v) => {
                         let src = pkg_dir.join(&v);
-                        let dst = deps_dir.join(&dep.name);
                         if dst.exists() {
                             std::fs::remove_dir_all(&dst)
                                 .map_err(|e| format!("failed to remove old: {}", e))?;
@@ -102,10 +108,11 @@ pub(crate) fn update() -> Result<(), String> {
                             Some(_) => println!("  = {} ({})", dep.name, v),
                             None => println!("  ✓ {} v{}", dep.name, v),
                         }
-                        updated += 1;
+                        updated_count += 1;
                     }
                     None => {
                         println!("  ⚠ No matching version for '{}' {}", dep.name, version);
+                        continue;
                     }
                 }
             } else {
@@ -114,7 +121,6 @@ pub(crate) fn update() -> Result<(), String> {
                     println!("  ⚠ Path dependency '{}' not found at {}", dep.name, source);
                     continue;
                 }
-                let dst = deps_dir.join(&dep.name);
                 if dst.exists() {
                     std::fs::remove_dir_all(&dst)
                         .map_err(|e| format!("failed to remove old: {}", e))?;
@@ -124,12 +130,27 @@ pub(crate) fn update() -> Result<(), String> {
                 println!("  ✓ {} (path: {})", dep.name, source);
                 let checksum = pkg_registry::compute_dir_checksum(&dst).ok();
                 lock.add_package(&dep.name, "*", Some(&format!("path:{}", source)), checksum.as_deref());
-                updated += 1;
+                updated_count += 1;
+            }
+        }
+
+        // Read transitive deps from installed package's mimi.toml
+        let dep_manifest_path = dst.join("mimi.toml");
+        if dep_manifest_path.exists() {
+            if let Ok(Some((_sub_dir, sub_manifest))) = manifest::Manifest::find(&dst) {
+                if let Some(sub_deps) = &sub_manifest.dependencies {
+                    for sub_dep in sub_deps.iter() {
+                        if !visited.contains(&sub_dep.name) {
+                            println!("    → {} (dependency of {})", sub_dep.name, dep.name);
+                            queue.push(sub_dep.clone());
+                        }
+                    }
+                }
             }
         }
     }
 
     lock.save(&dir)?;
-    println!("Updated {} package(s).", updated);
+    println!("Updated {} package(s).", updated_count);
     Ok(())
 }

@@ -66,6 +66,7 @@ pub(crate) mod lsp_extended;
 pub(crate) mod cli_commands;
 pub(crate) mod mms_integration;
 pub(crate) mod package_management;
+pub(crate) mod transitive_deps;
 pub(crate) mod property;
 
 // === JSON test modules ===
@@ -470,6 +471,77 @@ pub fn main_update(dir: &std::path::Path) -> Result<(), String> {
     }
 
     lock.save(dir)?;
+    Ok(())
+}
+
+/// Test helper: transitive install (project dir, registry dir).
+/// Installs direct + transitive deps from registry only.
+pub fn main_install_transitive(project_dir: &std::path::Path, reg: &std::path::Path) -> Result<(), String> {
+    let manifest = match crate::manifest::Manifest::find(project_dir)? {
+        Some((_d, m)) => m,
+        None => return Err("no mimi.toml found".into()),
+    };
+
+    let direct_deps: Vec<crate::manifest::Dependency> = match &manifest.dependencies {
+        Some(d) if !d.is_empty() => d.clone(),
+        _ => return Ok(()),
+    };
+
+    let deps_dir = project_dir.join(".mimi").join("deps");
+    std::fs::create_dir_all(&deps_dir)
+        .map_err(|e| format!("failed to create deps dir: {}", e))?;
+
+    let mut lock = crate::lockfile::Lockfile::new();
+    let mut visited = std::collections::HashSet::new();
+    let mut queue: Vec<crate::manifest::Dependency> = direct_deps;
+
+    while let Some(dep) = queue.pop() {
+        if !visited.insert(dep.name.clone()) {
+            continue;
+        }
+
+        let dep_version = dep.version.as_deref().unwrap_or("*");
+        let pkg_dir = reg.join(&dep.name);
+        if !pkg_dir.exists() {
+            return Err(format!("package '{}' not found in registry", dep.name));
+        }
+
+        let versions: Vec<String> = std::fs::read_dir(&pkg_dir)
+            .map_err(|e| format!("failed to read registry: {}", e))?
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
+            .filter_map(|e| e.file_name().to_str().map(|s| s.to_string()))
+            .collect();
+        let version_refs: Vec<&str> = versions.iter().map(|s| s.as_str()).collect();
+        let resolved = crate::lockfile::Lockfile::resolve_version(dep_version, &version_refs)
+            .ok_or_else(|| format!("no matching version for '{}' {}", dep.name, dep_version))?;
+
+        let src = pkg_dir.join(&resolved);
+        let dst = deps_dir.join(&dep.name);
+        if dst.exists() {
+            std::fs::remove_dir_all(&dst).ok();
+        }
+        crate::pkg_registry::copy_dir_recursive(&src, &dst)
+            .map_err(|e| format!("failed to copy {}: {}", dep.name, e))?;
+
+        // Read transitive deps from installed package's mimi.toml
+        let dep_manifest_path = dst.join("mimi.toml");
+        if dep_manifest_path.exists() {
+            if let Ok(Some((_sub_dir, sub_manifest))) = crate::manifest::Manifest::find(&dst) {
+                if let Some(sub_deps) = &sub_manifest.dependencies {
+                    for sub_dep in sub_deps.iter() {
+                        if !visited.contains(&sub_dep.name) {
+                            queue.push(sub_dep.clone());
+                        }
+                    }
+                }
+            }
+        }
+
+        lock.add_package(&dep.name, &resolved, Some("registry"), None);
+    }
+
+    lock.save(project_dir)?;
     Ok(())
 }
 
