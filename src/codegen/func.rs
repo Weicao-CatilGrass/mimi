@@ -644,7 +644,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     // Alloc: execute body sequentially (simplified - no custom allocator in codegen)
                     self.compile_block(body, &mut vars)?;
                 }
-                Stmt::Desc(..) | Stmt::Rule(..) | Stmt::Requires(..) | Stmt::Ensures(..) | Stmt::Math(_) => {
+                Stmt::Desc(..) | Stmt::Rule(..) | Stmt::Requires(..) | Stmt::Ensures(..) | Stmt::Invariant(..) | Stmt::Math(_) => {
                     // Skip contract-related statements in codegen
                 }
                 Stmt::Block(block) => {

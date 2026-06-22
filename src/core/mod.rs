@@ -66,7 +66,7 @@ fn verify_rules_in_block(block: &[Stmt], errors: &mut Vec<String>, context: &str
                 last_was_rule = true;
                 rule_pos = text.clone();
             }
-            Stmt::Requires(_, _) | Stmt::Ensures(_, _) => {
+            Stmt::Requires(_, _) | Stmt::Ensures(_, _) | Stmt::Invariant(_, _) => {
                 last_was_rule = false;
             }
             Stmt::Block(inner) => {

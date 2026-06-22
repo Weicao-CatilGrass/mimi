@@ -123,7 +123,7 @@ impl<'a> Checker<'a> {
             Stmt::Block(block) => { for s in block { Self::collect_uses_in_stmt(s, uses); } }
             Stmt::Break(Some(e)) => Self::collect_uses_in_expr(e, uses),
             Stmt::Break(None) | Stmt::Continue => {}
-            Stmt::Requires(e, _) | Stmt::Ensures(e, _) | Stmt::Drop(e) => Self::collect_uses_in_expr(e, uses),
+            Stmt::Requires(e, _) | Stmt::Ensures(e, _) | Stmt::Invariant(e, _) | Stmt::Drop(e) => Self::collect_uses_in_expr(e, uses),
             Stmt::SharedLet { init, .. } => Self::collect_uses_in_expr(init, uses),
             Stmt::Arena(block) | Stmt::OnFailure(block) | Stmt::Parasteps(block) | Stmt::Unsafe(block) => {
                 for s in block { Self::collect_uses_in_stmt(s, uses); }

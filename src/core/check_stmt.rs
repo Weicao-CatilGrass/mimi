@@ -61,7 +61,7 @@ impl<'a> Checker<'a> {
                     self.check_stmt_parasteps_safe(s, scopes);
                 }
             }
-            Stmt::Requires(expr, _) | Stmt::Ensures(expr, _) => {
+            Stmt::Requires(expr, _) | Stmt::Ensures(expr, _) | Stmt::Invariant(expr, _) => {
                 self.check_expr_parasteps_safe(expr, scopes);
             }
             Stmt::Math(exprs) => {
@@ -629,6 +629,9 @@ impl<'a> Checker<'a> {
                 }
             }
             Stmt::Requires(expr, _) => {
+                self.infer_expr(expr, scopes);
+            }
+            Stmt::Invariant(expr, _) => {
                 self.infer_expr(expr, scopes);
             }
             Stmt::Ensures(expr, _) => {

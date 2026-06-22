@@ -76,6 +76,7 @@ pub fn keyword_or_ident(name: &str) -> TokenKind {
         "failure" => TokenKind::Failure,
         "requires" => TokenKind::Requires,
         "ensures" => TokenKind::Ensures,
+        "invariant" => TokenKind::Invariant,
         "math" => TokenKind::Math,
         "desc" => TokenKind::Desc,
         "rule" => TokenKind::Rule,

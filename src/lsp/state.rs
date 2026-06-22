@@ -94,7 +94,7 @@ impl LspServer {
         let has_contracts = func
             .body
             .iter()
-            .any(|s| matches!(s, Stmt::Requires(_, _) | Stmt::Ensures(_, _) | Stmt::MmsBlock { .. }));
+            .any(|s| matches!(s, Stmt::Requires(_, _) | Stmt::Ensures(_, _) | Stmt::Invariant(_, _) | Stmt::MmsBlock { .. }));
         if !has_contracts {
             return diagnostics;
         }

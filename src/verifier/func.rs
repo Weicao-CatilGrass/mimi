@@ -170,9 +170,11 @@ impl crate::verifier::Verifier {
 
         let mut requires_exprs: Vec<Expr> = Vec::new();
         let mut ensures_exprs: Vec<Expr> = Vec::new();
+        let mut invariant_exprs: Vec<Expr> = Vec::new();
         let mut math_exprs: Vec<Expr> = Vec::new();
         let mut requires_spans: Vec<Span> = Vec::new();
         let mut ensures_spans: Vec<Span> = Vec::new();
+        let mut invariant_spans: Vec<Span> = Vec::new();
 
         for stmt in &func.body {
             match stmt {
@@ -183,6 +185,10 @@ impl crate::verifier::Verifier {
                 Stmt::Ensures(expr, span) => {
                     ensures_exprs.push(expr.clone());
                     ensures_spans.push(*span);
+                }
+                Stmt::Invariant(expr, span) => {
+                    invariant_exprs.push(expr.clone());
+                    invariant_spans.push(*span);
                 }
                 Stmt::Math(exprs) => math_exprs.extend(exprs.clone()),
                 Stmt::MmsBlock {
@@ -288,6 +294,12 @@ impl crate::verifier::Verifier {
             }
         }
 
+        for inv in &invariant_exprs {
+            if let Some(z3_bool) = self.expr_to_z3_bool(inv, &vars) {
+                self.solver.assert(&z3_bool);
+            }
+        }
+
         for (i, p) in func.params.iter().enumerate() {
             let old_name = old_names[i].as_str();
             let param_z3 = vars.get_int(p.name.as_str()).cloned();
@@ -326,6 +338,7 @@ impl crate::verifier::Verifier {
             .filter(|p| matches!(&p.ty, Type::Name(n, _) if n == "f64"))
             .count();
         let constraint_count = requires_exprs.len()
+            + invariant_exprs.len()
             + math_exprs.len()
             + func.params.len() // old_* equality constraints (int)
             + num_real_params // old_* equality constraints (real)
