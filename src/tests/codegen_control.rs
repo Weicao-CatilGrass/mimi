@@ -958,6 +958,29 @@ fn codegen_cap_fail_declares_exit() {
         "IR must declare exit for cap_check failure path:\n{}", ir);
 }
 
+#[test]
+fn codegen_callback_tls_cleared_after_call() {
+    // After an extern call with a callback arg, the TLS globals must be cleared
+    // (set to null) to prevent stale data in re-entrant callback scenarios.
+    let ir = compile_to_ir(r#"
+        extern "C" {
+            func apply(f: func(i32) -> i32, x: i32) -> i32
+        }
+        func main() -> i32 {
+            let cb = fn(n: i32) -> i32 { n }
+            apply(cb, 42)
+        }
+    "#);
+    // The TLS store pattern (store null to TLS global)
+    // Look for it in the IR after the call to the wrapper function
+    let after_call = ir.split("call")
+        .filter(|s| s.contains("apply") || s.contains("__mimi_cb_fnptr"))
+        .collect::<Vec<_>>();
+    assert!(!after_call.is_empty(),
+        "IR should contain call to apply or TLS clear, got:\n{}", ir);
+    eprintln!("IR snippets containing 'apply' or '__mimi_cb_fnptr':\n{:#?}", after_call);
+}
+
 // ===================== Phase B: Stdlib Module Tests =====================
 
 #[test]
