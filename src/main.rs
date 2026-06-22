@@ -160,6 +160,9 @@ enum Command {
         /// Build as shared library (.so) instead of executable
         #[arg(long)]
         shared: bool,
+        /// Target triple for cross-compilation (e.g. x86_64-pc-windows-gnu)
+        #[arg(long)]
+        target: Option<String>,
     },
     /// Generate C header file from extern declarations
     EmitCHeaders {
@@ -262,7 +265,7 @@ fn main() {
         Command::Fmt { files, check } => fmt_cmd::fmt_files(&files, check),
         Command::Lint { files } => lint_cmd::lint_files(&files),
         Command::Verify { path } => verify::verify(path.as_deref()),
-        Command::Build { path, output, emit_ir, strict, no_std, verify_contracts, verify_ffi, shared } => build::build(path.as_deref(), output.as_deref(), emit_ir, strict, no_std, verify_contracts, verify_ffi, shared),
+        Command::Build { path, output, emit_ir, strict, no_std, verify_contracts, verify_ffi, shared, target } => build::build(path.as_deref(), output.as_deref(), emit_ir, strict, no_std, verify_contracts, verify_ffi, shared, target.as_deref()),
         Command::EmitCHeaders { path, output } => emit::emit_c_headers(path.as_deref(), output.as_deref()),
         Command::EmitPyBindings { path, output, mimi_lib } => emit::emit_py_bindings(path.as_deref(), output.as_deref(), mimi_lib.as_deref()),
         Command::Promote { path, output } => promote::promote(&path, output.as_deref()),

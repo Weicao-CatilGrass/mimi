@@ -71,6 +71,9 @@ pub struct CodeGenerator<'ctx> {
     pub no_std: bool,
     pub shared: bool,
     pub verify_contracts: bool,
+    /// Optional target triple for cross-compilation (e.g. "x86_64-pc-windows-gnu").
+    /// When None, defaults to the host target.
+    pub target_triple: Option<String>,
     in_parasteps: bool,
     /// Pairs of (thread_id, result_type) for spawned threads inside parasteps.
     parasteps_thread_ids: Vec<(inkwell::values::IntValue<'ctx>, BasicTypeEnum<'ctx>)>,
@@ -139,7 +142,7 @@ impl<'ctx> CodeGenerator<'ctx> {
         let module = context.create_module(module_name);
         let builder = context.create_builder();
         builtins::register_runtime(&module, context);
-        Self { context, module, builder, loop_break: None, loop_continue: None, type_defs: HashMap::new(), type_llvm: HashMap::new(), cap_vars: vec![HashMap::new()], cap_type_names: std::collections::HashSet::new(), type_map: HashMap::new(), func_defs: HashMap::new(), var_type_names: HashMap::new(), spawn_counter: 0, strict: false, no_std: false, shared: false, verify_contracts: true, compensation_blocks: Vec::new(), comp_scope_stack: Vec::new(), shared_release_vars: vec![Vec::new()], weak_release_vars: vec![Vec::new()], shared_var_names: std::collections::HashSet::new(), heap_allocs: std::cell::RefCell::new(vec![Vec::new()]), ensures_stmts: Vec::new(), old_snapshots: HashMap::new(), comptime_func_names: std::collections::HashSet::new(), in_parasteps: false, parasteps_thread_ids: Vec::new(), trait_defs: HashMap::new(), type_impls: HashMap::new(), vtable_globals: HashMap::new(), vtable_types: HashMap::new(), extern_param_types: HashMap::new(), callback_thunk_counter: 0, callback_thunks: HashMap::new(), spawn_result_types: HashMap::new(), pending_spawn_type: None, record_type_names: std::collections::HashSet::new(), repr_c_record_names: std::collections::HashSet::new(), tuple_type_stack: Vec::new(), pending_len_is_string: false, fn_ptr_var_names: std::collections::HashSet::new(), extern_func_defs: HashMap::new(), extern_block_abis: HashMap::new(), pending_callback_tls: Vec::new() }
+        Self { context, module, builder, loop_break: None, loop_continue: None, type_defs: HashMap::new(), type_llvm: HashMap::new(), cap_vars: vec![HashMap::new()], cap_type_names: std::collections::HashSet::new(), type_map: HashMap::new(), func_defs: HashMap::new(), var_type_names: HashMap::new(), spawn_counter: 0, strict: false, no_std: false, shared: false, verify_contracts: true, target_triple: None, compensation_blocks: Vec::new(), comp_scope_stack: Vec::new(), shared_release_vars: vec![Vec::new()], weak_release_vars: vec![Vec::new()], shared_var_names: std::collections::HashSet::new(), heap_allocs: std::cell::RefCell::new(vec![Vec::new()]), ensures_stmts: Vec::new(), old_snapshots: HashMap::new(), comptime_func_names: std::collections::HashSet::new(), in_parasteps: false, parasteps_thread_ids: Vec::new(), trait_defs: HashMap::new(), type_impls: HashMap::new(), vtable_globals: HashMap::new(), vtable_types: HashMap::new(), extern_param_types: HashMap::new(), callback_thunk_counter: 0, callback_thunks: HashMap::new(), spawn_result_types: HashMap::new(), pending_spawn_type: None, record_type_names: std::collections::HashSet::new(), repr_c_record_names: std::collections::HashSet::new(), tuple_type_stack: Vec::new(), pending_len_is_string: false, fn_ptr_var_names: std::collections::HashSet::new(), extern_func_defs: HashMap::new(), extern_block_abis: HashMap::new(), pending_callback_tls: Vec::new() }
     }
 
     fn current_function(&self) -> Option<inkwell::values::FunctionValue<'ctx>> {
@@ -541,25 +544,40 @@ impl<'ctx> CodeGenerator<'ctx> {
     }
 
     pub fn compile_to_object(&self, output_path: &Path) -> Result<(), CompileError> {
-        Target::initialize_native(&InitializationConfig::default())
-            .map_err(|e| format!("failed to initialize target: {}", e))?;
-        let triple = TargetMachine::get_default_triple();
-        let triple_str = triple.as_str().to_string_lossy().to_string();
-        let triple_ref = if self.no_std {
+        // Initialize the appropriate LLVM target(s):
+        // - Native build: initialize only the host target
+        // - Cross-compilation: initialize all registered targets
+        if self.target_triple.is_some() {
+            Target::initialize_all(&InitializationConfig::default());
+        } else {
+            Target::initialize_native(&InitializationConfig::default())
+                .map_err(|e| format!("failed to initialize native target: {}", e))?;
+        }
+        let triple_str = self.target_triple.clone()
+            .unwrap_or_else(|| {
+                TargetMachine::get_default_triple().as_str().to_string_lossy().to_string()
+            });
+        let triple_str_ref = if self.no_std {
             let parts: Vec<&str> = triple_str.split('-').collect();
-            let freestanding = if parts.len() >= 3 {
+            if parts.len() >= 3 {
                 format!("{}-{}-none", parts[0], parts[1])
             } else {
                 format!("{}-none", parts[0])
-            };
-            inkwell::targets::TargetTriple::create(&freestanding)
+            }
         } else {
-            triple
+            triple_str
         };
+        let triple_ref = inkwell::targets::TargetTriple::create(&triple_str_ref);
         let target = Target::from_triple(&triple_ref)
             .map_err(|e| format!("failed to find target for triple '{}': {}", triple_ref, e))?;
-        let cpu = TargetMachine::get_host_cpu_name().to_string();
-        let features = TargetMachine::get_host_cpu_features().to_string();
+        // When cross-compiling, use target defaults for CPU/features.
+        // For native builds, use the host CPU for best performance.
+        let (cpu, features) = if self.target_triple.is_some() {
+            (String::new(), String::new())
+        } else {
+            (TargetMachine::get_host_cpu_name().to_string(),
+             TargetMachine::get_host_cpu_features().to_string())
+        };
         let reloc_mode = if self.shared { RelocMode::PIC } else { RelocMode::Default };
         let tm = target.create_target_machine(
             &triple_ref, &cpu, &features,

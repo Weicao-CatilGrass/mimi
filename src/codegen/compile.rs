@@ -134,13 +134,25 @@ impl<'ctx> CodeGenerator<'ctx> {
     /// Run LLVM optimization passes on the module (O2).
     /// Called from compile_to_object during actual builds.
     pub fn optimize_module(&self) -> MimiResult<()> {
-        Target::initialize_native(&InitializationConfig::default())
-            .map_err(|e| CompileError::LlvmError(format!("failed to initialize target: {}", e)))?;
-        let triple = TargetMachine::get_default_triple();
+        if self.target_triple.is_some() {
+            Target::initialize_all(&InitializationConfig::default());
+        } else {
+            Target::initialize_native(&InitializationConfig::default())
+                .map_err(|e| CompileError::LlvmError(format!("failed to initialize target: {}", e)))?;
+        }
+        let triple_str = self.target_triple.clone()
+            .unwrap_or_else(|| {
+                TargetMachine::get_default_triple().as_str().to_string_lossy().to_string()
+            });
+        let triple = inkwell::targets::TargetTriple::create(&triple_str);
         let target = Target::from_triple(&triple)
             .map_err(|e| CompileError::LlvmError(format!("failed to find target: {}", e)))?;
-        let cpu = TargetMachine::get_host_cpu_name().to_string();
-        let features = TargetMachine::get_host_cpu_features().to_string();
+        let (cpu, features) = if self.target_triple.is_some() {
+            (String::new(), String::new())
+        } else {
+            (TargetMachine::get_host_cpu_name().to_string(),
+             TargetMachine::get_host_cpu_features().to_string())
+        };
         let tm = target.create_target_machine(
             &triple, &cpu, &features,
             OptimizationLevel::Aggressive,
