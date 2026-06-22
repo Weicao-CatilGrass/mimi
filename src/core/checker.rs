@@ -8,7 +8,6 @@ use super::borrow::BorrowState;
 pub(crate) struct Checker<'a> {
     pub(crate) file: &'a File,
     pub(crate) errors: Vec<Diagnostic>,
-    #[allow(dead_code)]
     pub(crate) warnings: Vec<Diagnostic>,
     pub(crate) funcs: HashMap<String, (Vec<Type>, Type)>,
     pub(crate) aliases: HashMap<String, Type>,
@@ -113,6 +112,11 @@ impl<'a> Checker<'a> {
     pub(crate) fn emit_code(&mut self, code: &str, msg: impl Into<String>) {
         let span = Span::single(self.current_line, self.current_col);
         self.errors.push(Diagnostic::error_code(code, msg, span));
+    }
+
+    pub(crate) fn emit_warning_code(&mut self, code: &str, msg: impl Into<String>) {
+        let span = Span::single(self.current_line, self.current_col);
+        self.warnings.push(Diagnostic::warning_code(code, msg, span));
     }
 }
 

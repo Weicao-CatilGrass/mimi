@@ -65,6 +65,87 @@ impl<'a> Checker<'a> {
         }
     }
 
+    /// Collect names of shared variables written to in a parasteps statement.
+    /// Recurses into sub-blocks (if, while, for, block).
+    fn collect_shared_writes_in_stmt(
+        &self,
+        stmt: &Stmt,
+        scopes: &[HashMap<String, Type>],
+        writes: &mut Vec<String>,
+    ) {
+        match stmt {
+            Stmt::Assign { target, .. } => {
+                self.collect_shared_writes_in_expr_target(target, scopes, writes);
+            }
+            Stmt::Expr(Expr::Call(callee, args)) => {
+                if let Expr::Ident(name) = callee.as_ref() {
+                    if name == "push" && !args.is_empty() {
+                        if let Expr::Ident(list_name) = &args[0] {
+                            self.collect_shared_write(list_name, scopes, writes);
+                        }
+                    }
+                }
+            }
+            Stmt::If { then_, else_, .. } => {
+                for s in then_ { self.collect_shared_writes_in_stmt(s, scopes, writes); }
+                if let Some(else_) = else_ {
+                    for s in else_ { self.collect_shared_writes_in_stmt(s, scopes, writes); }
+                }
+            }
+            Stmt::While { body, .. } => {
+                for s in body { self.collect_shared_writes_in_stmt(s, scopes, writes); }
+            }
+            Stmt::For { body, .. } => {
+                for s in body { self.collect_shared_writes_in_stmt(s, scopes, writes); }
+            }
+            Stmt::Block(block) | Stmt::Unsafe(block) | Stmt::Alloc { body: block, .. } => {
+                for s in block { self.collect_shared_writes_in_stmt(s, scopes, writes); }
+            }
+            _ => {}
+        }
+    }
+
+    /// Extract shared variable writes from an assignment target expression.
+    fn collect_shared_writes_in_expr_target(
+        &self,
+        expr: &Expr,
+        scopes: &[HashMap<String, Type>],
+        writes: &mut Vec<String>,
+    ) {
+        match expr {
+            Expr::Ident(name) => {
+                self.collect_shared_write(name, scopes, writes);
+            }
+            Expr::Field(obj, _) => {
+                self.collect_shared_writes_in_expr_target(obj, scopes, writes);
+            }
+            Expr::Index(obj, _) => {
+                self.collect_shared_writes_in_expr_target(obj, scopes, writes);
+            }
+            Expr::Unary(UnOp::Deref, inner) => {
+                self.collect_shared_writes_in_expr_target(inner, scopes, writes);
+            }
+            _ => {}
+        }
+    }
+
+    /// If `name` refers to a shared variable in the given scopes, add it to writes.
+    fn collect_shared_write(
+        &self,
+        name: &str,
+        scopes: &[HashMap<String, Type>],
+        writes: &mut Vec<String>,
+    ) {
+        for scope in scopes.iter().rev() {
+            if let Some(ty) = scope.get(name) {
+                if matches!(ty, Type::Shared(_)) {
+                    writes.push(name.to_string());
+                }
+                break;
+            }
+        }
+    }
+
     /// Check that an expression doesn't reference local_shared variables
     fn check_expr_parasteps_safe(&mut self, expr: &Expr, scopes: &mut Vec<HashMap<String, Type>>) {
         match expr {
@@ -363,6 +444,24 @@ impl<'a> Checker<'a> {
                 // Check that no local_shared variables are captured from outer scope
                 for stmt in block {
                     self.check_stmt_parasteps_safe(stmt, scopes);
+                }
+                // W005: Detect shared variable written by multiple parallel steps
+                let step_writes: Vec<Vec<String>> = block.iter().map(|stmt| {
+                    let mut writes = Vec::new();
+                    self.collect_shared_writes_in_stmt(stmt, scopes, &mut writes);
+                    writes
+                }).collect();
+                for i in 0..step_writes.len() {
+                    for j in (i + 1)..step_writes.len() {
+                        for var in &step_writes[i] {
+                            if step_writes[j].contains(var) {
+                                self.emit_warning_code(
+                                    crate::diagnostic::codes::W005,
+                                    format!("shared variable '{}' is written by multiple parallel steps in parasteps — this may cause data races", var),
+                                );
+                            }
+                        }
+                    }
                 }
                 // Then type-check all statements
                 scopes.push(HashMap::new());

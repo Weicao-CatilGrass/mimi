@@ -473,3 +473,92 @@ func main() -> i32 { ok_normal(1) }
     let result = check_source(src);
     assert!(result.is_ok(), "expected no error for contract without shared param, got: {:?}", result);
 }
+
+#[test]
+fn warn_shared_write_write_parasteps() {
+    // Two steps writing to the same shared var → W005
+    let src = r#"
+func main() -> i32 {
+    shared x = 0
+    parasteps {
+        *x = 1
+        *x = 2
+    }
+    0
+}
+"#;
+    let warnings = check_source_warnings(src);
+    let has_w005 = warnings.iter().any(|w| w.code.as_deref() == Some(crate::diagnostic::codes::W005));
+    assert!(has_w005, "expected W005 warning for shared var written by multiple steps, got: {:?}", warnings);
+}
+
+#[test]
+fn warn_shared_push_same_list_parasteps() {
+    // push on same shared list in multiple steps → W005
+    let src = r#"
+func main() -> i32 {
+    shared xs = [1, 2, 3]
+    parasteps {
+        push(xs, 4)
+        push(xs, 5)
+    }
+    0
+}
+"#;
+    let warnings = check_source_warnings(src);
+    let has_w005 = warnings.iter().any(|w| w.code.as_deref() == Some(crate::diagnostic::codes::W005));
+    assert!(has_w005, "expected W005 warning for push on shared list from multiple steps, got: {:?}", warnings);
+}
+
+#[test]
+fn warn_no_shared_write_write_parasteps() {
+    // Two steps writing to different shared vars → no W005
+    let src = r#"
+func main() -> i32 {
+    shared x = 0
+    shared y = 0
+    parasteps {
+        *x = 1
+        *y = 2
+    }
+    0
+}
+"#;
+    let warnings = check_source_warnings(src);
+    let has_w005 = warnings.iter().any(|w| w.code.as_deref() == Some(crate::diagnostic::codes::W005));
+    assert!(!has_w005, "expected no W005 for different shared vars, got: {:?}", warnings);
+}
+
+#[test]
+fn warn_no_shared_write_single_step_parasteps() {
+    // Single step writes to shared var → no W005
+    let src = r#"
+func main() -> i32 {
+    shared x = 0
+    parasteps {
+        *x = 1
+    }
+    0
+}
+"#;
+    let warnings = check_source_warnings(src);
+    let has_w005 = warnings.iter().any(|w| w.code.as_deref() == Some(crate::diagnostic::codes::W005));
+    assert!(!has_w005, "expected no W005 for single step, got: {:?}", warnings);
+}
+
+#[test]
+fn warn_no_shared_no_parasteps_write() {
+    // No shared vars in parasteps → no W005
+    let src = r#"
+func main() -> i32 {
+    let x = 0
+    parasteps {
+        x = 1
+    }
+    0
+}
+"#;
+    let warnings = check_source_warnings(src);
+    let has_w005 = warnings.iter().any(|w| w.code.as_deref() == Some(crate::diagnostic::codes::W005));
+    assert!(!has_w005, "expected no W005 for non-shared vars, got: {:?}", warnings);
+}

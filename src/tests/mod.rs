@@ -190,6 +190,13 @@ pub(crate) fn check_source_strict(src: &str) -> Result<(), Vec<crate::diagnostic
     core::check_strict(&file)
 }
 
+pub(crate) fn check_source_warnings(src: &str) -> Vec<crate::diagnostic::Diagnostic> {
+    let file = parse(src);
+    let mut checker = crate::core::Checker::new(&file);
+    let _ = checker.check();
+    checker.warnings
+}
+
 /// End-to-end codegen test: compile Mimi source -> LLVM -> native binary -> execute -> return stdout
 /// Requires `cc` and `ld` on PATH. Skips test if linker is unavailable.
 static E2E_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
