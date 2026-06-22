@@ -489,12 +489,20 @@ impl<'ctx> CodeGenerator<'ctx> {
                     self.builder.build_conditional_branch(is_valid, ok_bb, fail_bb)
                         .map_err(|e| CompileError::LlvmError(format!("branch error: {}", e)))?;
                     self.builder.position_at_end(fail_bb);
-                    if let Some(exit_fn) = self.module.get_function("exit") {
-                        self.builder.build_call(exit_fn, &[
-                            BasicMetadataValueEnum::IntValue(self.context.i32_type().const_int(1, false)),
-                        ], "cap_fail_exit")
-                            .map_err(|e| CompileError::LlvmError(format!("exit error: {}", e)))?;
-                    }
+                    let exit_fn = match self.module.get_function("exit") {
+                        Some(f) => f,
+                        None => {
+                            let exit_ty = self.context.void_type().fn_type(
+                                &[BasicMetadataTypeEnum::IntType(self.context.i32_type())],
+                                false,
+                            );
+                            self.module.add_function("exit", exit_ty, None)
+                        }
+                    };
+                    self.builder.build_call(exit_fn, &[
+                        BasicMetadataValueEnum::IntValue(self.context.i32_type().const_int(1, false)),
+                    ], "cap_fail_exit")
+                        .map_err(|e| CompileError::LlvmError(format!("exit error: {}", e)))?;
                     self.builder.build_unconditional_branch(ok_bb)
                         .map_err(|e| CompileError::LlvmError(format!("branch error: {}", e)))?;
                     self.builder.position_at_end(ok_bb);
