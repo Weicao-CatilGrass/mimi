@@ -1,0 +1,57 @@
+// csv.mimi — CSV parsing and serialization
+//
+// Uses str_split for parsing. Nested mutable list building is
+// avoided due to type checker limitations.
+
+// parse: Splits CSV into rows (each row is a list of fields).
+// Does NOT handle quoted fields with embedded commas — use
+// a dedicated CSV library for production use.
+pub func parse(csv_str: string) -> List<List<string>> {
+    let lines: List<string> = str_split(csv_str, "\n")
+    let mut rows = []
+    let mut li = 0
+    while li < len(lines) {
+        let fields: List<string> = str_split(lines[li], ",")
+        push(rows, fields)
+        li = li + 1
+    }
+    rows
+}
+
+func serialize_field(field: string) -> string {
+    if str_contains(field, ",") || str_contains(field, "\"") || str_contains(field, "\n") {
+        "\"" + str_replace(field, "\"", "\"\"") + "\""
+    } else {
+        field
+    }
+}
+
+// serialize_row: Serializes fields into CSV line.
+pub func serialize_row(row: List<string>) -> string {
+    let mut parts = []
+    let mut i = 0
+    while i < len(row) {
+        push(parts, serialize_field(row[i]))
+        i = i + 1
+    }
+    str_join(parts, ",")
+}
+
+// serialize: Serializes rows into CSV string.
+pub func serialize(rows: List<List<string>>) -> string {
+    let mut lines = []
+    let mut i = 0
+    while i < len(rows) {
+        push(lines, serialize_row(rows[i]))
+        i = i + 1
+    }
+    str_join(lines, "\n")
+}
+
+// get: Gets cell at (row, col). Returns "" if out of bounds.
+pub func get(rows: List<List<string>>, row: i32, col: i32) -> string {
+    if row < 0 || row >= len(rows) { return "" }
+    let r: List<string> = rows[row]
+    if col < 0 || col >= len(r) { return "" }
+    r[col]
+}
