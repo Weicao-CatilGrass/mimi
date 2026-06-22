@@ -26,6 +26,14 @@ pub fn mimi_type_to_llvm<'ctx>(ctx: &'ctx Context, ty: &Type) -> Option<BasicTyp
                 let disc = BasicTypeEnum::IntType(ctx.bool_type());
                 Some(BasicTypeEnum::StructType(ctx.struct_type(&[disc, inner], false)))
             }
+            "List" => {
+                let i8_ptr = ctx.i8_type().ptr_type(AddressSpace::default());
+                let i64 = ctx.i64_type();
+                Some(BasicTypeEnum::StructType(ctx.struct_type(&[
+                    BasicTypeEnum::IntType(i64),
+                    BasicTypeEnum::PointerType(i8_ptr),
+                ], false)))
+            }
             "unit" | "nothing" => None,
             _ => Some(BasicTypeEnum::IntType(ctx.i64_type())),
         },

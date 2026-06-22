@@ -109,6 +109,36 @@ impl<'ctx> CodeGenerator<'ctx> {
                 self.builder.build_load(BasicTypeEnum::IntType(self.context.i64_type()), elem_ptr, "elem_val")
                     .map_err(|e| CompileError::LlvmError(format!("load error: {}", e)))
             }
+            BasicValueEnum::StructValue(sv) => {
+                let sv_ty = sv.get_type();
+                let list_alloca = self.builder.build_alloca(sv_ty, "list_tmp")
+                    .map_err(|e| CompileError::LlvmError(format!("list alloca: {}", e)))?;
+                self.builder.build_store(list_alloca, sv)
+                    .map_err(|e| CompileError::LlvmError(format!("store list: {}", e)))?;
+                let idx_iv = match idx_val {
+                    BasicValueEnum::IntValue(iv) => iv,
+                    _ => return Err("index must be i64".into()),
+                };
+                let list_ty = self.context.struct_type(&[
+                    BasicTypeEnum::IntType(self.context.i64_type()),
+                    BasicTypeEnum::PointerType(self.context.ptr_type(inkwell::AddressSpace::default())),
+                ], false);
+                let data_gep = self.builder.build_struct_gep(list_ty, list_alloca, 1, "list.data")
+                    .map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?;
+                let data_ptr = self.builder.build_load(
+                    BasicTypeEnum::PointerType(self.context.ptr_type(inkwell::AddressSpace::default())),
+                    data_gep, "data",
+                ).map_err(|e| CompileError::LlvmError(format!("load error: {}", e)))?.into_pointer_value();
+                let data_ptr_i64 = self.builder.build_bit_cast(data_ptr,
+                    self.context.i64_type().ptr_type(inkwell::AddressSpace::default()),
+                    "data_i64",
+                ).map_err(|e| CompileError::LlvmError(format!("bitcast error: {}", e)))?.into_pointer_value();
+                let elem_ptr = unsafe {
+                    self.builder.build_gep(self.context.i64_type(), data_ptr_i64, &[idx_iv], "elem")
+                }.map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?;
+                self.builder.build_load(BasicTypeEnum::IntType(self.context.i64_type()), elem_ptr, "elem_val")
+                    .map_err(|e| CompileError::LlvmError(format!("load error: {}", e)))
+            }
             BasicValueEnum::ArrayValue(_av) => {
                 // Direct LLVM array value: extract element by index
                 let idx = match idx_val {

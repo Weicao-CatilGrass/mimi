@@ -59,6 +59,8 @@ declare ptr @mimi_str_split(ptr, ptr)
 
 declare ptr @mimi_str_join(ptr, ptr)
 
+declare ptr @mimi_str_concat(ptr, ptr)
+
 declare ptr @mimi_str_replace(ptr, ptr, ptr)
 
 declare void @mimi_try_exit(i64)

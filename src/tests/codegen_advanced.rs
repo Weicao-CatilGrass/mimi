@@ -509,8 +509,8 @@ fn adv_comptime_block_error_message() {
 }
 
 #[test]
-fn adv_comptime_func_call_error_message() {
-    // eedf8be: calling a comptime function from runtime produces a specific error
+fn adv_comptime_func_call_works() {
+    // comptime functions are compiled in codegen/JIT mode and can be called at runtime
     let src = r#"
         comptime func get_magic() -> i64 { 42 }
         func main() -> i64 { get_magic() }
@@ -518,11 +518,8 @@ fn adv_comptime_func_call_error_message() {
     let file = parse(src);
     let context = inkwell::context::Context::create();
     let mut codegen = crate::codegen::CodeGenerator::new(&context, "test");
-    let err = codegen.compile_file(&file).unwrap_err().to_string();
-    assert!(err.contains("comptime function"),
-        "comptime call error should mention 'comptime function', got: {}", err);
-    assert!(err.contains("compile-time only"),
-        "comptime call error should say 'compile-time only', got: {}", err);
+    assert!(codegen.compile_file(&file).is_ok(),
+        "comptime function should be compilable in codegen mode");
 }
 
 #[test]

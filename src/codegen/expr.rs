@@ -40,6 +40,27 @@ impl<'ctx> CodeGenerator<'ctx> {
             Expr::SliceExpr { target, start, end } => self.compile_slice_expr(target, start, end, vars),
             Expr::Lambda { params, ret, body } => self.compile_lambda_expr(params, ret, body, vars),
             Expr::Comprehension { expr: comp_expr, var, iter, guard } => self.compile_comprehension_expr(comp_expr, var, iter, guard, vars),
+            Expr::Arena(block) => {
+                let function = self.current_function()
+                    .ok_or_else(|| CompileError::LlvmError("arena outside function".to_string()))?;
+                let arena_body_bb = self.context.append_basic_block(function, "arena_expr_body");
+                let arena_cont_bb = self.context.append_basic_block(function, "arena_expr_cont");
+                if !self.block_has_terminator() {
+                    self.builder.build_unconditional_branch(arena_body_bb)
+                        .map_err(|e| CompileError::LlvmError(format!("branch error: {}", e)))?;
+                }
+                self.builder.position_at_end(arena_body_bb);
+                let saved = self.build_stacksave()?;
+                let mut arena_vars = vars.clone();
+                let val = self.compile_block_last_val(block, &mut arena_vars)?;
+                self.build_stackrestore(saved)?;
+                if !self.block_has_terminator() {
+                    self.builder.build_unconditional_branch(arena_cont_bb)
+                        .map_err(|e| CompileError::LlvmError(format!("branch error: {}", e)))?;
+                }
+                self.builder.position_at_end(arena_cont_bb);
+                Ok(val)
+            }
             Expr::Block(block) => {
                 let mut block_vars = vars.clone();
                 self.compile_block_last_val(block, &mut block_vars)
@@ -100,6 +121,9 @@ impl<'ctx> CodeGenerator<'ctx> {
         } else if name == "None" {
             // Bare built-in None constructor (e.g. `let x: Option<i32> = None`)
             self.compile_constructor("None", vec![])
+        } else if let Some(function) = self.module.get_function(name) {
+            // First-class function reference: return function pointer as value
+            Ok(function.as_global_value().as_pointer_value().into())
         } else {
             Err(format!("undefined variable '{}'", name).into())
         }

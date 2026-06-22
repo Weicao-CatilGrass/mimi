@@ -4,6 +4,7 @@ use std::collections::HashMap;
 
 use inkwell::types::BasicTypeEnum;
 use inkwell::values::{BasicMetadataValueEnum, BasicValueEnum};
+use inkwell::AddressSpace;
 
 use crate::error::{CompileError, MimiResult};
 
@@ -589,6 +590,26 @@ impl<'ctx> CodeGenerator<'ctx> {
         // Check for unconsumed capabilities before returning
         self.check_unconsumed_caps()?;
         
+        // Convert pointer-to-struct to struct value when return type expects a struct
+        // Must happen BEFORE free_heap_allocs to null out heap data pointers in the original struct,
+        // preventing use-after-free on the returned value's heap-allocated data.
+        let last_val = match (last_val, ret_type) {
+            (BasicValueEnum::PointerValue(pv), BasicTypeEnum::StructType(st)) => {
+                let loaded = self.builder.build_load(BasicTypeEnum::StructType(st), pv, "ret_load")
+                    .map_err(|e| CompileError::LlvmError(format!("load return struct: {}", e)))?;
+                // Null out field at index 1 (data pointer) to prevent free_heap_allocs from freeing
+                // the heap data that's now owned by the caller via the returned struct value.
+                if st.get_field_types().len() > 1 {
+                    let null_ptr = self.context.i8_type().ptr_type(AddressSpace::default()).const_null();
+                    if let Ok(data_gep) = self.builder.build_struct_gep(st, pv, 1, "ret_data_null") {
+                        let _ = self.builder.build_store(data_gep, null_ptr);
+                    }
+                }
+                loaded
+            }
+            _ => last_val,
+        };
+
         // Pop scopes (discard compensations on normal exit)
         self.release_all_shared()?;
         self.free_heap_allocs()?;
@@ -597,8 +618,17 @@ impl<'ctx> CodeGenerator<'ctx> {
 
         if !self.block_has_terminator() {
             let ensures = self.ensures_stmts.clone();
-            for ensures_expr in &ensures {
-                self.compile_contract_assert(ensures_expr, &vars, &format!("ensures violation in '{}'", func.name))?;
+            if !ensures.is_empty() {
+                let result_alloca = self.builder.build_alloca(ret_type, "result")
+                    .map_err(|e| CompileError::LlvmError(format!("result alloca: {}", e)))?;
+                let adjusted = self.adjust_int_val(last_val, ret_type)?;
+                self.builder.build_store(result_alloca, adjusted)
+                    .map_err(|e| CompileError::LlvmError(format!("result store: {}", e)))?;
+                let mut ensures_vars = vars.clone();
+                ensures_vars.insert("result".to_string(), (result_alloca, ret_type));
+                for ensures_expr in &ensures {
+                    self.compile_contract_assert(ensures_expr, &ensures_vars, &format!("ensures violation in '{}'", func.name))?;
+                }
             }
         }
         let last_val = self.adjust_int_val(last_val, ret_type)?;
@@ -721,14 +751,42 @@ impl<'ctx> CodeGenerator<'ctx> {
 
         self.check_unconsumed_caps()?;
         self.pop_comp_scope();
+
+        // Convert pointer-to-struct to struct value when return type expects a struct
+        // Must happen BEFORE free_heap_allocs to null out heap data pointers in the original struct,
+        // preventing use-after-free on the returned value's heap-allocated data.
+        let last_val = match (last_val, ret_type) {
+            (BasicValueEnum::PointerValue(pv), BasicTypeEnum::StructType(st)) => {
+                let loaded = self.builder.build_load(BasicTypeEnum::StructType(st), pv, "ret_load")
+                    .map_err(|e| CompileError::LlvmError(format!("load return struct: {}", e)))?;
+                if st.get_field_types().len() > 1 {
+                    let null_ptr = self.context.i8_type().ptr_type(AddressSpace::default()).const_null();
+                    if let Ok(data_gep) = self.builder.build_struct_gep(st, pv, 1, "ret_data_null") {
+                        let _ = self.builder.build_store(data_gep, null_ptr);
+                    }
+                }
+                loaded
+            }
+            _ => last_val,
+        };
+
         self.free_heap_allocs()?;
         self.release_all_shared()?;
         self.pop_cap_scope();
 
         if !self.block_has_terminator() {
             let ensures = self.ensures_stmts.clone();
-            for ensures_expr in &ensures {
-                self.compile_contract_assert(ensures_expr, &vars, &format!("ensures violation in '{}'", func.name))?;
+            if !ensures.is_empty() {
+                let result_alloca = self.builder.build_alloca(ret_type, "result")
+                    .map_err(|e| CompileError::LlvmError(format!("result alloca: {}", e)))?;
+                let adjusted = self.adjust_int_val(last_val, ret_type)?;
+                self.builder.build_store(result_alloca, adjusted)
+                    .map_err(|e| CompileError::LlvmError(format!("result store: {}", e)))?;
+                let mut ensures_vars = vars.clone();
+                ensures_vars.insert("result".to_string(), (result_alloca, ret_type));
+                for ensures_expr in &ensures {
+                    self.compile_contract_assert(ensures_expr, &ensures_vars, &format!("ensures violation in '{}'", func.name))?;
+                }
             }
             let adjusted = self.adjust_int_val(last_val, ret_type)?;
             self.builder.build_return(Some(&adjusted)).map_err(|e| CompileError::LlvmError(format!("return error: {}", e)))?;

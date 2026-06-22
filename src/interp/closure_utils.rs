@@ -174,6 +174,11 @@ pub(crate) fn collect_expr_free_vars(
         Expr::TypeOf(inner) => {
             collect_expr_free_vars(inner, bound, free);
         }
+        Expr::Arena(block) => {
+            for s in block {
+                collect_stmt_free_vars(s, bound, free, &mut bound.clone());
+            }
+        }
         Expr::Block(block) => {
             for s in block {
                 collect_stmt_free_vars(s, bound, free, &mut bound.clone());

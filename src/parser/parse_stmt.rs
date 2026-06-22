@@ -68,6 +68,7 @@ impl Parser {
                 self.skip_newlines();
                 self.expect(TokenKind::LBrace, "`{`")?;
                 let body = self.parse_block()?;
+                self.match_semi();
                 Ok(Stmt::Parasteps(body))
             }
             TokenKind::Ident(s) if s == "on" => {
@@ -122,6 +123,7 @@ impl Parser {
         self.skip_newlines();
         self.expect(TokenKind::LBrace, "`{`")?;
         let body = self.parse_block()?;
+        self.match_semi();
         Ok(Stmt::Arena(body))
     }
 
@@ -130,6 +132,7 @@ impl Parser {
         self.skip_newlines();
         self.expect(TokenKind::LBrace, "`{`")?;
         let body = self.parse_block()?;
+        self.match_semi();
         Ok(Stmt::Unsafe(body))
     }
 
@@ -491,6 +494,7 @@ impl Parser {
                     self.skip_newlines();
                 }
                 self.expect(TokenKind::RBrace, "`}`")?;
+                self.match_semi();
                 stmts.push(Stmt::Math(exprs));
                 continue;
             }

@@ -432,6 +432,13 @@ impl Parser {
                 let e = self.parse_expr(0)?;
                 return self.parse_postfix(Expr::Await(Box::new(e)));
             }
+            TokenKind::Arena => {
+                self.advance();
+                self.skip_newlines();
+                self.expect(TokenKind::LBrace, "`{` for arena block")?;
+                let body = self.parse_block()?;
+                return self.parse_postfix(Expr::Arena(body));
+            }
             TokenKind::Comptime => {
                 self.advance();
                 self.skip_newlines();

@@ -48,31 +48,31 @@ impl<'ctx> CodeGenerator<'ctx> {
 
         // Build the appropriate struct type for loading
         let struct_ty_to_use = if is_user_enum {
-            // User-defined enum: {i32 tag, i64 payload}
-            self.context.struct_type(&[
+            // User-defined enum: {i32 tag, i64 payload} — all payloads stored as i64
+            BasicTypeEnum::StructType(self.context.struct_type(&[
                 BasicTypeEnum::IntType(self.context.i32_type()),
                 BasicTypeEnum::IntType(i64_ty),
-            ], false)
+            ], false))
         } else if is_result {
             // Built-in Result<T,E>: {i1 disc, T ok, i64 err}
-            self.context.struct_type(&[
+            BasicTypeEnum::StructType(self.context.struct_type(&[
                 BasicTypeEnum::IntType(self.context.bool_type()),
                 BasicTypeEnum::IntType(i64_ty),
                 BasicTypeEnum::IntType(i64_ty),
-            ], false)
+            ], false))
         } else {
             // Built-in Option<T>: {i1 disc, T payload}
-            self.context.struct_type(&[
+            BasicTypeEnum::StructType(self.context.struct_type(&[
                 BasicTypeEnum::IntType(self.context.bool_type()),
                 BasicTypeEnum::IntType(i64_ty),
-            ], false)
+            ], false))
         };
 
         // Convert to struct value for uniform extract_value handling
         let struct_val = match result_val {
             BasicValueEnum::PointerValue(pv) => {
                 self.builder.build_load(
-                    BasicTypeEnum::StructType(struct_ty_to_use), pv, "try_load"
+                    struct_ty_to_use, pv, "try_load"
                 ).map_err(|e| CompileError::LlvmError(format!("try load error: {}", e)))?
             }
             BasicValueEnum::StructValue(sv) => BasicValueEnum::StructValue(sv),
@@ -114,8 +114,14 @@ impl<'ctx> CodeGenerator<'ctx> {
         self.compile_compensations(&mut comp_vars).map_err(|e| CompileError::Generic(e.to_string()))?;
         let try_exit_fn = self.module.get_function("mimi_try_exit")
             .ok_or("mimi_try_exit not declared")?;
+        // Pass error value to mimi_try_exit; if it's not an integer (e.g., string struct),
+        // pass a zero value instead to avoid panic.
+        let err_int = match err_val {
+            BasicValueEnum::IntValue(iv) => iv,
+            _ => i64_ty.const_zero(),
+        };
         self.builder.build_call(try_exit_fn, &[
-            BasicMetadataValueEnum::IntValue(err_val.into_int_value()),
+            BasicMetadataValueEnum::IntValue(err_int),
         ], "try_exit")
             .map_err(|e| CompileError::LlvmError(format!("try_exit error: {}", e)))?;
         let unreachable = self.context.append_basic_block(function, "unreachable");

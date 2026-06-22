@@ -146,6 +146,10 @@ impl<'ctx> CodeGenerator<'ctx> {
                     if let Pattern::Variable(name) = pat {
                         if let Some(Type::Name(tn, _)) = &ty {
                             self.var_type_names.insert(name.clone(), tn.clone());
+                        } else if self.expr_is_string(init) {
+                            self.var_type_names.insert(name.clone(), "string".to_string());
+                        } else if let Expr::Record { ty: Some(tn), .. } = init {
+                            self.var_type_names.insert(name.clone(), "string".to_string());
                         } else if let Expr::Record { ty: Some(tn), .. } = init {
                             self.var_type_names.insert(name.clone(), tn.clone());
                         } else if let Expr::Call(callee, _) = init {
@@ -192,6 +196,13 @@ impl<'ctx> CodeGenerator<'ctx> {
                         }
                     }
                     self.compile_pattern_bind(pat, val, vars)?;
+                    if let Pattern::Variable(name) = pat {
+                        if let Expr::Ident(fn_name) = init {
+                            if self.module.get_function(fn_name).is_some() {
+                                self.fn_ptr_var_names.insert(name.clone());
+                            }
+                        }
+                    }
                 }
                 Stmt::Let { pat, init: None, ty, .. } => {
                     // let x; or let (a, b); — needs type annotation
