@@ -474,6 +474,11 @@ impl Parser {
                 let body = self.parse_block()?;
                 return self.parse_postfix(Expr::Lambda { params, ret, body });
             }
+            TokenKind::LBrace => {
+                self.advance();
+                let block = self.parse_block()?;
+                return self.parse_postfix(Expr::Block(block));
+            }
             // Keywords as identifiers in expression context (e.g., Func, Module for enum comparison)
             ref kw if is_keyword_token(kw) => {
                 let name = kind.source_text().to_string();

@@ -1181,3 +1181,59 @@ fn dual_push_mut_read_back() {
         }
     "#, "2\n7\n8");
 }
+
+#[test]
+fn dual_block_match_multi_stmt() {
+    if !can_link() { return; }
+    dual_assert!(r#"
+        func main() -> i32 {
+            let x = 42
+            let r = match x {
+                v if v > 10 => { let tmp = v / 2; println("big"); tmp }
+                _ => { println("small"); 0 }
+            }
+            println(r); 0
+        }
+    "#, "big\n21");
+}
+
+#[test]
+fn dual_block_expr_in_let() {
+    if !can_link() { return; }
+    dual_assert!(r#"
+        func main() -> i32 {
+            let x = { let a = 3; let b = 4; a + b }
+            println(x); 0
+        }
+    "#, "7");
+}
+
+#[test]
+fn dual_block_expr_nested() {
+    if !can_link() { return; }
+    dual_assert!(r#"
+        func main() -> i32 {
+            let x = { let a = { 1 + 2 }; a + { 3 * 4 } }
+            println(x); 0
+        }
+    "#, "15");
+}
+
+#[test]
+fn dual_block_match_arm_side_effects() {
+    if !can_link() { return; }
+    dual_assert!(r#"
+        func main() -> i32 {
+            let mut acc = 0
+            let x = 3
+            let r = match x {
+                1 => { acc = acc + 1; 10 }
+                2 => { acc = acc + 10; 20 }
+                _ => { acc = acc + 100; 30 }
+            }
+            println(acc)
+            println(r)
+            0
+        }
+    "#, "100\n30");
+}
