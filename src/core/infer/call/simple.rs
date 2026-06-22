@@ -927,15 +927,14 @@ impl<'a> Checker<'a> {
                 return Type::Name("i64".into(), vec![]);
             }
             "send" => {
-                if args.len() != 3 {
+                if args.len() != 2 {
                     self.emit_code(
                         crate::diagnostic::codes::E0242,
-                        "send expects 3 arguments (fd, data, len)",
+                        "send expects 2 arguments (fd, data)",
                     );
                 } else {
                     self.infer_expr(&args[0], scopes);
                     self.infer_expr(&args[1], scopes);
-                    self.infer_expr(&args[2], scopes);
                 }
                 return Type::Name("i64".into(), vec![]);
             }

@@ -18,6 +18,14 @@ impl<'a> Interpreter<'a> {
         // SAFETY: libc::socket is safe per POSIX when arguments are valid integers;
         // we validate types above. Returns -1 on error, which we propagate.
         let fd = unsafe { libc::socket(domain as i32, type_ as i32, protocol as i32) };
+        if fd >= 0 {
+            // Set SO_REUSEADDR so bind works immediately after close (TIME_WAIT avoidance)
+            let reuse: libc::c_int = 1;
+            unsafe {
+                libc::setsockopt(fd, libc::SOL_SOCKET, libc::SO_REUSEADDR,
+                    &reuse as *const _ as *const libc::c_void, std::mem::size_of_val(&reuse) as libc::socklen_t);
+            }
+        }
         Ok(Value::Int(fd as i64))
     }
 

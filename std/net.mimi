@@ -85,6 +85,12 @@ pub func tcp_listen(port: i32, backlog: i32) -> Result<i32, NetError> {
     Result::Ok(fd)
 }
 
+// tcp_accept: Accepts a connection on a listening socket fd.
+pub func tcp_accept(fd: i32) -> Result<i32, NetError> {
+    let client_fd = accept(fd)
+    if client_fd < 0 { Result::Err(AcceptFailed) } else { Result::Ok(client_fd) }
+}
+
 // tcp_send: Sends data over socket fd. Returns bytes sent on success.
 pub func tcp_send(fd: i32, data: string) -> Result<i32, NetError> {
     let n = send(fd, data)

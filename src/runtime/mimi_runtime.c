@@ -1624,9 +1624,17 @@ char* mimi_regex_replace(const char* text, const char* pattern, const char* repl
 int64_t mimi_socket(int64_t domain, int64_t type, int64_t protocol) {
 #ifdef _WIN32
     SOCKET fd = socket((int)domain, (int)type, (int)protocol);
+    if (fd != INVALID_SOCKET) {
+        int reuse = 1;
+        setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (const char*)&reuse, sizeof(reuse));
+    }
     return (fd == INVALID_SOCKET) ? -1 : (int64_t)fd;
 #else
     int fd = socket((int)domain, (int)type, (int)protocol);
+    if (fd >= 0) {
+        int reuse = 1;
+        setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+    }
     return (int64_t)fd;
 #endif
 }
