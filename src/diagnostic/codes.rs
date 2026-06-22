@@ -116,6 +116,7 @@ pub const W001: &str = "W001"; // standalone desc/rule has no implementation
 pub const W002: &str = "W002"; // locked fragment ($/$$) with no implementation body
 pub const W003: &str = "W003"; // `...` placeholder residual in .mimi files
 pub const W004: &str = "W004"; // function naming convention (snake_case)
+pub const W005: &str = "W005"; // shared variable written by multiple parallel steps in parasteps
 
 /// Warning codes (E06xx) — kept for backward compatibility
 pub const E0600: &str = "E0600"; // variable shadows outer variable
@@ -305,6 +306,7 @@ pub fn describe(code: &str) -> &'static str {
         W002 => "locked fragment ($/$$) with no implementation body",
         W003 => "`...` placeholder residual in .mimi files",
         W004 => "function naming convention (snake_case)",
+        W005 => "shared variable written by multiple parallel steps in parasteps",
 
         _ => "unknown error",
     }
