@@ -149,25 +149,37 @@ impl FfiContract {
     }
 
     /// Build a contract from an extern function declaration, with knowledge of
-    /// which type names refer to declared capabilities and which refer to records.
+    /// which type names refer to declared capabilities, which refer to records,
+    /// and which records have #[repr(C)].
     pub fn from_extern_with_caps(func: &ExternFunc, cap_names: &HashSet<String>, record_type_names: &HashSet<String>) -> Self {
+        Self::from_extern_with_caps_repr(func, cap_names, record_type_names, &HashSet::new())
+    }
+
+    /// Like `from_extern_with_caps`, but also takes repr_c_record_names so that
+    /// #[repr(C)] records are distinguished from plain records.  Codegen passes
+    /// these directly by value (LLVM struct); the interpreter still serializes
+    /// them to JSON until the libffi struct-by-value path is implemented.
+    pub fn from_extern_with_caps_repr(
+        func: &ExternFunc,
+        cap_names: &HashSet<String>,
+        record_type_names: &HashSet<String>,
+        repr_c_record_names: &HashSet<String>,
+    ) -> Self {
         let args = func
             .params
             .iter()
             .map(|p| {
-                // If the parameter has a cap_mode annotation (cap @), treat it as Cap
-                // and preserve the mode (Borrow vs Move)
                 if let Some(mode) = p.cap_mode {
                     FfiArgContract::Cap(mode)
                 } else {
-                    FfiArgContract::from_type_with_caps(&p.ty, cap_names, record_type_names)
+                    FfiArgContract::from_type_with_caps(&p.ty, cap_names, record_type_names, repr_c_record_names)
                 }
             })
             .collect();
         let ret = func
             .ret
             .as_ref()
-            .map(|ty| FfiRetContract::from_type_with_caps(ty, cap_names, record_type_names))
+            .map(|ty| FfiRetContract::from_type_with_caps(ty, cap_names, record_type_names, repr_c_record_names))
             .unwrap_or(FfiRetContract::Unit);
 
         // Auto-enable errno checking if return type is Result-like
@@ -196,7 +208,7 @@ impl FfiContract {
 }
 
 impl FfiArgContract {
-    fn from_type_with_caps(ty: &Type, cap_names: &HashSet<String>, record_type_names: &HashSet<String>) -> Self {
+    fn from_type_with_caps(ty: &Type, cap_names: &HashSet<String>, record_type_names: &HashSet<String>, repr_c_record_names: &HashSet<String>) -> Self {
         match ty {
             Type::Name(name, _) => {
                 if cap_names.contains(name.as_str()) {
@@ -210,7 +222,12 @@ impl FfiArgContract {
                     "List" => FfiArgContract::Json,
                     other => {
                         if record_type_names.contains(other) {
-                            FfiArgContract::Json
+                            if repr_c_record_names.contains(other) {
+                                // repr(C) records: codegen passes as LLVM struct, interpreter uses JSON
+                                FfiArgContract::Json
+                            } else {
+                                FfiArgContract::Json
+                            }
                         } else {
                             FfiArgContract::Unsupported(other.to_string())
                         }
@@ -225,17 +242,9 @@ impl FfiArgContract {
             Type::CBorrowMut(inner) => FfiArgContract::CBorrowMut(inner.clone()),
             Type::RawString => FfiArgContract::StringTransfer,
             Type::ExternFunc(param_types, ret_type) | Type::Func(param_types, ret_type) => {
-                // Function pointer - register as callback with dynamic trampoline
-                FfiArgContract::Callback {
-                    param_types: param_types.clone(),
-                    ret_type: ret_type.clone(),
-                }
+                FfiArgContract::Callback { param_types: param_types.clone(), ret_type: ret_type.clone() }
             }
-
-            Type::CBuffer(inner) => {
-                // CBuffer is a managed pointer - pass as opaque handle
-                FfiArgContract::RawPtr(inner.clone())
-            }
+            Type::CBuffer(inner) => FfiArgContract::RawPtr(inner.clone()),
             Type::Tuple(_) => FfiArgContract::Json,
             other => FfiArgContract::Unsupported(format!("{:?}", other)),
         }
@@ -243,7 +252,7 @@ impl FfiArgContract {
 }
 
 impl FfiRetContract {
-    fn from_type_with_caps(ty: &Type, _cap_names: &HashSet<String>, record_type_names: &HashSet<String>) -> Self {
+    fn from_type_with_caps(ty: &Type, _cap_names: &HashSet<String>, record_type_names: &HashSet<String>, repr_c_record_names: &HashSet<String>) -> Self {
         match ty {
             Type::Name(name, _) => match name.as_str() {
                 "i32" | "i64" | "bool" => FfiRetContract::Int,
@@ -268,9 +277,7 @@ impl FfiRetContract {
             Type::ExternFunc(_, _) => {
                 FfiRetContract::RawPtr(Box::new(Type::Name("unit".to_string(), vec![])))
             }
-            Type::CBuffer(inner) => {
-                FfiRetContract::RawPtr(inner.clone())
-            }
+            Type::CBuffer(inner) => FfiRetContract::RawPtr(inner.clone()),
             Type::Tuple(_) => FfiRetContract::Json,
             other => FfiRetContract::Unsupported(format!("{:?}", other)),
         }
