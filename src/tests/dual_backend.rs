@@ -1452,7 +1452,6 @@ fn dual_comptime_with_requires() {
 }
 
 #[test]
-#[ignore]
 fn dual_quote_eval_literal() {
     if !can_link() { return; }
     dual_assert!(r#"

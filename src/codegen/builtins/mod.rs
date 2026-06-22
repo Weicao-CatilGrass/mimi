@@ -430,7 +430,7 @@ pub fn is_builtin(name: &str) -> bool {
         | "assert_approx_eq" | "range" | "len" | "to_string" | "abs" | "min" | "max"
         | "push" | "pop" | "sqrt" | "floor" | "ceil" | "round"
         | "int_to_string" | "float_to_string" | "string_to_int"
-        | "exit" | "lexer" | "parse"
+        | "exit" | "lexer" | "parse" | "ast_eval"
         | "input" | "file_exists" | "read_file" | "write_file" | "str_char_at"
         | "str_contains" | "str_starts_with" | "str_ends_with"
         | "pow" | "random" | "pi"
@@ -560,6 +560,28 @@ impl<'ctx> CodeGenerator<'ctx> {
                 Err(CompileError::BuiltinError(format!("'{}' is a runtime-only function, not available in codegen", name)))
             }
             "from_int" => self.compile_from_int(args),
+            "ast_eval" => {
+                // ast_eval on a compile-time folded quote block:
+                // quote! { 42 } evaluates directly to i64(42) at compile time,
+                // so ast_eval just returns the argument value unchanged.
+                if args.len() == 1 {
+                    Ok(match args[0] {
+                        BasicMetadataValueEnum::IntValue(iv) => BasicValueEnum::IntValue(iv),
+                        BasicMetadataValueEnum::FloatValue(fv) => BasicValueEnum::FloatValue(fv),
+                        BasicMetadataValueEnum::PointerValue(pv) => BasicValueEnum::PointerValue(pv),
+                        BasicMetadataValueEnum::StructValue(sv) => BasicValueEnum::StructValue(sv),
+                        BasicMetadataValueEnum::ArrayValue(av) => BasicValueEnum::ArrayValue(av),
+                        BasicMetadataValueEnum::VectorValue(vv) => BasicValueEnum::VectorValue(vv),
+                        BasicMetadataValueEnum::ScalableVectorValue(svv) => BasicValueEnum::ScalableVectorValue(svv),
+                        BasicMetadataValueEnum::MetadataValue(_) => {
+                            return Err(CompileError::BuiltinError(
+                                "ast_eval: unexpected MetadataValue argument".to_string()))
+                        }
+                    })
+                } else {
+                    Err(CompileError::WrongArgCount("ast_eval expects 1 argument".to_string()))
+                }
+            }
             _ => Err(CompileError::BuiltinError(format!("builtin '{}' not yet implemented in codegen", name))),
         }
     }

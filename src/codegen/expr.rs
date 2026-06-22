@@ -68,7 +68,12 @@ impl<'ctx> CodeGenerator<'ctx> {
             Expr::Comptime(_) => {
                 Err("comptime { ... } block encountered in runtime function: compile-time evaluation must be resolved before codegen (use `mimi run` to evaluate compile-time code)".into())
             }
-            Expr::Quote(_) => {
+            Expr::Quote(block) => {
+                // Compile-time folding for literal-only quote blocks:
+                // quote! { literal } is equivalent to the literal itself.
+                if let Some(val) = self.compile_quote_fold(block) {
+                    return Ok(val);
+                }
                 Err("quote { ... } expression encountered in runtime function: quoted AST construction must be resolved before codegen (use `mimi run` to evaluate quote expressions)".into())
             }
             Expr::QuoteInterpolate(_) => {
@@ -218,6 +223,40 @@ impl<'ctx> CodeGenerator<'ctx> {
             Err(CompileError::Generic(format!("[E0750] '{}' requires libc (not available in no_std mode)", builtin)))
         } else {
             Ok(())
+        }
+    }
+
+    /// Compile-time fold a literal-only quote! block.
+    /// quote! { 42 } → returns i64(42), bypassing QuotedAst construction.
+    fn compile_quote_fold(&self, block: &Block) -> Option<BasicValueEnum<'ctx>> {
+        match block.as_slice() {
+            [Stmt::Expr(expr)] => self.compile_quote_fold_expr(expr),
+            _ => None,
+        }
+    }
+
+    fn compile_quote_fold_expr(&self, expr: &Expr) -> Option<BasicValueEnum<'ctx>> {
+        match expr {
+            Expr::Literal(lit) => self.compile_literal_const(lit),
+            Expr::Block(block) => match block.as_slice() {
+                [Stmt::Expr(e)] => self.compile_quote_fold_expr(e),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
+    fn compile_literal_const(&self, lit: &Lit) -> Option<BasicValueEnum<'ctx>> {
+        match lit {
+            Lit::Int(v) => Some(self.context.i64_type().const_int(*v as u64, true).into()),
+            Lit::Float(v) => Some(self.context.f64_type().const_float(*v).into()),
+            Lit::Bool(v) => Some(self.context.bool_type().const_int(*v as u64, false).into()),
+            Lit::String(s) => {
+                let global = self.builder.build_global_string_ptr(s, "str").ok()?;
+                Some(global.as_pointer_value().into())
+            }
+            Lit::Unit => Some(self.context.i64_type().const_int(0, false).into()),
+            Lit::FString(_) => None,
         }
     }
 }
