@@ -1,4 +1,49 @@
 use std::path::Path;
+use std::io::Read;
+
+/// Compute a deterministic content-based checksum for a directory.
+/// Walks all files (sorted by path), hashes path + content with FNV1a.
+pub fn compute_dir_checksum(dir: &Path) -> Result<String, String> {
+    let mut entries: Vec<_> = Vec::new();
+    collect_files(dir, dir, &mut entries)
+        .map_err(|e| format!("failed to read dir: {}", e))?;
+    entries.sort();
+
+    let mut hash: u64 = 0xcbf29ce484222325; // FNV offset basis (64-bit)
+    for path in &entries {
+        // Mix in relative path
+        let rel = path.strip_prefix(dir).unwrap_or(path);
+        for b in rel.to_string_lossy().as_bytes() {
+            hash ^= *b as u64;
+            hash = hash.wrapping_mul(0x100000001b3); // FNV prime (64-bit)
+        }
+        // Mix in file content
+        if let Ok(mut f) = std::fs::File::open(path) {
+            let mut buf = Vec::new();
+            if f.read_to_end(&mut buf).is_ok() {
+                for b in &buf {
+                    hash ^= *b as u64;
+                    hash = hash.wrapping_mul(0x100000001b3);
+                }
+            }
+        }
+    }
+
+    Ok(format!("{:016x}", hash))
+}
+
+fn collect_files(base: &Path, dir: &Path, entries: &mut Vec<std::path::PathBuf>) -> std::io::Result<()> {
+    for entry in std::fs::read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if entry.file_type()?.is_dir() {
+            collect_files(base, &path, entries)?;
+        } else {
+            entries.push(path);
+        }
+    }
+    Ok(())
+}
 
 /// Get the local registry directory (~/.mimi/registry/)
 pub fn registry_dir() -> Result<std::path::PathBuf, String> {

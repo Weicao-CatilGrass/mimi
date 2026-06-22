@@ -183,6 +183,34 @@ fn update_command_basic() {
 }
 
 #[test]
+fn directory_checksum_simple() {
+    let dir = std::env::temp_dir().join("mimi_checksum_test");
+    std::fs::create_dir_all(&dir).expect("mkdir");
+
+    // Create a file with known content
+    std::fs::write(dir.join("a.txt"), "hello world").expect("write");
+    std::fs::write(dir.join("b.txt"), "42").expect("write");
+
+    let hash = crate::pkg_registry::compute_dir_checksum(&dir)
+        .expect("checksum should succeed");
+    assert!(!hash.is_empty(), "checksum should not be empty");
+    assert!(hash.len() >= 16, "checksum should be reasonably long");
+
+    // Same content should produce same hash
+    let hash2 = crate::pkg_registry::compute_dir_checksum(&dir)
+        .expect("checksum should succeed");
+    assert_eq!(hash, hash2, "checksums should be deterministic");
+
+    // Different content should produce different hash
+    std::fs::write(dir.join("a.txt"), "different content").expect("write");
+    let hash3 = crate::pkg_registry::compute_dir_checksum(&dir)
+        .expect("checksum should succeed");
+    assert_ne!(hash, hash3, "different content should produce different hash");
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
 fn manifest_invalid_dependency_path() {
     let mut manifest = crate::manifest::Manifest::new("test");
     manifest.add_dependency("local-dep", None, Some("/nonexistent/path"));
