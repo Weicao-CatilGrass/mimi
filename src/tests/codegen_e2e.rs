@@ -1479,6 +1479,329 @@ fn e2e_valgrind_shared_weak_lifecycle() {
     assert_eq!(stdout.trim(), "0");
 }
 
+// ===== Stage 5: Memory safety — shared/weak RC under sanitizers =====
+//
+// These tests extend src/tests/ownership.rs and the existing shared E2E
+// tests by running under Valgrind (memcheck + leak-check), AddressSanitizer,
+// and UndefinedBehaviorSanitizer.
+//
+// Run: cargo test e2e_valgrind_ -- --ignored   (slow Valgrind tests)
+//      cargo test e2e_asan_                     (AddressSanitizer)
+//      cargo test e2e_ubsan_                    (UBSan)
+//
+// Known limitation (v1.0):
+// - RC operations use per-scope release lists — alloc-heavy patterns
+//   (e.g., repeated shared clones in a loop) accumulate retains per
+//   iteration without intermediate cleanup until scope exit.
+
+#[test]
+fn e2e_valgrind_shared_basic() {
+    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    if !can_valgrind() { eprintln!("SKIP: valgrind not available"); return; }
+    let stdout = compile_and_run_valgrind(r#"
+        func main() -> i32 {
+            shared x = 42;
+            println(x);
+            0
+        }
+    "#).expect("src/tests/codegen_e2e.rs:valgrind_shared_basic");
+    assert_eq!(stdout.trim(), "42");
+}
+
+#[test]
+fn e2e_valgrind_shared_clone() {
+    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    if !can_valgrind() { eprintln!("SKIP: valgrind not available"); return; }
+    let stdout = compile_and_run_valgrind(r#"
+        func main() -> i32 {
+            shared x = 42;
+            shared y = x;
+            shared z = y;
+            println(x);
+            println(y);
+            println(z);
+            0
+        }
+    "#).expect("src/tests/codegen_e2e.rs:valgrind_shared_clone");
+    assert_eq!(stdout.trim(), "42\n42\n42");
+}
+
+#[test]
+fn e2e_valgrind_shared_field() {
+    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    if !can_valgrind() { eprintln!("SKIP: valgrind not available"); return; }
+    let stdout = compile_and_run_valgrind(r#"
+        type Point { x: i32, y: i32 }
+        func main() -> i32 {
+            shared p = Point { x: 10, y: 20 };
+            let q = p;
+            println(q.x);
+            println(q.y);
+            q.x = 99;
+            println(p.x);
+            0
+        }
+    "#).expect("src/tests/codegen_e2e.rs:valgrind_shared_field");
+    assert_eq!(stdout.trim(), "10\n20\n99");
+}
+
+#[test]
+fn e2e_valgrind_shared_write_through_copy() {
+    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    if !can_valgrind() { eprintln!("SKIP: valgrind not available"); return; }
+    // Verify aliased shared write does not cause use-after-free or double-free.
+    let stdout = compile_and_run_valgrind(r#"
+        type Point { x: i32, y: i32 }
+        func main() -> i32 {
+            shared p = Point { x: 10, y: 20 };
+            shared q = p;
+            q.x = 99;
+            println(p.x);
+            println(p.y);
+            0
+        }
+    "#).expect("src/tests/codegen_e2e.rs:valgrind_shared_write_through_copy");
+    assert_eq!(stdout.trim(), "99\n20");
+}
+
+#[test]
+fn e2e_valgrind_weak_extended() {
+    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    if !can_valgrind() { eprintln!("SKIP: valgrind not available"); return; }
+    let stdout = compile_and_run_valgrind(r#"
+        func main() -> i32 {
+            shared x = 42;
+            weak w: weak i32 = x;
+            let u1 = w.upgrade();
+            if u1.is_none() { return 1 }
+            let v = u1.unwrap();
+            if v != 42 { return 2 }
+            println(v);
+            0
+        }
+    "#).expect("src/tests/codegen_e2e.rs:valgrind_weak_extended");
+    assert_eq!(stdout.trim(), "42");
+}
+
+#[test]
+fn e2e_valgrind_weak_lifecycle_nested() {
+    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    if !can_valgrind() { eprintln!("SKIP: valgrind not available"); return; }
+    // Weak and shared in nested scope: both released at scope exit.
+    // Valgrind verifies no leaks, double-frees, or use-after-free.
+    let stdout = compile_and_run_valgrind(r#"
+        func main() -> i32 {
+            {
+                shared x = 42;
+                weak w: weak i32 = x;
+                let u = w.upgrade();
+                if u.is_none() { return 1 }
+                let v = u.unwrap();
+                if v != 42 { return 2 }
+            }
+            // Both w and x released here
+            println(99);
+            0
+        }
+    "#).expect("src/tests/codegen_e2e.rs:valgrind_weak_lifecycle_nested");
+    assert_eq!(stdout.trim(), "99");
+}
+
+#[test]
+fn e2e_asan_shared_basic() {
+    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    if !can_asan() { eprintln!("SKIP: asan not available"); return; }
+    let stdout = compile_and_run_asan(r#"
+        func main() -> i32 {
+            shared x = 42;
+            println(x);
+            0
+        }
+    "#).expect("src/tests/codegen_e2e.rs:asan_shared_basic");
+    assert_eq!(stdout.trim(), "42");
+}
+
+#[test]
+fn e2e_asan_shared_clone() {
+    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    if !can_asan() { eprintln!("SKIP: asan not available"); return; }
+    let stdout = compile_and_run_asan(r#"
+        func main() -> i32 {
+            shared x = 42;
+            shared y = x;
+            println(y);
+            0
+        }
+    "#).expect("src/tests/codegen_e2e.rs:asan_shared_clone");
+    assert_eq!(stdout.trim(), "42");
+}
+
+#[test]
+fn e2e_ubsan_shared_basic() {
+    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    if !can_ubsan() { eprintln!("SKIP: ubsan not available"); return; }
+    let stdout = compile_and_run_ubsan(r#"
+        func main() -> i32 {
+            shared x = 42;
+            println(x);
+            0
+        }
+    "#).expect("src/tests/codegen_e2e.rs:ubsan_shared_basic");
+    assert_eq!(stdout.trim(), "42");
+}
+
+// ===== Stage 5: Memory safety — spawn/await under Valgrind =====
+
+#[test]
+fn e2e_valgrind_spawn_basic() {
+    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    if !can_valgrind() { eprintln!("SKIP: valgrind not available"); return; }
+    // Spawn + await under Valgrind — verifies pthread_create/join memory safety.
+    let stdout = compile_and_run_valgrind(r#"
+        func id(x: i32) -> i32 { x }
+        func main() -> i32 {
+            let t = spawn id(42);
+            let r = await t;
+            println(r);
+            0
+        }
+    "#).expect("src/tests/codegen_e2e.rs:valgrind_spawn_basic");
+    assert_eq!(stdout.trim(), "42");
+}
+
+#[test]
+fn e2e_valgrind_spawn_multiple() {
+    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    if !can_valgrind() { eprintln!("SKIP: valgrind not available"); return; }
+    let stdout = compile_and_run_valgrind(r#"
+        func id(x: i32) -> i32 { x }
+        func main() -> i32 {
+            let t1 = spawn id(10);
+            let t2 = spawn id(20);
+            let t3 = spawn id(30);
+            let r1 = await t1;
+            let r2 = await t2;
+            let r3 = await t3;
+            println(r1 + r2 + r3);
+            0
+        }
+    "#).expect("src/tests/codegen_e2e.rs:valgrind_spawn_multiple");
+    assert_eq!(stdout.trim(), "60");
+}
+
+#[test]
+fn e2e_valgrind_parasteps_shared() {
+    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    if !can_valgrind() { eprintln!("SKIP: valgrind not available"); return; }
+    // Shared captured in parasteps under Valgrind — verifies RC safety across threads.
+    let stdout = compile_and_run_valgrind(r#"
+        func main() -> i32 {
+            shared x = 100;
+            parasteps {
+                println(x);
+            }
+            println(99);
+            0
+        }
+    "#).expect("src/tests/codegen_e2e.rs:valgrind_parasteps_shared");
+    assert_eq!(stdout.trim(), "100\n99");
+}
+
+// ===== Stage 5: Large struct return tests (>64B, LLVM sret boundary) =====
+//
+// These tests verify that Mimi correctly generates LLVM IR for functions
+// returning large structs. LLVM's backend uses the sret (struct return)
+// calling convention when the return value exceeds the ABI register limit
+// (~16-32 bytes on x86-64 SysV). Mimi's codegen uses alloca+load pattern
+// regardless of size; LLVM handles the sret lowering.
+//
+// Known context: the Mimi codegen always returns struct values via alloca+load.
+// The struct type includes a fat-pointer field {i8*, i64} for the heap data,
+// so even "small" structs have a hidden pointer. Large field counts exercise
+// LLVM's ability to correctly lower the return value.
+
+#[test]
+fn e2e_large_struct_return() {
+    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    // Return a struct with 20 i32 fields (80 bytes) — triggers LLVM sret.
+    let stdout = compile_and_run(r#"
+        type Large {
+            f0: i32, f1: i32, f2: i32, f3: i32, f4: i32,
+            f5: i32, f6: i32, f7: i32, f8: i32, f9: i32,
+            f10: i32, f11: i32, f12: i32, f13: i32, f14: i32,
+            f15: i32, f16: i32, f17: i32, f18: i32, f19: i32,
+        }
+        func make_large() -> Large {
+            Large {
+                f0: 0, f1: 1, f2: 2, f3: 3, f4: 4,
+                f5: 5, f6: 6, f7: 7, f8: 8, f9: 9,
+                f10: 10, f11: 11, f12: 12, f13: 13, f14: 14,
+                f15: 15, f16: 16, f17: 17, f18: 18, f19: 19,
+            }
+        }
+        func main() -> i32 {
+            let r = make_large();
+            println(r.f0);
+            println(r.f10);
+            println(r.f19);
+            0
+        }
+    "#).expect("src/tests/codegen_e2e.rs:large_struct_return");
+    assert_eq!(stdout.trim(), "0\n10\n19");
+}
+
+#[test]
+#[ignore]
+fn e2e_valgrind_large_struct_return() {
+    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    if !can_valgrind() { eprintln!("SKIP: valgrind not available"); return; }
+    // Large struct return under Valgrind — slow but thorough.
+    let stdout = compile_and_run_valgrind(r#"
+        type Large {
+            f0: i32, f1: i32, f2: i32, f3: i32, f4: i32,
+            f5: i32, f6: i32, f7: i32, f8: i32, f9: i32,
+            f10: i32, f11: i32, f12: i32, f13: i32, f14: i32,
+            f15: i32, f16: i32, f17: i32, f18: i32, f19: i32,
+        }
+        func make_large() -> Large {
+            Large {
+                f0: 0, f1: 1, f2: 2, f3: 3, f4: 4,
+                f5: 5, f6: 6, f7: 7, f8: 8, f9: 9,
+                f10: 10, f11: 11, f12: 12, f13: 13, f14: 14,
+                f15: 15, f16: 16, f17: 17, f18: 18, f19: 19,
+            }
+        }
+        func main() -> i32 {
+            let r = make_large();
+            println(r.f0 + r.f19);
+            0
+        }
+    "#).expect("src/tests/codegen_e2e.rs:valgrind_large_struct_return");
+    assert_eq!(stdout.trim(), "19");
+}
+
+#[test]
+fn e2e_asan_large_struct_return() {
+    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    if !can_asan() { eprintln!("SKIP: asan not available"); return; }
+    let stdout = compile_and_run_asan(r#"
+        type Large {
+            f0: i32, f1: i32, f2: i32, f3: i32, f4: i32,
+            f5: i32, f6: i32, f7: i32, f8: i32, f9: i32,
+        }
+        func make_large() -> Large {
+            Large { f0: 0, f1: 1, f2: 2, f3: 3, f4: 4, f5: 5, f6: 6, f7: 7, f8: 8, f9: 9 }
+        }
+        func main() -> i32 {
+            let r = make_large();
+            println(r.f0);
+            println(r.f9);
+            0
+        }
+    "#).expect("src/tests/codegen_e2e.rs:asan_large_struct_return");
+    assert_eq!(stdout.trim(), "0\n9");
+}
+
 // ===================== Network Module (P2-5) =====================
 // Note: compile_and_run doesn't support `use` imports, so we inline
 // the net.mimi wrapper functions directly.
