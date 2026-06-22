@@ -17,6 +17,7 @@ impl<'a> Checker<'a> {
             Expr::Comprehension { expr, var, iter, guard } => {
                 self.infer_comprehension(expr, var, iter, guard.as_deref(), scopes)
             }
+            Expr::Arena(block) => self.infer_block_expr(block, scopes),
             Expr::Block(block) => self.infer_block_expr(block, scopes),
             Expr::If { cond, then_, else_ } => {
                 let else_ref = else_.as_ref().map(|b| { let v: &Block = b; v });

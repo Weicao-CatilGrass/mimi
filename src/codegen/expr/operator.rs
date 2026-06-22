@@ -138,6 +138,19 @@ impl<'ctx> CodeGenerator<'ctx> {
                     Ok(self.builder.build_int_add(l, r, "add").map_err(|e| CompileError::LlvmError(format!("add error: {}", e)))?.into()),
                 (BasicValueEnum::FloatValue(l), BasicValueEnum::FloatValue(r)) =>
                     Ok(self.builder.build_float_add(l, r, "fadd").map_err(|e| CompileError::LlvmError(format!("add error: {}", e)))?.into()),
+                (BasicValueEnum::PointerValue(l), BasicValueEnum::PointerValue(r)) => {
+                    // String concatenation: use mimi_str_concat runtime function
+                    let concat_fn = self.module.get_function("mimi_str_concat")
+                        .ok_or_else(|| CompileError::LlvmError("mimi_str_concat not declared".to_string()))?;
+                    let result = self.builder.build_call(concat_fn, &[
+                        BasicMetadataValueEnum::PointerValue(l),
+                        BasicMetadataValueEnum::PointerValue(r),
+                    ], "str_concat")
+                        .map_err(|e| CompileError::LlvmError(format!("str_concat error: {}", e)))?
+                        .try_as_basic_value_opt()
+                        .ok_or_else(|| CompileError::LlvmError("mimi_str_concat returned void".to_string()))?;
+                    Ok(result)
+                }
                 _ => Err("add requires same numeric types".into()),
             },
             BinOp::Sub => match (lhs, rhs) {

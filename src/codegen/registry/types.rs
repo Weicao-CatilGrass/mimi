@@ -3,6 +3,7 @@ use crate::codegen::types;
 use crate::codegen::CodeGenerator;
 use crate::error::{CompileError, MimiResult};
 use inkwell::types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum};
+use inkwell::values::BasicMetadataValueEnum;
 
 impl<'ctx> CodeGenerator<'ctx> {
     pub(in crate::codegen) fn register_type_def(&mut self, t: &crate::ast::TypeDef) -> MimiResult<()> {
@@ -40,15 +41,9 @@ impl<'ctx> CodeGenerator<'ctx> {
                     }
                     enum_ty
                 } else {
-                    // Internal enum representation: i32 tag + payload
-                    // Resolve the actual payload type from the first non-unit variant.
-                    let payload_ty = sorted_variants.iter()
-                        .find_map(|v| v.payload.as_ref())
-                        .and_then(|p| match p {
-                            VariantPayload::Tuple(types) if types.len() == 1 => self.llvm_type_for(&types[0]),
-                            _ => None,
-                        })
-                        .unwrap_or(BasicTypeEnum::IntType(self.context.i64_type()));
+                    // Internal enum representation: i32 tag + i64 payload (uniform)
+                    // Struct-typed payloads are ptrtoint-encoded into the i64 slot.
+                    let payload_ty = BasicTypeEnum::IntType(self.context.i64_type());
                     let tag_ty = BasicTypeEnum::IntType(self.context.i32_type());
                     let enum_ty = BasicTypeEnum::StructType(self.context.struct_type(&[tag_ty, payload_ty], false));
                     // Register constructor functions for each variant
@@ -68,8 +63,20 @@ impl<'ctx> CodeGenerator<'ctx> {
                     for (ordinal, v) in sorted_variants.iter().enumerate() {
                         let ctor_name = format!("{}_{}", t.name, v.name);
                         if self.module.get_function(&ctor_name).is_none() {
+                            // Determine payload LLVM type for this variant
+                            let payload_llvm = v.payload.as_ref().and_then(|p| match p {
+                                crate::ast::VariantPayload::Tuple(types) if types.len() == 1 => {
+                                    self.llvm_type_for(&types[0])
+                                }
+                                _ => None,
+                            });
+                            let payload_is_struct = matches!(payload_llvm, Some(BasicTypeEnum::StructType(_)));
                             let fn_type = if v.payload.is_some() {
-                                struct_ty.fn_type(&[meta_payload_ty], false)
+                                if payload_is_struct {
+                                    struct_ty.fn_type(&[types::basic_to_metadata(self.context, payload_llvm.unwrap())], false)
+                                } else {
+                                    struct_ty.fn_type(&[meta_payload_ty], false)
+                                }
                             } else {
                                 struct_ty.fn_type(&[], false)
                             };
@@ -87,8 +94,43 @@ impl<'ctx> CodeGenerator<'ctx> {
                                 let payload_arg = ctor.get_nth_param(0).ok_or_else(|| CompileError::LlvmError("missing payload param".to_string()))?;
                                 let payload_gep = self.builder.build_struct_gep(struct_ty, alloca, 1, "payload")
                                     .map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?;
-                                self.builder.build_store(payload_gep, payload_arg)
-                                    .map_err(|e| CompileError::LlvmError(format!("store error: {}", e)))?;
+                                if payload_is_struct {
+                                    // Struct-typed payload: malloc, store, ptrtoint to i64
+                                    let payload_struct = payload_arg.into_struct_value();
+                                    let payload_struct_ty = payload_llvm.unwrap();
+                                    let struct_size = payload_struct_ty.size_of()
+                                        .ok_or_else(|| CompileError::LlvmError("cannot get payload struct size".to_string()))?;
+                                    let malloc_fn = self.module.get_function("malloc")
+                                        .ok_or_else(|| "malloc not declared".to_string())?;
+                                    let size_val = self.context.i64_type().const_int(
+                                        struct_size.get_zero_extended_constant().unwrap_or(16), false
+                                    );
+                                    let malloc_call = self.builder.build_call(malloc_fn, &[
+                                        BasicMetadataValueEnum::IntValue(size_val),
+                                    ], "payload_malloc")
+                                        .map_err(|e| CompileError::LlvmError(format!("malloc error: {}", e)))?;
+                                    let malloc_result = crate::codegen::call_try_basic_value(&malloc_call)
+                                        .ok_or_else(|| "malloc returned void")?
+                                        .into_pointer_value();
+                                    let typed_ptr = self.builder.build_pointer_cast(
+                                        malloc_result,
+                                        payload_struct_ty.ptr_type(inkwell::AddressSpace::default()),
+                                        "typed_ptr",
+                                    ).map_err(|e| CompileError::LlvmError(format!("ptr cast: {}", e)))?;
+                                    self.builder.build_store(typed_ptr, payload_struct)
+                                        .map_err(|e| CompileError::LlvmError(format!("store struct: {}", e)))?;
+                                    let i8_ptr = self.context.i8_type().ptr_type(inkwell::AddressSpace::default());
+                                    let ptr_to_i8 = self.builder.build_pointer_cast(
+                                        malloc_result, i8_ptr, "ptr_i8"
+                                    ).map_err(|e| CompileError::LlvmError(format!("ptr cast: {}", e)))?;
+                                    let int_val = self.builder.build_ptr_to_int(ptr_to_i8, self.context.i64_type(), "payload_int")
+                                        .map_err(|e| CompileError::LlvmError(format!("ptr2int: {}", e)))?;
+                                    self.builder.build_store(payload_gep, int_val)
+                                        .map_err(|e| CompileError::LlvmError(format!("store int: {}", e)))?;
+                                } else {
+                                    self.builder.build_store(payload_gep, payload_arg)
+                                        .map_err(|e| CompileError::LlvmError(format!("store error: {}", e)))?;
+                                }
                             }
                             let loaded = self.builder.build_load(struct_ty, alloca, &ctor_name)
                                 .map_err(|e| CompileError::LlvmError(format!("load error: {}", e)))?;

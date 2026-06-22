@@ -66,6 +66,110 @@ impl<'ctx> CodeGenerator<'ctx> {
             }
         }
 
+        // 0.5. Shared variable deref: if obj is a shared var and method is "deref",
+        // load the value from the heap pointer directly.
+        // Also handles raw pointer values from w.upgrade() which returns i8*,
+        // and Option<shared T> values where deref extracts payload+loads.
+        if method_name == "deref" {
+            if let Expr::Ident(name) = obj {
+                if self.shared_var_names.contains(name.as_str()) {
+                    let &(alloca, ty) = vars.get(name)
+                        .ok_or_else(|| CompileError::LlvmError(format!("shared variable '{}' not found", name)))?;
+                    let ptr_ty = ty.ptr_type(inkwell::AddressSpace::default());
+                    let heap_ptr = self.builder.build_load(
+                        BasicTypeEnum::PointerType(ptr_ty), alloca, &format!("{}_deref_ptr", name)
+                    ).map_err(|e| CompileError::LlvmError(format!("shared deref ptr load: {}", e)))?.into_pointer_value();
+                    let val = self.builder.build_load(ty, heap_ptr, &format!("{}_deref", name))
+                        .map_err(|e| CompileError::LlvmError(format!("shared deref load: {}", e)))?;
+                    return Ok(val);
+                }
+                // Fallback for raw pointer variables (e.g. from weak.upgrade())
+                if let Some(&(alloca, ty)) = vars.get(name) {
+                    if let BasicTypeEnum::PointerType(inner_ptr_ty) = ty {
+                        // alloca stores an i8* pointer (raw pointer to heap)
+                        let ptr_val = self.builder.build_load(
+                            BasicTypeEnum::PointerType(inner_ptr_ty), alloca, &format!("{}_ptr", name)
+                        ).map_err(|e| CompileError::LlvmError(format!("ptr load: {}", e)))?.into_pointer_value();
+                        // Load i64 from the pointer (shared values are stored as i64)
+                        let i64_ty = self.context.i64_type();
+                        let val = self.builder.build_load(
+                            BasicTypeEnum::IntType(i64_ty), ptr_val, &format!("{}_deref", name)
+                        ).map_err(|e| CompileError::LlvmError(format!("deref load: {}", e)))?;
+                        return Ok(val);
+                    }
+                    // Handle Option<shared T>.deref(): extract payload from Option struct, load value
+                    if let BasicTypeEnum::StructType(st) = ty {
+                        let option_val = self.builder.build_load(ty, alloca, &format!("{}_opt", name))
+                            .map_err(|e| CompileError::LlvmError(format!("option load: {}", e)))?;
+                        let disc_val = self.builder.build_extract_value(option_val.into_struct_value(), 0, "disc")
+                            .map_err(|e| CompileError::LlvmError(format!("extract disc: {}", e)))?;
+                        let payload_int = self.builder.build_extract_value(option_val.into_struct_value(), 1, "payload_int")
+                            .map_err(|e| CompileError::LlvmError(format!("extract payload: {}", e)))?;
+                        let payload_ptr = self.builder.build_int_to_ptr(
+                            payload_int.into_int_value(),
+                            self.context.i8_type().ptr_type(inkwell::AddressSpace::default()),
+                            "payload_ptr",
+                        ).map_err(|e| CompileError::LlvmError(format!("inttoptr: {}", e)))?;
+                        let i64_ty = self.context.i64_type();
+                        let val = self.builder.build_load(
+                            BasicTypeEnum::IntType(i64_ty), payload_ptr, &format!("{}_deref", name)
+                        ).map_err(|e| CompileError::LlvmError(format!("deref load: {}", e)))?;
+                        return Ok(val);
+                    }
+                }
+            }
+        }
+
+        // 0.6. Weak variable upgrade without explicit type annotation:
+        // fallback when infer_object_type returns the variable name, not "weak T".
+        if method_name == "upgrade" {
+            if let Expr::Ident(name) = obj {
+                if self.shared_var_names.contains(name.as_str()) {
+                    let &(alloca, val_ty) = vars.get(name)
+                        .ok_or_else(|| CompileError::LlvmError(format!("weak variable '{}' not found", name)))?;
+                    let i8_ptr = self.context.i8_type().ptr_type(inkwell::AddressSpace::default());
+                    let ptr_ty = val_ty.ptr_type(inkwell::AddressSpace::default());
+                    let heap_ptr = self.builder.build_load(
+                        BasicTypeEnum::PointerType(ptr_ty), alloca, "weak_heap_ptr"
+                    ).map_err(|e| CompileError::LlvmError(format!("weak heap ptr load: {}", e)))?.into_pointer_value();
+                    let heap_i8 = self.builder.build_pointer_cast(heap_ptr, i8_ptr, "weak_heap_i8")
+                        .map_err(|e| CompileError::LlvmError(format!("weak cast: {}", e)))?;
+                    let upgrade_fn = self.module.get_function("mimi_rc_upgrade")
+                        .ok_or_else(|| CompileError::LlvmError("mimi_rc_upgrade not declared".to_string()))?;
+                    let upgraded = self.builder.build_call(upgrade_fn, &[
+                        BasicMetadataValueEnum::PointerValue(heap_i8),
+                    ], "weak_upgrade")
+                        .map_err(|e| CompileError::LlvmError(format!("upgrade call: {}", e)))?
+                        .try_as_basic_value_opt()
+                        .ok_or_else(|| CompileError::LlvmError("mimi_rc_upgrade returned void".to_string()))?
+                        .into_pointer_value();
+                    // Build Option<T*> as { i1 disc, i64 payload }
+                    let option_ty = self.context.struct_type(&[
+                        BasicTypeEnum::IntType(self.context.bool_type()),
+                        BasicTypeEnum::IntType(self.context.i64_type()),
+                    ], false);
+                    let option_alloca = self.builder.build_alloca(option_ty, "upgrade_opt")
+                        .map_err(|e| CompileError::LlvmError(format!("alloca: {}", e)))?;
+                    let disc_gep = self.builder.build_struct_gep(option_ty, option_alloca, 0, "disc_gep")
+                        .map_err(|e| CompileError::LlvmError(format!("gep: {}", e)))?;
+                    let payload_gep = self.builder.build_struct_gep(option_ty, option_alloca, 1, "payload_gep")
+                        .map_err(|e| CompileError::LlvmError(format!("gep: {}", e)))?;
+                    let is_some = self.builder.build_int_compare(
+                        IntPredicate::NE, upgraded, i8_ptr.const_null(), "is_some"
+                    ).map_err(|e| CompileError::LlvmError(format!("icmp: {}", e)))?;
+                    self.builder.build_store(disc_gep, is_some)
+                        .map_err(|e| CompileError::LlvmError(format!("store disc: {}", e)))?;
+                    let payload = self.builder.build_ptr_to_int(upgraded, self.context.i64_type(), "upgrade_payload")
+                        .map_err(|e| CompileError::LlvmError(format!("ptrtoint: {}", e)))?;
+                    self.builder.build_store(payload_gep, payload)
+                        .map_err(|e| CompileError::LlvmError(format!("store payload: {}", e)))?;
+                    let result = self.builder.build_load(option_ty, option_alloca, "upgrade_opt_val")
+                        .map_err(|e| CompileError::LlvmError(format!("load: {}", e)))?;
+                    return Ok(result);
+                }
+            }
+        }
+
         let actor_method = format!("{}__{}__method", obj_type, method_name);
 
         // 1. Try actor method dispatch

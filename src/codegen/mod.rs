@@ -112,6 +112,8 @@ pub struct CodeGenerator<'ctx> {
     /// Flag: when true, the next `compile_len("len", ...)` call should use strlen (for strings).
     /// Set in compile_call before dispatching to builtins.
     pending_len_is_string: bool,
+    /// Names of variables holding first-class function pointer values.
+    fn_ptr_var_names: std::collections::HashSet<String>,
 }
 
 type VarEntry<'ctx> = (inkwell::values::PointerValue<'ctx>, BasicTypeEnum<'ctx>);
@@ -129,7 +131,7 @@ impl<'ctx> CodeGenerator<'ctx> {
         let module = context.create_module(module_name);
         let builder = context.create_builder();
         builtins::register_runtime(&module, context);
-        Self { context, module, builder, loop_break: None, loop_continue: None, type_defs: HashMap::new(), type_llvm: HashMap::new(), cap_vars: vec![HashMap::new()], cap_type_names: std::collections::HashSet::new(), type_map: HashMap::new(), func_defs: HashMap::new(), var_type_names: HashMap::new(), spawn_counter: 0, strict: false, no_std: false, shared: false, verify_contracts: true, compensation_blocks: Vec::new(), comp_scope_stack: Vec::new(), shared_release_vars: vec![Vec::new()], weak_release_vars: vec![Vec::new()], shared_var_names: std::collections::HashSet::new(), heap_allocs: std::cell::RefCell::new(vec![Vec::new()]), ensures_stmts: Vec::new(), old_snapshots: HashMap::new(), comptime_func_names: std::collections::HashSet::new(), in_parasteps: false, parasteps_thread_ids: Vec::new(), trait_defs: HashMap::new(), type_impls: HashMap::new(), vtable_globals: HashMap::new(), vtable_types: HashMap::new(), extern_param_types: HashMap::new(), callback_thunk_counter: 0, callback_thunks: HashMap::new(), spawn_result_types: HashMap::new(), pending_spawn_type: None, record_type_names: std::collections::HashSet::new(), repr_c_record_names: std::collections::HashSet::new(), tuple_type_stack: Vec::new(), pending_len_is_string: false }
+        Self { context, module, builder, loop_break: None, loop_continue: None, type_defs: HashMap::new(), type_llvm: HashMap::new(), cap_vars: vec![HashMap::new()], cap_type_names: std::collections::HashSet::new(), type_map: HashMap::new(), func_defs: HashMap::new(), var_type_names: HashMap::new(), spawn_counter: 0, strict: false, no_std: false, shared: false, verify_contracts: true, compensation_blocks: Vec::new(), comp_scope_stack: Vec::new(), shared_release_vars: vec![Vec::new()], weak_release_vars: vec![Vec::new()], shared_var_names: std::collections::HashSet::new(), heap_allocs: std::cell::RefCell::new(vec![Vec::new()]), ensures_stmts: Vec::new(), old_snapshots: HashMap::new(), comptime_func_names: std::collections::HashSet::new(), in_parasteps: false, parasteps_thread_ids: Vec::new(), trait_defs: HashMap::new(), type_impls: HashMap::new(), vtable_globals: HashMap::new(), vtable_types: HashMap::new(), extern_param_types: HashMap::new(), callback_thunk_counter: 0, callback_thunks: HashMap::new(), spawn_result_types: HashMap::new(), pending_spawn_type: None, record_type_names: std::collections::HashSet::new(), repr_c_record_names: std::collections::HashSet::new(), tuple_type_stack: Vec::new(), pending_len_is_string: false, fn_ptr_var_names: std::collections::HashSet::new() }
     }
 
     fn current_function(&self) -> Option<inkwell::values::FunctionValue<'ctx>> {

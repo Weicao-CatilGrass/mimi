@@ -132,6 +132,19 @@ impl<'ctx> CodeGenerator<'ctx> {
             let i8_ptr_ty = self.context.i8_type().ptr_type(inkwell::AddressSpace::default());
             let list_ptr = match iterable_val {
                 BasicValueEnum::PointerValue(pv) => pv,
+                BasicValueEnum::StructValue(sv) => {
+                    let list_ty = BasicTypeEnum::StructType(
+                        self.context.struct_type(&[
+                            BasicTypeEnum::IntType(self.context.i64_type()),
+                            BasicTypeEnum::PointerType(self.context.ptr_type(inkwell::AddressSpace::default())),
+                        ], false)
+                    );
+                    let alloca = self.builder.build_alloca(list_ty, "list_alloca")
+                        .map_err(|e| CompileError::LlvmError(format!("alloca error: {}", e)))?;
+                    self.builder.build_store(alloca, sv)
+                        .map_err(|e| CompileError::LlvmError(format!("store error: {}", e)))?;
+                    alloca
+                }
                 BasicValueEnum::IntValue(iv) => {
                     let int_ptr = self.builder.build_int_to_ptr(iv, i8_ptr_ty, "list_as_ptr")
                         .map_err(|e| CompileError::LlvmError(format!("int_to_ptr error: {}", e)))?;

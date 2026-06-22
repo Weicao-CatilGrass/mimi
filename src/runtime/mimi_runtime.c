@@ -601,6 +601,16 @@ const char* mimi_value_type_name(ValueHandle handle) {
 
 /* ========== String functions ========== */
 
+const char* mimi_str_concat(const char* a, const char* b) {
+    size_t alen = strlen(a);
+    size_t blen = strlen(b);
+    char* result = (char*)malloc(alen + blen + 1);
+    if (!result) return NULL;
+    strcpy(result, a);
+    strcat(result, b);
+    return result;
+}
+
 MimiList* mimi_str_split(const char* s, const char* delim) {
     MimiList* result = (MimiList*)calloc(1, sizeof(MimiList));
     if (!result || !s || !delim) return result;

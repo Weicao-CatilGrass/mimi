@@ -181,6 +181,13 @@ pub fn register_runtime<'ctx>(module: &Module<'ctx>, ctx: &'ctx Context) {
             BasicMetadataTypeEnum::PointerType(i8_ptr),
         ], false),
         Some(inkwell::module::Linkage::External));
+    // mimi_str_concat(a, b) → i8* (heap-allocated string)
+    module.add_function("mimi_str_concat",
+        i8_ptr.fn_type(&[
+            BasicMetadataTypeEnum::PointerType(i8_ptr),
+            BasicMetadataTypeEnum::PointerType(i8_ptr),
+        ], false),
+        Some(inkwell::module::Linkage::External));
     // str_replace(s, from, to) → i8* (heap-allocated string)
     module.add_function("mimi_str_replace",
         i8_ptr.fn_type(&[

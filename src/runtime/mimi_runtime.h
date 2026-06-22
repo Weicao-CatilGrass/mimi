@@ -24,6 +24,9 @@ typedef struct { int64_t len; const char** data; } MimiList;
 /* str_split(s, delim) → heap-allocated MimiList* of substrings */
 MimiList* mimi_str_split(const char* s, const char* delim);
 
+/* str_concat(a, b) → heap-allocated concatenated string (a + b) */
+const char* mimi_str_concat(const char* a, const char* b);
+
 /* str_join(list_ptr, sep) → heap-allocated joined string.
    list_ptr points to a MimiList where each data[i] is a const char*. */
 const char* mimi_str_join(const MimiList* list, const char* sep);

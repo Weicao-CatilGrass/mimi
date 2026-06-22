@@ -400,6 +400,8 @@ pub enum Expr {
     Turbofish(String, Vec<Type>, Vec<Expr>),
     /// Numeric tuple field access: t.0, t.1, etc.
     TupleIndex(Box<Expr>, usize),
+    /// Arena block expression: arena { stmts; expr }
+    Arena(Block),
 }
 
 #[derive(Debug, Clone)]

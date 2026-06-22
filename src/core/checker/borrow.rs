@@ -84,6 +84,7 @@ impl<'a> Checker<'a> {
                 if let Some(e) = end { Self::collect_uses_in_expr(e, uses); }
             }
             Expr::Turbofish(_, _, args) => { for a in args { Self::collect_uses_in_expr(a, uses); } }
+            Expr::Arena(block) => { for s in block { Self::collect_uses_in_stmt(s, uses); } }
             Expr::Literal(_) | Expr::Old(_) | Expr::Comptime(_) | Expr::Quote(_) | Expr::QuoteInterpolate(_) | Expr::TypeInfo(_) | Expr::TypeOf(_) => {}
             Expr::Record { fields, .. } => { for f in fields { Self::collect_uses_in_expr(&f.value, uses); } }
             Expr::Comprehension { expr, iter, guard, .. } => {

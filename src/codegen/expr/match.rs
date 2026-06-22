@@ -61,17 +61,14 @@ impl<'ctx> CodeGenerator<'ctx> {
                 };
                 let (payload, payload_ty) = match scrutinee_val {
                     BasicValueEnum::StructValue(sv) => {
-                        let payload = self.builder.build_extract_value(sv, payload_idx, "payload")
+                        let payload_val = self.builder.build_extract_value(sv, payload_idx, "payload")
                             .map_err(|e| CompileError::LlvmError(format!("extract payload: {}", e)))?;
-                        let ty = sv.get_type()
-                            .get_field_type_at_index(payload_idx)
-                            .unwrap_or(BasicTypeEnum::IntType(self.context.i64_type()));
-                        (payload, ty)
+                        // Check if the variant's payload is a struct type (ptrtoint encoded)
+                        let (decoded, ty) = self.decode_payload_struct(name, payload_val)?;
+                        (decoded, ty)
                     }
                     BasicValueEnum::PointerValue(pv) => {
                         // Load the struct through the pointer using the common {i32,i64} layout.
-                        // The payload type might be a nested struct; we use i64 as the fallback
-                        // type for the loaded value (the caller will use the actual type).
                         let i32_ty = BasicTypeEnum::IntType(self.context.i32_type());
                         let i64_ty = BasicTypeEnum::IntType(self.context.i64_type());
                         let struct_ty = self.context.struct_type(&[i32_ty, i64_ty], false);
@@ -81,9 +78,10 @@ impl<'ctx> CodeGenerator<'ctx> {
                             BasicValueEnum::StructValue(sv) => sv,
                             _ => return Err("constructor pattern: expected struct from pointer".into()),
                         };
-                        let payload = self.builder.build_extract_value(sv, payload_idx, "payload")
+                        let payload_val = self.builder.build_extract_value(sv, payload_idx, "payload")
                             .map_err(|e| CompileError::LlvmError(format!("extract payload: {}", e)))?;
-                        (payload, i64_ty)
+                        let (decoded, ty) = self.decode_payload_struct(name, payload_val)?;
+                        (decoded, ty)
                     }
                     BasicValueEnum::IntValue(iv) => {
                         // Legacy/compact representation: some enum values are passed as a
@@ -365,6 +363,67 @@ impl<'ctx> CodeGenerator<'ctx> {
 
     /// Generate element-wise comparison for a slice pattern.
     /// Returns `Some(i1)` if any element requires comparison, `None` for wildcard-only patterns.
+    /// Check if a variant's payload i64 was ptrtoint-encoded from a struct type,
+    /// and if so, decode it back to the struct value.
+    fn decode_payload_struct(
+        &self,
+        variant_name: &str,
+        payload_val: BasicValueEnum<'ctx>,
+    ) -> Result<(BasicValueEnum<'ctx>, BasicTypeEnum<'ctx>), CompileError> {
+        let i64_ty = BasicTypeEnum::IntType(self.context.i64_type());
+        let is_payload_struct = self.find_variant_owner(variant_name).and_then(|(owner, _)| {
+            self.type_defs.get(&owner).and_then(|td| {
+                if let TypeDefKind::Enum(variants) = &td.kind {
+                    variants.iter().find(|v| v.name == *variant_name).and_then(|v| {
+                        if let Some(VariantPayload::Tuple(types)) = &v.payload {
+                            if types.len() == 1 {
+                                self.llvm_type_for(&types[0]).map(|t| matches!(t, BasicTypeEnum::StructType(_)))
+                            } else {
+                                Some(false)
+                            }
+                        } else {
+                            Some(false)
+                        }
+                    })
+                } else {
+                    None
+                }
+            })
+        }).unwrap_or(false);
+        if is_payload_struct {
+            let payload_int = payload_val.into_int_value();
+            let data_ty = self.find_variant_owner(variant_name).and_then(|(owner, _)| {
+                self.type_defs.get(&owner).and_then(|td| {
+                    if let TypeDefKind::Enum(variants) = &td.kind {
+                        variants.iter().find(|v| v.name == *variant_name).and_then(|v| {
+                            if let Some(VariantPayload::Tuple(types)) = &v.payload {
+                                if types.len() == 1 {
+                                    self.llvm_type_for(&types[0])
+                                } else {
+                                    None
+                                }
+                            } else {
+                                None
+                            }
+                        })
+                    } else {
+                        None
+                    }
+                })
+            }).ok_or_else(|| CompileError::LlvmError("cannot determine payload struct type".to_string()))?;
+            let ptr = self.builder.build_int_to_ptr(
+                payload_int,
+                self.context.i8_type().ptr_type(inkwell::AddressSpace::default()),
+                "payload_ptr",
+            ).map_err(|e| CompileError::LlvmError(format!("inttoptr: {}", e)))?;
+            let loaded_struct = self.builder.build_load(data_ty, ptr, "payload_struct")
+                .map_err(|e| CompileError::LlvmError(format!("load payload struct: {}", e)))?;
+            Ok((loaded_struct, data_ty))
+        } else {
+            Ok((payload_val, i64_ty))
+        }
+    }
+
     fn compile_slice_pattern(
         &self,
         scrutinee: BasicValueEnum<'ctx>,

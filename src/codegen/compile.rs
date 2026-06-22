@@ -86,11 +86,11 @@ impl<'ctx> CodeGenerator<'ctx> {
                 Item::Actor(actor) => {
                     self.register_actor_def(actor)?;
                 }
-                Item::Func(f) if !f.is_comptime => {
+                Item::Func(f) => {
                     self.func_defs.insert(f.name.clone(), f.clone());
-                }
-                Item::Func(f) if f.is_comptime => {
-                    self.comptime_func_names.insert(f.name.clone());
+                    if f.is_comptime {
+                        self.comptime_func_names.insert(f.name.clone());
+                    }
                 }
                 Item::Cap(cap) => {
                     self.cap_type_names.insert(cap.name.clone());
@@ -128,7 +128,7 @@ impl<'ctx> CodeGenerator<'ctx> {
         // Fifth pass: compile user functions and actors
         Self::process_items(&file.items, &mut |item| {
             match item {
-                Item::Func(f) if !f.is_comptime && self.is_committed(&f.commitment) => {
+                Item::Func(f) if self.is_committed(&f.commitment) => {
                     self.compile_func(f).map_err(|e| e.at(Span::from(f.pos)))?;
                 }
                 Item::Actor(actor) if self.is_committed(&actor.commitment) => {
@@ -138,12 +138,12 @@ impl<'ctx> CodeGenerator<'ctx> {
             }
             Ok(())
         })?;
-        // Warn about comptime functions — they are only evaluated at compile time
-        // (mimi run) and never appear in the compiled binary.
+        // Warn about comptime functions that could not be compiled
+        // (from external modules that were excluded)
         for item in &file.items {
             if let Item::Func(f) = item {
-                if f.is_comptime {
-                    eprintln!("warning: comptime function '{}' will not appear in the compiled binary (use `mimi run` to evaluate at compile time)", f.name);
+                if f.is_comptime && !self.is_committed(&f.commitment) {
+                    eprintln!("warning: comptime function '{}' was not compiled (commitment excluded)", f.name);
                 }
             }
         }

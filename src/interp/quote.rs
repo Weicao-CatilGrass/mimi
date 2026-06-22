@@ -238,6 +238,10 @@ impl<'a> Interpreter<'a> {
                     args,
                 ))
             }
+            Expr::Arena(block) => {
+                let q_block = self.quote_block(block)?;
+                Ok(QuotedAst::Arena(Box::new(q_block)))
+            }
             Expr::Block(block) => {
                 let mut q_stmts = Vec::new();
                 for s in block {

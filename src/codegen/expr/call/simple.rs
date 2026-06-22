@@ -21,6 +21,55 @@ impl<'ctx> CodeGenerator<'ctx> {
                     }
                     _ => {}
                 }
+                // Check if this is a first-class function pointer variable
+                if self.fn_ptr_var_names.contains(name.as_str()) {
+                    if let Some(&(alloca, ty)) = vars.get(name.as_str()) {
+                        let fn_ptr = self.builder.build_load(ty, alloca, &format!("{}_fn", name))
+                            .map_err(|e| CompileError::LlvmError(format!("fn ptr load error: {}", e)))?
+                            .into_pointer_value();
+                        let mut compiled_args = Vec::new();
+                        for arg in args {
+                            compiled_args.push(self.compile_expr(arg, vars)?);
+                        }
+                        let i64_ty = self.context.i64_type();
+                        let mut all_meta = Vec::new();
+                        for arg in &compiled_args {
+                            all_meta.push(match arg {
+                                BasicValueEnum::IntValue(iv) => BasicMetadataTypeEnum::IntType(iv.get_type()),
+                                BasicValueEnum::FloatValue(fv) => BasicMetadataTypeEnum::FloatType(fv.get_type()),
+                                BasicValueEnum::PointerValue(pv) => BasicMetadataTypeEnum::PointerType(pv.get_type()),
+                                BasicValueEnum::StructValue(sv) => BasicMetadataTypeEnum::StructType(sv.get_type()),
+                                BasicValueEnum::ArrayValue(av) => BasicMetadataTypeEnum::ArrayType(av.get_type()),
+                                BasicValueEnum::VectorValue(vv) => BasicMetadataTypeEnum::VectorType(vv.get_type()),
+                                BasicValueEnum::ScalableVectorValue(_) => BasicMetadataTypeEnum::IntType(i64_ty),
+                            });
+                        }
+                        let ret_type = i64_ty;
+                        let indirect_fn_type = ret_type.fn_type(&all_meta, false);
+                        let fn_ptr_typed = self.builder.build_pointer_cast(
+                            fn_ptr,
+                            indirect_fn_type.ptr_type(inkwell::AddressSpace::default()),
+                            "fn_typed",
+                        ).map_err(|e| CompileError::LlvmError(format!("pointer cast error: {}", e)))?;
+                        let call_args: Vec<_> = compiled_args.iter().map(|arg| {
+                            match arg {
+                                BasicValueEnum::IntValue(iv) => BasicMetadataValueEnum::IntValue(*iv),
+                                BasicValueEnum::FloatValue(fv) => BasicMetadataValueEnum::FloatValue(*fv),
+                                BasicValueEnum::PointerValue(pv) => BasicMetadataValueEnum::PointerValue(*pv),
+                                BasicValueEnum::StructValue(sv) => BasicMetadataValueEnum::StructValue(*sv),
+                                BasicValueEnum::ArrayValue(av) => BasicMetadataValueEnum::ArrayValue(*av),
+                                BasicValueEnum::VectorValue(vv) => BasicMetadataValueEnum::VectorValue(*vv),
+                                BasicValueEnum::ScalableVectorValue(_) => BasicMetadataValueEnum::IntValue(i64_ty.const_int(0, false)),
+                            }
+                        }).collect();
+                        let call = self.builder.build_indirect_call(
+                            indirect_fn_type, fn_ptr_typed, &call_args, "fn_ptr_call",
+                        ).map_err(|e| CompileError::LlvmError(format!("fn ptr call error: {}", e)))?;
+                        return Ok(call_try_basic_value(&call).unwrap_or(
+                            i64_ty.const_int(0, false).into()
+                        ));
+                    }
+                }
                 // Check if this is a closure variable call
                 if let Some(&(alloca, ty)) = vars.get(name.as_str()) {
                     if let BasicTypeEnum::StructType(st) = ty {

@@ -97,6 +97,9 @@ impl<'ctx> CodeGenerator<'ctx> {
             Expr::Turbofish(name, _, _) => {
                 matches!(name.as_str(), "to_string")
             }
+            Expr::Binary(BinOp::Add, lhs, _) => {
+                self.expr_is_string(lhs)
+            }
             _ => false,
         }
     }
@@ -112,6 +115,13 @@ impl<'ctx> CodeGenerator<'ctx> {
                     None
                 }
             }
+            Expr::Literal(lit) => match lit {
+                Lit::Int(_) => Some(Type::Name("i32".to_string(), vec![])),
+                Lit::Float(_) => Some(Type::Name("f64".to_string(), vec![])),
+                Lit::Bool(_) => Some(Type::Name("bool".to_string(), vec![])),
+                Lit::String(_) | Lit::FString(_) => Some(Type::Name("string".to_string(), vec![])),
+                _ => None,
+            },
             _ => None,
         }
     }
