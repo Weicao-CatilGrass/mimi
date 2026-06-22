@@ -131,20 +131,25 @@ pub enum Value {
 
 /// Wrapper around Rc<RefCell<Value>> for LocalShared.
 ///
-/// SAFETY: Rc<RefCell<Value>> is technically !Send due to Rc's non-atomic
-/// reference counting, but local_shared values are banned from parasteps
-/// (threading) at the language level, so they never cross thread boundaries
-/// in practice. This wrapper narrows the unsafe scope to only this variant.
+/// SAFETY: Rc<RefCell<Value>> is !Send due to non-atomic reference counting
+/// and !Sync due to RefCell's runtime borrow tracking. This wrapper is safe
+/// because:
+/// 1. The typechecker rejects local_shared captures in parasteps/spawn (E0305).
+/// 2. `contains_local_shared()` provides a defense-in-depth runtime check
+///    before any thread boundary crossing in the interpreter.
+/// 3. The codegen relies entirely on (1); LLVM codegen lacks a runtime check
+///    but cannot reach here without passing (1).
+/// 4. `check_expr_parasteps_safe` also descends into Expr::Lambda bodies.
 #[derive(Debug, Clone)]
 pub(crate) struct LocalSharedInner(pub Rc<RefCell<Value>>);
 
-// SAFETY: LocalSharedInner wraps Rc<RefCell<Value>> which is !Send/!Sync by default,
-// but all accesses are single-threaded (only used within the interpreter which is
-// single-threaded per instance). The language bans local_shared from crossing thread
-// boundaries (parasteps), so this is sound.
+// SAFETY: LocalSharedInner wraps Rc<RefCell<Value>> which is !Send/!Sync by default.
+// Safety relies on the type-level E0305 rejection of local_shared in parallel blocks,
+// plus the defense-in-depth runtime check in contains_local_shared().
+// See the struct-level doc on LocalSharedInner for full details.
 unsafe impl Send for LocalSharedInner {}
 // SAFETY: Same reasoning as Send — single-threaded access only, guaranteed by the
-// language-level restriction on local_shared in concurrent contexts.
+// typechecker (E0305) and runtime check (contains_local_shared).
 unsafe impl Sync for LocalSharedInner {}
 
 impl std::ops::Deref for LocalSharedInner {
@@ -411,6 +416,14 @@ pub(crate) fn contains_local_shared(v: &Value) -> bool {
         Value::DynTrait { data, .. } => contains_local_shared(data),
         Value::Ref(rc) | Value::RefMut(rc) => {
             if let Ok(v) = rc.read() {
+                contains_local_shared(&v)
+            } else {
+                false
+            }
+        }
+        Value::Closure { captured, .. } => captured.values().any(contains_local_shared),
+        Value::Shared(arc) => {
+            if let Ok(v) = arc.read() {
                 contains_local_shared(&v)
             } else {
                 false
