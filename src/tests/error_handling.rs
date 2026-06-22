@@ -96,6 +96,54 @@ func main() -> i32 {
 }
 
 #[test]
+fn bugfix_exit_basic() {
+    let src = r#"
+func main() -> i32 {
+    exit(0);
+    42
+}
+"#;
+    let result = run_source_result(src);
+    assert!(result.is_ok(), "exit should terminate: {:?}", result);
+}
+
+#[test]
+fn bugfix_exit_nonzero() {
+    let src = r#"
+func main() -> i32 {
+    exit(1);
+    0
+}
+"#;
+    let result = run_source_result(src);
+    assert!(result.is_ok(), "exit with code 1 should terminate: {:?}", result);
+}
+
+#[test]
+fn bugfix_assert_approx_eq_pass() {
+    let src = r#"
+func main() -> i32 {
+    assert_approx_eq(3.14, 3.14);
+    42
+}
+"#;
+    let v = run_source(src);
+    assert_eq!(v, interp::Value::Int(42));
+}
+
+#[test]
+fn bugfix_assert_approx_eq_fail() {
+    let src = r#"
+func main() -> i32 {
+    assert_approx_eq(3.14, 3.15);
+    0
+}
+"#;
+    let result = run_source_result(src);
+    assert!(result.is_err(), "assert_approx_eq should fail for unequal floats");
+}
+
+#[test]
 fn bugfix_modulo_by_zero() {
     let src = r#"
 func main() -> i32 {

@@ -918,3 +918,65 @@ func main() -> i32 {
 "#;
     assert_eq!(run_source(src), interp::Value::Int(20));
 }
+
+#[test]
+fn string_compare_not_equal_operator() {
+    let src = r#"
+func main() -> i32 {
+    let r = if "abc" != "xyz" { 1 } else { 0 };
+    r
+}
+"#;
+    let v = run_source(src);
+    assert_eq!(v, interp::Value::Int(1));
+}
+
+#[test]
+fn string_compare_equal_via_ne() {
+    let src = r#"
+func main() -> i32 {
+    let r = if "abc" != "abc" { 1 } else { 0 };
+    r
+}
+"#;
+    let v = run_source(src);
+    assert_eq!(v, interp::Value::Int(0));
+}
+
+#[test]
+fn string_compare_less_than() {
+    let src = r#"
+func main() -> i32 {
+    let r = if "abc" < "abd" { 1 } else { 0 };
+    r
+}
+"#;
+    let v = run_source(src);
+    assert_eq!(v, interp::Value::Int(1));
+}
+
+#[test]
+fn string_compare_greater_than() {
+    let src = r#"
+func main() -> i32 {
+    let r = if "xyz" > "abc" { 1 } else { 0 };
+    r
+}
+"#;
+    let v = run_source(src);
+    assert_eq!(v, interp::Value::Int(1));
+}
+
+#[test]
+fn string_compare_empty_vs_nonempty() {
+    let src = r#"
+func main() -> i32 {
+    let r1 = if "" < "a" { 1 } else { 0 };
+    let r2 = if "a" > "" { 1 } else { 0 };
+    r1 + r2
+}
+"#;
+    let v = run_source(src);
+    assert_eq!(v, interp::Value::Int(2));
+}
+

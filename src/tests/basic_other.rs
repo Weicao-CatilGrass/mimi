@@ -843,3 +843,40 @@ func main() -> i32 {
     let v = run_source(src);
     assert_eq!(v, interp::Value::Int(30));
 }
+
+#[test]
+fn interp_parasteps_on_failure_cleanup() {
+    let result = run_source_result(r#"
+type Res { Ok(i32) | Err(string) }
+func ok_inner() -> Res { Ok(42) }
+func main() -> i32 {
+    let mut cleaned = 0;
+    parasteps {
+        on failure { cleaned = 1; }
+        let a = spawn ok_inner();
+        let _ = await a?;
+    };
+    cleaned
+}
+"#);
+    assert!(result.is_ok(), "parasteps+on_failure with success: {:?}", result);
+    assert_eq!(result.unwrap(), interp::Value::Int(0));
+}
+
+#[test]
+fn interp_parasteps_on_failure_success() {
+    let src = r#"
+type Res { Ok(i32) | Err(string) }
+func ok() -> Res { Ok(42) }
+func main() -> i32 {
+    let mut cleaned = 0;
+    parasteps {
+        on failure { cleaned = 1; }
+        let x = ok()?;
+    }
+    cleaned
+}
+"#;
+    let v = run_source(src);
+    assert_eq!(v, interp::Value::Int(0));
+}
