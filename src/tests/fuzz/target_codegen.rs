@@ -22,18 +22,22 @@ proptest::proptest! {
     }
 }
 
+fn can_link() -> bool {
+    std::process::Command::new("cc").arg("--version").output().is_ok()
+}
+
 /// Codegen edge-case tests (require `cc` for linking).
 #[test]
-#[ignore = "requires cc linker toolchain"]
 fn test_codegen_empty_main() {
+    if !can_link() { return; }
     let src = "func main() -> i32 { 0 }";
     let stdout = crate::tests::compile_and_run(src).expect("src/tests/fuzz/target_codegen.rs:30 unwrap failed");
     assert_eq!(stdout.trim(), "");
 }
 
 #[test]
-#[ignore = "requires cc linker toolchain"]
 fn test_codegen_large_return() {
+    if !can_link() { return; }
     let src = r#"
         func main() -> i32 {
             let a = 1000000;
@@ -47,8 +51,8 @@ fn test_codegen_large_return() {
 }
 
 #[test]
-#[ignore = "requires cc linker toolchain"]
 fn test_codegen_string_manip() {
+    if !can_link() { return; }
     let src = r#"
         func main() -> i32 {
             let s = "hello " + "world";
