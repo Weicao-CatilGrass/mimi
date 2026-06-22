@@ -1676,10 +1676,9 @@ fn dual_generic_nested_type() {
     "#, "42");
 }
 
-// ─── 32.  Actor (3 tests, ignored—likely not in codegen) ───────
+// ─── 32.  Actor (3 tests) ──────────────────────────────────────
 
 #[test]
-#[ignore]
 fn dual_actor_spawn_sync() {
     if !can_link() { return; }
     dual_assert!(r#"
