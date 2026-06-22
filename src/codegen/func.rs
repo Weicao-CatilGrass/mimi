@@ -251,28 +251,44 @@ impl<'ctx> CodeGenerator<'ctx> {
                     last_val = self.adjust_int_val(last_val, ret_type)?;
                 }
                 Stmt::Return(Some(expr)) => {
+                    let val = self.compile_expr(expr, &vars)?;
+                    let val = self.adjust_int_val(val, ret_type)?;
+                    let ensures = self.ensures_stmts.clone();
+                    if !ensures.is_empty() {
+                        let result_alloca = self.builder.build_alloca(ret_type, "result")
+                            .map_err(|e| CompileError::LlvmError(format!("result alloca: {}", e)))?;
+                        self.builder.build_store(result_alloca, val)
+                            .map_err(|e| CompileError::LlvmError(format!("result store: {}", e)))?;
+                        let mut ensures_vars = vars.clone();
+                        ensures_vars.insert("result".to_string(), (result_alloca, ret_type));
+                        for ensures_expr in &ensures {
+                            self.compile_contract_assert(ensures_expr, &ensures_vars, &format!("ensures violation in '{}'", func.name))?;
+                        }
+                    }
                     self.pop_shared_scope()?;
                     self.free_heap_allocs()?;
                     self.pop_comp_scope();
                     self.pop_cap_scope();
-                    let val = self.compile_expr(expr, &vars)?;
-                    let val = self.adjust_int_val(val, ret_type)?;
-                    let ensures = self.ensures_stmts.clone();
-                    for ensures_expr in &ensures {
-                        self.compile_contract_assert(ensures_expr, &vars, &format!("ensures violation in '{}'", func.name))?;
-                    }
                     self.builder.build_return(Some(&val)).map_err(|e| CompileError::LlvmError(format!("return error: {}", e)))?;
                     return Ok(());
                 }
                 Stmt::Return(None) => {
+                    let ensures = self.ensures_stmts.clone();
+                    if !ensures.is_empty() {
+                        let result_alloca = self.builder.build_alloca(ret_type, "result")
+                            .map_err(|e| CompileError::LlvmError(format!("result alloca: {}", e)))?;
+                        self.builder.build_store(result_alloca, self.context.i64_type().const_int(0, false))
+                            .map_err(|e| CompileError::LlvmError(format!("result store: {}", e)))?;
+                        let mut ensures_vars = vars.clone();
+                        ensures_vars.insert("result".to_string(), (result_alloca, ret_type));
+                        for ensures_expr in &ensures {
+                            self.compile_contract_assert(ensures_expr, &ensures_vars, &format!("ensures violation in '{}'", func.name))?;
+                        }
+                    }
                     self.pop_shared_scope()?;
                     self.free_heap_allocs()?;
                     self.pop_comp_scope();
                     self.pop_cap_scope();
-                    let ensures = self.ensures_stmts.clone();
-                    for ensures_expr in &ensures {
-                        self.compile_contract_assert(ensures_expr, &vars, &format!("ensures violation in '{}'", func.name))?;
-                    }
                     self.builder.build_return(None).map_err(|e| CompileError::LlvmError(format!("return error: {}", e)))?;
                     return Ok(());
                 }

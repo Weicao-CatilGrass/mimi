@@ -213,7 +213,22 @@ impl<'a> Interpreter<'a> {
                 )));
         }
 
-        // Check if the result itself contains an ArenaRef
+        // If the result is a direct ArenaRef into the same arena, extract the value
+        if let Ok(Some(Value::ArenaRef(id, slot))) = &result {
+            if *id == arena_id {
+                if let Some(Arena { slots, .. }) = self.arenas.get(*id) {
+                    if let Some(val) = slots.get(*slot) {
+                        let extracted = val.clone();
+                        self.arena_depth -= 1;
+                        self.pop_scope();
+                        self.arenas.pop();
+                        return Ok(Some(extracted));
+                    }
+                }
+            }
+        }
+
+        // Check if the result itself contains an ArenaRef in a deeper structure
         if let Ok(Some(ref v)) = result {
             if contains_arena_ref(v, arena_id) {
                 self.arena_depth -= 1;
