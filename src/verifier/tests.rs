@@ -518,3 +518,19 @@ func add_one(x: i32) -> i32 {
         assert_eq!(results[0].status, VerifStatus::Verified,
             "invariant + ensures should verify: {:?}", results[0]);
     }
+
+    #[test]
+    fn verify_f64_add_and_compare() {
+        require_z3!();
+        let src = r#"
+func scale_add(x: f64) -> f64 {
+    requires: x > 1.0
+    ensures: result > x
+    x + 1.0
+}
+"#;
+        let results = verify_source(src).expect("src/verifier/tests.rs: verify_f64_add_and_compare");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].status, VerifStatus::Verified,
+            "f64 add and compare should verify: {:?}", results[0]);
+    }
