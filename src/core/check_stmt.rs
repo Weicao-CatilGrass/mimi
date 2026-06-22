@@ -122,6 +122,12 @@ impl<'a> Checker<'a> {
             Expr::Block(block) => {
                 for s in block { self.check_stmt_parasteps_safe(s, scopes); }
             }
+            Expr::Lambda { body, .. } => {
+                for s in body { self.check_stmt_parasteps_safe(s, scopes); }
+            }
+            Expr::Spawn(inner) | Expr::Await(inner) => {
+                self.check_expr_parasteps_safe(inner, scopes);
+            }
             _ => {}
         }
     }
