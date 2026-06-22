@@ -432,6 +432,7 @@ mod tests {
                 requires: None,
                 ensures: None,
                 variadic: false,
+                no_panic: false,
             },
             ExternFunc {
                 name: "mimi_greet".to_string(),
@@ -442,6 +443,7 @@ mod tests {
                 requires: None,
                 ensures: None,
                 variadic: false,
+                no_panic: false,
             },
         ]
     }

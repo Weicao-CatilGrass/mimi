@@ -391,6 +391,7 @@ mod tests {
             requires: None,
             ensures: None,
             variadic: false,
+                no_panic: false,
         }];
 
         let header = generate_c_header(&extern_funcs, HashMap::new()).expect("src/ffi/c_header.rs:396 unwrap failed");

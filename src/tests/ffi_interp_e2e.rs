@@ -162,3 +162,95 @@ fn interp_ffi_segfault_caught() {
     assert!(err.contains("signal") || err.contains("SIGSEGV") || err.contains("SEGV") || err.contains("killed"),
         "error should mention signal/SEGV: {}", err);
 }
+
+#[test]
+fn interp_ffi_no_panic_segfault_caught() {
+    // Test #[no_panic] attribute: signal handler catches C crash without fork
+    if !can_cc() { eprintln!("SKIP: cc not available"); return; }
+    let _guard = FfiEnvLock::lock();
+    let so_path = build_interp_ffi_so().expect("src/tests/ffi_interp_e2e.rs:no_panic_segv unwrap failed");
+    std::env::set_var("MIMI_FFI_LIB", &so_path);
+    // Use no-fork mode to exercise call_ffi_no_panic (signal handler path)
+    let result = run_source_result_no_fork(r#"
+        #[no_panic]
+        extern "C" {
+            func test_segfault()
+        }
+        func main() -> i32 {
+            test_segfault()
+            42
+        }
+    "#);
+    std::env::remove_var("MIMI_FFI_LIB");
+    assert!(result.is_err(), "segfault should be caught by #[no_panic] signal handler");
+    let err = result.unwrap_err();
+    assert!(err.contains("SIGSEGV") || err.contains("signal 11"),
+        "error should mention SIGSEGV: {}", err);
+}
+
+#[test]
+fn interp_ffi_no_panic_abort_caught() {
+    // Test #[no_panic] with abort (SIGABRT)
+    if !can_cc() { eprintln!("SKIP: cc not available"); return; }
+    let _guard = FfiEnvLock::lock();
+    let so_path = build_interp_ffi_so().expect("src/tests/ffi_interp_e2e.rs:no_panic_abort unwrap failed");
+    std::env::set_var("MIMI_FFI_LIB", &so_path);
+    let result = run_source_result_no_fork(r#"
+        #[no_panic]
+        extern "C" {
+            func test_abort()
+        }
+        func main() -> i32 {
+            test_abort()
+            42
+        }
+    "#);
+    std::env::remove_var("MIMI_FFI_LIB");
+    assert!(result.is_err(), "abort should be caught by #[no_panic] signal handler");
+    let err = result.unwrap_err();
+    assert!(err.contains("SIGABRT") || err.contains("signal 6"),
+        "error should mention SIGABRT: {}", err);
+}
+
+#[test]
+fn interp_ffi_no_panic_normal_call_succeeds() {
+    // Test #[no_panic] does not interfere with normal calls
+    if !can_cc() { eprintln!("SKIP: cc not available"); return; }
+    let _guard = FfiEnvLock::lock();
+    let so_path = build_interp_ffi_so().expect("src/tests/ffi_interp_e2e.rs:no_panic_normal unwrap failed");
+    std::env::set_var("MIMI_FFI_LIB", &so_path);
+    let result = run_source_result_no_fork(r#"
+        #[no_panic]
+        extern "C" {
+            func test_nop()
+        }
+        func main() -> i32 {
+            test_nop()
+            42
+        }
+    "#);
+    std::env::remove_var("MIMI_FFI_LIB");
+    assert_eq!(result.expect("src/tests/ffi_interp_e2e.rs:no_panic_normal unwrap failed"),
+        interp::Value::Int(42));
+}
+
+#[test]
+fn interp_ffi_no_panic_abort_fork_mode() {
+    // Test #[no_panic] with fork protection also works (verify_ffi=true)
+    if !can_cc() { eprintln!("SKIP: cc not available"); return; }
+    let _guard = FfiEnvLock::lock();
+    let so_path = build_interp_ffi_so().expect("src/tests/ffi_interp_e2e.rs:no_panic_fork unwrap failed");
+    std::env::set_var("MIMI_FFI_LIB", &so_path);
+    let result = run_source_result(r#"
+        #[no_panic]
+        extern "C" {
+            func test_abort()
+        }
+        func main() -> i32 {
+            test_abort()
+            42
+        }
+    "#);
+    std::env::remove_var("MIMI_FFI_LIB");
+    assert!(result.is_err(), "abort should be caught (fork mode)");
+}

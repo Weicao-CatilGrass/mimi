@@ -269,6 +269,7 @@ fn raw_string_uses_string_owned_contract() {
         requires: None,
         ensures: None,
         variadic: false,
+                no_panic: false,
     };
 
     let contract = FfiContract::from_extern(&func);
@@ -295,6 +296,7 @@ fn list_type_uses_json_contract() {
         requires: None,
         ensures: None,
         variadic: false,
+                no_panic: false,
     };
 
     let contract = FfiContract::from_extern(&func);

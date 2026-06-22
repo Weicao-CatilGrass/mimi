@@ -76,6 +76,48 @@ func main() -> i32 {
 }
 
 #[test]
+#[test]
+fn extern_block_no_panic_attribute_parses() {
+    let src = r#"
+#[no_panic]
+extern "C" {
+    func safe_add(a: i32, b: i32) -> i32;
+    func safe_greet(name: string);
+}
+
+func main() -> i32 {
+    42
+}
+"#;
+    let result = check_source(src);
+    assert!(result.is_ok(), "#[no_panic] extern block should parse and type-check: {:?}", result.err());
+}
+
+#[test]
+fn extern_block_no_panic_attribute_preserved() {
+    let src = r#"
+#[no_panic]
+extern "C" {
+    func safe_add(a: i32, b: i32) -> i32;
+    func safe_greet(name: string);
+}
+
+func main() -> i32 {
+    42
+}
+"#;
+    let tokens = crate::lexer::Lexer::new(src).tokenize().expect("tokenize ok");
+    let file = crate::parser::Parser::new(tokens).parse_file().expect("parse ok");
+    let has_no_panic = file.items.iter().any(|item| {
+        if let crate::ast::Item::ExternBlock(block) = item {
+            block.no_panic && block.funcs.iter().all(|f| f.no_panic)
+        } else {
+            false
+        }
+    });
+    assert!(has_no_panic, "#[no_panic] attribute should be preserved on ExternBlock and all ExternFuncs");
+}
+
 fn extern_func_with_no_return() {
     let src = r#"
 extern "C" {

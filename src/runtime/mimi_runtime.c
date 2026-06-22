@@ -363,6 +363,8 @@ void* mimi_rc_upgrade(void* ptr) {
   static void win32_wsa_cleanup(void) { WSACleanup(); }
 #else
   #include <unistd.h>
+  #include <signal.h>
+  #include <setjmp.h>
   #include <pthread.h>
   #include <regex.h>
   #include <sys/socket.h>
@@ -2213,6 +2215,11 @@ void __mimi_extern_test_segfault(void) {
     *p = 42;  // deliberate null dereference
 }
 
+// G9: Abort — for #[no_panic] signal handler testing
+void __mimi_extern_test_abort(void) {
+    abort();
+}
+
 // === Wrappers for interpreter FFI path (no __mimi_extern_ prefix) ===
 // The interpreter looks up symbols by the Mimi extern name directly.
 double test_float_identity(double x) { return __mimi_extern_test_float_identity(x); }
@@ -2221,11 +2228,62 @@ void   test_nop(void) { __mimi_extern_test_nop(); }
 int    test_parse_int(const char* json) { return __mimi_extern_test_parse_int(json); }
 int    test_json_sum(const char* json) { return __mimi_extern_test_json_sum(json); }
 void   test_segfault(void) { __mimi_extern_test_segfault(); }
+void   test_abort(void) { __mimi_extern_test_abort(); }
 
 // greet uses a static buffer to avoid allocation issues across .so boundary
 char* test_greet(int x) { return __mimi_extern_test_greet(x); }
 // callback wrapper
 int    test_callback(int x, int (*cb)(int)) { return __mimi_extern_test_callback(x, cb); }
+
+// Thread-local jump buffer for #[no_panic] C crash recovery.
+// When a signal handler fires, it siglongjmps here to escape the crashing C function.
+// NULL means no recovery is in progress (signal = crash).
+static THREAD_LOCAL sigjmp_buf* mimi_no_panic_jump_buf = NULL;
+
+// Saved signal handlers for #[no_panic] restoration.
+static THREAD_LOCAL struct sigaction mimi_old_sigsegv;
+static THREAD_LOCAL struct sigaction mimi_old_sigabrt;
+static THREAD_LOCAL struct sigaction mimi_old_sigbus;
+static THREAD_LOCAL struct sigaction mimi_old_sigill;
+static THREAD_LOCAL struct sigaction mimi_old_sigfpe;
+
+/// Signal handler for #[no_panic] C crash recovery.
+/// Restores SIG_DFL (so a second crash terminates), then longjmps.
+static void mimi_no_panic_handler(int sig) {
+    signal(SIGSEGV, SIG_DFL);
+    signal(SIGABRT, SIG_DFL);
+    signal(SIGBUS, SIG_DFL);
+    signal(SIGILL, SIG_DFL);
+    signal(SIGFPE, SIG_DFL);
+    if (mimi_no_panic_jump_buf) {
+        siglongjmp(*mimi_no_panic_jump_buf, sig);
+    }
+}
+
+/// Install crash-recovery signal handlers for #[no_panic] FFI calls.
+/// Must be paired with mimi_restore_no_panic_handlers().
+void mimi_install_no_panic_handlers(void) {
+    struct sigaction sa;
+    memset(&sa, 0, sizeof(sa));
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = SA_NODEFER;
+    sa.sa_handler = mimi_no_panic_handler;
+    sigaction(SIGSEGV, &sa, &mimi_old_sigsegv);
+    sigaction(SIGABRT, &sa, &mimi_old_sigabrt);
+    sigaction(SIGBUS, &sa, &mimi_old_sigbus);
+    sigaction(SIGILL, &sa, &mimi_old_sigill);
+    sigaction(SIGFPE, &sa, &mimi_old_sigfpe);
+}
+
+/// Restore previously saved signal handlers after #[no_panic] FFI call.
+void mimi_restore_no_panic_handlers(void) {
+    sigaction(SIGSEGV, &mimi_old_sigsegv, NULL);
+    sigaction(SIGABRT, &mimi_old_sigabrt, NULL);
+    sigaction(SIGBUS, &mimi_old_sigbus, NULL);
+    sigaction(SIGILL, &mimi_old_sigill, NULL);
+    sigaction(SIGFPE, &mimi_old_sigfpe, NULL);
+    mimi_no_panic_jump_buf = NULL;
+}
 
 // Thread-local error handler for contract violations.
 // When set (by pybind11 wrappers), mimi_runtime_abort calls the handler instead of abort().
