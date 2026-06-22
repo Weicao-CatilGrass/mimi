@@ -8,6 +8,21 @@ use std::collections::HashMap;
 
 impl<'ctx> CodeGenerator<'ctx> {
 
+    /// Extract a string data pointer from a Mimi string value.
+    fn extract_string_ptr(&self, val: &BasicValueEnum<'ctx>) -> Option<inkwell::values::PointerValue<'ctx>> {
+        match val {
+            BasicValueEnum::PointerValue(pv) => Some(*pv),
+            BasicValueEnum::StructValue(sv) => {
+                if let Ok(BasicValueEnum::PointerValue(pv)) = self.builder.build_extract_value(*sv, 0, "str_data") {
+                    Some(pv)
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
+    }
+
     pub(in crate::codegen) fn compile_binary_expr(
         &mut self,
         op: BinOp,
@@ -150,7 +165,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                 (BasicValueEnum::FloatValue(l), BasicValueEnum::FloatValue(r)) =>
                     Ok(self.builder.build_float_add(l, r, "fadd").map_err(|e| CompileError::LlvmError(format!("add error: {}", e)))?.into()),
                 (BasicValueEnum::PointerValue(l), BasicValueEnum::PointerValue(r)) => {
-                    // String concatenation: use mimi_str_concat runtime function
+                    // String concatenation: use mimi_str_concat
                     let concat_fn = self.module.get_function("mimi_str_concat")
                         .ok_or_else(|| CompileError::LlvmError("mimi_str_concat not declared".to_string()))?;
                     let result = self.builder.build_call(concat_fn, &[
@@ -162,7 +177,22 @@ impl<'ctx> CodeGenerator<'ctx> {
                         .ok_or_else(|| CompileError::LlvmError("mimi_str_concat returned void".to_string()))?;
                     Ok(result)
                 }
-                _ => Err("add requires same numeric types".into()),
+                _ => {
+                    // Try extracting string pointers from struct-typed strings (function params)
+                    if let (Some(l), Some(r)) = (self.extract_string_ptr(&lhs), self.extract_string_ptr(&rhs)) {
+                        let concat_fn = self.module.get_function("mimi_str_concat")
+                            .ok_or_else(|| CompileError::LlvmError("mimi_str_concat not declared".to_string()))?;
+                        let result = self.builder.build_call(concat_fn, &[
+                            BasicMetadataValueEnum::PointerValue(l),
+                            BasicMetadataValueEnum::PointerValue(r),
+                        ], "str_concat")
+                            .map_err(|e| CompileError::LlvmError(format!("str_concat error: {}", e)))?
+                            .try_as_basic_value_opt()
+                            .ok_or_else(|| CompileError::LlvmError("mimi_str_concat returned void".to_string()))?;
+                        return Ok(result);
+                    }
+                    Err("add requires same numeric types".into())
+                }
             },
             BinOp::Sub => match (lhs, rhs) {
                 (BasicValueEnum::IntValue(l), BasicValueEnum::IntValue(r)) =>
@@ -190,12 +220,8 @@ impl<'ctx> CodeGenerator<'ctx> {
                     Ok(self.builder.build_int_signed_rem(l, r, "rem").map_err(|e| CompileError::LlvmError(format!("rem error: {}", e)))?.into()),
                 _ => Err("mod requires integer types".into()),
             },
-            BinOp::EqCmp => match (lhs, rhs) {
-                (BasicValueEnum::IntValue(l), BasicValueEnum::IntValue(r)) =>
-                    Ok(self.builder.build_int_compare(inkwell::IntPredicate::EQ, l, r, "eq").map_err(|e| CompileError::LlvmError(format!("cmp error: {}", e)))?.into()),
-                (BasicValueEnum::FloatValue(l), BasicValueEnum::FloatValue(r)) =>
-                    Ok(self.builder.build_float_compare(inkwell::FloatPredicate::OEQ, l, r, "feq").map_err(|e| CompileError::LlvmError(format!("cmp error: {}", e)))?.into()),
-                (BasicValueEnum::PointerValue(l), BasicValueEnum::PointerValue(r)) => {
+            BinOp::EqCmp => match (self.extract_string_ptr(&lhs), self.extract_string_ptr(&rhs)) {
+                (Some(l), Some(r)) => {
                     let strcmp_fn = self.module.get_function("strcmp")
                         .ok_or_else(|| "strcmp not declared".to_string())?;
                     let result = self.builder.build_call(strcmp_fn, &[
@@ -210,14 +236,16 @@ impl<'ctx> CodeGenerator<'ctx> {
                     Ok(self.builder.build_int_compare(inkwell::IntPredicate::EQ, cmp, zero, "streq")
                         .map_err(|e| CompileError::LlvmError(format!("cmp error: {}", e)))?.into())
                 }
-                _ => Err("eq requires same types".into()),
+                _ => match (lhs, rhs) {
+                    (BasicValueEnum::IntValue(l), BasicValueEnum::IntValue(r)) =>
+                        Ok(self.builder.build_int_compare(inkwell::IntPredicate::EQ, l, r, "eq").map_err(|e| CompileError::LlvmError(format!("cmp error: {}", e)))?.into()),
+                    (BasicValueEnum::FloatValue(l), BasicValueEnum::FloatValue(r)) =>
+                        Ok(self.builder.build_float_compare(inkwell::FloatPredicate::OEQ, l, r, "feq").map_err(|e| CompileError::LlvmError(format!("cmp error: {}", e)))?.into()),
+                    _ => Err("eq requires same types".into()),
+                },
             },
-            BinOp::NeCmp => match (lhs, rhs) {
-                (BasicValueEnum::IntValue(l), BasicValueEnum::IntValue(r)) =>
-                    Ok(self.builder.build_int_compare(inkwell::IntPredicate::NE, l, r, "ne").map_err(|e| CompileError::LlvmError(format!("cmp error: {}", e)))?.into()),
-                (BasicValueEnum::FloatValue(l), BasicValueEnum::FloatValue(r)) =>
-                    Ok(self.builder.build_float_compare(inkwell::FloatPredicate::ONE, l, r, "fne").map_err(|e| CompileError::LlvmError(format!("cmp error: {}", e)))?.into()),
-                (BasicValueEnum::PointerValue(l), BasicValueEnum::PointerValue(r)) => {
+            BinOp::NeCmp => match (self.extract_string_ptr(&lhs), self.extract_string_ptr(&rhs)) {
+                (Some(l), Some(r)) => {
                     let strcmp_fn = self.module.get_function("strcmp")
                         .ok_or_else(|| "strcmp not declared".to_string())?;
                     let result = self.builder.build_call(strcmp_fn, &[
@@ -232,7 +260,13 @@ impl<'ctx> CodeGenerator<'ctx> {
                     Ok(self.builder.build_int_compare(inkwell::IntPredicate::NE, cmp, zero, "strne")
                         .map_err(|e| CompileError::LlvmError(format!("cmp error: {}", e)))?.into())
                 }
-                _ => Err("ne requires same types".into()),
+                _ => match (lhs, rhs) {
+                    (BasicValueEnum::IntValue(l), BasicValueEnum::IntValue(r)) =>
+                        Ok(self.builder.build_int_compare(inkwell::IntPredicate::NE, l, r, "ne").map_err(|e| CompileError::LlvmError(format!("cmp error: {}", e)))?.into()),
+                    (BasicValueEnum::FloatValue(l), BasicValueEnum::FloatValue(r)) =>
+                        Ok(self.builder.build_float_compare(inkwell::FloatPredicate::ONE, l, r, "fne").map_err(|e| CompileError::LlvmError(format!("cmp error: {}", e)))?.into()),
+                    _ => Err("ne requires same types".into()),
+                },
             },
             BinOp::Lt => match (lhs, rhs) {
                 (BasicValueEnum::IntValue(l), BasicValueEnum::IntValue(r)) =>
