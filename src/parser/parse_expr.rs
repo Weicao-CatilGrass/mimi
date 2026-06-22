@@ -1,3 +1,5 @@
+// Parser uses .expect() on self.expect() returns as an intentional pattern.
+#![cfg_attr(not(test), allow(clippy::unwrap_used))]
 use super::*;
 
 impl Parser {

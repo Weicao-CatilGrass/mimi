@@ -1,3 +1,5 @@
+// Receiver lock poisoning panic is intentional.
+#![cfg_attr(not(test), allow(clippy::unwrap_used))]
 use std::sync::{mpsc, Arc, Mutex, OnceLock};
 use std::thread;
 

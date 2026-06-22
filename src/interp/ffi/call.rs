@@ -1,3 +1,5 @@
+// FFI fork lock poisoning panic is intentional.
+#![cfg_attr(not(test), allow(clippy::unwrap_used))]
 use super::super::*;
 use crate::ffi::FfiRetContract;
 use libffi::middle::{Cif, CodePtr};
