@@ -1,5 +1,3 @@
-#![allow(dead_code, deprecated)]
-
 pub mod types;
 pub mod builtins;
 mod compile;
