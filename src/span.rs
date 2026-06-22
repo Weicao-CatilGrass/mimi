@@ -55,10 +55,19 @@ impl Span {
         true
     }
 
-    /// Get the length of the span on a single line (end_col - start_col).
-    /// For multi-line spans, returns the width of the last line.
+    /// Get the width of the span in characters.
+    /// For multi-line spans, returns the total width across all lines.
     pub fn width(&self) -> usize {
-        self.end_col.saturating_sub(self.start_col)
+        if self.start_line == self.end_line {
+            self.end_col.saturating_sub(self.start_col)
+        } else {
+            // Multi-line: approximate total width including newline characters
+            let lines = self.end_line.saturating_sub(self.start_line);
+            // First line width + intervening lines + last line + newlines
+            let first_line = 80usize.saturating_sub(self.start_col); // approximate
+            let mid_lines = lines.saturating_sub(1).saturating_mul(80);
+            first_line.saturating_add(mid_lines).saturating_add(self.end_col).saturating_add(lines)
+        }
     }
 }
 

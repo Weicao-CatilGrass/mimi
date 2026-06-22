@@ -217,6 +217,18 @@ impl<'ctx> CodeGenerator<'ctx> {
             }
             _ => return Err(format!("variant method '{}' requires a struct pointer or value", method).into()),
         };
+        // Extract the actual payload type from the struct's field types
+        let payload_ty = if let BasicTypeEnum::StructType(st) = actual_sty_enum {
+            let fields = st.get_field_types();
+            if (payload_idx as usize) < fields.len() {
+                fields[payload_idx as usize]
+            } else {
+                BasicTypeEnum::IntType(i64_ty)
+            }
+        } else {
+            BasicTypeEnum::IntType(i64_ty)
+        };
+
         let disc_gep = self.builder.build_struct_gep(
             actual_sty_enum, pv, disc_idx, "disc_gep"
         ).map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?;
@@ -225,7 +237,7 @@ impl<'ctx> CodeGenerator<'ctx> {
         let pay_gep = self.builder.build_struct_gep(
             actual_sty_enum, pv, payload_idx, "pay_gep"
         ).map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?;
-        let payload = self.builder.build_load(BasicTypeEnum::IntType(i64_ty), pay_gep, "payload")
+        let payload = self.builder.build_load(payload_ty, pay_gep, "payload")
             .map_err(|e| CompileError::LlvmError(format!("load error: {}", e)))?;
 
         match method {
@@ -269,7 +281,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                 let default_val = self.compile_expr(&args[0], vars)?;
                 let ok_bb = self.context.append_basic_block(function, "unwrap_or_ok");
                 let done_bb = self.context.append_basic_block(function, "unwrap_or_done");
-                let result_alloca = self.builder.build_alloca(BasicTypeEnum::IntType(i64_ty), "unwrap_or_result")
+                let result_alloca = self.builder.build_alloca(payload_ty, "unwrap_or_result")
                     .map_err(|e| CompileError::LlvmError(format!("alloca error: {}", e)))?;
                 self.builder.build_store(result_alloca, payload)
                     .map_err(|e| CompileError::LlvmError(format!("store error: {}", e)))?;
@@ -281,7 +293,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                 self.builder.build_unconditional_branch(ok_bb)
                     .map_err(|e| CompileError::LlvmError(format!("branch error: {}", e)))?;
                 self.builder.position_at_end(ok_bb);
-                self.builder.build_load(BasicTypeEnum::IntType(i64_ty), result_alloca, "unwrap_or_val")
+                self.builder.build_load(payload_ty, result_alloca, "unwrap_or_val")
                     .map_err(|e| CompileError::LlvmError(format!("load error: {}", e)))
             }
             "ok_or" => {
