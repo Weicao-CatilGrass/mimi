@@ -363,7 +363,10 @@ impl<'ctx> CodeGenerator<'ctx> {
                 // F7: Tuple return — C returns JSON string (i8*)
                 } else if matches!(ty, crate::ast::Type::Tuple(_)) {
                     BasicTypeEnum::PointerType(i8_ptr_ty)
-                // BUG 1 fix: C functions return string as char* (i8*)
+                // BUG 1: C functions return string as char* (i8*), but Mimi's
+                // string type is {i8*, i64} (ptr + length). The C call uses i8*
+                // for the return; the wrapper then converts via strlen.
+                // Tests: e2e_extern_strlen, e2e_extern_parse_int_raw_string
                 } else if matches!(ty, crate::ast::Type::Name(n, _) if n == "string") {
                     BasicTypeEnum::PointerType(i8_ptr_ty)
                 } else {
@@ -966,7 +969,10 @@ impl<'ctx> CodeGenerator<'ctx> {
                     .map_err(|e| CompileError::LlvmError(format!("return error: {}", e)))?;
             }
         } else if ef.ret.as_ref().map_or(false, |t| matches!(t, crate::ast::Type::Name(n, _) if n == "string")) {
-            // BUG 1 fix: convert char* (i8*) from C to {i8*, i64} Mimi string struct
+            // BUG 1: convert char* (i8*) from C to {i8*, i64} Mimi string struct.
+            // C FFI returns strings as bare pointers; Mimi represents strings
+            // as {ptr, len}. The strlen call computes the missing length field.
+            // Tests: e2e_extern_strlen, e2e_extern_parse_int_raw_string
             let ret = call_try_basic_value(&call)
                 .ok_or_else(|| CompileError::LlvmError("extern call returned void".to_string()))?;
             let raw_ptr = match ret {
