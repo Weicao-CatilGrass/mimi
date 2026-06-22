@@ -371,6 +371,23 @@ impl<'ctx> CodeGenerator<'ctx> {
                             }
                         }
                     }
+                    // Shared var clone: let v = shared_var.clone()
+                    if let Pattern::Variable(name) = pat {
+                        if let Expr::Call(callee, cargs) = init {
+                            if cargs.is_empty() {
+                                if let Expr::Field(obj, method_name) = callee.as_ref() {
+                                    if method_name == "clone" {
+                                        if let Expr::Ident(src_name) = obj.as_ref() {
+                                            if self.shared_var_names.contains(src_name.as_str()) {
+                                                self.compile_shared_ref_copy(name, src_name, &mut vars)?;
+                                                continue;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                     // Non-dyn Trait: compile init and bind via recursive pattern matching
                     let mut val = self.compile_expr(init, &vars)?;
                     if let Some(decl_ty) = ty {

@@ -1303,11 +1303,10 @@ fn dual_local_shared() {
 }
 
 #[test]
-#[ignore]
 fn dual_shared_field_access() {
     if !can_link() { return; }
     dual_assert!(r#"
-        type Point { x: i32; y: i32 }
+        type Point { x: i32, y: i32 }
         func main() -> i32 {
             shared s = Point { x: 10, y: 20 };
             println(s.x);
@@ -1346,7 +1345,6 @@ fn dual_arena_basic() {
 }
 
 #[test]
-#[ignore]
 fn dual_shared_mutation() {
     if !can_link() { return; }
     dual_assert!(r#"
