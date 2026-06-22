@@ -1698,7 +1698,6 @@ fn dual_actor_spawn_sync() {
 }
 
 #[test]
-#[ignore]
 fn dual_actor_await_get() {
     if !can_link() { return; }
     dual_assert!(r#"
@@ -1710,7 +1709,7 @@ fn dual_actor_await_get() {
         func main() -> i32 {
             let c = Counter.spawn();
             c.increment();
-            let val = await c.get();
+            let val = c.get();
             println(val);
             0
         }
@@ -1718,7 +1717,6 @@ fn dual_actor_await_get() {
 }
 
 #[test]
-#[ignore]
 fn dual_actor_with_param() {
     if !can_link() { return; }
     dual_assert!(r#"
@@ -1730,7 +1728,7 @@ fn dual_actor_with_param() {
         func main() -> i32 {
             let a = Accumulator.spawn();
             a.add(5);
-            let val = await a.get();
+            let val = a.get();
             println(val);
             0
         }

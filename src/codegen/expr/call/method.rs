@@ -178,11 +178,25 @@ impl<'ctx> CodeGenerator<'ctx> {
             // Actor methods take self as pointer; convert struct value to pointer if needed
             if let BasicValueEnum::StructValue(sv) = obj_val {
                 let struct_ty = sv.get_type();
-                let alloca = self.builder.build_alloca(struct_ty, "self_tmp")
-                    .map_err(|e| CompileError::LlvmError(format!("alloca error: {}", e)))?;
-                self.builder.build_store(alloca, obj_val)
-                    .map_err(|e| CompileError::LlvmError(format!("store error: {}", e)))?;
-                obj_val = alloca.into();
+                // Pass the original variable's alloca pointer to allow in-place
+                // mutation of mutable actor fields through the method call.
+                if let Expr::Ident(name) = obj {
+                    if let Some(&(alloca, _)) = vars.get(name.as_str()) {
+                        obj_val = alloca.into();
+                    } else {
+                        let tmp = self.builder.build_alloca(struct_ty, "self_tmp")
+                            .map_err(|e| CompileError::LlvmError(format!("alloca error: {}", e)))?;
+                        self.builder.build_store(tmp, obj_val)
+                            .map_err(|e| CompileError::LlvmError(format!("store error: {}", e)))?;
+                        obj_val = tmp.into();
+                    }
+                } else {
+                    let tmp = self.builder.build_alloca(struct_ty, "self_tmp")
+                        .map_err(|e| CompileError::LlvmError(format!("alloca error: {}", e)))?;
+                    self.builder.build_store(tmp, obj_val)
+                        .map_err(|e| CompileError::LlvmError(format!("store error: {}", e)))?;
+                    obj_val = tmp.into();
+                }
             }
             let mut compiled_args = Vec::new();
             compiled_args.push(obj_val);

@@ -252,6 +252,23 @@ impl<'ctx> CodeGenerator<'ctx> {
                             }
                         }
                     }
+                    // Shared var clone: let v = shared_var.clone()
+                    if let Pattern::Variable(name) = pat {
+                        if let Expr::Call(callee, cargs) = init {
+                            if cargs.is_empty() {
+                                if let Expr::Field(obj, method_name) = callee.as_ref() {
+                                    if method_name == "clone" {
+                                        if let Expr::Ident(src_name) = obj.as_ref() {
+                                            if self.shared_var_names.contains(src_name.as_str()) {
+                                                self.compile_shared_ref_copy(name, src_name, &mut vars)?;
+                                                continue;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                     let mut val = self.compile_expr(init, &vars)?;
                     if let Some(decl_ty) = ty {
                         let target = types::mimi_type_to_llvm(self.context, decl_ty)
@@ -306,11 +323,8 @@ impl<'ctx> CodeGenerator<'ctx> {
                     }
                     self.compile_pattern_bind(pat, val, &mut vars)?;
                 }
-                Stmt::Assign { target: Expr::Ident(name), value } => {
-                    let val = self.compile_expr(value, &vars)?;
-                    if let Some(&(alloca, ty)) = vars.get(name) {
-                        self.assign_to_var(name, val, alloca, ty)?;
-                    }
+                Stmt::Assign { target, value } => {
+                    self.compile_assign_stmt(target, value, &mut vars)?;
                 }
                 Stmt::If { cond, then_, else_ } => {
                     let cond_val = self.compile_expr(cond, &vars)?;
