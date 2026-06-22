@@ -221,129 +221,9 @@ impl Parser {
                     self.expect(TokenKind::RParen, "`)`")?;
                     e = Expr::Call(Box::new(e), args);
                 }
-                loop {
-                    if self.at(&TokenKind::LParen) {
-                        self.advance();
-                        let args = self.parse_args()?;
-                        self.expect(TokenKind::RParen, "`)`")?;
-                        e = Expr::Call(Box::new(e), args);
-                    } else if self.at(&TokenKind::Dot) {
-                        self.advance();
-                        let field = self.expect_ident()?;
-                        e = Expr::Field(Box::new(e), field);
-                    } else if self.at(&TokenKind::LBracket) {
-                        e = self.parse_slice_or_index(e)?;
-                    } else {
-                        break;
-                    }
-                }
-                e
+                return self.parse_postfix(e);
             }
-            TokenKind::Ident(name) => {
-                self.advance();
-                if name == "type_name" && self.at(&TokenKind::LParen) {
-                    self.advance();
-                    let inner = self.parse_expr(0)?;
-                    self.expect(TokenKind::RParen, "`)` for type_name")?;
-                    return Ok(Expr::TypeOf(Box::new(inner)));
-                }
-                if name == "type_info" && self.at(&TokenKind::LParen) {
-                    self.advance();
-                    let ty = self.parse_type()?;
-                    self.expect(TokenKind::RParen, "`)` for type_info")?;
-                    return Ok(Expr::TypeInfo(ty));
-                }
-                if self.at(&TokenKind::ColonColon) {
-                    self.advance();
-                    if self.at(&TokenKind::Lt) {
-                        self.advance();
-                        let mut type_args = Vec::new();
-                        if !self.at(&TokenKind::Gt) {
-                            loop {
-                                type_args.push(self.parse_type()?);
-                                if !self.at(&TokenKind::Comma) {
-                                    break;
-                                }
-                                self.advance();
-                            }
-                        }
-                        self.expect_gt("`>`")?;
-                        self.expect(TokenKind::LParen, "`(`")?;
-                        let args = self.parse_args()?;
-                        self.expect(TokenKind::RParen, "`)`")?;
-                        Expr::Turbofish(name, type_args, args)
-                    } else {
-                        let field = self.expect_ident()?;
-                        let mut e = Expr::Field(Box::new(Expr::Ident(name)), field);
-                        while self.at(&TokenKind::ColonColon) {
-                            self.advance();
-                            let field = self.expect_ident()?;
-                            e = Expr::Field(Box::new(e), field);
-                        }
-                        if self.at(&TokenKind::LParen) {
-                            self.advance();
-                            let args = self.parse_args()?;
-                            self.expect(TokenKind::RParen, "`)`")?;
-                            e = Expr::Call(Box::new(e), args);
-                        }
-                        e
-                    }
-                } else {
-                let mut e = Expr::Ident(name);
-                loop {
-                    if self.at(&TokenKind::LParen) {
-                        self.advance();
-                        let args = self.parse_args()?;
-                        self.expect(TokenKind::RParen, "`)`")?;
-                        e = Expr::Call(Box::new(e), args);
-                    } else if self.at(&TokenKind::Dot) {
-                        self.advance();
-                        if let TokenKind::Int(s) = &self.peek().kind {
-                            let idx = s.replace('_', "").parse::<usize>()
-                                .map_err(|_| ParseError::new("invalid tuple index", self.peek().line, self.peek().col))?;
-                            self.advance();
-                            e = Expr::TupleIndex(Box::new(e), idx);
-                        } else {
-                            let field = if matches!(self.peek_kind(), TokenKind::Ident(_)) {
-                                self.expect_ident()
-                            } else if self.at(&TokenKind::Spawn) {
-                                self.advance();
-                                Ok("spawn".to_string())
-                            } else if self.at(&TokenKind::Await) {
-                                self.advance();
-                                Ok("await".to_string())
-                            } else if self.at(&TokenKind::Quote) {
-                                self.advance();
-                                Ok("quote".to_string())
-                            } else {
-                                self.expect_ident()
-                            }?;
-                            e = Expr::Field(Box::new(e), field);
-                        }
-                    } else if self.at(&TokenKind::LBracket) {
-                        e = self.parse_slice_or_index(e)?;
-                    } else if self.at(&TokenKind::LBrace) {
-                        if let Expr::Ident(ty_name) = &e {
-                            if ty_name.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
-                                let ty_name = ty_name.clone();
-                                self.advance();
-                                let fields = self.parse_record_expr_fields()?;
-                                self.expect(TokenKind::RBrace, "`}`")?;
-                                e = Expr::Record {
-                                    ty: Some(ty_name),
-                                    fields,
-                                };
-                                continue;
-                            }
-                        }
-                        break;
-                    } else {
-                        break;
-                    }
-                }
-                e
-                }
-            }
+            TokenKind::Ident(name) => self.parse_ident_primary(name)?,
             TokenKind::LParen => {
                 self.advance();
                 self.skip_newlines();
@@ -367,53 +247,7 @@ impl Parser {
                 self.expect(TokenKind::RParen, "`)`")?;
                 return self.parse_postfix(e);
             }
-            TokenKind::LBracket => {
-                self.advance();
-                self.skip_newlines();
-                let first_expr = if self.at(&TokenKind::RBracket) {
-                    self.advance();
-                    return Ok(Expr::List(vec![]));
-                } else {
-                    self.parse_expr(0)?
-                };
-                self.skip_newlines();
-                if self.at(&TokenKind::For) {
-                    self.advance();
-                    let var = self.expect_ident()?;
-                    self.expect(TokenKind::In, "`in`")?;
-                    let iter = self.parse_expr(0)?;
-                    self.skip_newlines();
-                    let guard = if self.at(&TokenKind::If) {
-                        self.advance();
-                        Some(Box::new(self.parse_expr(0)?))
-                    } else {
-                        None
-                    };
-                    self.expect(TokenKind::RBracket, "`]`")?;
-                    return self.parse_postfix(Expr::Comprehension {
-                        expr: Box::new(first_expr),
-                        var,
-                        iter: Box::new(iter),
-                        guard,
-                    });
-                } else {
-                    let mut elems = vec![first_expr];
-                    loop {
-                        self.skip_newlines();
-                        if !self.at(&TokenKind::Comma) {
-                            break;
-                        }
-                        self.advance();
-                        self.skip_newlines();
-                        if self.at(&TokenKind::RBracket) {
-                            break;
-                        }
-                        elems.push(self.parse_expr(0)?);
-                    }
-                    self.expect(TokenKind::RBracket, "`]`")?;
-                    return self.parse_postfix(Expr::List(elems));
-                }
-            }
+            TokenKind::LBracket => self.parse_bracket_primary()?,
             TokenKind::Match => {
                 self.advance();
                 let e = self.parse_expr(0)?;
@@ -491,24 +325,7 @@ impl Parser {
             ref kw if is_keyword_token(kw) => {
                 let name = kind.source_text().to_string();
                 self.advance();
-                let mut e = Expr::Ident(name);
-                loop {
-                    if self.at(&TokenKind::LParen) {
-                        self.advance();
-                        let args = self.parse_args()?;
-                        self.expect(TokenKind::RParen, "`)`")?;
-                        e = Expr::Call(Box::new(e), args);
-                    } else if self.at(&TokenKind::Dot) {
-                        self.advance();
-                        let field = self.expect_ident()?;
-                        e = Expr::Field(Box::new(e), field);
-                    } else if self.at(&TokenKind::LBracket) {
-                        e = self.parse_slice_or_index(e)?;
-                    } else {
-                        break;
-                    }
-                }
-                e
+                return self.parse_postfix(Expr::Ident(name));
             }
             _ => {
                 let (line, col) = (self.peek().line, self.peek().col);
@@ -661,6 +478,159 @@ impl Parser {
         }
         self.expect(TokenKind::RBrace, "`}`")?;
         Ok(stmts)
+    }
+    fn parse_ident_primary(&mut self, name: String) -> Result<Expr, ParseError> {
+        self.advance();
+        if name == "type_name" && self.at(&TokenKind::LParen) {
+            self.advance();
+            let inner = self.parse_expr(0)?;
+            self.expect(TokenKind::RParen, "`)` for type_name")?;
+            return Ok(Expr::TypeOf(Box::new(inner)));
+        }
+        if name == "type_info" && self.at(&TokenKind::LParen) {
+            self.advance();
+            let ty = self.parse_type()?;
+            self.expect(TokenKind::RParen, "`)` for type_info")?;
+            return Ok(Expr::TypeInfo(ty));
+        }
+        if self.at(&TokenKind::ColonColon) {
+            self.advance();
+            if self.at(&TokenKind::Lt) {
+                self.advance();
+                let mut type_args = Vec::new();
+                if !self.at(&TokenKind::Gt) {
+                    loop {
+                        type_args.push(self.parse_type()?);
+                        if !self.at(&TokenKind::Comma) {
+                            break;
+                        }
+                        self.advance();
+                    }
+                }
+                self.expect_gt("`>`")?;
+                self.expect(TokenKind::LParen, "`(`")?;
+                let args = self.parse_args()?;
+                self.expect(TokenKind::RParen, "`)`")?;
+                return Ok(Expr::Turbofish(name, type_args, args));
+            } else {
+                let field = self.expect_ident()?;
+                let mut e = Expr::Field(Box::new(Expr::Ident(name)), field);
+                while self.at(&TokenKind::ColonColon) {
+                    self.advance();
+                    let field = self.expect_ident()?;
+                    e = Expr::Field(Box::new(e), field);
+                }
+                if self.at(&TokenKind::LParen) {
+                    self.advance();
+                    let args = self.parse_args()?;
+                    self.expect(TokenKind::RParen, "`)`")?;
+                    e = Expr::Call(Box::new(e), args);
+                }
+                return Ok(e);
+            }
+        }
+        let mut e = Expr::Ident(name);
+        loop {
+            if self.at(&TokenKind::LParen) {
+                self.advance();
+                let args = self.parse_args()?;
+                self.expect(TokenKind::RParen, "`)`")?;
+                e = Expr::Call(Box::new(e), args);
+            } else if self.at(&TokenKind::Dot) {
+                self.advance();
+                if let TokenKind::Int(s) = &self.peek().kind {
+                    let idx = s.replace('_', "").parse::<usize>()
+                        .map_err(|_| ParseError::new("invalid tuple index", self.peek().line, self.peek().col))?;
+                    self.advance();
+                    e = Expr::TupleIndex(Box::new(e), idx);
+                } else {
+                    let field = if matches!(self.peek_kind(), TokenKind::Ident(_)) {
+                        self.expect_ident()
+                    } else if self.at(&TokenKind::Spawn) {
+                        self.advance();
+                        Ok("spawn".to_string())
+                    } else if self.at(&TokenKind::Await) {
+                        self.advance();
+                        Ok("await".to_string())
+                    } else if self.at(&TokenKind::Quote) {
+                        self.advance();
+                        Ok("quote".to_string())
+                    } else {
+                        self.expect_ident()
+                    }?;
+                    e = Expr::Field(Box::new(e), field);
+                }
+            } else if self.at(&TokenKind::LBracket) {
+                e = self.parse_slice_or_index(e)?;
+            } else if self.at(&TokenKind::LBrace) {
+                if let Expr::Ident(ty_name) = &e {
+                    if ty_name.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
+                        let ty_name = ty_name.clone();
+                        self.advance();
+                        let fields = self.parse_record_expr_fields()?;
+                        self.expect(TokenKind::RBrace, "`}`")?;
+                        e = Expr::Record {
+                            ty: Some(ty_name),
+                            fields,
+                        };
+                        continue;
+                    }
+                }
+                break;
+            } else {
+                break;
+            }
+        }
+        Ok(e)
+    }
+
+    /// Parse a `[expr]` / `[expr for var in iter]` / `[expr, ...]` primary expression.
+    fn parse_bracket_primary(&mut self) -> Result<Expr, ParseError> {
+        self.advance();
+        self.skip_newlines();
+        let first_expr = if self.at(&TokenKind::RBracket) {
+            self.advance();
+            return Ok(Expr::List(vec![]));
+        } else {
+            self.parse_expr(0)?
+        };
+        self.skip_newlines();
+        if self.at(&TokenKind::For) {
+            self.advance();
+            let var = self.expect_ident()?;
+            self.expect(TokenKind::In, "`in`")?;
+            let iter = self.parse_expr(0)?;
+            self.skip_newlines();
+            let guard = if self.at(&TokenKind::If) {
+                self.advance();
+                Some(Box::new(self.parse_expr(0)?))
+            } else {
+                None
+            };
+            self.expect(TokenKind::RBracket, "`]`")?;
+            return self.parse_postfix(Expr::Comprehension {
+                expr: Box::new(first_expr),
+                var,
+                iter: Box::new(iter),
+                guard,
+            });
+        } else {
+            let mut elems = vec![first_expr];
+            loop {
+                self.skip_newlines();
+                if !self.at(&TokenKind::Comma) {
+                    break;
+                }
+                self.advance();
+                self.skip_newlines();
+                if self.at(&TokenKind::RBracket) {
+                    break;
+                }
+                elems.push(self.parse_expr(0)?);
+            }
+            self.expect(TokenKind::RBracket, "`]`")?;
+            return self.parse_postfix(Expr::List(elems));
+        }
     }
 }
 
