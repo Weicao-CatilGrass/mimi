@@ -56,6 +56,8 @@ pub(crate) mod ffi_verification;
 pub(crate) mod ffi_interp_e2e;
 pub(crate) mod type_system_verification;
 pub(crate) mod actor_concurrent;
+pub(crate) mod borrow_boundary;
+pub(crate) mod debug_info;
 pub(crate) mod derive_methods;
 pub(crate) mod builtin_registry;
 pub(crate) mod builtin_extended;
@@ -353,6 +355,22 @@ pub(crate) fn compile_and_run_ubsan(src: &str) -> Result<String, String> {
 /// E2E codegen test with an extra C source file linked in.
 pub(crate) fn compile_and_run_with_csrc(src: &str, extra_c: &str) -> Result<String, String> {
     compile_and_run_with_config(src, &E2EConfig { extra_c_src: Some(extra_c.to_string()), ..Default::default() })
+}
+
+/// Compile Mimi source to an object file and return the path.
+/// The caller is responsible for cleaning up the returned path.
+pub(crate) fn compile_only(src: &str) -> Result<std::path::PathBuf, String> {
+    let counter = E2E_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let tokens = crate::lexer::Lexer::new(src).tokenize().map_err(|e| format!("lexer: {}", e))?;
+    let file = crate::parser::Parser::new(tokens).parse_file().map_err(|e| format!("parser: {}", e))?;
+    let context = inkwell::context::Context::create();
+    let mut codegen = crate::codegen::CodeGenerator::new(&context, "e2e_test");
+    codegen.compile_file(&file).map_err(|e| e.to_string())?;
+    let tmp_dir = std::env::temp_dir().join(format!("mimi_obj_{}_{}", std::process::id(), counter));
+    std::fs::create_dir_all(&tmp_dir).map_err(|e| format!("mkdir: {}", e))?;
+    let obj_path = tmp_dir.join("test.o");
+    codegen.compile_to_object(&obj_path).map_err(|e| e.to_string())?;
+    Ok(obj_path)
 }
 
 /// Run a Mimi source with contracts enabled through both backends,
