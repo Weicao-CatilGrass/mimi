@@ -46,9 +46,18 @@ impl<'ctx> CodeGenerator<'ctx> {
                 // Most enum-like representations put the tag at index 0 and the payload
                 // at index 1. Built-in Result<T,E> is special: Ok uses index 1, Err uses
                 // index 2 for its error payload.
-                let payload_idx = match name.as_str() {
-                    "Err" => 2,
-                    _ => 1,
+                // Built-in Result<T,E> uses {bool disc, T ok, i64 err} layout
+                // where Err's payload is at index 2. Custom enums use {i32 tag, payload}
+                // where all payload variants use index 1.
+                let payload_idx = if name == "Err"
+                    && !self.type_defs.values().any(|td|
+                        matches!(&td.kind, TypeDefKind::Enum(v) if v.iter().any(|va| va.name == "Err"))
+                    )
+                {
+                    // "Err" not owned by any custom enum → built-in Result<T,E> layout
+                    2
+                } else {
+                    1
                 };
                 let (payload, payload_ty) = match scrutinee_val {
                     BasicValueEnum::StructValue(sv) => {
@@ -60,13 +69,13 @@ impl<'ctx> CodeGenerator<'ctx> {
                         (payload, ty)
                     }
                     BasicValueEnum::PointerValue(pv) => {
-                        // Enum values stored as pointers use the common {i32 tag, i64 payload}
-                        // layout produced by register_type_def.
-                        let enum_ty = self.context.struct_type(&[
-                            BasicTypeEnum::IntType(self.context.i32_type()),
-                            BasicTypeEnum::IntType(self.context.i64_type()),
-                        ], false);
-                        let loaded = self.builder.build_load(enum_ty, pv, "enum_loaded")
+                        // Load the struct through the pointer using the common {i32,i64} layout.
+                        // The payload type might be a nested struct; we use i64 as the fallback
+                        // type for the loaded value (the caller will use the actual type).
+                        let i32_ty = BasicTypeEnum::IntType(self.context.i32_type());
+                        let i64_ty = BasicTypeEnum::IntType(self.context.i64_type());
+                        let struct_ty = self.context.struct_type(&[i32_ty, i64_ty], false);
+                        let loaded = self.builder.build_load(struct_ty, pv, "enum_loaded")
                             .map_err(|e| CompileError::LlvmError(format!("load: {}", e)))?;
                         let sv = match loaded {
                             BasicValueEnum::StructValue(sv) => sv,
@@ -74,7 +83,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                         };
                         let payload = self.builder.build_extract_value(sv, payload_idx, "payload")
                             .map_err(|e| CompileError::LlvmError(format!("extract payload: {}", e)))?;
-                        (payload, BasicTypeEnum::IntType(self.context.i64_type()))
+                        (payload, i64_ty)
                     }
                     BasicValueEnum::IntValue(iv) => {
                         // Legacy/compact representation: some enum values are passed as a
@@ -389,11 +398,10 @@ impl<'ctx> CodeGenerator<'ctx> {
                     .map_err(|e| CompileError::LlvmError(format!("extend tag: {}", e)))?)
             }
             BasicValueEnum::PointerValue(pv) if needs_tag => {
-                // Enum pointers use the common {i32 tag, i64 payload} layout.
-                let enum_ty = self.context.struct_type(&[
-                    BasicTypeEnum::IntType(self.context.i32_type()),
-                    BasicTypeEnum::IntType(self.context.i64_type()),
-                ], false);
+                // Tag is always at index 0 as an i32 regardless of payload type.
+                let i32_ty = BasicTypeEnum::IntType(self.context.i32_type());
+                let i64_ty = BasicTypeEnum::IntType(self.context.i64_type());
+                let enum_ty = self.context.struct_type(&[i32_ty, i64_ty], false);
                 let tag_gep = self.builder.build_struct_gep(
                     BasicTypeEnum::StructType(enum_ty), pv, 0, "tag_gep",
                 ).map_err(|e| CompileError::LlvmError(format!("tag gep: {}", e)))?;
@@ -585,15 +593,19 @@ impl<'ctx> CodeGenerator<'ctx> {
                         .map_err(|e| CompileError::LlvmError(format!("guard branch: {}", e)))?;
                     self.builder.position_at_end(arm_body_bb);
                     let arm_val = self.compile_expr(&arm.body, &local_vars)?;
+                    let guarded_body_bb = self.builder.get_insert_block()
+                        .ok_or_else(|| CompileError::LlvmError("no insert block after guard arm body".to_string()))?;
                     incoming_vals.push(arm_val);
-                    incoming_bbs.push(arm_body_bb);
+                    incoming_bbs.push(guarded_body_bb);
                     self.builder.build_unconditional_branch(merge_bb)
                         .map_err(|e| CompileError::LlvmError(format!("branch error: {}", e)))?;
                 }
                 None => {
                     let arm_val = self.compile_expr(&arm.body, &local_vars)?;
+                    let body_bb = self.builder.get_insert_block()
+                        .ok_or_else(|| CompileError::LlvmError("no insert block after arm body".to_string()))?;
                     incoming_vals.push(arm_val);
-                    incoming_bbs.push(arm_bb);
+                    incoming_bbs.push(body_bb);
                     self.builder.build_unconditional_branch(merge_bb)
                         .map_err(|e| CompileError::LlvmError(format!("branch error: {}", e)))?;
                 }
