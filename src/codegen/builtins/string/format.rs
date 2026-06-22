@@ -47,6 +47,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                             .map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?;
                         self.builder.build_store(ptr_gep, buf)
                             .map_err(|e| CompileError::LlvmError(format!("store error: {}", e)))?;
+                        self.register_heap_gep(ptr_gep);
                         let strlen_fn = self.module.get_function("strlen")
                             .ok_or_else(|| "strlen not declared".to_string())?;
                         let len = self.builder.build_call(strlen_fn, &[BasicMetadataValueEnum::PointerValue(buf)], "strlen_to_s")
@@ -99,6 +100,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                             .map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?;
                         self.builder.build_store(ptr_gep, buf)
                             .map_err(|e| CompileError::LlvmError(format!("store error: {}", e)))?;
+                        self.register_heap_gep(ptr_gep);
                         let strlen_fn = self.module.get_function("strlen")
                             .ok_or_else(|| "strlen not declared".to_string())?;
                         let len = self.builder.build_call(strlen_fn, &[BasicMetadataValueEnum::PointerValue(buf)], "strlen_to_s")
