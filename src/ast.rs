@@ -263,6 +263,7 @@ pub enum Stmt {
     Rule(String, Span),
     Requires(Expr, Span),
     Ensures(Expr, Span),
+    Invariant(Expr, Span),
     Math(Vec<Expr>),
     Assign {
         target: Expr,

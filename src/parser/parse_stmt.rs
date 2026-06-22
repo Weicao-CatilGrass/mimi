@@ -490,6 +490,14 @@ impl Parser {
                 stmts.push(Stmt::Ensures(expr, span));
                 continue;
             }
+            if self.at(&TokenKind::Invariant) {
+                let span = Span::single(self.peek().line, self.peek().col);
+                self.advance();
+                self.expect(TokenKind::Colon, "`:`")?;
+                let expr = self.parse_expr(0)?;
+                stmts.push(Stmt::Invariant(expr, span));
+                continue;
+            }
             if self.at(&TokenKind::Math) {
                 self.advance();
                 self.expect(TokenKind::Colon, "`:`")?;
@@ -555,6 +563,16 @@ impl Parser {
                 if self.expect(TokenKind::Colon, "`:`").is_ok() {
                     if let Ok(expr) = self.parse_expr(0) {
                         stmts.push(Stmt::Ensures(expr, span));
+                    }
+                }
+                continue;
+            }
+            if self.at(&TokenKind::Invariant) {
+                let span = Span::single(self.peek().line, self.peek().col);
+                self.advance();
+                if self.expect(TokenKind::Colon, "`:`").is_ok() {
+                    if let Ok(expr) = self.parse_expr(0) {
+                        stmts.push(Stmt::Invariant(expr, span));
                     }
                 }
                 continue;

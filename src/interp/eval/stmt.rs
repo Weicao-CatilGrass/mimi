@@ -128,6 +128,10 @@ impl<'a> Interpreter<'a> {
     pub(in crate::interp) fn eval_while(&mut self, cond: &Expr, body: &Block) -> Result<Option<Value>, InterpError> {
         while is_truthy(&self.eval_expr(cond)?) {
             if self.early_return.is_some() { break; }
+            // Check invariants at each iteration start
+            if let Err(e) = self.check_invariants(body) {
+                return Err(e);
+            }
             if let Some(v) = self.eval_block(body)? {
                 return Ok(Some(v));
             }
@@ -146,6 +150,20 @@ impl<'a> Interpreter<'a> {
             }
         }
         Ok(None)
+    }
+
+    fn check_invariants(&mut self, block: &Block) -> Result<(), InterpError> {
+        for stmt in block {
+            if let Stmt::Invariant(expr, _) = stmt {
+                let val = self.eval_expr(expr)?;
+                if !is_truthy(&val) {
+                    return Err(InterpError::new(
+                        format!("invariant violated: {:?}", expr)
+                    ));
+                }
+            }
+        }
+        Ok(())
     }
 
     pub(in crate::interp) fn eval_for(&mut self, var: &str, iterable: &Expr, body: &Block) -> Result<Option<Value>, InterpError> {

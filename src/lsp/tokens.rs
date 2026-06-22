@@ -79,7 +79,8 @@ impl LspServer {
                     | lexer::TokenKind::Continue
                     | lexer::TokenKind::Use
                     | lexer::TokenKind::Pub
-                    | lexer::TokenKind::Drop => (0, vec![]), // keyword
+                    | lexer::TokenKind::Drop
+                    | lexer::TokenKind::Invariant => (0, vec![]), // keyword
                     lexer::TokenKind::Int(_) | lexer::TokenKind::Float(_) => (4, vec![]), // number
                     lexer::TokenKind::String(_) | lexer::TokenKind::FString(_) => (5, vec![]), // string
                     lexer::TokenKind::Ident(_) => (3, vec![]), // variable

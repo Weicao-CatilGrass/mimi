@@ -58,7 +58,7 @@ pub(crate) fn extract_body_return(block: &[Stmt]) -> Option<Expr> {
             Stmt::If { cond, then_, else_ } => {
                 return extract_if_return(cond, then_, else_);
             }
-            Stmt::Requires(_, _) | Stmt::Ensures(_, _) | Stmt::Math(_)
+            Stmt::Requires(_, _) | Stmt::Ensures(_, _) | Stmt::Invariant(_, _) | Stmt::Math(_)
             | Stmt::Desc(..) | Stmt::Rule(..) | Stmt::MmsBlock { .. } => continue,
             _ => break,
         }
@@ -138,6 +138,7 @@ fn format_stmt(stmt: &Stmt) -> String {
         Stmt::While { cond, .. } => format!("while {}", format_expr(cond)),
         Stmt::Requires(e, _) => format!("requires {}", format_expr(e)),
         Stmt::Ensures(e, _) => format!("ensures {}", format_expr(e)),
+        Stmt::Invariant(e, _) => format!("invariant {}", format_expr(e)),
         _ => "<stmt>".to_string(),
     }
 }
@@ -294,7 +295,7 @@ pub(crate) fn collect_idents_in_stmt(stmt: &Stmt, idents: &mut Vec<String>) {
                 collect_idents_in_stmt(s, idents);
             }
         }
-        Stmt::Requires(e, _) | Stmt::Ensures(e, _) => collect_idents_in_expr(e, idents),
+        Stmt::Requires(e, _) | Stmt::Ensures(e, _) | Stmt::Invariant(e, _) => collect_idents_in_expr(e, idents),
         Stmt::Math(exprs) => {
             for e in exprs {
                 collect_idents_in_expr(e, idents);
@@ -329,6 +330,7 @@ fn mock_verify_items(items: &[crate::ast::Item], results: &mut Vec<VerificationR
                             s,
                             Stmt::Requires(_, _)
                                 | Stmt::Ensures(_, _)
+                                | Stmt::Invariant(_, _)
                                 | Stmt::MmsBlock { .. }
                         )
                     });

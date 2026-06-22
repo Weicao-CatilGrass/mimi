@@ -484,3 +484,37 @@ func bad_caller(fd: i64) -> i64 {
         assert!(bad_results.iter().any(|r| r.status == VerifStatus::Failed),
             "bad_caller should have at least one failure: {:?}", bad_results);
     }
+
+    #[test]
+    fn verify_invariant_basic() {
+        require_z3!();
+        let src = r#"
+func identity(x: i32) -> i32 {
+    requires: x > 0
+    ensures: result > 0
+    invariant: x > 0
+    x
+}
+"#;
+        let results = verify_source(src).expect("src/verifier/tests.rs: verify_invariant_basic");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].status, VerifStatus::Verified,
+            "invariant as constraint should verify: {:?}", results[0]);
+    }
+
+    #[test]
+    fn verify_invariant_with_ensures() {
+        require_z3!();
+        let src = r#"
+func add_one(x: i32) -> i32 {
+    requires: x > 0
+    ensures: result > x
+    invariant: x > 0
+    x + 1
+}
+"#;
+        let results = verify_source(src).expect("src/verifier/tests.rs: verify_invariant_with_ensures");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].status, VerifStatus::Verified,
+            "invariant + ensures should verify: {:?}", results[0]);
+    }

@@ -35,7 +35,7 @@ impl<'a> Checker<'a> {
         ));
         if has_shared_param {
             let has_contract = func.body.iter().any(|s| matches!(s,
-                Stmt::Requires(..) | Stmt::Ensures(..) | Stmt::Math(_) | Stmt::MmsBlock { .. }
+                Stmt::Requires(..) | Stmt::Ensures(..) | Stmt::Invariant(..) | Stmt::Math(_) | Stmt::MmsBlock { .. }
             ));
             if has_contract {
                 self.emit_code(codes::E0502, format!(
