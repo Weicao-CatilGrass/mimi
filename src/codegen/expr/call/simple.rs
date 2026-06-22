@@ -285,6 +285,8 @@ impl<'ctx> CodeGenerator<'ctx> {
                             self.builder.build_store(
                                 thunk_entry.env_ptr_global.as_pointer_value(), cb_env_ptr,
                             ).map_err(|e| CompileError::LlvmError(format!("store env_ptr: {}", e)))?;
+                            self.pending_callback_tls.push(thunk_entry.fn_ptr_global.as_pointer_value());
+                            self.pending_callback_tls.push(thunk_entry.env_ptr_global.as_pointer_value());
                             let i8_ptr_ty = self.context.i8_type().ptr_type(inkwell::AddressSpace::default());
                             let thunk_ptr = thunk_entry.thunk_fn.as_global_value().as_pointer_value();
                             let casted = self.builder.build_pointer_cast(thunk_ptr, i8_ptr_ty, "thunk_i8")
@@ -345,6 +347,14 @@ impl<'ctx> CodeGenerator<'ctx> {
             if let Some(function) = self.module.get_function(name) {
             let call = self.builder.build_call(function, &metadata_args, "call")
                 .map_err(|e| CompileError::LlvmError(format!("call error: {}", e)))?;
+            // Clear callback TLS globals after the call to prevent stale data
+            // from being read by re-entrant callbacks or subsequent calls.
+            let i8_ptr_ty = self.context.i8_type().ptr_type(inkwell::AddressSpace::default());
+            let null_i8 = i8_ptr_ty.const_null();
+            for tls_ptr in self.pending_callback_tls.drain(..) {
+                self.builder.build_store(tls_ptr, null_i8)
+                    .map_err(|e| CompileError::LlvmError(format!("clear tls: {}", e)))?;
+            }
             Ok(call_try_basic_value(&call).unwrap_or(
                 self.context.i64_type().const_int(0, false).into()
             ))
