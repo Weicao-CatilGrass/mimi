@@ -1918,7 +1918,7 @@ func main() -> i32 {
 }
 
 #[test]
-#[ignore]
+#[ignore = "network — requires external HTTP server; run manually with -- --ignored"]
 fn e2e_net_fetch_failure() {
     if !can_link() { eprintln!("SKIP: cc not available"); return; }
     let stdout = compile_and_run(r#"
@@ -1959,7 +1959,7 @@ func main() -> i32 {
 }
 
 #[test]
-#[ignore]
+#[ignore = "network — requires external HTTP server; run manually with -- --ignored"]
 fn e2e_net_fetch_post_failure() {
     if !can_link() { eprintln!("SKIP: cc not available"); return; }
     let stdout = compile_and_run(r#"
@@ -2905,7 +2905,6 @@ func main() -> i32 {
 }
 
 #[test]
-#[ignore = "ensures inside nested blocks not yet collected by codegen — only func.body top-level ensures are checked"]
 fn e2e_rule_violation_in_nested_block() {
     if !can_link() { eprintln!("SKIP: cc not available"); return; }
     // Rule inside if block, violation

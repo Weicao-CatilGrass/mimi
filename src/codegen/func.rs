@@ -8,6 +8,31 @@ use inkwell::AddressSpace;
 
 use crate::error::{CompileError, MimiResult};
 
+/// Recursively collect all Stmt::Ensures from a list of statements,
+/// descending into nested blocks (if, while, for, parasteps, lambda, expr block).
+fn collect_ensures(stmts: &[Stmt]) -> Vec<Box<Expr>> {
+    let mut result = Vec::new();
+    for s in stmts {
+        match s {
+            Stmt::Ensures(expr, _) => result.push(Box::new(expr.clone())),
+            Stmt::If { then_, else_, .. } => {
+                result.extend(collect_ensures(then_));
+                if let Some(eb) = else_ {
+                    result.extend(collect_ensures(eb));
+                }
+            }
+            Stmt::While { body, .. } => result.extend(collect_ensures(body)),
+            Stmt::For { body, .. } => result.extend(collect_ensures(body)),
+            Stmt::Parasteps(body) => result.extend(collect_ensures(body)),
+            Stmt::Expr(Expr::Lambda { body, .. }) => result.extend(collect_ensures(body)),
+            Stmt::Expr(Expr::Block(body)) => result.extend(collect_ensures(body)),
+            Stmt::Return(Some(Expr::Block(body))) => result.extend(collect_ensures(body)),
+            _ => {}
+        }
+    }
+    result
+}
+
 use super::CodeGenerator;
 use super::VarEntry;
 
@@ -191,11 +216,10 @@ impl<'ctx> CodeGenerator<'ctx> {
             }
         }
 
-        // Collect ensures contracts for runtime checking at return points
+        // Collect ensures contracts for runtime checking at return points.
+        // Recursively walks nested blocks (if, while, for, parasteps, lambda).
         self.ensures_stmts = if self.verify_contracts {
-            func.body.iter().filter_map(|s| {
-                if let Stmt::Ensures(expr, _) = s { Some(Box::new(expr.clone())) } else { None }
-            }).collect()
+            collect_ensures(&func.body)
         } else {
             Vec::new()
         };
@@ -772,11 +796,10 @@ impl<'ctx> CodeGenerator<'ctx> {
             }
         }
 
-        // Collect ensures contracts for runtime checking at return points
+        // Collect ensures contracts for runtime checking at return points.
+        // Recursively walks nested blocks (if, while, for, parasteps, lambda).
         self.ensures_stmts = if self.verify_contracts {
-            func.body.iter().filter_map(|s| {
-                if let Stmt::Ensures(expr, _) = s { Some(Box::new(expr.clone())) } else { None }
-            }).collect()
+            collect_ensures(&func.body)
         } else {
             Vec::new()
         };
