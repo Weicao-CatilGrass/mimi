@@ -288,9 +288,19 @@ impl SharedHandleTable {
         };
         if let Some(handle) = handle {
             if handle.release() {
-                let mut handles = self.handles.lock()
-                    .expect("SHARED_TABLE handles lock poisoned");
-                handles.remove(&id);
+                let removed = {
+                    let mut handles = self.handles.lock()
+                        .expect("SHARED_TABLE handles lock poisoned");
+                    handles.remove(&id).is_some()
+                };
+                if removed {
+                    // Clean up dedup entry (lock order: handles first, dedup second,
+                    // consistent with remove()). The table is thread-local so no
+                    // concurrent access to the same table is possible.
+                    if let Ok(mut dedup) = self.dedup.lock() {
+                        dedup.retain(|_, &mut vid| vid != id);
+                    }
+                }
                 return true;
             }
         }
