@@ -263,6 +263,11 @@ impl<'a> Checker<'a> {
                 // Register extern functions for type checking
                 for func in &block.funcs {
                     for param in &func.params {
+                        if block.unsafe_ {
+                            // unsafe extern: skip passport-type validation.
+                            // User takes responsibility for ABI compatibility.
+                            continue;
+                        }
                         let resolved = self.resolve_type(&param.ty);
                         if !self.is_valid_extern_type(&resolved, false) {
                             let type_str = fmt_type(&resolved);

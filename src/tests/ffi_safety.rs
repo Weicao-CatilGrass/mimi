@@ -447,3 +447,31 @@ func main() -> i32 {
 "#;
     expect_type_error(src, "FFI passport type");
 }
+
+#[test]
+fn unsafe_extern_allows_shared_type() {
+    let src = r#"
+unsafe extern "C" {
+    func process(data: shared i32) -> i32
+}
+func main() -> i32 {
+    0
+}
+"#;
+    let result = check_source(src);
+    assert!(result.is_ok(), "unsafe extern should accept shared type, got: {:?}", result.err());
+}
+
+#[test]
+fn regular_extern_rejects_shared_type() {
+    let src = r#"
+extern "C" {
+    func process(data: shared i32) -> i32
+}
+func main() -> i32 {
+    0
+}
+"#;
+    let result = check_source(src);
+    assert!(result.is_err(), "regular extern should reject shared type");
+}
