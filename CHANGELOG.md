@@ -3,10 +3,13 @@
 ## [Unreleased] — 0.16.0-dev
 
 ### Added
-- (none yet)
+- 效果系统 cap 交叉验证：`with` 效果名须对应已声明的 `cap`
+- L2 测试：effect_declaration, effect_not_available, effect_undeclared_cap_cross_validation, effect_available_via_function_chain
 
 ### Fixed
-- (none yet)
+- 模式匹配 guard 穷尽性：当 guard 存在时不再跳过未覆盖变体检查
+- 函数 `with` 效果现在在函数体内可用（支持链式调用）
+- `e2e_net_socket_create` / `e2e_net_connect_failure` / `e2e_net_listen_bind` 解除 `#[ignore]`（27 个 ignored 测试）
 
 ### Security
 - (none yet)

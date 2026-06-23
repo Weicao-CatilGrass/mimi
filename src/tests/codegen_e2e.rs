@@ -1807,7 +1807,6 @@ fn e2e_asan_large_struct_return() {
 // the net.mimi wrapper functions directly.
 
 #[test]
-#[ignore]
 fn e2e_net_socket_create() {
     if !can_link() { eprintln!("SKIP: cc not available"); return; }
     let stdout = compile_and_run(r#"
@@ -1823,7 +1822,6 @@ func main() -> i32 {
 }
 
 #[test]
-#[ignore]
 fn e2e_net_connect_failure() {
     if !can_link() { eprintln!("SKIP: cc not available"); return; }
     let stdout = compile_and_run(r#"
@@ -1868,7 +1866,6 @@ func main() -> i32 {
 }
 
 #[test]
-#[ignore]
 fn e2e_net_listen_bind() {
     if !can_link() { eprintln!("SKIP: cc not available"); return; }
     let stdout = compile_and_run(r#"
