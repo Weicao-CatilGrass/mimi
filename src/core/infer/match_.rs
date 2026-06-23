@@ -70,7 +70,7 @@ impl<'a> Checker<'a> {
             }
         }
 
-        if !all_variants.is_empty() && !has_catchall && !has_guard {
+        if !all_variants.is_empty() && !has_catchall {
             for variant in &all_variants {
                 if !covered_variants.contains(variant) {
                     self.errors.push(
