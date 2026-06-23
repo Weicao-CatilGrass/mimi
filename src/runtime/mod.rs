@@ -2169,15 +2169,14 @@ pub extern "C" fn mimi_cap_register(name: *const std::ffi::c_char) -> i64 {
     })
 }
 
-// ─── MimiFuture (poll-based async runtime) ──────────────────────
+// ─── MimiFuture + MimiExecutor (poll-based async runtime) ──────
 //
 // Future memory layout (managed by codegen):
 //   offset 0: i32 (completed flag: 0=pending, 1=ready)
 //   offset 8: <result> (8-byte aligned, type known to codegen)
 //
-// We use malloc/free from the C runtime to ensure consistent memory
-// management between codegen (which uses malloc/free for other purposes)
-// and the future runtime.
+// Executor: a global queue of (future_ptr, poll_fn) pairs.
+// mimi_executor_spawn submits; mimi_executor_run polls until all done.
 
 extern "C" {
     fn malloc(size: u64) -> *mut std::ffi::c_void;
@@ -2186,7 +2185,7 @@ extern "C" {
 
 #[no_mangle]
 pub extern "C" fn mimi_future_alloc(_result_size: u64) -> *mut std::ffi::c_void {
-    unsafe { malloc(72) }  // 8 header + 64 result buffer
+    unsafe { malloc(72) }
 }
 
 #[no_mangle]
@@ -2205,6 +2204,66 @@ pub extern "C" fn mimi_future_set_completed(fut: *mut std::ffi::c_void) {
 pub extern "C" fn mimi_future_is_completed(fut: *mut std::ffi::c_void) -> i32 {
     if fut.is_null() { return 1; }
     unsafe { std::ptr::read(fut as *const i32) }
+}
+
+type PollFn = unsafe extern "C" fn(*mut std::ffi::c_void);
+
+/// Wrapper to make *mut c_void Send (needed for Mutex).
+struct SendPtr(*mut std::ffi::c_void);
+unsafe impl Send for SendPtr {}
+unsafe impl Sync for SendPtr {}
+
+type ExecutorEntry = (PollFn, SendPtr);
+
+static EXECUTOR_QUEUE: std::sync::Mutex<Vec<ExecutorEntry>> = std::sync::Mutex::new(Vec::new());
+
+/// Submit a future + its poll function to the global executor.
+/// The future is not polled immediately; call mimi_executor_run() to poll.
+#[no_mangle]
+pub extern "C" fn mimi_executor_spawn(
+    future: *mut std::ffi::c_void,
+    poll_fn: unsafe extern "C" fn(*mut std::ffi::c_void),
+) {
+    if future.is_null() { return; }
+    let mut queue = EXECUTOR_QUEUE.lock().unwrap();
+    // Don't add duplicates
+    if !queue.iter().any(|(_, f)| f.0 == future) {
+        queue.push((poll_fn, SendPtr(future)));
+    }
+}
+
+/// Poll all pending futures in the executor until all are completed.
+/// Futures that become completed are removed from the queue.
+#[no_mangle]
+pub extern "C" fn mimi_executor_run() {
+    loop {
+        let entry = {
+            let mut queue = EXECUTOR_QUEUE.lock().unwrap();
+            if queue.is_empty() { return; }
+            let mut found = None;
+            for i in 0..queue.len() {
+                let (_, future) = &queue[i];
+                let completed = unsafe { std::ptr::read(future.0 as *const i32) };
+                if completed == 0 {
+                    found = Some(i);
+                    break;
+                }
+            }
+            match found {
+                Some(i) => {
+                    let (poll_fn, future) = queue.swap_remove(i);
+                    Some((poll_fn, future.0))
+                }
+                None => {
+                    queue.clear();
+                    return;
+                }
+            }
+        };
+        if let Some((poll_fn, future)) = entry {
+            unsafe { poll_fn(future) };
+        }
+    }
 }
 
 // ─── Capability runtime ────────────────────────────────────────

@@ -8,9 +8,15 @@ use std::rc::{Rc, Weak as RcWeak};
 use std::sync::{Arc, RwLock, Weak as ArcWeak};
 
 /// Poll-based future state.
-/// For async fn: immediately Ready (body evaluated synchronously).
+/// For async fn: deferred (waiting to be evaluated by executor).
 /// For actor spawn: Pending with a channel receiver (polled on await).
+/// For immediately-ready: Ready with result.
 pub enum PollFuture {
+    Deferred {
+        file: Box<crate::ast::File>,
+        func: FuncDef,
+        args: Vec<Value>,
+    },
     Pending(std::sync::mpsc::Receiver<Result<Value, InterpError>>),
     Ready(Result<Value, InterpError>),
 }
@@ -18,6 +24,9 @@ pub enum PollFuture {
 impl std::fmt::Debug for PollFuture {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            PollFuture::Deferred { func, .. } => {
+                write!(f, "PollFuture::Deferred({})", func.name)
+            }
             PollFuture::Pending(_) => write!(f, "PollFuture::Pending"),
             PollFuture::Ready(result) => {
                 match result {
@@ -25,6 +34,77 @@ impl std::fmt::Debug for PollFuture {
                     Err(e) => write!(f, "PollFuture::Ready(Err({}))", e),
                 }
             }
+        }
+    }
+}
+
+/// Poll a deferred future: evaluate the function body and store the result.
+pub fn poll_deferred(state: &mut PollFuture) {
+    if let PollFuture::Deferred { file, func, args } = state {
+        let mut interp = super::Interpreter::new(&*file);
+        interp.push_scope();
+        let mut result = Ok(Value::Unit);
+        for (p, a) in func.params.iter().zip(std::mem::take(args)) {
+            if let Err(e) = interp.bind(&p.name, a) {
+                result = Err(e);
+                break;
+            }
+        }
+        if result.is_ok() {
+            let block_result = interp.eval_block(&func.body).map(|v| v.unwrap_or(Value::Unit));
+            result = interp.early_return.take()
+                .map_or(block_result, Ok);
+        }
+        interp.pop_scope();
+        *state = PollFuture::Ready(result);
+    }
+}
+
+/// Global executor queue for deferred futures.
+fn executor_queue() -> &'static std::sync::Mutex<Vec<std::sync::Arc<std::sync::Mutex<PollFuture>>>> {
+    use std::sync::Mutex;
+    static QUEUE: std::sync::OnceLock<Mutex<Vec<std::sync::Arc<Mutex<PollFuture>>>>> = std::sync::OnceLock::new();
+    QUEUE.get_or_init(|| Mutex::new(Vec::new()))
+}
+
+/// Submit a deferred future to the global executor.
+pub fn executor_submit(future: std::sync::Arc<std::sync::Mutex<PollFuture>>) {
+    executor_queue().lock().unwrap().push(future);
+}
+
+/// Run the executor: poll all deferred futures until all are completed.
+pub fn executor_run() {
+    loop {
+        let entry = {
+            let queue = executor_queue();
+            let mut guard = queue.lock().unwrap();
+            if guard.is_empty() { return; }
+            let mut found = None;
+            for i in 0..guard.len() {
+                let fut = &guard[i];
+                let state = fut.lock().unwrap();
+                match &*state {
+                    PollFuture::Deferred { .. } => {
+                        found = Some(i);
+                        break;
+                    }
+                    PollFuture::Ready(_) | PollFuture::Pending(_) => {}
+                }
+            }
+            match found {
+                Some(i) => {
+                    let fut = guard.swap_remove(i);
+                    Some(fut)
+                }
+                None => {
+                    guard.clear();
+                    return;
+                }
+            }
+        };
+        if let Some(fut) = entry {
+            let mut state = fut.lock().unwrap();
+            poll_deferred(&mut state);
         }
     }
 }
