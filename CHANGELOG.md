@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.20.1] - 2026-06-23
+
+### Fixed
+- codegen: `mimi_str_concat` 返回原始 C 字符串被误解释为 MimiString 结构体导致 SIGSEGV
+  - `wrap_c_string()` 通过 `strlen` + `build_insert_value` 正确构建 `{ptr, i64}` 结构体
+  - 修复字符串拼接在代码生成路径下的崩溃（影响普通函数和 async fn）
+
 ## [0.20.0] - 2026-06-23
 
 ### Added
