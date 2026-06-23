@@ -33,27 +33,33 @@ fn ensure_fork_lock() -> &'static std::sync::Mutex<()> {
 
 // ===================== #[no_panic] Signal / Panic Protection =====================
 
+use std::sync::atomic::AtomicPtr;
+
 thread_local! {
     /// Thread-local jump buffer for signal-based crash recovery.
-    /// Set before a #[no_panic] FFI call; the signal handler siglongjmps here.
-    static FFI_CRASH_JUMP_BUF: RefCell<Option<*mut SigJmpBuf>> = const { RefCell::new(None) };
+    /// Uses AtomicPtr for async-signal-safe access from the signal handler
+    /// (no RefCell/Mutex which are NOT async-signal-safe).
+    static FFI_CRASH_JUMP_BUF: AtomicPtr<SigJmpBuf> = const { AtomicPtr::new(std::ptr::null_mut()) };
 }
 
 /// Signal handler for C-level crashes (SIGSEGV, SIGABRT, etc.).
-/// First restores SIG_DFL (so a second crash actually kills us),
-/// then longjmps back to the jump buffer installed before the FFI call.
+/// Async-signal-safe operations only:
+/// - libc::signal to restore SIG_DFL (POSIX requires signal() to be signal-safe)
+/// - Atomic load on FFI_CRASH_JUMP_BUF
+/// - siglongjmp to escape the crashing context
 extern "C" fn ffi_crash_signal_handler(sig: i32) {
+    // Restore SIG_DFL using signal() (async-signal-safe per POSIX).
+    // A second crash will then actually kill the process.
     unsafe {
-        let mut dfl: libc::sigaction = std::mem::zeroed();
-        dfl.sa_sigaction = libc::SIG_DFL as usize;
-        libc::sigaction(libc::SIGSEGV, &dfl, std::ptr::null_mut());
-        libc::sigaction(libc::SIGABRT, &dfl, std::ptr::null_mut());
-        libc::sigaction(libc::SIGBUS, &dfl, std::ptr::null_mut());
-        libc::sigaction(libc::SIGILL, &dfl, std::ptr::null_mut());
-        libc::sigaction(libc::SIGFPE, &dfl, std::ptr::null_mut());
+        libc::signal(libc::SIGSEGV, libc::SIG_DFL);
+        libc::signal(libc::SIGABRT, libc::SIG_DFL);
+        libc::signal(libc::SIGBUS, libc::SIG_DFL);
+        libc::signal(libc::SIGILL, libc::SIG_DFL);
+        libc::signal(libc::SIGFPE, libc::SIG_DFL);
     }
     FFI_CRASH_JUMP_BUF.with(|cell| {
-        if let Some(buf) = *cell.borrow() {
+        let buf = cell.load(std::sync::atomic::Ordering::Relaxed);
+        if !buf.is_null() {
             unsafe { siglongjmp(buf, sig as i32); }
         }
     });
@@ -176,8 +182,9 @@ impl<'a> Interpreter<'a> {
         let buf_ptr = Box::into_raw(jump_buf) as *mut SigJmpBuf;
 
         // 3. Register jump buffer in TLS so the signal handler can find it
+        //    Uses AtomicPtr::store which is signal-safe.
         FFI_CRASH_JUMP_BUF.with(|cell| {
-            *cell.borrow_mut() = Some(buf_ptr);
+            cell.store(buf_ptr, std::sync::atomic::Ordering::Release);
         });
 
         // 4. sigsetjmp — recovery point for C crashes
@@ -203,7 +210,7 @@ impl<'a> Interpreter<'a> {
 
         // 6. Normal path: restore signal handlers and free jump buffer
         FFI_CRASH_JUMP_BUF.with(|cell| {
-            *cell.borrow_mut() = None;
+            cell.store(std::ptr::null_mut(), std::sync::atomic::Ordering::Release);
         });
         restore_crash_handlers(&old_handlers);
         unsafe { let _ = Box::from_raw(buf_ptr); }
