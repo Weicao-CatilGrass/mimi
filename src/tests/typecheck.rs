@@ -676,3 +676,86 @@ func main() -> string {
 }
 "#).expect_err("regex_replace with 2 args should fail typecheck");
 }
+
+// ─── Generic bounds type check tests (L2) ─────────────────────
+
+#[test]
+fn typecheck_generic_bounds_clone_ok() {
+    check_source(r#"
+func clone_it<T: Clone>(x: T) -> T { x }
+func main() -> i32 {
+    let r = clone_it(42);
+    r
+}
+"#).expect("i32 should satisfy Clone bound");
+}
+
+#[test]
+fn typecheck_generic_bounds_default_ok() {
+    check_source(r#"
+func default_it<T: Default>(x: T) -> T { x }
+func main() -> i32 {
+    default_it(42)
+}
+"#).expect("i32 should satisfy Default bound");
+}
+
+#[test]
+fn typecheck_generic_bounds_copy_ok() {
+    check_source(r#"
+func copy_it<T: Copy>(x: T) -> T { x }
+func main() -> i32 {
+    copy_it(42)
+}
+"#).expect("i32 should satisfy Copy bound");
+}
+
+#[test]
+fn typecheck_generic_bounds_copy_rejected_for_string() {
+    check_source(r#"
+func copy_it<T: Copy>(x: T) -> T { x }
+func main() -> string {
+    copy_it("hello")
+}
+"#).expect_err("string should NOT satisfy Copy bound");
+}
+
+#[test]
+fn typecheck_generic_bounds_eq_ok() {
+    check_source(r#"
+func eq_it<T: Eq>(x: T) -> T { x }
+func main() -> i32 {
+    eq_it(42)
+}
+"#).expect("i32 should satisfy Eq bound");
+}
+
+#[test]
+fn typecheck_generic_bounds_turbofish_ok() {
+    check_source(r#"
+func clone_it<T: Clone>(x: T) -> T { x }
+func main() -> i32 {
+    clone_it::<i32>(42)
+}
+"#).expect("turbofish with i32 should satisfy Clone bound");
+}
+
+#[test]
+fn typecheck_generic_bounds_multiple_ok() {
+    check_source(r#"
+func process<T: Clone + Default>(x: T) -> T { x }
+func main() -> i32 {
+    process(42)
+}
+"#).expect("i32 should satisfy Clone+Default bounds");
+}
+
+#[test]
+fn typecheck_generic_bounds_multi_param_ok() {
+    check_source(r#"
+func pair<T: Copy, U: Default>(a: T, b: U) -> T { a }
+func main() -> i32 {
+    pair(1, 2)
+}
+"#).expect("i32 should satisfy Copy, i32 should satisfy Default");
+}
