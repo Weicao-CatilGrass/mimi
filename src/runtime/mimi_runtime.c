@@ -65,6 +65,8 @@ void* realloc(void* ptr, size_t new_size) {
 void* calloc(size_t count, size_t size) {
     if (size != 0 && count > SIZE_MAX / size) return (void*)0;
     size_t total = count * size;
+    // Align to 8 bytes (same as bump allocator in malloc)
+    total = (total + 7) & ~7;
     void* ptr = malloc(total);
     if (ptr) {
         char* cp = (char*)ptr;
