@@ -1,12 +1,23 @@
 # Changelog
 
-## [Unreleased] — 0.21.0-dev — 筑基（Polish & Hardening）
+## [v0.21.0] - 2026-06-24 — 筑基（Polish & Hardening）
 
 ### Added
-- (none yet)
+- 语法参考文档: `docs/syntax-reference.md` (820行)，可作自举语法底本
+- Mimispec 依赖预审计: `docs/mimispec-dependency-audit.md`，20 处导入点分类 + 替换优先级方案
 
 ### Fixed
-- (none yet)
+- Clippy 清零: 397 warnings → 0，62 files changed
+  - ptr_type 弃用迁移: 40 文件, ~200 处 `type.ptr_type()` → `context.ptr_type()`
+  - 安全强化: 23 处 `.unwrap()` → `.expect()`（runtime 17 + 生产代码 6）
+  - 57 处 `not_unsafe_ptr_arg_deref` 抑制 (FFI 边界)
+  - 85 处 runtime clippy warnings 归零
+  - 300+ 项小 warning 修复（冗余闭包/借用/格式/转换等）
+- Codegen 缺口关闭: 11 个 `dual_gap_*` 测试全部通过（match guard/枚举/元组模式/列表/push/contains）
+  - 实际缺口已被先前版本修复，测试从 gap 区迁移至 closed gap 区
+
+### Tests
+- 基线: 2,037 passed, 0 failed, 21 ignored
 
 ## [0.20.1] - 2026-06-23
 
