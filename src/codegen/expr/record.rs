@@ -80,7 +80,7 @@ impl<'ctx> CodeGenerator<'ctx> {
             };
             let idx = self.context.i64_type().const_int(i as u64, false);
                         let elem_ptr = {
-                self.gep().build_gep(self.context.i64_type(), data_ptr_i64, &[idx], "elem")
+                self.gep().build_in_bounds_gep(self.context.i64_type(), data_ptr_i64, &[idx], "elem")
             }.map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?;
             self.builder.build_store(elem_ptr, iv)
                 .map_err(|e| CompileError::LlvmError(format!("store error: {}", e)))?;
@@ -205,7 +205,7 @@ impl<'ctx> CodeGenerator<'ctx> {
         self.builder.position_at_end(body_bb);
         // Load element
                 let elem_ptr = {
-            self.gep().build_gep(i64_ty, data_ptr, &[idx], "elem")
+            self.gep().build_in_bounds_gep(i64_ty, data_ptr, &[idx], "elem")
         }.map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?;
         let elem = self.builder.build_load(BasicTypeEnum::IntType(i64_ty), elem_ptr, "elem_val")
             .map_err(|e| CompileError::LlvmError(format!("load error: {}", e)))?;
@@ -239,7 +239,7 @@ impl<'ctx> CodeGenerator<'ctx> {
         let wi = self.builder.build_load(BasicTypeEnum::IntType(i64_ty), wi_alloca, "wi")
             .map_err(|e| CompileError::LlvmError(format!("load error: {}", e)))?.into_int_value();
                 let out_elem_ptr = {
-            self.gep().build_gep(i64_ty, out_i64, &[wi], "out_elem")
+            self.gep().build_in_bounds_gep(i64_ty, out_i64, &[wi], "out_elem")
         }.map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?;
         let result_i64 = match result {
             BasicValueEnum::IntValue(iv) => iv,

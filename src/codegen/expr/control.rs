@@ -152,7 +152,7 @@ impl<'ctx> CodeGenerator<'ctx> {
         let data_i8 = self.builder.build_pointer_cast(data_ptr, i8_ptr, "data_as_i8")
             .map_err(|e| CompileError::LlvmError(format!("bitcast error: {}", e)))?;
                 let new_data_i8 = {
-            self.gep().build_gep(self.context.i8_type(), data_i8, &[byte_offset], "new_data")
+            self.gep().build_in_bounds_gep(self.context.i8_type(), data_i8, &[byte_offset], "new_data")
         }.map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?;
         let new_data_ptr = self.builder.build_pointer_cast(new_data_i8,
             self.context.ptr_type(inkwell::AddressSpace::default()), "new_data_void")

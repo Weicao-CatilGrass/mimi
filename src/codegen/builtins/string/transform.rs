@@ -81,7 +81,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                 let offset = self.builder.build_int_mul(i, s_len, "offset")
                     .map_err(|e| CompileError::LlvmError(format!("mul error: {}", e)))?;
                                 let dst = {
-                    self.gep().build_gep(i8_ty, buf, &[offset], "dst")
+                    self.gep().build_in_bounds_gep(i8_ty, buf, &[offset], "dst")
                 }.map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?;
                 self.builder.build_call(memcpy_fn, &[
                     BasicMetadataValueEnum::PointerValue(dst),
@@ -99,7 +99,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                 self.builder.position_at_end(done_bb);
                 // Null-terminate
                                 let null_pos = {
-                    self.gep().build_gep(i8_ty, buf, &[total], "null_pos")
+                    self.gep().build_in_bounds_gep(i8_ty, buf, &[total], "null_pos")
                 }.map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?;
                 self.builder.build_store(null_pos, i8_ty.const_int(0, false))
                     .map_err(|e| CompileError::LlvmError(format!("store error: {}", e)))?;
@@ -165,7 +165,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     .map_err(|e| CompileError::LlvmError(format!("branch error: {}", e)))?;
                 self.builder.position_at_end(fwd_body);
                                 let ch_ptr = {
-                    self.gep().build_gep(i8_ty, s_ptr, &[start], "ch")
+                    self.gep().build_in_bounds_gep(i8_ty, s_ptr, &[start], "ch")
                 }.map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?;
                 let ch = self.builder.build_load(BasicTypeEnum::IntType(i8_ty), ch_ptr, "ch_val")
                     .map_err(|e| CompileError::LlvmError(format!("load error: {}", e)))?;
@@ -217,7 +217,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                 let prev = self.builder.build_int_sub(end, i64_ty.const_int(1, false), "prev")
                     .map_err(|e| CompileError::LlvmError(format!("sub error: {}", e)))?;
                                 let ch_ptr2 = {
-                    self.gep().build_gep(i8_ty, s_ptr, &[prev], "ch")
+                    self.gep().build_in_bounds_gep(i8_ty, s_ptr, &[prev], "ch")
                 }.map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?;
                 let ch2 = self.builder.build_load(BasicTypeEnum::IntType(i8_ty), ch_ptr2, "ch_val")
                     .map_err(|e| CompileError::LlvmError(format!("load error: {}", e)))?;
@@ -256,7 +256,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     .ok_or("malloc returned void")?
                     .into_pointer_value();
                                 let src = {
-                    self.gep().build_gep(i8_ty, s_ptr, &[start], "src")
+                    self.gep().build_in_bounds_gep(i8_ty, s_ptr, &[start], "src")
                 }.map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?;
                 let memcpy_fn = self.module.get_function("memcpy")
                     .ok_or_else(|| "memcpy not declared".to_string())?;
@@ -267,7 +267,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                 ], "memcpy_call")
                     .map_err(|e| CompileError::LlvmError(format!("memcpy error: {}", e)))?;
                                 let null_pos = {
-                    self.gep().build_gep(i8_ty, buf, &[trimmed_len], "null")
+                    self.gep().build_in_bounds_gep(i8_ty, buf, &[trimmed_len], "null")
                 }.map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?;
                 self.builder.build_store(null_pos, i8_ty.const_int(0, false))
                     .map_err(|e| CompileError::LlvmError(format!("store error: {}", e)))?;
@@ -352,7 +352,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     .map_err(|e| CompileError::LlvmError(format!("branch error: {}", e)))?;
                 self.builder.position_at_end(body_bb);
                                 let ch_ptr = {
-                    self.gep().build_gep(i8_ty, buf, &[i], "ch")
+                    self.gep().build_in_bounds_gep(i8_ty, buf, &[i], "ch")
                 }.map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?;
                 let ch = self.builder.build_load(BasicTypeEnum::IntType(i8_ty), ch_ptr, "ch_val")
                     .map_err(|e| CompileError::LlvmError(format!("load error: {}", e)))?.into_int_value();
@@ -456,7 +456,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     .map_err(|e| CompileError::LlvmError(format!("branch error: {}", e)))?;
                 self.builder.position_at_end(body_bb);
                                 let ch_ptr = {
-                    self.gep().build_gep(i8_ty, buf, &[i], "ch")
+                    self.gep().build_in_bounds_gep(i8_ty, buf, &[i], "ch")
                 }.map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?;
                 let ch = self.builder.build_load(BasicTypeEnum::IntType(i8_ty), ch_ptr, "ch_val")
                     .map_err(|e| CompileError::LlvmError(format!("load error: {}", e)))?.into_int_value();
@@ -535,7 +535,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     .into_pointer_value();
                 // src = s + start
                                 let src = {
-                    self.gep().build_gep(i8_ty, s_ptr, &[start], "src")
+                    self.gep().build_in_bounds_gep(i8_ty, s_ptr, &[start], "src")
                 }.map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?;
                 // memcpy(buf, src, sub_len)
                 let memcpy_fn = self.module.get_function("memcpy")
@@ -548,7 +548,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     .map_err(|e| CompileError::LlvmError(format!("memcpy error: {}", e)))?;
                 // Null-terminate
                                 let null_pos = {
-                    self.gep().build_gep(i8_ty, buf, &[sub_len], "null")
+                    self.gep().build_in_bounds_gep(i8_ty, buf, &[sub_len], "null")
                 }.map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?;
                 self.builder.build_store(null_pos, i8_ty.const_int(0, false))
                     .map_err(|e| CompileError::LlvmError(format!("store error: {}", e)))?;

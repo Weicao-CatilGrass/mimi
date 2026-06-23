@@ -84,7 +84,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     .map_err(|e| CompileError::LlvmError(format!("branch error: {}", e)))?;
                 self.builder.position_at_end(body_bb);
                                 let elem_ptr = {
-                    self.gep().build_gep(i64_ty, data_ptr, &[idx], "elem")
+                    self.gep().build_in_bounds_gep(i64_ty, data_ptr, &[idx], "elem")
                 }.map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?;
                 let elem = self.builder.build_load(BasicTypeEnum::IntType(i64_ty), elem_ptr, "elem_val")
                     .map_err(|e| CompileError::LlvmError(format!("load error: {}", e)))?;
