@@ -1,5 +1,13 @@
 # Changelog
 
+## [Unreleased] — 0.22.0-dev — 用 Mimi 写 mimispec 解析器
+
+### Added
+- (none yet)
+
+### Fixed
+- (none yet)
+
 ## [v0.21.0] - 2026-06-24 — 筑基（Polish & Hardening）
 
 ### Added
