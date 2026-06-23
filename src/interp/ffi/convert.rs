@@ -1,5 +1,5 @@
 use super::super::*;
-use super::helpers::{FfiGuard, FfiSharedGuard};
+use super::helpers::{ffi_guard_new_read, ffi_guard_new_write, FfiGuard, FfiSharedGuard};
 use crate::ast::*;
 use crate::ffi::{
     cap_table_consume, cap_table_register,
@@ -123,9 +123,7 @@ impl<'a> Interpreter<'a> {
                             let ptr = &*guard as *const Value as *const () as i64;
                             // SAFETY: guard created from arc.read(), same Arc stored in FfiGuard.
                             // Guard is dropped before Arc (struct field order), so data stays alive.
-                            ffi_guards.push(FfiGuard::Read(unsafe {
-                                std::mem::transmute::<std::sync::RwLockReadGuard<'_, Value>, std::sync::RwLockReadGuard<'static, Value>>(guard)
-                            }, Arc::clone(arc)));
+                            ffi_guards.push(ffi_guard_new_read(guard, Arc::clone(arc)));
                             Ok(ptr)
                         } else {
                             Err(Errno::Generic("FFI wrapper: shared handle missing from table during raw ptr dedup".to_string()))
@@ -140,9 +138,7 @@ impl<'a> Interpreter<'a> {
                             let ptr = &*guard as *const Value as *const () as i64;
                             // SAFETY: guard created from arc.read(), same Arc stored in FfiGuard.
                             // Guard is dropped before Arc (struct field order), so data stays alive.
-                            ffi_guards.push(FfiGuard::Read(unsafe {
-                                std::mem::transmute::<std::sync::RwLockReadGuard<'_, Value>, std::sync::RwLockReadGuard<'static, Value>>(guard)
-                            }, Arc::clone(arc)));
+                            ffi_guards.push(ffi_guard_new_read(guard, Arc::clone(arc)));
                             Ok(ptr)
                         } else {
                             Err(Errno::Generic("FFI wrapper: failed to create shared handle for raw pointer".to_string()))
@@ -153,11 +149,8 @@ impl<'a> Interpreter<'a> {
                     let guard = rc.read().map_err(|e| Errno::Generic(format!("read lock failed: {}", e)))?;
                     let ptr = &*guard as *const Value as *const () as i64;
                     // SAFETY: (F5) We hold a clone of the `Arc<RwLock<Value>>` alongside
-                    // the guard in `FfiGuard::Read`, so the `Arc` keeps the underlying data alive
-                    // for the entire duration of the C call.
-                    ffi_guards.push(FfiGuard::Read(unsafe {
-                        std::mem::transmute::<std::sync::RwLockReadGuard<'_, Value>, std::sync::RwLockReadGuard<'static, Value>>(guard)
-                    }, Arc::clone(rc)));
+                    // SAFETY: `ffi_guard_new_read` pairs the guard with its Arc for correct drop order.
+                    ffi_guards.push(ffi_guard_new_read(guard, Arc::clone(rc)));
                     Ok(ptr)
                 }
                 Value::Int(n) => Ok(*n),
@@ -177,9 +170,7 @@ impl<'a> Interpreter<'a> {
                             let ptr = &mut *guard as *mut Value as *mut () as i64;
                             // SAFETY: guard created from arc.write(), same Arc stored in FfiGuard.
                             // Guard is dropped before Arc (struct field order), so data stays alive.
-                            ffi_guards.push(FfiGuard::Write(unsafe {
-                                std::mem::transmute::<std::sync::RwLockWriteGuard<'_, Value>, std::sync::RwLockWriteGuard<'static, Value>>(guard)
-                            }, Arc::clone(arc)));
+                            ffi_guards.push(ffi_guard_new_write(guard, Arc::clone(arc)));
                             Ok(ptr)
                         } else {
                             Err(Errno::Generic("FFI wrapper: shared handle missing from table during raw ptr mut dedup".to_string()))
@@ -194,9 +185,7 @@ impl<'a> Interpreter<'a> {
                             let ptr = &mut *guard as *mut Value as *mut () as i64;
                             // SAFETY: guard created from arc.write(), same Arc stored in FfiGuard.
                             // Guard is dropped before Arc (struct field order), so data stays alive.
-                            ffi_guards.push(FfiGuard::Write(unsafe {
-                                std::mem::transmute::<std::sync::RwLockWriteGuard<'_, Value>, std::sync::RwLockWriteGuard<'static, Value>>(guard)
-                            }, Arc::clone(arc)));
+                            ffi_guards.push(ffi_guard_new_write(guard, Arc::clone(arc)));
                             Ok(ptr)
                         } else {
                             Err(Errno::Generic("FFI wrapper: failed to create shared handle for mutable raw pointer".to_string()))
@@ -207,10 +196,8 @@ impl<'a> Interpreter<'a> {
                     let mut guard = rc.write().map_err(|e| Errno::Generic(format!("write lock failed: {}", e)))?;
                     let ptr = &mut *guard as *mut Value as *mut () as i64;
                     // SAFETY: (F5) We hold a clone of the `Arc<RwLock<Value>>` alongside
-                    // the guard in `FfiGuard::Write`, so the `Arc` keeps the data alive.
-                    ffi_guards.push(FfiGuard::Write(unsafe {
-                        std::mem::transmute::<std::sync::RwLockWriteGuard<'_, Value>, std::sync::RwLockWriteGuard<'static, Value>>(guard)
-                    }, Arc::clone(rc)));
+                    // SAFETY: `ffi_guard_new_write` pairs the guard with its Arc for correct drop order.
+                    ffi_guards.push(ffi_guard_new_write(guard, Arc::clone(rc)));
                     Ok(ptr)
                 }
                 Value::Int(n) => Ok(*n),
@@ -262,9 +249,7 @@ impl<'a> Interpreter<'a> {
                             let ptr = &*guard as *const Value as *const () as i64;
                             // SAFETY: guard created from arc.read(), same Arc stored in FfiGuard.
                             // Guard is dropped before Arc (struct field order), so data stays alive.
-                            ffi_guards.push(FfiGuard::Read(unsafe {
-                                std::mem::transmute::<std::sync::RwLockReadGuard<'_, Value>, std::sync::RwLockReadGuard<'static, Value>>(guard)
-                            }, Arc::clone(arc)));
+                            ffi_guards.push(ffi_guard_new_read(guard, Arc::clone(arc)));
                             Ok(ptr)
                         } else {
                             Err(Errno::Generic("FFI wrapper: shared handle missing from table during c_borrow dedup".to_string()))
@@ -279,9 +264,7 @@ impl<'a> Interpreter<'a> {
                             let ptr = &*guard as *const Value as *const () as i64;
                             // SAFETY: guard created from arc.read(), same Arc stored in FfiGuard.
                             // Guard is dropped before Arc (struct field order), so data stays alive.
-                            ffi_guards.push(FfiGuard::Read(unsafe {
-                                std::mem::transmute::<std::sync::RwLockReadGuard<'_, Value>, std::sync::RwLockReadGuard<'static, Value>>(guard)
-                            }, Arc::clone(arc)));
+                            ffi_guards.push(ffi_guard_new_read(guard, Arc::clone(arc)));
                             Ok(ptr)
                         } else {
                             Err(Errno::Generic("FFI wrapper: failed to create shared handle for c_borrow".to_string()))
@@ -291,11 +274,8 @@ impl<'a> Interpreter<'a> {
                 Value::Ref(rc) => {
                     let guard = rc.read().map_err(|e| Errno::Generic(format!("read lock failed: {}", e)))?;
                     let ptr = &*guard as *const Value as *const () as i64;
-                    // SAFETY: (F5) We hold a clone of the `Arc<RwLock<Value>>` alongside
-                    // the guard in `FfiGuard::Read`, so the `Arc` keeps the underlying data alive.
-                    ffi_guards.push(FfiGuard::Read(unsafe {
-                        std::mem::transmute::<std::sync::RwLockReadGuard<'_, Value>, std::sync::RwLockReadGuard<'static, Value>>(guard)
-                    }, Arc::clone(rc)));
+                    // SAFETY: `ffi_guard_new_read` pairs the guard with its Arc for correct drop order.
+                    ffi_guards.push(ffi_guard_new_read(guard, Arc::clone(rc)));
                     Ok(ptr)
                 }
                 Value::Int(n) => {
@@ -317,9 +297,7 @@ impl<'a> Interpreter<'a> {
                             let ptr = &mut *guard as *mut Value as *mut () as i64;
                             // SAFETY: guard created from arc.write(), same Arc stored in FfiGuard.
                             // Guard is dropped before Arc (struct field order), so data stays alive.
-                            ffi_guards.push(FfiGuard::Write(unsafe {
-                                std::mem::transmute::<std::sync::RwLockWriteGuard<'_, Value>, std::sync::RwLockWriteGuard<'static, Value>>(guard)
-                            }, Arc::clone(arc)));
+                            ffi_guards.push(ffi_guard_new_write(guard, Arc::clone(arc)));
                             Ok(ptr)
                         } else {
                             Err(Errno::Generic("FFI wrapper: shared handle missing from table during c_borrow_mut dedup".to_string()))
@@ -334,9 +312,7 @@ impl<'a> Interpreter<'a> {
                             let ptr = &mut *guard as *mut Value as *mut () as i64;
                             // SAFETY: guard created from arc.write(), same Arc stored in FfiGuard.
                             // Guard is dropped before Arc (struct field order), so data stays alive.
-                            ffi_guards.push(FfiGuard::Write(unsafe {
-                                std::mem::transmute::<std::sync::RwLockWriteGuard<'_, Value>, std::sync::RwLockWriteGuard<'static, Value>>(guard)
-                            }, Arc::clone(arc)));
+                            ffi_guards.push(ffi_guard_new_write(guard, Arc::clone(arc)));
                             Ok(ptr)
                         } else {
                             Err(Errno::Generic("FFI wrapper: failed to create shared handle for c_borrow_mut".to_string()))
@@ -346,11 +322,8 @@ impl<'a> Interpreter<'a> {
                 Value::RefMut(rc) => {
                     let mut guard = rc.write().map_err(|e| Errno::Generic(format!("write lock failed: {}", e)))?;
                     let ptr = &mut *guard as *mut Value as *mut () as i64;
-                    // SAFETY: (F5) We hold a clone of the `Arc<RwLock<Value>>` alongside
-                    // the guard in `FfiGuard::Write`, so the `Arc` keeps the underlying data alive.
-                    ffi_guards.push(FfiGuard::Write(unsafe {
-                        std::mem::transmute::<std::sync::RwLockWriteGuard<'_, Value>, std::sync::RwLockWriteGuard<'static, Value>>(guard)
-                    }, Arc::clone(rc)));
+                    // SAFETY: `ffi_guard_new_write` pairs the guard with its Arc for correct drop order.
+                    ffi_guards.push(ffi_guard_new_write(guard, Arc::clone(rc)));
                     Ok(ptr)
                 }
                 Value::Int(n) => {

@@ -26,6 +26,27 @@ pub(in crate::interp) enum FfiGuard {
     },
 }
 
+/// # Safety
+/// `'static` transmute is safe because:
+/// 1. The Arc stored alongside the guard keeps the underlying data alive.
+/// 2. Rust drops tuple-struct fields in declaration order, so the guard
+///    (field 0) is dropped before its paired Arc (field 1).
+/// 3. No code ever accesses the `'static` guard through the reference —
+///    only the raw pointer (from `&*guard`) was already passed to C.
+///    The guard exists purely to keep the lock held.
+///
+/// If you add/remove/reorder fields in `FfiGuard`, update this comment.
+pub(in crate::interp) fn ffi_guard_new_read(guard: std::sync::RwLockReadGuard<'_, Value>, arc: Arc<RwLock<Value>>) -> FfiGuard {
+    // SAFETY: See safety doc on this function.
+    FfiGuard::Read(unsafe { std::mem::transmute::<std::sync::RwLockReadGuard<'_, Value>, std::sync::RwLockReadGuard<'static, Value>>(guard) }, arc)
+}
+
+/// Same safety contract as `ffi_guard_new_read` but for write guards.
+pub(in crate::interp) fn ffi_guard_new_write(guard: std::sync::RwLockWriteGuard<'_, Value>, arc: Arc<RwLock<Value>>) -> FfiGuard {
+    // SAFETY: See safety doc on `ffi_guard_new_read`.
+    FfiGuard::Write(unsafe { std::mem::transmute::<std::sync::RwLockWriteGuard<'_, Value>, std::sync::RwLockWriteGuard<'static, Value>>(guard) }, arc)
+}
+
 /// RAII guard that tracks shared handles created during an FFI call and
 /// releases them from the per-thread SHARED_TABLE on drop (all exit paths).
 pub(in crate::interp) struct FfiSharedGuard {
