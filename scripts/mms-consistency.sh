@@ -13,7 +13,9 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 source "$SCRIPT_DIR/fuzz-common.sh"
 
 MIMI_BIN=$(ensure_mimi)
-MIMISPEC_DIR="$PROJECT_DIR/../mimispecref"
+# FIXME: 在 OntomimiSE monorepo 中运行时设为相对路径
+# 独立仓库中需要克隆 OntomimiSE 到同级目录，或通过环境变量指定
+MIMISPEC_DIR="${MIMISPEC_DIR:-$PROJECT_DIR/../OntomimiSE/mimispecref}"
 MIMI_STD_DIR="$PROJECT_DIR/std"
 
 TOTAL_CHECKS=0
