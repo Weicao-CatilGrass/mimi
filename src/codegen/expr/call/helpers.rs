@@ -420,7 +420,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                 self.builder.position_at_end(body_bb);
                 // Load element
                                 let elem_ptr = {
-                    self.gep().build_gep(i64_ty, data_ptr, &[idx], "elem")
+                    self.gep().build_in_bounds_gep(i64_ty, data_ptr, &[idx], "elem")
                 }.map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?;
                 let elem = self.builder.build_load(BasicTypeEnum::IntType(i64_ty), elem_ptr, "elem_val")
                     .map_err(|e| CompileError::LlvmError(format!("load error: {}", e)))?;
@@ -434,7 +434,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                 if is_map {
                     // For map: store result to output array
                                         let out_elem_ptr = {
-                        self.gep().build_gep(i64_ty, out_i64, &[idx], "out_elem")
+                        self.gep().build_in_bounds_gep(i64_ty, out_i64, &[idx], "out_elem")
                     }.map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?;
                     self.builder.build_store(out_elem_ptr, result)
                         .map_err(|e| CompileError::LlvmError(format!("store error: {}", e)))?;
@@ -454,7 +454,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     let wi = self.builder.build_load(BasicTypeEnum::IntType(i64_ty), write_idx, "wi")
                         .map_err(|e| CompileError::LlvmError(format!("load error: {}", e)))?.into_int_value();
                                         let out_elem_ptr = {
-                        self.gep().build_gep(i64_ty, out_i64, &[wi], "out_elem")
+                        self.gep().build_in_bounds_gep(i64_ty, out_i64, &[wi], "out_elem")
                     }.map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?;
                     self.builder.build_store(out_elem_ptr, elem)
                         .map_err(|e| CompileError::LlvmError(format!("store error: {}", e)))?;
@@ -548,7 +548,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     .map_err(|e| CompileError::LlvmError(format!("branch error: {}", e)))?;
                 self.builder.position_at_end(body_bb);
                                 let elem_ptr = {
-                    self.gep().build_gep(i64_ty, data_ptr, &[idx], "elem")
+                    self.gep().build_in_bounds_gep(i64_ty, data_ptr, &[idx], "elem")
                 }.map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?;
                 let elem = self.builder.build_load(BasicTypeEnum::IntType(i64_ty), elem_ptr, "elem_val")
                     .map_err(|e| CompileError::LlvmError(format!("load error: {}", e)))?;

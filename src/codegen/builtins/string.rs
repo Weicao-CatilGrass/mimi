@@ -49,7 +49,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                 ).map_err(|e| CompileError::LlvmError(format!("load error: {}", e)))?.into_pointer_value();
                 // char = data_ptr[index]
                                 let char_ptr = {
-                    self.gep().build_gep(
+                    self.gep().build_in_bounds_gep(
                         BasicTypeEnum::IntType(self.context.i8_type()),
                         data_ptr,
                         &[index],
@@ -65,7 +65,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                 self.builder.build_store(buf, char_val)
                     .map_err(|e| CompileError::LlvmError(format!("store error: {}", e)))?;
                                 let null_gep = {
-                    self.gep().build_gep(
+                    self.gep().build_in_bounds_gep(
                         BasicTypeEnum::IntType(self.context.i8_type()),
                         buf,
                         &[self.context.i64_type().const_int(1, false)],
