@@ -354,6 +354,13 @@ impl<'ctx> CodeGenerator<'ctx> {
                 crate::ast::Type::Tuple(_) => {
                     BasicMetadataTypeEnum::PointerType(i8_ptr_ty)
                 }
+                // For repr(C) records, use i64 to match Rust's C ABI for packed structs.
+                // Rust compiles #[repr(C)] struct {i32, i32} as i64 in LLVM IR,
+                // passed in a single register. Using {i32, i32} causes LLVM to decompose
+                // it into two registers (%edi, %esi), mismatching the callee (F-16).
+                crate::ast::Type::Name(n, _) if self.repr_c_record_names.contains(n.as_str()) => {
+                    BasicMetadataTypeEnum::IntType(self.context.i64_type())
+                }
                 _ => {
                     let ty = self.type_to_llvm_for_extern(&p.ty)?;
                     types::basic_to_metadata(self.context, ty)
@@ -390,6 +397,13 @@ impl<'ctx> CodeGenerator<'ctx> {
                 // Tests: e2e_extern_strlen, e2e_extern_parse_int_raw_string
                 } else if matches!(ty, crate::ast::Type::Name(n, _) if n == "string") {
                     BasicTypeEnum::PointerType(i8_ptr_ty)
+                // repr(C) records are returned as i64 (packed) to match Rust's C ABI
+                } else if let crate::ast::Type::Name(n, _) = ty {
+                    if self.repr_c_record_names.contains(n.as_str()) {
+                        BasicTypeEnum::IntType(self.context.i64_type())
+                    } else {
+                        self.type_to_llvm_for_extern(ty)?
+                    }
                 } else {
                     self.type_to_llvm_for_extern(ty)?
                 }
@@ -740,6 +754,60 @@ impl<'ctx> CodeGenerator<'ctx> {
                     wrapper_args.push(BasicMetadataValueEnum::PointerValue(json_val));
                 }
                 _ => {
+                    // For repr(C) record params: convert each field from Mimi's internal type
+                    // (i64 for i32) and PACK into a single i64 to match Rust's C ABI.
+                    // Rust compiles #[repr(C)] struct {i32,i32} as i64 in LLVM IR, passed
+                    // in a single register. Without packing, LLVM decomposes {i32,i32} into
+                    // two registers while the callee expects one, producing garbage (F-16).
+                    if let BasicValueEnum::StructValue(sv) = param {
+                        if let crate::ast::Type::Name(n, _) = &p.ty {
+                            if self.repr_c_record_names.contains(n.as_str()) {
+                                if let Some(td) = self.type_defs.get(n.as_str()) {
+                                    if let crate::ast::TypeDefKind::Record(fields) = &td.kind {
+                                        let i64_ty = self.context.i64_type();
+                                        let i32_ty = self.context.i32_type();
+                                        let mut packed = i64_ty.const_int(0, false);
+                                        for (fi, f) in fields.iter().enumerate() {
+                                            let raw_val = self.builder.build_extract_value(sv, fi as u32,
+                                                &format!("{}_{}_raw", n, f.name))
+                                                .map_err(|e| CompileError::LlvmError(format!("extract field: {}", e)))?;
+                                            let truncated_i32 = match &f.ty {
+                                                crate::ast::Type::Name(tn, _) if tn == "i32" => {
+                                                    match raw_val {
+                                                        BasicValueEnum::IntValue(iv) => {
+                                                            self.builder.build_int_truncate(iv, i32_ty,
+                                                                &format!("{}_{}_trunc", n, f.name))
+                                                                .map_err(|e| CompileError::LlvmError(format!("trunc: {}", e)))?
+                                                        }
+                                                        _ => return Err(CompileError::TypeMismatch(
+                                                            format!("repr(C) field {} expected i32 but got non-integer", f.name))),
+                                                    }
+                                                }
+                                                _ => return Err(CompileError::LlvmError(format!(
+                                                    "repr(C) extern param only supports i32 fields, got '{}'", crate::core::fmt_type(&f.ty)))),
+                                            };
+                                            let zext = self.builder.build_int_z_extend(truncated_i32, i64_ty,
+                                                &format!("{}_{}_zext", n, f.name))
+                                                .map_err(|e| CompileError::LlvmError(format!("zext: {}", e)))?;
+                                            if fi == 0 {
+                                                packed = zext;
+                                            } else {
+                                                let shifted = self.builder.build_left_shift(zext,
+                                                    i64_ty.const_int((fi * 32) as u64, false),
+                                                    &format!("{}_{}_shifted", n, f.name))
+                                                    .map_err(|e| CompileError::LlvmError(format!("shift: {}", e)))?;
+                                                packed = self.builder.build_or(packed, shifted,
+                                                    &format!("{}_{}_packed", n, f.name))
+                                                    .map_err(|e| CompileError::LlvmError(format!("or: {}", e)))?;
+                                            }
+                                        }
+                                        wrapper_args.push(BasicMetadataValueEnum::IntValue(packed));
+                                        continue;
+                                    }
+                                }
+                            }
+                        }
+                    }
                     wrapper_args.push(match param {
                         BasicValueEnum::IntValue(v) => BasicMetadataValueEnum::IntValue(v),
                         BasicValueEnum::FloatValue(v) => BasicMetadataValueEnum::FloatValue(v),
