@@ -963,3 +963,115 @@ func main() -> i32 { 0 }
         assert_eq!(f.unwrap().status, VerifStatus::Verified,
             "spawn-discard body should be verifiable: {:?}", f.unwrap());
     }
+
+    // --- P1.2: String theory (Z3 Seq) ---
+
+    #[test]
+    fn verify_string_eq_param_requires_nonempty() {
+        require_z3!();
+        // String param with equality in requires controls a numeric return.
+        let src = r#"
+func greet_len(name: string) -> i32 {
+    requires: name == "hello"
+    ensures: result == 5
+    len(name)
+}
+func main() -> i32 { 0 }
+"#;
+        let results = verify_source(src).expect("src/verifier/tests.rs: string_eq_requires");
+        let f = results.iter().find(|r| r.func_name == "greet_len");
+        assert!(f.is_some(), "greet_len should be present");
+        assert_eq!(f.unwrap().status, VerifStatus::Verified,
+            "string == literal in requires should verify: {:?}", f.unwrap());
+    }
+
+    #[test]
+    fn verify_string_eq_param_requires_violation() {
+        require_z3!();
+        let src = r#"
+func bad_len(name: string) -> i32 {
+    requires: name == "hello"
+    ensures: result == 3
+    len(name)
+}
+func main() -> i32 { 0 }
+"#;
+        let results = verify_source(src).expect("src/verifier/tests.rs: string_eq_violation");
+        let f = results.iter().find(|r| r.func_name == "bad_len");
+        assert!(f.is_some(), "bad_len should be present");
+        assert_eq!(f.unwrap().status, VerifStatus::Failed,
+            "string requires + wrong ensures should fail: {:?}", f.unwrap());
+    }
+
+    #[test]
+    fn verify_string_eq_in_ensures_with_requires() {
+        require_z3!();
+        // String equality with a require ensures the body path.
+        let src = r#"
+func is_same(a: string, b: string) -> i32 {
+    requires: a == b
+    ensures: result == 1
+    if a == b { 1 } else { 0 }
+}
+func main() -> i32 { 0 }
+"#;
+        let results = verify_source(src).expect("src/verifier/tests.rs: string_eq_ensures");
+        let f = results.iter().find(|r| r.func_name == "is_same");
+        assert!(f.is_some(), "is_same should be present");
+        assert_eq!(f.unwrap().status, VerifStatus::Verified,
+            "string == in requires + ensures should verify: {:?}", f.unwrap());
+    }
+
+    #[test]
+    fn verify_string_nonempty_preserved() {
+        require_z3!();
+        let src = r#"
+func id_nonempty(s: string) -> i32 {
+    requires: s != ""
+    ensures: result == 1
+    1
+}
+func main() -> i32 { 0 }
+"#;
+        let results = verify_source(src).expect("src/verifier/tests.rs: string_nonempty");
+        let f = results.iter().find(|r| r.func_name == "id_nonempty");
+        assert!(f.is_some(), "id_nonempty should be present");
+        assert_eq!(f.unwrap().status, VerifStatus::Verified,
+            "string != '' in requires should verify: {:?}", f.unwrap());
+    }
+
+    #[test]
+    fn verify_string_len_gt_zero() {
+        require_z3!();
+        let src = r#"
+func short(s: string) -> i32 {
+    requires: len(s) > 0
+    ensures: result == 1
+    1
+}
+func main() -> i32 { 0 }
+"#;
+        let results = verify_source(src).expect("src/verifier/tests.rs: string_len");
+        let f = results.iter().find(|r| r.func_name == "short");
+        assert!(f.is_some(), "short should be present");
+        assert_eq!(f.unwrap().status, VerifStatus::Verified,
+            "len(s) > 0 with ensures should verify: {:?}", f.unwrap());
+    }
+
+    #[test]
+    fn verify_string_char_at_contract() {
+        require_z3!();
+        let src = r#"
+func first_char_check(s: string) -> i32 {
+    requires: len(s) > 0 && char_at(s, 0) == "h"
+    ensures: result == 1
+    1
+}
+func main() -> i32 { 0 }
+"#;
+        let results = verify_source(src).expect("src/verifier/tests.rs: char_at");
+        let f = results.iter().find(|r| r.func_name == "first_char_check");
+        assert!(f.is_some(), "first_char_check should be present");
+        assert_eq!(f.unwrap().status, VerifStatus::Verified,
+            "char_at in requires should verify: {:?}", f.unwrap());
+    }

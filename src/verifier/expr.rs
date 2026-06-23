@@ -1,7 +1,9 @@
 use crate::ast::*;
 use crate::verifier::ctx::Z3VarMap;
 use crate::verifier::helpers::{block_tail_expr, extract_string_empty_cmp, is_string_empty_cmp};
+use std::str::FromStr;
 use z3::ast::{Bool as Z3Bool, Int as Z3Int, Real as Z3Real};
+use z3::ast::String as Z3String;
 
 impl crate::verifier::Verifier {
     /// Encode an expression as a Z3 Int term.
@@ -308,11 +310,17 @@ impl crate::verifier::Verifier {
                         Some(l.ge(&r))
                     }
                     BinOp::EqCmp => {
+                        if let Some(s_eq) = self.encode_string_eq(lhs, rhs, vars) {
+                            return Some(s_eq);
+                        }
                         let l = self.expr_to_z3_int(lhs, vars)?;
                         let r = self.expr_to_z3_int(rhs, vars)?;
                         Some(l.eq(&r))
                     }
                     BinOp::NeCmp => {
+                        if let Some(s_eq) = self.encode_string_eq(lhs, rhs, vars) {
+                            return Some(s_eq.not());
+                        }
                         let l = self.expr_to_z3_int(lhs, vars)?;
                         let r = self.expr_to_z3_int(rhs, vars)?;
                         Some(l.eq(&r).not())
@@ -380,6 +388,30 @@ impl crate::verifier::Verifier {
                             if let Some(len_var) = vars.get_string_len(s) {
                                 return Some(len_var.ne(&Z3Int::from_i64(0)));
                             }
+                        }
+                    }
+                    if name == "contains" && call_args.len() == 2 {
+                        if let (Some(s), Some(pat)) = (
+                            self.resolve_string_expr(&call_args[0], vars),
+                            self.resolve_string_expr(&call_args[1], vars),
+                        ) {
+                            return Some(s.contains(&pat));
+                        }
+                    }
+                    if name == "starts_with" && call_args.len() == 2 {
+                        if let (Some(s), Some(pat)) = (
+                            self.resolve_string_expr(&call_args[0], vars),
+                            self.resolve_string_expr(&call_args[1], vars),
+                        ) {
+                            return Some(s.prefix(&pat));
+                        }
+                    }
+                    if name == "ends_with" && call_args.len() == 2 {
+                        if let (Some(s), Some(pat)) = (
+                            self.resolve_string_expr(&call_args[0], vars),
+                            self.resolve_string_expr(&call_args[1], vars),
+                        ) {
+                            return Some(s.suffix(&pat));
                         }
                     }
                     let call_key = self.call_var_key(name, call_args);
@@ -607,5 +639,41 @@ impl crate::verifier::Verifier {
             // Integer-valued float: use integer directly (no overflow from precise ints).
             Z3Real::from_rational_str(&s, "1")
         }
+    }
+
+    /// Resolve an expression to a Z3 string variable for string theory encoding.
+    /// Handles `Ident`, `Literal("...")`, `old(ident)`, and `char_at(s, i)`.
+    fn resolve_string_expr(&mut self, expr: &Expr, vars: &mut Z3VarMap) -> Option<Z3String> {
+        match expr {
+            Expr::Ident(name) => vars.get_string_var(name).cloned(),
+            Expr::Literal(Lit::String(s)) => Z3String::from_str(s).ok(),
+            Expr::Old(inner) => {
+                if let Expr::Ident(name) = inner.as_ref() {
+                    let old_name = format!("old_{}", name);
+                    vars.get_string_var(&old_name).cloned()
+                } else {
+                    None
+                }
+            }
+            Expr::Call(callee, args) => {
+                if let Expr::Ident(name) = callee.as_ref() {
+                    if name == "char_at" && args.len() == 2 {
+                        let s = self.resolve_string_expr(&args[0], vars)?;
+                        let idx = self.expr_to_z3_int(&args[1], vars)?;
+                        return Some(s.at(&idx));
+                    }
+                }
+                None
+            }
+            _ => None,
+        }
+    }
+
+    /// Encode string equality `lhs == rhs` using Z3 string theory.
+    /// Returns `None` if either side is not a string expression.
+    fn encode_string_eq(&mut self, lhs: &Expr, rhs: &Expr, vars: &mut Z3VarMap) -> Option<Z3Bool> {
+        let s1 = self.resolve_string_expr(lhs, vars)?;
+        let s2 = self.resolve_string_expr(rhs, vars)?;
+        Some(s1.eq(&s2))
     }
 }

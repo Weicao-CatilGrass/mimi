@@ -7,8 +7,10 @@ use crate::verifier::helpers::{
     collect_idents_in_stmt, extract_body_return, format_expr, parse_contract_expr,
 };
 use std::collections::HashMap;
+use std::str::FromStr;
 use std::time::Instant;
 use z3::ast::{Bool as Z3Bool, Int as Z3Int, Real as Z3Real};
+use z3::ast::String as Z3String;
 use z3::SatResult;
 
 impl crate::verifier::Verifier {
@@ -69,6 +71,17 @@ impl crate::verifier::Verifier {
         for p in &func.params {
             if matches!(&p.ty, Type::Name(n, _) if n == "f64") {
                 vars.insert_real(p.name.as_str(), Z3Real::new_const(p.name.as_str()));
+            } else if matches!(&p.ty, Type::Name(n, _) if n == "string") {
+                vars.insert_int(p.name.as_str(), Z3Int::new_const(p.name.as_str()));
+                vars.insert_string_var(p.name.as_str(), Z3String::new_const(p.name.as_str()));
+                vars.insert_string_nonempty(
+                    p.name.as_str(),
+                    Z3Bool::new_const(format!("{}_ne", p.name)),
+                );
+                vars.insert_string_len(
+                    p.name.as_str(),
+                    Z3Int::new_const(format!("{}_len", p.name)),
+                );
             } else {
                 vars.insert_int(p.name.as_str(), Z3Int::new_const(p.name.as_str()));
             }
@@ -274,6 +287,10 @@ impl crate::verifier::Verifier {
                     p.name.as_str(),
                     Z3Int::new_const(format!("{}_len", p.name)),
                 );
+                vars.insert_string_var(
+                    p.name.as_str(),
+                    Z3String::new_const(p.name.as_str()),
+                );
             } else {
                 vars.insert_int(p.name.as_str(), Z3Int::new_const(p.name.as_str()));
             }
@@ -302,8 +319,46 @@ impl crate::verifier::Verifier {
                     old_name,
                     Z3Int::new_const(format!("{}_len", old_name)),
                 );
+                vars.insert_string_var(
+                    old_name,
+                    Z3String::new_const(old_name),
+                );
             } else {
                 vars.insert_int(old_name, Z3Int::new_const(old_name));
+            }
+        }
+
+        // Assert consistency between Z3 string theory variables and the
+        // integer-encoded string_len/string_nonempty variables.
+        // This ensures that s.length() == string_len[s] and (s != "") == string_nonempty[s].
+        for p in &func.params {
+            if matches!(&p.ty, Type::Name(n, _) if n == "string") {
+                if let Some(z3_s) = vars.get_string_var(p.name.as_str()) {
+                    if let Some(len_var) = vars.get_string_len(p.name.as_str()) {
+                        self.solver.assert(&z3_s.length().eq(len_var));
+                    }
+                    let empty = Z3String::from_str("").unwrap();
+                    let nonempty_check = z3_s.ne(&empty);
+                    if let Some(ne_var) = vars.get_string_nonempty(p.name.as_str()) {
+                        self.solver.assert(&ne_var.eq(&nonempty_check));
+                    }
+                }
+            }
+        }
+        // Same for old_* snapshots
+        for (i, p) in func.params.iter().enumerate() {
+            if matches!(&p.ty, Type::Name(n, _) if n == "string") {
+                let old_name = old_names[i].as_str();
+                if let Some(z3_s) = vars.get_string_var(old_name) {
+                    if let Some(len_var) = vars.get_string_len(old_name) {
+                        self.solver.assert(&z3_s.length().eq(len_var));
+                    }
+                    let empty = Z3String::from_str("").unwrap();
+                    let nonempty_check = z3_s.ne(&empty);
+                    if let Some(ne_var) = vars.get_string_nonempty(old_name) {
+                        self.solver.assert(&ne_var.eq(&nonempty_check));
+                    }
+                }
             }
         }
 
