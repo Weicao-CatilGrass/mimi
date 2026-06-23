@@ -363,7 +363,76 @@ impl<'ctx> CodeGenerator<'ctx> {
             _ => {}
         }
 
-            // Check if this is a lazily-generated extern function
+        // ── Argument ABI conversions for regular (non-builtin) function calls ──
+
+        // Convert pointer-valued list arguments to struct values when the
+        // function parameter expects List<T> (passed by value). Only applies
+        // to List types, not other struct types (e.g., func(T)->U closure).
+        if let Some(fdef) = self.func_defs.get(name) {
+            for (i, arg) in compiled_args.iter_mut().enumerate() {
+                if i < fdef.params.len() {
+                    if let Type::Name(tn, _) = &fdef.params[i].ty {
+                        if tn == "List" {
+                            if let Some(param_llvm) = self.llvm_type_for(&fdef.params[i].ty) {
+                                if let BasicValueEnum::PointerValue(pv) = arg {
+                                    let loaded = self.builder.build_load(
+                                        param_llvm, *pv,
+                                        &format!("{}_struct_arg", &fdef.params[i].name),
+                                    ).map_err(|e| CompileError::LlvmError(format!("load struct arg: {}", e)))?;
+                                    *arg = loaded;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Convert function pointers to closure structs when the parameter type
+        // expects func(T) -> U. Named functions are compiled as i8* pointers,
+        // but func(T) -> U parameters expect {i8*, i8*} closure structs.
+        if let Some(fdef) = self.func_defs.get(name) {
+            for (i, arg) in compiled_args.iter_mut().enumerate() {
+                if i < fdef.params.len() {
+                    if matches!(&fdef.params[i].ty, Type::Func(_, _)) {
+                        if let BasicValueEnum::PointerValue(pv) = arg {
+                            let closure_ty = crate::codegen::types::closure_struct_type(self.context);
+                            let closure_alloca = self.builder.build_alloca(
+                                BasicTypeEnum::StructType(closure_ty), "closure_arg",
+                            ).map_err(|e| CompileError::LlvmError(format!("closure alloca: {}", e)))?;
+                            let fn_gep = self.gep().build_struct_gep(closure_ty, closure_alloca, 0, "fn_gep")
+                                .map_err(|e| CompileError::LlvmError(format!("fn gep: {}", e)))?;
+                            self.builder.build_store(fn_gep, *pv)
+                                .map_err(|e| CompileError::LlvmError(format!("fn store: {}", e)))?;
+                            let env_gep = self.gep().build_struct_gep(closure_ty, closure_alloca, 1, "env_gep")
+                                .map_err(|e| CompileError::LlvmError(format!("env gep: {}", e)))?;
+                            let null_i8 = self.context.ptr_type(inkwell::AddressSpace::default()).const_null();
+                            self.builder.build_store(env_gep, BasicValueEnum::PointerValue(null_i8))
+                                .map_err(|e| CompileError::LlvmError(format!("env store: {}", e)))?;
+                            let loaded = self.builder.build_load(
+                                BasicTypeEnum::StructType(closure_ty), closure_alloca, "closure_loaded",
+                            ).map_err(|e| CompileError::LlvmError(format!("load closure: {}", e)))?;
+                            *arg = loaded;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Rebuild metadata_args after ABI conversions
+        let metadata_args: Vec<_> = compiled_args.iter().map(|v| {
+            match v {
+                BasicValueEnum::IntValue(iv) => BasicMetadataValueEnum::IntValue(*iv),
+                BasicValueEnum::FloatValue(fv) => BasicMetadataValueEnum::FloatValue(*fv),
+                BasicValueEnum::PointerValue(pv) => BasicMetadataValueEnum::PointerValue(*pv),
+                BasicValueEnum::StructValue(sv) => BasicMetadataValueEnum::StructValue(*sv),
+                BasicValueEnum::ArrayValue(av) => BasicMetadataValueEnum::ArrayValue(*av),
+                BasicValueEnum::VectorValue(vv) => BasicMetadataValueEnum::VectorValue(*vv),
+                            BasicValueEnum::ScalableVectorValue(_) => BasicMetadataValueEnum::IntValue(self.context.i64_type().const_int(0, false)),
+            }
+        }).collect();
+
+        // Check if this is a lazily-generated extern function
             if self.extern_func_defs.contains_key(name) {
                 self.generate_extern_fn(name)?;
             }

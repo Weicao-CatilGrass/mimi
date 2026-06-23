@@ -128,6 +128,10 @@ pub struct CodeGenerator<'ctx> {
     /// Stores pointers to the fn_ptr and env_ptr TLS globals so they can be
     /// nulled out immediately after the C call returns.
     pending_callback_tls: Vec<inkwell::values::PointerValue<'ctx>>,
+    /// Maps variable names to the LLVM type of their list elements.
+    /// For `let x: List<List<i32>>`, stores "x" → LLVM struct type of `List<i32>` ({i64, i8*}).
+    /// Used by compile_index_expr to reconstruct struct values from type-erased i64 storage.
+    list_elem_llvm_types: HashMap<String, BasicTypeEnum<'ctx>>,
 }
 
 type VarEntry<'ctx> = (inkwell::values::PointerValue<'ctx>, BasicTypeEnum<'ctx>);
@@ -145,7 +149,7 @@ impl<'ctx> CodeGenerator<'ctx> {
         let module = context.create_module(module_name);
         let builder = context.create_builder();
         builtins::register_runtime(&module, context);
-        Self { context, module, builder, loop_break: None, loop_continue: None, type_defs: HashMap::new(), type_llvm: HashMap::new(), cap_vars: vec![HashMap::new()], cap_type_names: std::collections::HashSet::new(), type_map: HashMap::new(), func_defs: HashMap::new(), var_type_names: HashMap::new(), spawn_counter: 0, strict: false, no_std: false, shared: false, verify_contracts: true, target_triple: None, compensation_blocks: Vec::new(), comp_scope_stack: Vec::new(), shared_release_vars: vec![Vec::new()], weak_release_vars: vec![Vec::new()], shared_var_names: std::collections::HashSet::new(), heap_allocs: std::cell::RefCell::new(vec![Vec::new()]), ensures_stmts: Vec::new(), old_snapshots: HashMap::new(), comptime_func_names: std::collections::HashSet::new(), in_parasteps: false, parasteps_thread_ids: Vec::new(), trait_defs: HashMap::new(), type_impls: HashMap::new(), vtable_globals: HashMap::new(), vtable_types: HashMap::new(), extern_param_types: HashMap::new(), callback_thunk_counter: 0, callback_thunks: HashMap::new(), pending_spawn_type: None, async_var_inner_types: HashMap::new(), record_type_names: std::collections::HashSet::new(), repr_c_record_names: std::collections::HashSet::new(), tuple_type_stack: Vec::new(), pending_len_is_string: false, fn_ptr_var_names: std::collections::HashSet::new(), extern_func_defs: HashMap::new(), extern_block_abis: HashMap::new(), pending_callback_tls: Vec::new() }
+        Self { context, module, builder, loop_break: None, loop_continue: None, type_defs: HashMap::new(), type_llvm: HashMap::new(), cap_vars: vec![HashMap::new()], cap_type_names: std::collections::HashSet::new(), type_map: HashMap::new(), func_defs: HashMap::new(), var_type_names: HashMap::new(), spawn_counter: 0, strict: false, no_std: false, shared: false, verify_contracts: true, target_triple: None, compensation_blocks: Vec::new(), comp_scope_stack: Vec::new(), shared_release_vars: vec![Vec::new()], weak_release_vars: vec![Vec::new()], shared_var_names: std::collections::HashSet::new(), heap_allocs: std::cell::RefCell::new(vec![Vec::new()]), ensures_stmts: Vec::new(), old_snapshots: HashMap::new(), comptime_func_names: std::collections::HashSet::new(), in_parasteps: false, parasteps_thread_ids: Vec::new(), trait_defs: HashMap::new(), type_impls: HashMap::new(), vtable_globals: HashMap::new(), vtable_types: HashMap::new(), extern_param_types: HashMap::new(), callback_thunk_counter: 0, callback_thunks: HashMap::new(), pending_spawn_type: None, async_var_inner_types: HashMap::new(), record_type_names: std::collections::HashSet::new(), repr_c_record_names: std::collections::HashSet::new(), tuple_type_stack: Vec::new(), pending_len_is_string: false, fn_ptr_var_names: std::collections::HashSet::new(), extern_func_defs: HashMap::new(), extern_block_abis: HashMap::new(), pending_callback_tls: Vec::new(), list_elem_llvm_types: HashMap::new() }
     }
 
     pub fn gep(&self) -> gep::CheckedGepBuilder<'_, 'ctx> {
@@ -274,6 +278,21 @@ impl<'ctx> CodeGenerator<'ctx> {
             }
         }
         crate::codegen::types::mimi_type_to_llvm(self.context, ty)
+    }
+
+    /// Register the element LLVM type for a `List<T>` variable so that
+    /// compile_index_expr can reconstruct struct-typed elements from type-erased storage.
+    pub(super) fn register_list_elem_type(&mut self, var_name: &str, decl_ty: &Type) {
+        if let Type::Name(tn, args) = decl_ty {
+            if tn == "List" && args.len() == 1 {
+                let elem_ty = &args[0];
+                if let Some(llvm_elem) = self.llvm_type_for(elem_ty) {
+                    if matches!(llvm_elem, BasicTypeEnum::StructType(_)) {
+                        self.list_elem_llvm_types.insert(var_name.to_string(), llvm_elem);
+                    }
+                }
+            }
+        }
     }
 
     /// G2: Find the ordinal index of an enum variant name across all registered types.

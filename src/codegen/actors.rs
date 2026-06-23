@@ -321,6 +321,12 @@ impl<'ctx> CodeGenerator<'ctx> {
                             }
                         }
                     }
+                    // Track list element type for nested List<List<T>> indexing
+                    if let Pattern::Variable(name) = pat {
+                        if let Some(decl_ty) = &ty {
+                            self.register_list_elem_type(name, decl_ty);
+                        }
+                    }
                     self.compile_pattern_bind(pat, val, &mut vars)?;
                 }
                 Stmt::Assign { target, value } => {

@@ -41,7 +41,10 @@ impl<'ctx> CodeGenerator<'ctx> {
                             self.builder.build_extract_value(sv, 1, "str_len")
                                 .map_err(|e| CompileError::LlvmError(format!("extract error: {}", e)))
                         } else {
-                            Err(CompileError::TypeMismatch("len: expected a string or list".to_string()))
+                            // List struct {i64, i8*} passed as StructValue (e.g. from nested indexing).
+                            // Extract field 0 (len) directly.
+                            self.builder.build_extract_value(sv, 0, "list_len")
+                                .map_err(|e| CompileError::LlvmError(format!("extract list len: {}", e)))
                         }
                     }
                     _ => Err(CompileError::TypeMismatch("len expects a list or string pointer".to_string())),

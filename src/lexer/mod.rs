@@ -4,6 +4,7 @@ mod scan;
 pub mod token;
 
 pub use errors::LexerError;
+pub(crate) use errors::unexpected_character;
 pub use keywords::is_keyword_kind;
 pub use token::{LexerMode, Token, TokenKind};
 
@@ -60,6 +61,18 @@ impl<'a> Lexer<'a> {
                 self.at_line_start = true;
                 tokens.push(Token { kind: TokenKind::Newline, line, col });
                 continue;
+            }
+
+            // Line continuation: backslash followed by newline
+            if c == '\\' {
+                self.advance();
+                self.skip_whitespace_inline();
+                if self.peek() == Some('\n') {
+                    self.advance();
+                    self.at_line_start = true;
+                    continue;
+                }
+                return Err(unexpected_character('\\', line, col));
             }
 
             if c == '/' && self.chars.clone().next() == Some('/') {

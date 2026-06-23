@@ -8,6 +8,28 @@ use inkwell::values::BasicValueEnum;
 use std::collections::HashMap;
 
 impl<'ctx> CodeGenerator<'ctx> {
+    /// After loading a list element as i64, check if the element type is a
+    /// compound type (stored as ptrtoint). If so, inttoptr + load the struct.
+    fn convert_list_elem_from_i64(
+        &self,
+        elem_int: inkwell::values::IntValue<'ctx>,
+        base_var: Option<&str>,
+    ) -> Result<Option<BasicValueEnum<'ctx>>, CompileError> {
+        if let Some(var_name) = base_var {
+            if let Some(&elem_llvm) = self.list_elem_llvm_types.get(var_name) {
+                if let BasicTypeEnum::StructType(sty) = elem_llvm {
+                    let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
+                    let elem_ptr = self.builder.build_int_to_ptr(elem_int, ptr_ty, "elem_ptr")
+                        .map_err(|e| CompileError::LlvmError(format!("inttoptr: {}", e)))?;
+                    let struct_val = self.builder.build_load(
+                        BasicTypeEnum::StructType(sty), elem_ptr, "elem_struct",
+                    ).map_err(|e| CompileError::LlvmError(format!("load struct elem: {}", e)))?;
+                    return Ok(Some(struct_val));
+                }
+            }
+        }
+        Ok(None)
+    }
     pub(in crate::codegen) fn compile_field_expr(
         &mut self,
         obj: &Expr,
@@ -127,8 +149,18 @@ impl<'ctx> CodeGenerator<'ctx> {
                                         let elem_ptr = {
                         self.gep().build_in_bounds_gep(self.context.i64_type(), data_ptr_i64, &[idx_iv], "elem")
                     }.map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?;
-                    return self.builder.build_load(BasicTypeEnum::IntType(self.context.i64_type()), elem_ptr, "elem_val")
-                        .map_err(|e| CompileError::LlvmError(format!("load error: {}", e)));
+                    let elem_int = self.builder.build_load(BasicTypeEnum::IntType(self.context.i64_type()), elem_ptr, "elem_val")
+                        .map_err(|e| CompileError::LlvmError(format!("load error: {}", e)))?
+                        .into_int_value();
+                    // Convert i64→struct only when indexing a direct variable
+                    // (not chained indexing like nested[0][0] where the inner list's
+                    // elements are scalars).
+                    if let Expr::Ident(var_name) = obj {
+                        if let Some(converted) = self.convert_list_elem_from_i64(elem_int, Some(var_name.as_str()))? {
+                            return Ok(converted);
+                        }
+                    }
+                    return Ok(elem_int.into());
                 }
                 // Fallback: treat as raw pointer to i64 array
                                 let elem_ptr = {
@@ -165,8 +197,15 @@ impl<'ctx> CodeGenerator<'ctx> {
                 let elem_ptr = {
                     self.gep().build_in_bounds_gep(self.context.i64_type(), data_ptr_i64, &[idx_iv], "elem")
                 }.map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?;
-                self.builder.build_load(BasicTypeEnum::IntType(self.context.i64_type()), elem_ptr, "elem_val")
-                    .map_err(|e| CompileError::LlvmError(format!("load error: {}", e)))
+                let elem_int = self.builder.build_load(BasicTypeEnum::IntType(self.context.i64_type()), elem_ptr, "elem_val")
+                    .map_err(|e| CompileError::LlvmError(format!("load error: {}", e)))?
+                    .into_int_value();
+                if let Expr::Ident(var_name) = obj {
+                    if let Some(converted) = self.convert_list_elem_from_i64(elem_int, Some(var_name.as_str()))? {
+                        return Ok(converted);
+                    }
+                }
+                Ok(elem_int.into())
             }
             BasicValueEnum::ArrayValue(_av) => {
                 // Direct LLVM array value: extract element by index
