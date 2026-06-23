@@ -65,7 +65,7 @@ fn interpret(src: &str) -> Result<String, String> {
     let tokens = lexer::Lexer::new(src).tokenize().map_err(|e| e.to_string())?;
     let file = parser::Parser::new(tokens).parse_file().map_err(|e| e.message.clone())?;
     let mut interp = interp::Interpreter::new(&file);
-    interp.run().map(|v| format!("{}", v)).map_err(|e| e.message)
+    interp.run().map(|v| format!("{}", v)).map_err(|e| e.message().to_string())
 }
 
 proptest! {

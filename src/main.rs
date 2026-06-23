@@ -135,6 +135,12 @@ enum Command {
     /// Verify contracts using Z3 SMT solver
     Verify {
         path: Option<PathBuf>,
+        /// Show per-function verification statistics (constraints, solving time)
+        #[arg(long)]
+        stats: bool,
+        /// Dump Z3 SMT-LIB2 assertions to stderr for debugging
+        #[arg(long)]
+        dump_z3: bool,
     },
     /// Compile a .mimi file to native code
     Build {
@@ -264,7 +270,7 @@ fn main() {
         Command::Lsp => lsp_cmd::lsp(),
         Command::Fmt { files, check } => fmt_cmd::fmt_files(&files, check),
         Command::Lint { files } => lint_cmd::lint_files(&files),
-        Command::Verify { path } => verify::verify(path.as_deref()),
+        Command::Verify { path, stats, dump_z3 } => verify::verify(path.as_deref(), stats, dump_z3),
         Command::Build { path, output, emit_ir, strict, no_std, verify_contracts, verify_ffi, shared, target } => build::build(path.as_deref(), output.as_deref(), emit_ir, strict, no_std, verify_contracts, verify_ffi, shared, target.as_deref()),
         Command::EmitCHeaders { path, output } => emit::emit_c_headers(path.as_deref(), output.as_deref()),
         Command::EmitPyBindings { path, output, mimi_lib } => emit::emit_py_bindings(path.as_deref(), output.as_deref(), mimi_lib.as_deref()),

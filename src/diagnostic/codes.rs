@@ -81,8 +81,12 @@ pub const E0236: &str = "E0236"; // unreachable statement after return
 pub const E0237: &str = "E0237"; // division by zero literal
 pub const E0238: &str = "E0238"; // modulo by zero literal
 pub const E0239: &str = "E0239"; // turbofish type argument count mismatch
-pub const E0240: &str = "E0240"; // where constraint violated
-pub const E0241: &str = "E0241"; // effect not available
+// NOTE: E0240/E0241 are superseded by E0253/E0254 respectively.
+// They are kept for backward compatibility only.
+// - E0253 replaces E0240 (where constraint violated)
+// - E0254 replaces E0241 (effect not available)
+pub const E0240: &str = "E0240"; // where constraint violated (deprecated, use E0253)
+pub const E0241: &str = "E0241"; // effect not available (deprecated, use E0254)
 
 /// Ownership/borrow error codes (E03xx)
 pub const E0300: &str = "E0300"; // cannot borrow as mutable because already immutably borrowed
@@ -162,6 +166,26 @@ pub const E0722: &str = "E0722"; // unsupported expression in codegen
 /// File/resource error codes (E07xx)
 pub const E0750: &str = "E0750"; // requires libc or I/O error
 pub const E0751: &str = "E0751"; // assertion failed
+
+/// Runtime/interpreter error codes (E08xx)
+pub const E0800: &str = "E0800"; // generic runtime error
+pub const E0801: &str = "E0801"; // division by zero at runtime
+pub const E0802: &str = "E0802"; // integer overflow at runtime
+pub const E0803: &str = "E0803"; // index out of bounds at runtime
+pub const E0804: &str = "E0804"; // wrong argument count at runtime
+pub const E0805: &str = "E0805"; // non-exhaustive match at runtime
+pub const E0806: &str = "E0806"; // concurrent lock error
+pub const E0807: &str = "E0807"; // arena escape at runtime
+pub const E0808: &str = "E0808"; // contract violation at runtime (requires/ensures)
+pub const E0809: &str = "E0809"; // field not found at runtime
+pub const E0810: &str = "E0810"; // runtime I/O error
+pub const E0811: &str = "E0811"; // builtin function runtime error
+pub const E0812: &str = "E0812"; // type mismatch at runtime
+pub const E0813: &str = "E0813"; // floating-point error (NaN, infinity)
+pub const E0814: &str = "E0814"; // slice out of bounds at runtime
+
+/// Codegen error code not yet defined as constant (used inline)
+pub const E0712: &str = "E0712"; // codegen internal error (json builtin)
 
 /// Lint warning codes (W0xxx)
 
@@ -303,6 +327,23 @@ pub fn describe(code: &str) -> &'static str {
 
         E0750 => "requires libc or I/O error",
         E0751 => "assertion failed",
+
+        E0800 => "generic runtime error",
+        E0801 => "division by zero at runtime",
+        E0802 => "integer overflow at runtime",
+        E0803 => "index out of bounds at runtime",
+        E0804 => "wrong argument count at runtime",
+        E0805 => "non-exhaustive match at runtime",
+        E0806 => "concurrent lock error",
+        E0807 => "arena escape at runtime",
+        E0808 => "contract violation at runtime",
+        E0809 => "field not found at runtime",
+        E0810 => "runtime I/O error",
+        E0811 => "builtin function runtime error",
+        E0812 => "runtime type mismatch",
+        E0813 => "floating-point error",
+        E0814 => "slice out of bounds at runtime",
+        E0712 => "codegen internal error (json builtin)",
 
         W001 => "standalone desc/rule has no implementation",
         W002 => "locked fragment ($/$$) with no implementation body",

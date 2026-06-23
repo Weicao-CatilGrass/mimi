@@ -302,11 +302,11 @@ impl<'a> Interpreter<'a> {
                     BinOp::Add => {
                         match (&lv, &rv) {
                             (Value::Int(a), Value::Int(b)) => a.checked_add(*b)
-                                .ok_or_else(|| InterpError::new(format!("integer overflow in addition: {} + {}", a, b)))
+                                .ok_or_else(|| InterpError::integer_overflow(format!("integer overflow in addition: {} + {}", a, b)))
                                 .map(Value::Int),
                             (Value::Float(a), Value::Float(b)) => {
                                 let r = a + b;
-                                if r.is_nan() { Err(InterpError::new(format!("NaN from {} + {}", a, b))) }
+                                if r.is_nan() { Err(InterpError::float_error(format!("NaN from {} + {}", a, b))) }
                                 else { Ok(Value::Float(r)) }
                             }
                             (Value::String(a), Value::String(b)) => Ok(Value::String(format!("{}{}", a, b))),
@@ -316,11 +316,11 @@ impl<'a> Interpreter<'a> {
                     BinOp::Sub => {
                         match (&lv, &rv) {
                             (Value::Int(a), Value::Int(b)) => a.checked_sub(*b)
-                                .ok_or_else(|| InterpError::new(format!("integer overflow in subtraction: {} - {}", a, b)))
+                                .ok_or_else(|| InterpError::integer_overflow(format!("integer overflow in subtraction: {} - {}", a, b)))
                                 .map(Value::Int),
                             (Value::Float(a), Value::Float(b)) => {
                                 let r = a - b;
-                                if r.is_nan() { Err(InterpError::new(format!("NaN from {} - {}", a, b))) }
+                                if r.is_nan() { Err(InterpError::float_error(format!("NaN from {} - {}", a, b))) }
                                 else { Ok(Value::Float(r)) }
                             }
                             _ => Err(InterpError::new(format!("unsupported - for {} and {}", lv, rv))),
@@ -329,11 +329,11 @@ impl<'a> Interpreter<'a> {
                     BinOp::Mul => {
                         match (&lv, &rv) {
                             (Value::Int(a), Value::Int(b)) => a.checked_mul(*b)
-                                .ok_or_else(|| InterpError::new(format!("integer overflow in multiplication: {} * {}", a, b)))
+                                .ok_or_else(|| InterpError::integer_overflow(format!("integer overflow in multiplication: {} * {}", a, b)))
                                 .map(Value::Int),
                             (Value::Float(a), Value::Float(b)) => {
                                 let r = a * b;
-                                if r.is_nan() { Err(InterpError::new(format!("NaN from {} * {}", a, b))) }
+                                if r.is_nan() { Err(InterpError::float_error(format!("NaN from {} * {}", a, b))) }
                                 else { Ok(Value::Float(r)) }
                             }
                             _ => Err(InterpError::new(format!("unsupported * for {} and {}", lv, rv))),
@@ -342,13 +342,13 @@ impl<'a> Interpreter<'a> {
                     BinOp::Div => {
                         match (&lv, &rv) {
                             (Value::Int(a), Value::Int(b)) => a.checked_div(*b)
-                                .ok_or_else(|| InterpError::new(format!("integer overflow or division by zero: {} / {}", a, b)))
+                                .ok_or_else(|| InterpError::integer_overflow(format!("integer overflow or division by zero: {} / {}", a, b)))
                                 .map(Value::Int),
                             (Value::Float(a), Value::Float(b)) => {
-                                if *b == 0.0 { return Err(InterpError::new("division by zero")); }
+                                if *b == 0.0 { return Err(InterpError::div_by_zero()); }
                                 let r = a / b;
-                                if r.is_nan() { Err(InterpError::new(format!("NaN from {} / {}", a, b))) }
-                                else if r.is_infinite() { Err(InterpError::new(format!("infinity from {} / {}", a, b))) }
+                                if r.is_nan() { Err(InterpError::float_error(format!("NaN from {} / {}", a, b))) }
+                                else if r.is_infinite() { Err(InterpError::float_error(format!("infinity from {} / {}", a, b))) }
                                 else { Ok(Value::Float(r)) }
                             }
                             _ => Err(InterpError::new(format!("unsupported / for {} and {}", lv, rv))),
@@ -416,7 +416,7 @@ impl<'a> Interpreter<'a> {
                 match op {
                     UnOp::Neg => match v {
                         Value::Int(n) => n.checked_neg()
-                            .ok_or_else(|| InterpError::new(format!("integer overflow in negation: -{}", n)))
+                            .ok_or_else(|| InterpError::integer_overflow(format!("integer overflow in negation: -{}", n)))
                             .map(Value::Int),
                         Value::Float(n) => Ok(Value::Float(-n)),
                         _ => Err(InterpError::new(format!("unsupported neg for {}", v))),

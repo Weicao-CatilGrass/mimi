@@ -87,7 +87,7 @@ impl<'a> Interpreter<'a> {
         if self.arena_depth > 0 {
             for arena in &self.arenas {
                 if contains_arena_ref(&v, arena.id) {
-                    return Err(InterpError::new(format!(
+                    return Err(InterpError::arena_escape(format!(
                         "arena escape: returning a reference to arena {} that is still active",
                         arena.id
                     )));
@@ -225,7 +225,7 @@ impl<'a> Interpreter<'a> {
             self.arena_depth -= 1;
             self.pop_scope();
             self.arenas.pop();
-            return Err(InterpError::new(
+            return Err(InterpError::arena_escape(
                 format!("arena escape: variable '{}' holds a reference to arena {} that is about to be freed",
                     name, arena_id
                 )));
@@ -252,7 +252,7 @@ impl<'a> Interpreter<'a> {
                 self.arena_depth -= 1;
                 self.pop_scope();
                 self.arenas.pop();
-                return Err(InterpError::new(
+                return Err(InterpError::arena_escape(
                     format!("arena escape: returning a reference to arena {} that is about to be freed",
                         arena_id
                     )));
@@ -304,10 +304,10 @@ impl<'a> Interpreter<'a> {
                 let ref_val = self.eval_expr(inner)?;
                 match ref_val {
                     Value::RefMut(rc) => {
-                        *rc.write().map_err(|e| InterpError::new(format!("write lock failed: {}", e)))? = v;
+                        *rc.write().map_err(|e| InterpError::lock_error(format!("write lock failed: {}", e)))? = v;
                     }
                     Value::Shared(arc) => {
-                        *arc.write().map_err(|e| InterpError::new(format!("shared write lock failed: {}", e)))? = v;
+                        *arc.write().map_err(|e| InterpError::lock_error(format!("shared write lock failed: {}", e)))? = v;
                     }
                     Value::LocalShared(rc) => {
                         *rc.borrow_mut() = v;
@@ -321,7 +321,7 @@ impl<'a> Interpreter<'a> {
                     if name == "self" {
                         // Find the actor handle in scope and update its field
                         if let Some(Value::Actor(handle)) = self.lookup("self") {
-                            handle.inner.write().map_err(|e| InterpError::new(format!("actor lock failed: {}", e)))?.fields.insert(field.clone(), v);
+                            handle.inner.write().map_err(|e| InterpError::lock_error(format!("actor lock failed: {}", e)))?.fields.insert(field.clone(), v);
                             return Ok(None);
                         }
                     }
@@ -334,14 +334,14 @@ impl<'a> Interpreter<'a> {
                                 e.insert(v);
                             }
                         } else {
-                            return Err(InterpError::new(format!("field '{}' not found in record", field)));
+                            return Err(InterpError::field_not_found(format!("field '{}' not found in record", field)));
                         }
                     }
                     Value::Actor(handle) => {
-                        handle.inner.write().map_err(|e| InterpError::new(format!("actor lock failed: {}", e)))?.fields.insert(field.clone(), v);
+                        handle.inner.write().map_err(|e| InterpError::lock_error(format!("actor lock failed: {}", e)))?.fields.insert(field.clone(), v);
                     }
                     Value::Shared(arc) => {
-                        let mut inner = arc.write().map_err(|e| InterpError::new(format!("shared write lock failed: {}", e)))?;
+                        let mut inner = arc.write().map_err(|e| InterpError::lock_error(format!("shared write lock failed: {}", e)))?;
                         match &mut *inner {
                             Value::Record(_, fields) => {
                                 if fields.contains_key(field.as_str()) {
@@ -349,7 +349,7 @@ impl<'a> Interpreter<'a> {
                                         e.insert(v);
                                     }
                                 } else {
-                                    return Err(InterpError::new(format!("field '{}' not found in shared record", field)));
+                                    return Err(InterpError::field_not_found(format!("field '{}' not found in shared record", field)));
                                 }
                             }
                             _ => return Err(InterpError::new(format!("cannot assign to field of non-record shared value (type: {})", type_name(&inner)))),
@@ -364,7 +364,7 @@ impl<'a> Interpreter<'a> {
                                         e.insert(v);
                                     }
                                 } else {
-                                    return Err(InterpError::new(format!("field '{}' not found in local_shared record", field)));
+                                    return Err(InterpError::field_not_found(format!("field '{}' not found in local_shared record", field)));
                                 }
                             }
                             _ => return Err(InterpError::new(format!("cannot assign to field of non-record local_shared value (type: {})", type_name(&inner)))),

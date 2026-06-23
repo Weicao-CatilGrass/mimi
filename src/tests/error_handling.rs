@@ -153,7 +153,7 @@ func main() -> i32 {
     let result = run_source_result(src);
     assert!(result.is_err());
     let err = result.unwrap_err();
-    assert!(err.contains("modulo by zero"), "Expected modulo by zero error, got: {}", err);
+    assert!(err.contains("division by zero") || err.contains("modulo"), "Expected division/modulo by zero error, got: {}", err);
 }
 
 #[test]

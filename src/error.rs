@@ -73,6 +73,9 @@ pub enum CompileError {
     #[error("extern function '{0}' not declared")]
     ExternNotDeclared(String),
 
+    #[error("codegen json error: {0}")]
+    CodegenJson(String),
+
     // === Runtime errors ===
     #[error("assertion failed: {0}")]
     AssertionFailed(String),
@@ -130,6 +133,7 @@ impl CompileError {
             Self::LlvmError(_) => E0713,
             Self::BuiltinError(_) => E0709,
             Self::ExternNotDeclared(_) => E0710,
+            Self::CodegenJson(_) => E0712,
             Self::FfiWrapper(_) => E0741,
             Self::AssertionFailed(_) => E0751,
             Self::OutOfBounds { .. } => E0243,

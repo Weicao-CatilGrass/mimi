@@ -166,7 +166,7 @@ pub(crate) fn run_source_result(src: &str) -> Result<interp::Value, String> {
     crate::contracts::map_rule_contracts(&mut file);
     let mut interp = interp::Interpreter::new(&file);
     interp.verify_contracts = true;
-    interp.run().map_err(|e| e.message)
+    interp.run().map_err(|e| e.message().to_string())
 }
 
 /// Like `run_source_result` but with fork isolation disabled.
@@ -180,7 +180,7 @@ pub(crate) fn run_source_result_no_fork(src: &str) -> Result<interp::Value, Stri
     let mut interp = interp::Interpreter::new(&file);
     interp.verify_ffi = false;
     interp.verify_contracts = true;
-    interp.run().map_err(|e| e.message)
+    interp.run().map_err(|e| e.message().to_string())
 }
 
 pub(crate) fn check_source(src: &str) -> Result<(), Vec<crate::diagnostic::Diagnostic>> {

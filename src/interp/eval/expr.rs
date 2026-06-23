@@ -39,18 +39,18 @@ impl<'a> Interpreter<'a> {
             UnOp::Neg => match v {
                 Value::Int(x) => {
                     x.checked_neg()
-                        .ok_or_else(|| InterpError::new(format!("integer overflow in negation: -{}", x)))
+                        .ok_or_else(|| InterpError::integer_overflow(format!("integer overflow in negation: -{}", x)))
                         .map(Value::Int)
                 }
-                Value::Float(x) => { let r = -x; if r.is_nan() { Err(InterpError::new(format!("NaN from negation of {}", x))) } else { Ok(Value::Float(r)) } },
+                Value::Float(x) => { let r = -x; if r.is_nan() { Err(InterpError::float_error(format!("NaN from negation of {}", x))) } else { Ok(Value::Float(r)) } },
                 _ => Err(InterpError::new(format!("cannot negate {}", type_name(&v)))),
             },
             UnOp::Not => Ok(Value::Bool(!is_truthy(&v))),
             UnOp::Ref => Ok(Value::Ref(Arc::new(RwLock::new(v)))),
             UnOp::RefMut => Ok(Value::RefMut(Arc::new(RwLock::new(v)))),
             UnOp::Deref => match v {
-                Value::Ref(rc) | Value::RefMut(rc) => Ok(rc.read().map_err(|e| InterpError::new(format!("read lock failed: {}", e)))?.clone()),
-                Value::Shared(arc) => Ok(arc.read().map_err(|e| InterpError::new(format!("shared read lock failed: {}", e)))?.clone()),
+                Value::Ref(rc) | Value::RefMut(rc) => Ok(rc.read().map_err(|e| InterpError::lock_error(format!("read lock failed: {}", e)))?.clone()),
+                Value::Shared(arc) => Ok(arc.read().map_err(|e| InterpError::lock_error(format!("shared read lock failed: {}", e)))?.clone()),
                 Value::LocalShared(rc) => Ok(rc.borrow().clone()),
                 _ => Err(InterpError::new(format!("cannot dereference {}", type_name(&v)))),
             },
@@ -87,15 +87,15 @@ impl<'a> Interpreter<'a> {
                 "-" => a - b,
                 "*" => a * b,
                 "/" => {
-                    if b == 0.0 { return Err(InterpError::new("division by zero")); }
+                    if b == 0.0 { return Err(InterpError::div_by_zero()); }
                     let v = a / b;
-                    if v.is_nan() { return Err(InterpError::new(format!("NaN from {} / {}", a, b))); }
-                    if v.is_infinite() { return Err(InterpError::new(format!("infinity from {} / {}", a, b))); }
+                    if v.is_nan() { return Err(InterpError::float_error(format!("NaN from {} / {}", a, b))); }
+                    if v.is_infinite() { return Err(InterpError::float_error(format!("infinity from {} / {}", a, b))); }
                     v
                 }
                 "^" => {
                     let v = a.powf(b);
-                    if v.is_nan() { return Err(InterpError::new(format!("NaN from pow({}, {})", a, b))); }
+                    if v.is_nan() { return Err(InterpError::float_error(format!("NaN from pow({}, {})", a, b))); }
                     v
                 }
                 _ => unreachable!("unsupported float binop {}", op),
@@ -108,7 +108,7 @@ impl<'a> Interpreter<'a> {
                 (Value::String(a), Value::String(b)) => Ok(Value::String(format!("{}{}", a, b))),
                 (Value::Int(a), Value::Int(b)) => {
                     a.checked_add(*b)
-                        .ok_or_else(|| InterpError::new(format!("integer overflow in addition: {} + {}", a, b)))
+                        .ok_or_else(|| InterpError::integer_overflow(format!("integer overflow in addition: {} + {}", a, b)))
                         .map(Value::Int)
                 }
                 (Value::Float(a), Value::Float(b)) => float_binop(*a, *b, "+"),
@@ -118,7 +118,7 @@ impl<'a> Interpreter<'a> {
             BinOp::Sub => match (&left, &right) {
                 (Value::Int(a), Value::Int(b)) => {
                     a.checked_sub(*b)
-                        .ok_or_else(|| InterpError::new(format!("integer overflow in subtraction: {} - {}", a, b)))
+                        .ok_or_else(|| InterpError::integer_overflow(format!("integer overflow in subtraction: {} - {}", a, b)))
                         .map(Value::Int)
                 }
                 (Value::Float(a), Value::Float(b)) => float_binop(*a, *b, "-"),
@@ -129,7 +129,7 @@ impl<'a> Interpreter<'a> {
             BinOp::Mul => match (&left, &right) {
                 (Value::Int(a), Value::Int(b)) => {
                     a.checked_mul(*b)
-                        .ok_or_else(|| InterpError::new(format!("integer overflow in multiplication: {} * {}", a, b)))
+                        .ok_or_else(|| InterpError::integer_overflow(format!("integer overflow in multiplication: {} * {}", a, b)))
                         .map(Value::Int)
                 }
                 (Value::Float(a), Value::Float(b)) => float_binop(*a, *b, "*"),
@@ -137,10 +137,10 @@ impl<'a> Interpreter<'a> {
                 _ => Err(InterpError::new(format!("cannot apply '*' to {} and {}", type_name(&left), type_name(&right)))),
             },
             BinOp::Div => match (&left, &right) {
-                (Value::Int(_), Value::Int(0)) => Err(InterpError::new("division by zero")),
+                (Value::Int(_), Value::Int(0)) => Err(InterpError::div_by_zero()),
                 (Value::Int(a), Value::Int(b)) => {
                     a.checked_div(*b)
-                        .ok_or_else(|| InterpError::new(format!("integer overflow in division: {} / {}", a, b)))
+                        .ok_or_else(|| InterpError::integer_overflow(format!("integer overflow in division: {} / {}", a, b)))
                         .map(Value::Int)
                 }
                 (Value::Float(a), Value::Float(b)) => float_binop(*a, *b, "/"),
@@ -149,10 +149,10 @@ impl<'a> Interpreter<'a> {
                 _ => Err(InterpError::new(format!("cannot apply '/' to {} and {}", type_name(&left), type_name(&right)))),
             },
             BinOp::Mod => match (&left, &right) {
-                (Value::Int(_), Value::Int(0)) => Err(InterpError::new("modulo by zero")),
+                (Value::Int(_), Value::Int(0)) => Err(InterpError::div_by_zero()),
                 (Value::Int(a), Value::Int(b)) => {
                     a.checked_rem(*b)
-                        .ok_or_else(|| InterpError::new(format!("integer overflow in modulo: {} % {}", a, b)))
+                        .ok_or_else(|| InterpError::integer_overflow(format!("integer overflow in modulo: {} % {}", a, b)))
                         .map(Value::Int)
                 }
                 _ => Err(InterpError::new(format!("cannot apply '%' to {} and {}", type_name(&left), type_name(&right)))),
@@ -161,7 +161,7 @@ impl<'a> Interpreter<'a> {
                 (Value::Int(_), Value::Int(b)) if *b < 0 => Err(InterpError::new("negative exponent not supported for integers")),
                 (Value::Int(a), Value::Int(b)) => {
                     a.checked_pow(*b as u32)
-                        .ok_or_else(|| InterpError::new(format!("integer overflow in power: {} ^ {}", a, b)))
+                        .ok_or_else(|| InterpError::integer_overflow(format!("integer overflow in power: {} ^ {}", a, b)))
                         .map(Value::Int)
                 }
                 (Value::Float(a), Value::Float(b)) => float_binop(*a, *b, "^"),
@@ -189,13 +189,13 @@ impl<'a> Interpreter<'a> {
             },
             BinOp::Shl => match (&left, &right) {
                 (Value::Int(a), Value::Int(b)) => a.checked_shl(*b as u32)
-                    .ok_or_else(|| InterpError::new(format!("shift left overflow: {} << {}", a, b)))
+                    .ok_or_else(|| InterpError::integer_overflow(format!("shift left overflow: {} << {}", a, b)))
                     .map(Value::Int),
                 _ => Err(InterpError::new(format!("cannot apply '<<' to {} and {}", type_name(&left), type_name(&right)))),
             },
             BinOp::Shr => match (&left, &right) {
                 (Value::Int(a), Value::Int(b)) => a.checked_shr(*b as u32)
-                    .ok_or_else(|| InterpError::new(format!("shift right overflow: {} >> {}", a, b)))
+                    .ok_or_else(|| InterpError::integer_overflow(format!("shift right overflow: {} >> {}", a, b)))
                     .map(Value::Int),
                 _ => Err(InterpError::new(format!("cannot apply '>>' to {} and {}", type_name(&left), type_name(&right)))),
             },
@@ -467,7 +467,7 @@ impl<'a> Interpreter<'a> {
                 let len = list.len() as i64;
                 let i = if *i < 0 { len + *i } else { *i };
                 if i < 0 || i >= len {
-                    return Err(InterpError::new(format!("index out of bounds: index {} is not valid for list of length {}", i, len)));
+                    return Err(InterpError::index_out_of_bounds(format!("index out of bounds: index {} is not valid for list of length {}", i, len)));
                 }
                 Ok(list[i as usize].clone())
             }
@@ -475,7 +475,7 @@ impl<'a> Interpreter<'a> {
                 let len = arr.len() as i64;
                 let i = if *i < 0 { len + *i } else { *i };
                 if i < 0 || i >= len {
-                    return Err(InterpError::new(format!("index out of bounds: index {} is not valid for array of length {}", i, len)));
+                    return Err(InterpError::index_out_of_bounds(format!("index out of bounds: index {} is not valid for array of length {}", i, len)));
                 }
                 Ok(arr[i as usize].clone())
             }
@@ -483,7 +483,7 @@ impl<'a> Interpreter<'a> {
                 let slice_len = (*end - *start) as i64;
                 let i = if *i < 0 { slice_len + *i } else { *i };
                 if i < 0 || i >= slice_len {
-                    return Err(InterpError::new(format!("index out of bounds: index {} is not valid for slice of length {}", i, slice_len)));
+                    return Err(InterpError::index_out_of_bounds(format!("index out of bounds: index {} is not valid for slice of length {}", i, slice_len)));
                 }
                 Ok(source[*start + i as usize].clone())
             }
@@ -491,9 +491,9 @@ impl<'a> Interpreter<'a> {
                 let len = s.chars().count() as i64;
                 let i = if *i < 0 { len + *i } else { *i };
                 if i < 0 || i >= len {
-                    return Err(InterpError::new(format!("index out of bounds: index {} is not valid for string of length {}", i, len)));
+                    return Err(InterpError::index_out_of_bounds(format!("index out of bounds: index {} is not valid for string of length {}", i, len)));
                 }
-                let ch = s.chars().nth(i as usize).ok_or_else(|| InterpError::new(format!("index out of bounds: index {} is not valid for string of length {}", i, len)))?;
+                let ch = s.chars().nth(i as usize).ok_or_else(|| InterpError::index_out_of_bounds(format!("index out of bounds: index {} is not valid for string of length {}", i, len)))?;
                 Ok(Value::String(ch.to_string()))
             }
             _ => Err(InterpError::new(format!("cannot index {} with {}", type_name(&obj), type_name(&idx)))),
@@ -515,7 +515,7 @@ impl<'a> Interpreter<'a> {
                 match v {
                     Value::Int(i) => {
                         let i = if i < 0 { len as i64 + i } else { i } as usize;
-                        if i > len { return Err(InterpError::new("slice start out of bounds")); }
+                        if i > len { return Err(InterpError::slice_error("slice start out of bounds")); }
                         i
                     }
                     _ => return Err(InterpError::new("slice index must be integer")),
@@ -529,7 +529,7 @@ impl<'a> Interpreter<'a> {
                 match v {
                     Value::Int(i) => {
                         let i = if i < 0 { len as i64 + i } else { i } as usize;
-                        if i > len { return Err(InterpError::new("slice end out of bounds")); }
+                        if i > len { return Err(InterpError::slice_error("slice end out of bounds")); }
                         i
                     }
                     _ => return Err(InterpError::new("slice index must be integer")),
@@ -538,7 +538,7 @@ impl<'a> Interpreter<'a> {
             None => len,
         };
         if start_idx > end_idx {
-            return Err(InterpError::new("slice start > end"));
+            return Err(InterpError::slice_error("slice start > end"));
         }
         match obj {
             Value::List(l) => Ok(Value::Slice { source: l, start: start_idx, end: end_idx }),

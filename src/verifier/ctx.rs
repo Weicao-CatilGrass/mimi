@@ -193,4 +193,11 @@ impl Verifier {
         self.verify_items(&file.items, &mut results);
         results
     }
+
+    /// Dump the current solver state as an SMT-LIB2 string.
+    /// Returns `None` if the solver has no assertions.
+    pub fn dump_smt2(&self) -> Option<String> {
+        let s = self.solver.to_string();
+        if s.is_empty() { None } else { Some(s) }
+    }
 }
