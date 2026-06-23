@@ -187,7 +187,7 @@ pub const E0814: &str = "E0814"; // slice out of bounds at runtime
 /// Codegen error code not yet defined as constant (used inline)
 pub const E0712: &str = "E0712"; // codegen internal error (json builtin)
 
-/// Lint warning codes (W0xxx)
+// Lint warning codes (W0xxx)
 
 /// Get a human-readable description for an error code.
 pub fn describe(code: &str) -> &'static str {

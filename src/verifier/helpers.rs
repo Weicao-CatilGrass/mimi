@@ -94,7 +94,7 @@ pub(crate) fn format_expr(expr: &Expr) -> String {
                 .iter()
                 .map(|p| match p {
                     FStringPart::Text(t) => t.clone(),
-                    FStringPart::Interp(e) => format!("{}", format_expr(e)),
+                    FStringPart::Interp(e) => format_expr(e).to_string(),
                 })
                 .collect();
             format!("f\"{}\"", inner)
@@ -123,7 +123,7 @@ pub(crate) fn format_expr(expr: &Expr) -> String {
         Expr::Unary(UnOp::Neg, inner) => format!("-{}", format_expr(inner)),
         Expr::Unary(UnOp::Not, inner) => format!("!{}", format_expr(inner)),
         Expr::Block(block) => {
-            let s: Vec<String> = block.iter().map(|s| format_stmt(s)).collect();
+            let s: Vec<String> = block.iter().map(format_stmt).collect();
             format!("{{ {} }}", s.join("; "))
         }
         _ => "<expr>".to_string(),

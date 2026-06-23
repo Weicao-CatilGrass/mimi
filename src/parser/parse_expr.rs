@@ -600,12 +600,12 @@ impl Parser {
                 None
             };
             self.expect(TokenKind::RBracket, "`]`")?;
-            return self.parse_postfix(Expr::Comprehension {
+            self.parse_postfix(Expr::Comprehension {
                 expr: Box::new(first_expr),
                 var,
                 iter: Box::new(iter),
                 guard,
-            });
+            })
         } else {
             let mut elems = vec![first_expr];
             loop {
@@ -621,7 +621,7 @@ impl Parser {
                 elems.push(self.parse_expr(0)?);
             }
             self.expect(TokenKind::RBracket, "`]`")?;
-            return self.parse_postfix(Expr::List(elems));
+            self.parse_postfix(Expr::List(elems))
         }
     }
 }

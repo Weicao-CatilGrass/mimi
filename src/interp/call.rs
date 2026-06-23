@@ -315,7 +315,7 @@ impl<'a> Interpreter<'a> {
             }
             Value::LocalShared(rc) => {
                 match method {
-                    "clone" => Ok(Value::LocalShared(LocalSharedInner::clone_rc(&rc))),
+                    "clone" => Ok(Value::LocalShared(LocalSharedInner::clone_rc(rc))),
                     "deref" | "inner" => {
                         let inner = rc.borrow();
                         Ok(inner.clone())
@@ -646,7 +646,7 @@ impl<'a> Interpreter<'a> {
                     ("None", "unwrap") => Err("called unwrap() on None".into()),
                     ("None", "expect") => {
                         let msg = if args.is_empty() { "called expect() on None" } else { &args[0].to_string() };
-                        Err(InterpError::new(format!("{}", msg)))
+                        Err(InterpError::new(msg.to_string()))
                     }
                     ("Err", "unwrap") | ("Err", "expect") => {
                         let msg = if vals.is_empty() { "called unwrap() on Err".to_string() } else { format!("called unwrap() on Err({})", vals[0]) };

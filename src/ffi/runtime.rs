@@ -143,7 +143,7 @@ impl SharedHandle {
     pub fn with_value<R>(&self, f: impl FnOnce(&Value) -> R) -> R {
         let guard = self.inner.read()
             .expect("SharedHandle inner read lock poisoned");
-        f(&*guard)
+        f(&guard)
     }
 
     /// Execute a closure with a mutable reference to the inner value.
@@ -151,7 +151,7 @@ impl SharedHandle {
     pub fn with_value_mut<R>(&self, f: impl FnOnce(&mut Value) -> R) -> R {
         let mut guard = self.inner.write()
             .expect("SharedHandle inner write lock poisoned");
-        f(&mut *guard)
+        f(&mut guard)
     }
 
     /// Get a read guard for the inner value.
@@ -330,6 +330,10 @@ impl SharedHandleTable {
             .expect("SHARED_TABLE handles lock poisoned");
         handles.len()
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
 }
 
 impl Default for SharedHandleTable {
@@ -434,7 +438,7 @@ pub extern "C" fn mimi_value_free(ptr: *const Value) {
 
 /// Free a raw string that was obtained via `string.into_raw()`.
 #[no_mangle]
-pub extern "C" fn mimi_string_free_raw(c_str: *mut std::ffi::c_char) {
+pub unsafe extern "C" fn mimi_string_free_raw(c_str: *mut std::ffi::c_char) {
     if !c_str.is_null() {
         // SAFETY: c_str is a non-null pointer to a CString previously created via CString::into_raw (null-checked above).
         unsafe {
@@ -448,7 +452,7 @@ pub extern "C" fn mimi_string_free_raw(c_str: *mut std::ffi::c_char) {
 /// to release it when done. Each call allocates a new CString that the caller
 /// must eventually free. Returns null if the pointer is invalid or not a string.
 #[no_mangle]
-pub extern "C" fn mimi_string_as_c_str(mimi_string: *const Value) -> *const std::ffi::c_char {
+pub unsafe extern "C" fn mimi_string_as_c_str(mimi_string: *const Value) -> *const std::ffi::c_char {
     if mimi_string.is_null() {
         return std::ptr::null();
     }
@@ -494,7 +498,7 @@ thread_local! {
     /// keep the pointer alive.  Callers MUST call `mimi_string_as_c_str_free`
     /// to release the entry.  Entries that are never freed will leak until
     /// thread exit.
-    static PENDING_C_STRINGS: RefCell<Vec<std::ffi::CString>> = RefCell::new(Vec::new());
+    static PENDING_C_STRINGS: RefCell<Vec<std::ffi::CString>> = const { RefCell::new(Vec::new()) };
 }
 
 /// Convert a Mimi string to a raw C string (transfer ownership to C).
@@ -503,7 +507,7 @@ thread_local! {
 /// On success, the original Mimi string is cleared (ownership transferred).
 /// On failure (null return), the original Mimi string is NOT modified.
 #[no_mangle]
-pub extern "C" fn mimi_string_into_raw(mimi_string: *mut Value) -> *mut std::ffi::c_char {
+pub unsafe extern "C" fn mimi_string_into_raw(mimi_string: *mut Value) -> *mut std::ffi::c_char {
     if mimi_string.is_null() {
         return std::ptr::null_mut();
     }
@@ -536,7 +540,7 @@ pub extern "C" fn mimi_string_into_raw(mimi_string: *mut Value) -> *mut std::ffi
 /// Returns a new Mimi Value (caller takes ownership).
 /// Note: This function allocates a new Value on the heap.
 #[no_mangle]
-pub extern "C" fn mimi_string_from_raw(c_str: *mut std::ffi::c_char) -> *mut Value {
+pub unsafe extern "C" fn mimi_string_from_raw(c_str: *mut std::ffi::c_char) -> *mut Value {
     if c_str.is_null() {
         return std::ptr::null_mut();
     }

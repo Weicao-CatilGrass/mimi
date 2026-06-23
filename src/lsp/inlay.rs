@@ -42,6 +42,7 @@ impl LspServer {
         func_params: &HashMap<String, Vec<String>>,
     ) {
         for stmt in stmts {
+            #[allow(clippy::collapsible_match)]
             match stmt {
                 Stmt::Let { pat, init, .. } => {
                     // Type hint for `let x = <literal>` — show the inferred type
@@ -111,6 +112,7 @@ impl LspServer {
         hints: &mut Vec<Value>,
         func_params: &HashMap<String, Vec<String>>,
     ) {
+        #[allow(clippy::single_match)]
         match expr {
             Expr::Call(callee, args) => {
                 // Extract function name from callee

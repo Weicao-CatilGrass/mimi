@@ -251,7 +251,7 @@ impl PyBindGenerator {
     fn write_module_init(&self, out: &mut String) -> Result<(), std::fmt::Error> {
         writeln!(out, "}}")?;
         writeln!(out)?;
-        writeln!(out, "#endif // {}", format!("MIMI_PY_BIND_{}_H", self.module_name.to_uppercase().replace(|c: char| !c.is_ascii_alphanumeric(), "_")))?;
+        writeln!(out, "#endif // MIMI_PY_BIND_{}_H", self.module_name.to_uppercase().replace(|c: char| !c.is_ascii_alphanumeric(), "_"))?;
         Ok(())
     }
 

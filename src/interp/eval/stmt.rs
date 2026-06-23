@@ -129,9 +129,7 @@ impl<'a> Interpreter<'a> {
         while is_truthy(&self.eval_expr(cond)?) {
             if self.early_return.is_some() { break; }
             // Check invariants at each iteration start
-            if let Err(e) = self.check_invariants(body) {
-                return Err(e);
-            }
+            self.check_invariants(body)?;
             if let Some(v) = self.eval_block(body)? {
                 return Ok(Some(v));
             }

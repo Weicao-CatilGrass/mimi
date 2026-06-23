@@ -90,7 +90,7 @@ use std::sync::OnceLock;
 static CALLBACK_TABLE: OnceLock<CallbackTable> = OnceLock::new();
 
 fn global_callback_table() -> &'static CallbackTable {
-    CALLBACK_TABLE.get_or_init(|| CallbackTable::new())
+    CALLBACK_TABLE.get_or_init(CallbackTable::new)
 }
 
 /// Execute a closure with a reference to the global callback table.

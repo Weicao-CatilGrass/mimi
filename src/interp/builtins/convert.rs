@@ -26,7 +26,7 @@ impl<'a> Interpreter<'a> {
         }
     }
     pub(crate) fn builtin_from_int(&self, args: Vec<Value>) -> Result<Value, InterpError> {
-        if args.len() < 1 {
+        if args.is_empty() {
             return Err(InterpError::new("from_int expects at least 1 argument (int)"));
         }
         match &args[0] {

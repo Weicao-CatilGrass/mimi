@@ -5,7 +5,6 @@
 /// - W002: `$` / `$$` locked fragment with no implementation body
 /// - W003: `...` placeholder residual (in .mimi files)
 /// - W004: Function naming convention (snake_case)
-
 use crate::ast::{File, Item, FuncDef};
 use crate::diagnostic::Diagnostic;
 use crate::diagnostic::codes::{W002, W003, W004};
@@ -27,11 +26,8 @@ impl Linter {
         let mut diagnostics = Vec::new();
 
         for item in file.items.iter() {
-            match item {
-                Item::Func(f) => {
-                    self.lint_func(f, source, &mut diagnostics);
-                }
-                _ => {}
+            if let Item::Func(f) = item {
+                self.lint_func(f, source, &mut diagnostics);
             }
         }
 

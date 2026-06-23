@@ -114,11 +114,11 @@ impl<'a> Interpreter<'a> {
                     FfiArgContract::Callback { .. } => cif_arg_types.push(FfiType::pointer()),
                     FfiArgContract::StructByValue(type_name) => {
                         let fields = self.lookup_struct_fields(type_name)
-                            .map_err(|e| Errno::Generic(e))?;
+                            .map_err(Errno::Generic)?;
                         let field_types: Result<Vec<FfiType>, String> = fields.iter()
                             .map(|f| self.ffi_type_from_mimi_type(&f.ty))
                             .collect();
-                        let field_types = field_types.map_err(|e| Errno::Generic(e))?;
+                        let field_types = field_types.map_err(Errno::Generic)?;
                         cif_arg_types.push(FfiType::structure(field_types));
                     }
                     _ => cif_arg_types.push(FfiType::i64()),
@@ -134,20 +134,20 @@ impl<'a> Interpreter<'a> {
                 FfiRetContract::String | FfiRetContract::StringOwned | FfiRetContract::Json => FfiType::pointer(),
                 FfiRetContract::StructByValue(type_name) => {
                     let fields = self.lookup_struct_fields(type_name)
-                        .map_err(|e| Errno::Generic(e))?;
+                        .map_err(Errno::Generic)?;
                     let (total_size, _) = self.struct_size_align(&fields)
-                        .map_err(|e| Errno::Generic(e))?;
+                        .map_err(Errno::Generic)?;
                     struct_ret_size = Some(total_size);
                     let field_types: Result<Vec<FfiType>, String> = fields.iter()
                         .map(|f| self.ffi_type_from_mimi_type(&f.ty))
                         .collect();
-                    let field_types = field_types.map_err(|e| Errno::Generic(e))?;
+                    let field_types = field_types.map_err(Errno::Generic)?;
                     FfiType::structure(field_types)
                 }
                 _ => FfiType::i64(),
             };
 
-            let cif = Cif::new(cif_arg_types.into_iter(), cif_ret_type);
+            let cif = Cif::new(cif_arg_types, cif_ret_type);
 
             // Prepare typed arguments for libffi call
             let mut typed_storage: Vec<Box<dyn std::any::Any>> = Vec::with_capacity(contract.args.len());
@@ -169,9 +169,9 @@ impl<'a> Interpreter<'a> {
                     }
                     FfiArgContract::StructByValue(type_name) => {
                         let fields = self.lookup_struct_fields(type_name)
-                            .map_err(|e| Errno::Generic(e))?;
+                            .map_err(Errno::Generic)?;
                         let buffer = self.marshall_record_to_buffer(arg_val, &fields)
-                            .map_err(|e| Errno::Generic(e))?;
+                            .map_err(Errno::Generic)?;
                         // SAFETY: Buffer heap data is stable (Vec only moves handle).
                         // Arg::new stores a raw data pointer; struct_buffers keeps
                         // the buffer alive for the synchronous C call.
@@ -288,7 +288,7 @@ impl<'a> Interpreter<'a> {
             // Read the last buffer pushed to struct_buffers (the struct return buffer).
             if let Some(ret_buf) = struct_buffers.pop() {
                 let fields = self.lookup_struct_fields(type_name)
-                    .map_err(|e| Errno::Generic(e))?;
+                    .map_err(Errno::Generic)?;
                 self.unmarshall_buffer_to_record(&ret_buf, &fields)?
             } else {
                 return Err(Errno::Generic(
@@ -542,7 +542,7 @@ impl<'a> Interpreter<'a> {
         let mut current_offset = 0usize;
         for field in fields {
             let (size, align) = self.mimi_type_size_align(&field.ty)
-                .map_err(|e| Errno::Generic(e))?;
+                .map_err(Errno::Generic)?;
             let aligned = (current_offset + align - 1) & !(align - 1);
             let val = self.read_field_from_buf(buf, &field.ty, aligned)?;
             field_vals.insert(field.name.clone(), val);

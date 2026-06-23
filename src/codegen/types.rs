@@ -40,12 +40,12 @@ pub fn mimi_type_to_llvm<'ctx>(ctx: &'ctx Context, ty: &Type) -> Option<BasicTyp
         Type::Ref(_, inner) | Type::RefMut(_, inner) => {
             let inner_llvm = mimi_type_to_llvm(ctx, inner)?;
             let ptr = match inner_llvm {
-                BasicTypeEnum::IntType(t) => BasicTypeEnum::PointerType(t.ptr_type(AddressSpace::default())),
-                BasicTypeEnum::FloatType(t) => BasicTypeEnum::PointerType(t.ptr_type(AddressSpace::default())),
-                BasicTypeEnum::PointerType(t) => BasicTypeEnum::PointerType(t.ptr_type(AddressSpace::default())),
-                BasicTypeEnum::StructType(t) => BasicTypeEnum::PointerType(t.ptr_type(AddressSpace::default())),
-                BasicTypeEnum::ArrayType(t) => BasicTypeEnum::PointerType(t.ptr_type(AddressSpace::default())),
-                _ => BasicTypeEnum::PointerType(ctx.i8_type().ptr_type(AddressSpace::default())),
+                BasicTypeEnum::IntType(_) => BasicTypeEnum::PointerType(ctx.ptr_type(AddressSpace::default())),
+                BasicTypeEnum::FloatType(_) => BasicTypeEnum::PointerType(ctx.ptr_type(AddressSpace::default())),
+                BasicTypeEnum::PointerType(_) => BasicTypeEnum::PointerType(ctx.ptr_type(AddressSpace::default())),
+                BasicTypeEnum::StructType(_) => BasicTypeEnum::PointerType(ctx.ptr_type(AddressSpace::default())),
+                BasicTypeEnum::ArrayType(_) => BasicTypeEnum::PointerType(ctx.ptr_type(AddressSpace::default())),
+                _ => BasicTypeEnum::PointerType(ctx.ptr_type(AddressSpace::default())),
             };
             Some(ptr)
         }
@@ -109,12 +109,12 @@ pub fn mimi_type_to_llvm<'ctx>(ctx: &'ctx Context, ty: &Type) -> Option<BasicTyp
             // Slice<T> represented as {ptr, len}
             let elem = mimi_type_to_llvm(ctx, inner)?;
             let ptr_ty = match elem {
-                BasicTypeEnum::IntType(t) => BasicTypeEnum::PointerType(t.ptr_type(AddressSpace::default())),
-                BasicTypeEnum::FloatType(t) => BasicTypeEnum::PointerType(t.ptr_type(AddressSpace::default())),
-                BasicTypeEnum::PointerType(t) => BasicTypeEnum::PointerType(t.ptr_type(AddressSpace::default())),
-                BasicTypeEnum::StructType(t) => BasicTypeEnum::PointerType(t.ptr_type(AddressSpace::default())),
-                BasicTypeEnum::ArrayType(t) => BasicTypeEnum::PointerType(t.ptr_type(AddressSpace::default())),
-                _ => BasicTypeEnum::PointerType(ctx.i8_type().ptr_type(AddressSpace::default())),
+                BasicTypeEnum::IntType(_) => BasicTypeEnum::PointerType(ctx.ptr_type(AddressSpace::default())),
+                BasicTypeEnum::FloatType(_) => BasicTypeEnum::PointerType(ctx.ptr_type(AddressSpace::default())),
+                BasicTypeEnum::PointerType(_) => BasicTypeEnum::PointerType(ctx.ptr_type(AddressSpace::default())),
+                BasicTypeEnum::StructType(_) => BasicTypeEnum::PointerType(ctx.ptr_type(AddressSpace::default())),
+                BasicTypeEnum::ArrayType(_) => BasicTypeEnum::PointerType(ctx.ptr_type(AddressSpace::default())),
+                _ => BasicTypeEnum::PointerType(ctx.ptr_type(AddressSpace::default())),
             };
             let len = BasicTypeEnum::IntType(ctx.i64_type());
             Some(BasicTypeEnum::StructType(ctx.struct_type(&[ptr_ty, len], false)))
@@ -157,19 +157,19 @@ pub fn mimi_type_to_llvm_extern<'ctx>(ctx: &'ctx Context, ty: &Type) -> Option<B
         Type::Ref(_, inner) | Type::RefMut(_, inner) => {
             let inner_llvm = mimi_type_to_llvm(ctx, inner)?;
             let ptr = match inner_llvm {
-                BasicTypeEnum::IntType(t) => BasicTypeEnum::PointerType(t.ptr_type(AddressSpace::default())),
-                BasicTypeEnum::FloatType(t) => BasicTypeEnum::PointerType(t.ptr_type(AddressSpace::default())),
-                BasicTypeEnum::PointerType(t) => BasicTypeEnum::PointerType(t.ptr_type(AddressSpace::default())),
-                BasicTypeEnum::StructType(t) => BasicTypeEnum::PointerType(t.ptr_type(AddressSpace::default())),
-                BasicTypeEnum::ArrayType(t) => BasicTypeEnum::PointerType(t.ptr_type(AddressSpace::default())),
-                _ => BasicTypeEnum::PointerType(ctx.i8_type().ptr_type(AddressSpace::default())),
+                BasicTypeEnum::IntType(_) => BasicTypeEnum::PointerType(ctx.ptr_type(AddressSpace::default())),
+                BasicTypeEnum::FloatType(_) => BasicTypeEnum::PointerType(ctx.ptr_type(AddressSpace::default())),
+                BasicTypeEnum::PointerType(_) => BasicTypeEnum::PointerType(ctx.ptr_type(AddressSpace::default())),
+                BasicTypeEnum::StructType(_) => BasicTypeEnum::PointerType(ctx.ptr_type(AddressSpace::default())),
+                BasicTypeEnum::ArrayType(_) => BasicTypeEnum::PointerType(ctx.ptr_type(AddressSpace::default())),
+                _ => BasicTypeEnum::PointerType(ctx.ptr_type(AddressSpace::default())),
             };
             Some(ptr)
         }
         Type::Shared(_) | Type::LocalShared(_) | Type::Weak(_) | Type::WeakLocal(_)
             | Type::CShared(_) | Type::CBorrow(_) | Type::CBorrowMut(_)
             | Type::RawPtr(_) | Type::RawPtrMut(_) =>
-            Some(BasicTypeEnum::PointerType(ctx.i8_type().ptr_type(AddressSpace::default()))),
+            Some(BasicTypeEnum::PointerType(ctx.ptr_type(AddressSpace::default()))),
         _ => mimi_type_to_llvm(ctx, ty),
     }
 }

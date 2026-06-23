@@ -64,7 +64,7 @@ impl crate::verifier::Verifier {
         let returns_real = func
             .ret
             .as_ref()
-            .map_or(false, |t| matches!(t, Type::Name(n, _) if n == "f64"));
+            .is_some_and(|t| matches!(t, Type::Name(n, _) if n == "f64"));
 
         let mut vars = Z3VarMap::new();
 
@@ -277,7 +277,7 @@ impl crate::verifier::Verifier {
         let returns_real = func
             .ret
             .as_ref()
-            .map_or(false, |t| matches!(t, Type::Name(n, _) if n == "f64"));
+            .is_some_and(|t| matches!(t, Type::Name(n, _) if n == "f64"));
 
         let mut vars = Z3VarMap::new();
         let mut old_names: Vec<String> = Vec::with_capacity(func.params.len());
@@ -343,12 +343,12 @@ impl crate::verifier::Verifier {
             if matches!(&p.ty, Type::Name(n, _) if n == "string") {
                 if let Some(z3_s) = vars.get_string_var(p.name.as_str()) {
                     if let Some(len_var) = vars.get_string_len(p.name.as_str()) {
-                        self.solver.assert(&z3_s.length().eq(len_var));
+                        self.solver.assert(z3_s.length().eq(len_var));
                     }
-                    let empty = Z3String::from_str("").unwrap();
+                    let empty = Z3String::from_str("").expect("empty string literal");
                     let nonempty_check = z3_s.ne(&empty);
                     if let Some(ne_var) = vars.get_string_nonempty(p.name.as_str()) {
-                        self.solver.assert(&ne_var.eq(&nonempty_check));
+                        self.solver.assert(ne_var.eq(&nonempty_check));
                     }
                 }
             }
@@ -359,12 +359,12 @@ impl crate::verifier::Verifier {
                 let old_name = old_names[i].as_str();
                 if let Some(z3_s) = vars.get_string_var(old_name) {
                     if let Some(len_var) = vars.get_string_len(old_name) {
-                        self.solver.assert(&z3_s.length().eq(len_var));
+                        self.solver.assert(z3_s.length().eq(len_var));
                     }
-                    let empty = Z3String::from_str("").unwrap();
+                    let empty = Z3String::from_str("").expect("empty string literal");
                     let nonempty_check = z3_s.ne(&empty);
                     if let Some(ne_var) = vars.get_string_nonempty(old_name) {
-                        self.solver.assert(&ne_var.eq(&nonempty_check));
+                        self.solver.assert(ne_var.eq(&nonempty_check));
                     }
                 }
             }
@@ -382,19 +382,19 @@ impl crate::verifier::Verifier {
 
         for req in &requires_exprs {
             if let Some(z3_bool) = self.expr_to_z3_bool(req, &mut vars) {
-                self.solver.assert(&z3_bool);
+                self.solver.assert(z3_bool);
             }
         }
 
         for math in &math_exprs {
             if let Some(z3_bool) = self.expr_to_z3_bool(math, &mut vars) {
-                self.solver.assert(&z3_bool);
+                self.solver.assert(z3_bool);
             }
         }
 
         for inv in &invariant_exprs {
             if let Some(z3_bool) = self.expr_to_z3_bool(inv, &mut vars) {
-                self.solver.assert(&z3_bool);
+                self.solver.assert(z3_bool);
             }
         }
 
@@ -403,7 +403,7 @@ impl crate::verifier::Verifier {
             let param_z3 = vars.get_int(p.name.as_str()).cloned();
             let old_z3 = vars.get_int(old_name).cloned();
             if let (Some(pv), Some(ov)) = (param_z3, old_z3) {
-                self.solver.assert(&ov.eq(&pv));
+                self.solver.assert(ov.eq(&pv));
             }
         }
 
@@ -412,7 +412,7 @@ impl crate::verifier::Verifier {
             let param_z3 = vars.get_real(p.name.as_str()).cloned();
             let old_z3 = vars.get_real(old_name).cloned();
             if let (Some(pv), Some(ov)) = (param_z3, old_z3) {
-                self.solver.assert(&ov.eq(&pv));
+                self.solver.assert(ov.eq(&pv));
             }
         }
 
@@ -420,12 +420,12 @@ impl crate::verifier::Verifier {
             if returns_real {
                 if let Some(body_z3) = self.expr_to_z3_real(return_expr, &mut vars) {
                     if let Some(r) = vars.get_real("result") {
-                        self.solver.assert(&r.eq(&body_z3));
+                        self.solver.assert(r.eq(&body_z3));
                     }
                 }
             } else if let Some(body_z3) = self.expr_to_z3_int(return_expr, &mut vars) {
                 if let Some(i) = vars.get_int("result") {
-                    self.solver.assert(&i.eq(&body_z3));
+                    self.solver.assert(i.eq(&body_z3));
                 }
             }
         } else if func.ret.is_some() {
@@ -434,12 +434,10 @@ impl crate::verifier::Verifier {
             if returns_real {
                 if let Some(r) = vars.get_real("result") {
                     let zero = Z3Real::from_int(&Z3Int::from_i64(0));
-                    self.solver.assert(&r.eq(&zero));
+                    self.solver.assert(r.eq(&zero));
                 }
-            } else {
-                if let Some(i) = vars.get_int("result") {
-                    self.solver.assert(&i.eq(&Z3Int::from_i64(0)));
-                }
+            } else if let Some(i) = vars.get_int("result") {
+                self.solver.assert(i.eq(Z3Int::from_i64(0)));
             }
         }
 
@@ -491,7 +489,7 @@ impl crate::verifier::Verifier {
                     self.solver.push();
                     for ens in &ensures_exprs {
                         if let Some(z3_bool) = self.expr_to_z3_bool(ens, &mut vars) {
-                            self.solver.assert(&z3_bool.not());
+                            self.solver.assert(z3_bool.not());
                         }
                     }
                     match self.check_safe() {
@@ -1109,14 +1107,14 @@ impl crate::verifier::Verifier {
                             .filter_map(|s| if let Stmt::Ensures(e, _) = s { Some(e.clone()) } else { None })
                             .collect();
                         // Drop the immutable borrow on self
-                        drop(callee_func);
+                        let _ = callee_func;
                         // Now assert each ensures as a Z3 constraint
                         for ens_expr in &callee_ensures {
                             let substituted = self.substitute_call(
                                 ens_expr, &callee_params, call_args, &call_key,
                             );
                             if let Some(z3_bool) = self.expr_to_z3_bool(&substituted, vars) {
-                                self.solver.assert(&z3_bool);
+                                self.solver.assert(z3_bool);
                             }
                         }
                     }
@@ -1229,12 +1227,11 @@ impl crate::verifier::Verifier {
     fn build_let_subst_in_block(stmts: &[Stmt], subst: &mut HashMap<String, Expr>) {
         for stmt in stmts {
             match stmt {
-                Stmt::Let { pat, init: Some(init), .. } => {
-                    if let Pattern::Variable(name) = pat {
-                        let init_expr: &Expr = init;
-                        subst.insert(name.clone(), init_expr.clone());
-                    }
+                Stmt::Let { pat: Pattern::Variable(name), init: Some(init), .. } => {
+                    let init_expr: &Expr = init;
+                    subst.insert(name.clone(), init_expr.clone());
                 }
+                Stmt::Let { .. } => {}
                 Stmt::Block(body)
                 | Stmt::Arena(body)
                 | Stmt::Unsafe(body)

@@ -84,7 +84,7 @@ impl<'a> Checker<'a> {
                                     Span::single(self.current_line, self.current_col),
                                 )
                                 .with_help(
-                                    &suggestion
+                                    suggestion
                                         .map(|s| format!("did you mean '{}'?", s))
                                         .unwrap_or_default(),
                                 ),
@@ -176,7 +176,7 @@ impl<'a> Checker<'a> {
                 self.errors.push(
                     Diagnostic::error_code(
                         crate::diagnostic::codes::E0219,
-                        format!("field access requires record type, found {}", fmt_type(&obj_ty)),
+                        format!("field access requires record type, found {}", fmt_type(obj_ty)),
                         Span::single(self.current_line, self.current_col),
                     )
                     .with_help("only record types support field access with '.'"),
