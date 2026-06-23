@@ -1075,3 +1075,103 @@ func main() -> i32 { 0 }
         assert_eq!(f.unwrap().status, VerifStatus::Verified,
             "char_at in requires should verify: {:?}", f.unwrap());
     }
+
+    // --- P1.1 supplementary: Lambda/Comprehension ---
+
+    #[test]
+    fn verify_lambda_in_body_not_crash() {
+        require_z3!();
+        // Lambda in function body — should not crash, may be Unknown since
+        // closures can't be encoded as Z3 terms. The key assertion is that
+        // verification completes without panic and the result is not Unknown.
+        let src = r#"
+func make_adder(x: i32) -> func(i32) -> i32 {
+    fn(y: i32) -> i32 { x + y }
+}
+func main() -> i32 { 0 }
+"#;
+        let results = verify_source(src).expect("src/verifier/tests.rs: lambda");
+        let f = results.iter().find(|r| r.func_name == "make_adder");
+        assert!(f.is_some(), "make_adder should be present");
+        // Lambda bodies can't be encoded as int/real; result is Unknown
+        assert_ne!(f.unwrap().status, VerifStatus::Failed,
+            "lambda body should not produce false positive: {:?}", f.unwrap());
+    }
+
+    #[test]
+    fn verify_comprehension_in_body_not_crash() {
+        require_z3!();
+        let src = r#"
+func make_list(n: i32) -> i32 {
+    let xs = [i for i in range(n)]
+    len(xs)
+}
+func main() -> i32 { 0 }
+"#;
+        let results = verify_source(src).expect("src/verifier/tests.rs: comprehension");
+        let f = results.iter().find(|r| r.func_name == "make_list");
+        assert!(f.is_some(), "make_list should be present");
+        assert_ne!(f.unwrap().status, VerifStatus::Failed,
+            "comprehension body should not crash: {:?}", f.unwrap());
+    }
+
+    #[test]
+    fn verify_multiple_spawn_await() {
+        require_z3!();
+        let src = r#"
+func sum_pair(x: i32, y: i32) -> i32 {
+    ensures: result == x + y
+    let t1 = spawn id(x)
+    let t2 = spawn id(y)
+    (await t1) + (await t2)
+}
+func id(a: i32) -> i32 {
+    ensures: result == a
+    a
+}
+func main() -> i32 { 0 }
+"#;
+        let results = verify_source(src).expect("src/verifier/tests.rs: multi_spawn");
+        let f = results.iter().find(|r| r.func_name == "sum_pair");
+        assert!(f.is_some(), "sum_pair should be present");
+        assert_eq!(f.unwrap().status, VerifStatus::Verified,
+            "multiple spawn/await should verify: {:?}", f.unwrap());
+    }
+
+    // --- P1.2 supplementary: contains/starts_with/ends_with ---
+
+    #[test]
+    fn verify_string_contains_ensures() {
+        require_z3!();
+        let src = r#"
+func check_prefix(s: string) -> i32 {
+    requires: contains(s, "abc")
+    ensures: result == 1
+    1
+}
+func main() -> i32 { 0 }
+"#;
+        let results = verify_source(src).expect("src/verifier/tests.rs: contains");
+        let f = results.iter().find(|r| r.func_name == "check_prefix");
+        assert!(f.is_some(), "check_prefix should be present");
+        assert_eq!(f.unwrap().status, VerifStatus::Verified,
+            "contains in requires should verify: {:?}", f.unwrap());
+    }
+
+    #[test]
+    fn verify_string_starts_ends_with() {
+        require_z3!();
+        let src = r#"
+func both_ends(s: string) -> i32 {
+    requires: starts_with(s, "A") && ends_with(s, "Z")
+    ensures: result == 1
+    1
+}
+func main() -> i32 { 0 }
+"#;
+        let results = verify_source(src).expect("src/verifier/tests.rs: starts_ends");
+        let f = results.iter().find(|r| r.func_name == "both_ends");
+        assert!(f.is_some(), "both_ends should be present");
+        assert_eq!(f.unwrap().status, VerifStatus::Verified,
+            "starts_with/ends_with in requires should verify: {:?}", f.unwrap());
+    }

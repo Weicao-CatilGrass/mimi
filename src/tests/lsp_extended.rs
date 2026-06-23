@@ -789,3 +789,54 @@ fn lsp_code_lens_verify_status_with_cache() {
     assert!(titles.iter().any(|t| t.contains("postconditions verified")),
         "lens should show verification message: {:?}", titles);
 }
+
+#[test]
+fn lsp_code_lens_verify_status_failed() {
+    let mut server = LspServer::new();
+    let uri = "file:///test.mimi";
+    server.insert_verification_cache(
+        format!("{}:bad", uri),
+        0u64,
+        crate::verifier::VerifStatus::Failed,
+        "postcondition violation".to_string(),
+    );
+    let text = "func bad(x: i32) -> i32 {\n    requires: x > 0\n    ensures: result > 0\n    0\n}";
+    let lenses = server.compute_code_lens(text, uri);
+    let titles: Vec<&str> = lenses.iter()
+        .filter_map(|l| l["command"]["title"].as_str())
+        .collect();
+    assert!(titles.iter().any(|t| t.contains("✗")),
+        "failed func should show ✗ in lens: {:?}", titles);
+}
+
+#[test]
+fn lsp_code_lens_verify_status_unknown() {
+    let mut server = LspServer::new();
+    let uri = "file:///test.mimi";
+    server.insert_verification_cache(
+        format!("{}:unk", uri),
+        0u64,
+        crate::verifier::VerifStatus::Unknown,
+        "verification inconclusive".to_string(),
+    );
+    let text = "func unk(x: i32) -> i32 {\n    requires: x > 0\n    ensures: result > 0\n    x\n}";
+    let lenses = server.compute_code_lens(text, uri);
+    let titles: Vec<&str> = lenses.iter()
+        .filter_map(|l| l["command"]["title"].as_str())
+        .collect();
+    assert!(titles.iter().any(|t| t.contains("?")),
+        "unknown func should show ? in lens: {:?}", titles);
+}
+
+#[test]
+fn lsp_hover_func_invariant_only() {
+    let server = LspServer::new();
+    let text = "func counter(n: i32) -> i32 {\n    invariant: result >= 0\n    let mut i = 0\n    while i < n { i += 1 }\n    i\n}";
+    let result = server.compute_hover(text, 0, 6);
+    assert!(result.is_some(), "should hover over 'counter'");
+    let hover = result.expect("src/tests/lsp_extended.rs: hover_invariant_only");
+    let contents = hover.get("contents").expect("contents").get("value").expect("value").as_str().expect("string").to_string();
+    assert!(contents.contains("invariant:"), "hover should show invariant: {}", contents);
+    assert!(!contents.contains("requires:"), "hover should not show requires: {}", contents);
+    assert!(!contents.contains("ensures:"), "hover should not show ensures: {}", contents);
+}
