@@ -210,9 +210,15 @@ impl<'ctx> CodeGenerator<'ctx> {
                 self.builder.build_store(alloca, param_val)
                     .map_err(|e| CompileError::LlvmError(format!("store param: {}", e)))?;
                 vars.insert(param.name.clone(), (alloca, ty));
-                if let Type::Name(tn, _) = &param.ty {
+                let param_ty_name = match &param.ty {
+                    Type::Name(tn, _) => Some(tn.clone()),
+                    _ => None,
+                };
+                if let Some(ref tn) = param_ty_name {
                     self.var_type_names.insert(param.name.clone(), tn.clone());
                 }
+                // Register list element type for List<T> params where T is a struct
+                self.register_list_elem_type(&param.name, &param.ty);
             }
         }
 
@@ -386,13 +392,16 @@ impl<'ctx> CodeGenerator<'ctx> {
                     self.var_type_names.insert(param.name.clone(), crate::core::fmt_type(&param.ty));
                 }
                 
+                // Register list element type for List<T> params where T is a struct
+                self.register_list_elem_type(&param.name, &param.ty);
+                
                 // Track capability parameters
                 if matches!(&param.ty, Type::Cap(_)) {
                     self.register_cap(&param.name, alloca);
                 }
             }
         }
-
+        
         // Collect ensures contracts for runtime checking at return points.
         // Recursively walks nested blocks (if, while, for, parasteps, lambda).
         self.ensures_stmts = if self.verify_contracts {
@@ -643,6 +652,10 @@ impl<'ctx> CodeGenerator<'ctx> {
                                     }
                                 }
                             }
+                        }
+                        // Track list element type for nested List<List<T>> indexing
+                        if let Some(decl_ty) = &ty {
+                            self.register_list_elem_type(name, decl_ty);
                         }
                         // Track capability variables
                         if let Some(Type::Cap(_)) = &ty {

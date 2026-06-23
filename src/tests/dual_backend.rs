@@ -2431,8 +2431,7 @@ fn dual_option_none_and_match() {
 #[test]
 fn dual_generic_nested_list_list() {
     if !can_link() { return; }
-    // Known codegen limitation: nested indexing (nested[0][0]) not yet supported.
-    // This test verifies the type annotation and outer len() work.
+    // List<T> type annotation and outer len() work.
     dual_assert!(r#"
         func main() -> i32 {
             let nested: List<List<i32>> = [[1, 2], [3, 4]];
@@ -2443,17 +2442,32 @@ fn dual_generic_nested_list_list() {
 }
 
 #[test]
-fn dual_generic_nested_list_interp_nested_index() {
+fn dual_generic_nested_list_index() {
     if !can_link() { return; }
-    // Test that List<List<T>> with nested indexing works in interpreter
-    // (codegen limitation: list element type is hardcoded as i64)
-    dual_assert_interp_only!(r#"
-        func get_nested() -> i32 {
+    // List<List<T>> with nested indexing now works in both backends.
+    // Inner lists are stored as ptrtoint pointers in the data buffer,
+    // and compile_index_expr converts them back to struct values.
+    dual_assert!(r#"
+        func main() -> i32 {
             let nested: List<List<i32>> = [[1, 2], [3, 4]];
-            nested[0][0] + nested[1][1]
+            println(nested[0][0] + nested[1][1]);
+            0
         }
-        func main() -> i32 { println(get_nested()); 0 }
-    "#, interp::Value::Int(0)); // main() returns 0, get_nested() returns 5 (printed via println)
+    "#, "5");
+}
+
+#[test]
+fn dual_generic_nested_list_len_outer() {
+    if !can_link() { return; }
+    dual_assert!(r#"
+        func main() -> i32 {
+            let nested: List<List<i32>> = [[1, 2], [3, 4, 5]];
+            println(len(nested));
+            println(len(nested[0]));
+            println(len(nested[1]));
+            0
+        }
+    "#, "2\n2\n3");
 }
 
 // ─── 37. v0.22: Higher-order generic function ─────────────────────
@@ -2469,6 +2483,83 @@ fn dual_higher_order_map() {
             0
         }
     "#, "42");
+}
+
+#[test]
+fn dual_higher_order_list_param() {
+    // Known codegen limitation: named functions passed as func(T)->U parameters
+    // need a thunk wrapper to convert closure ABI (env_ptr first) to direct ABI.
+    dual_assert_interp_only!(r#"
+        func sum_first_two(xs: List<i32>) -> i32 { xs[0] + xs[1] }
+        func apply_list<T, U>(xs: List<T>, f: func(List<T>) -> U) -> U { f(xs) }
+        func main() -> i32 {
+            let r = apply_list([10, 20, 30], sum_first_two);
+            println(r);
+            0
+        }
+    "#, interp::Value::Int(0));
+}
+
+#[test]
+fn dual_higher_order_closure_return() {
+    if !can_link() { return; }
+    // Function returning a closure: func(T) -> func(U) -> V
+    dual_assert!(r#"
+        func make_adder(n: i32) -> func(i32) -> i32 {
+            fn(x: i32) -> i32 { x + n }
+        }
+        func main() -> i32 {
+            let add5 = make_adder(5);
+            println(add5(37));
+            0
+        }
+    "#, "42");
+}
+
+#[test]
+fn dual_higher_order_concrete_list_param() {
+    if !can_link() { return; }
+    // Concrete (non-generic) function taking List<i32> — pass variable, not literal
+    dual_assert!(r#"
+        func list_get_i32(xs: List<i32>, idx: i32) -> i32 { xs[idx] }
+        func main() -> i32 {
+            let data = [10, 20, 30];
+            let r = list_get_i32(data, 2);
+            println(r);
+            0
+        }
+    "#, "30");
+}
+
+#[test]
+fn dual_higher_order_nested_generic() {
+    if !can_link() { return; }
+    // Generic List<T> function — known limitation: generic return in codegen
+    // This tests the type checker and interpreter.
+    dual_assert_interp_only!(r#"
+        func get_at<T>(xs: List<T>, idx: i32) -> T { xs[idx] }
+        func main() -> i32 {
+            println(get_at([10, 20, 30], 1));
+            0
+        }
+    "#, interp::Value::Int(0));
+}
+
+#[test]
+fn dual_higher_order_list_of_lists_param() {
+    if !can_link() { return; }
+    // List<List<T>> as a function parameter with concrete type
+    dual_assert!(r#"
+        func first_inner(xss: List<List<i32>>) -> i32 {
+            let inner = xss[0];
+            inner[0]
+        }
+        func main() -> i32 {
+            let r = first_inner([[1, 2], [3, 4]]);
+            println(r);
+            0
+        }
+    "#, "1");
 }
 
 // ─── 38. v0.22: char_code + chr builtins ─────────────────────────
@@ -2546,4 +2637,34 @@ fn dual_recursive_type_interp_build() {
             0
         }
     "#, interp::Value::Int(0));
+}
+
+// ─── 40. v0.22: Line continuation ──────────────────────────────
+
+#[test]
+fn dual_line_continuation() {
+    if !can_link() { return; }
+    dual_assert!(r#"
+        func main() -> i32 {
+            let x = 1 + \
+                2 + \
+                3;
+            println(x);
+            0
+        }
+    "#, "6");
+}
+
+#[test]
+fn dual_line_continuation_long_expr() {
+    if !can_link() { return; }
+    dual_assert!(r#"
+        func main() -> i32 {
+            let result = (1 + 2 + 3) * \
+                (4 + 5 + 6) - \
+                (7 + 8 + 9);
+            println(result);
+            0
+        }
+    "#, "66");
 }
