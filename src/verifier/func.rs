@@ -117,13 +117,21 @@ impl crate::verifier::Verifier {
                 duration_us: start.elapsed().as_micros() as u64,
                 constraint_count,
             },
-            SatResult::Unknown => VerificationResult {
-                func_name: format!("extern {}", func.name),
-                status: VerifStatus::Unknown,
-                message: "precondition satisfiability unknown".into(),
-                diagnostic: None,
-                duration_us: start.elapsed().as_micros() as u64,
-                constraint_count,
+            SatResult::Unknown => {
+                let elapsed = start.elapsed();
+                let msg = if elapsed.as_millis() >= self.timeout_ms as u128 {
+                    format!("extern precondition check timed out after {}ms for '{}'", elapsed.as_millis(), func.name)
+                } else {
+                    format!("extern precondition satisfiability unknown for '{}' ({:.1?})", func.name, elapsed)
+                };
+                VerificationResult {
+                    func_name: format!("extern {}", func.name),
+                    status: VerifStatus::Unknown,
+                    message: msg,
+                    diagnostic: None,
+                    duration_us: elapsed.as_micros() as u64,
+                    constraint_count,
+                }
             },
             SatResult::Sat => {
                 if let Some(ens) = ensures_expr {
@@ -522,12 +530,20 @@ impl crate::verifier::Verifier {
                         }
                         SatResult::Unknown => {
                             self.solver.pop(1);
+                            let elapsed = start.elapsed();
+                            let msg = if elapsed.as_millis() >= self.timeout_ms as u128 {
+                                format!("verification timed out after {}ms for '{}' — try simplifying postconditions or reducing constraint count ({})",
+                                    elapsed.as_millis(), func.name, constraint_count)
+                            } else {
+                                format!("verification inconclusive for '{}' — solver returned unknown ({} constraints, {:.1?})",
+                                    func.name, constraint_count, elapsed)
+                            };
                             VerificationResult {
                                 func_name: func.name.clone(),
                                 status: VerifStatus::Unknown,
-                                message: "verification inconclusive".into(),
+                                message: msg,
                                 diagnostic: annotate_parse_errors(None),
-                                duration_us: start.elapsed().as_micros() as u64,
+                                duration_us: elapsed.as_micros() as u64,
                                 constraint_count,
                             }
                         }
@@ -563,12 +579,20 @@ impl crate::verifier::Verifier {
                 }
             }
             SatResult::Unknown => {
+                let elapsed = start.elapsed();
+                let msg = if elapsed.as_millis() >= self.timeout_ms as u128 {
+                    format!("precondition check timed out after {}ms for '{}' — try simplifying requires or reducing constraint count ({})",
+                        elapsed.as_millis(), func.name, constraint_count)
+                } else {
+                    format!("precondition satisfiability unknown for '{}' ({} constraints, {:.1?})",
+                        func.name, constraint_count, elapsed)
+                };
                 VerificationResult {
                     func_name: func.name.clone(),
                     status: VerifStatus::Unknown,
-                    message: "precondition satisfiability unknown".into(),
+                    message: msg,
                     diagnostic: annotate_parse_errors(None),
-                    duration_us: start.elapsed().as_micros() as u64,
+                    duration_us: elapsed.as_micros() as u64,
                     constraint_count,
                 }
             },
@@ -907,6 +931,12 @@ impl crate::verifier::Verifier {
     ) -> Diagnostic {
         let func_name = &func.name;
 
+        // Build function signature string for the header
+        let param_strs: Vec<String> = func.params.iter()
+            .map(|p| format!("{}: {}", p.name, crate::core::fmt_type(&p.ty)))
+            .collect();
+        let ret_str = func.ret.as_ref().map(crate::core::fmt_type).unwrap_or_default();
+
         let input_assignments: Vec<&(String, i64)> = counterexample
             .assignments
             .iter()
@@ -924,33 +954,38 @@ impl crate::verifier::Verifier {
             .map(|(_, val)| *val);
 
         let mut message = format!(
-            "verification failed for '{}': postcondition violation",
-            func_name
+            "verification failed for '{}' ({} -> {}): postcondition not satisfied",
+            func_name,
+            param_strs.join(", "),
+            if ret_str.is_empty() { "void".into() } else { ret_str },
         );
 
-        let mut all_parts: Vec<String> = Vec::new();
+        // Show counterexample values as a block
+        let mut counter_lines: Vec<String> = Vec::new();
         for (name, val) in &input_assignments {
-            all_parts.push(format!("{} = {}", name, val));
+            counter_lines.push(format!("    {} = {}", name, val));
         }
         for (name, val) in &counterexample.real_assignments {
             if name != "result" {
-                all_parts.push(format!("{} = {:.6}", name, val));
+                counter_lines.push(format!("    {} = {:.6}", name, val));
             }
         }
-        if !all_parts.is_empty() {
-            message.push_str(&format!("\n  with inputs: {}", all_parts.join(", ")));
+        if !counter_lines.is_empty() {
+            message.push_str(&format!("\ncounterexample:\n{}", counter_lines.join("\n")));
         }
 
+        // Show body return value
         if let Some(result) = result_val {
-            message.push_str(&format!("\n  body returns: result = {}", result));
+            message.push_str(&format!("\nbody returns: result = {}", result));
         }
         if let Some(result) = result_real {
-            message.push_str(&format!("\n  body returns: result = {:.6}", result));
+            message.push_str(&format!("\nbody returns: result = {:.6}", result));
         }
 
+        // Show violated postconditions
         for &idx in counterexample.violated_indices.iter() {
             if let Some(ens) = ensures_exprs.get(idx) {
-                message.push_str(&format!("\n  but ensures {} = false", format_expr(ens)));
+                message.push_str(&format!("\nensures {} is false for this input", format_expr(ens)));
             }
         }
 
@@ -960,6 +995,7 @@ impl crate::verifier::Verifier {
             .unwrap_or_else(|| Span::single(func.pos.0, func.pos.1));
         let mut diag = Diagnostic::error(message, primary_span).with_code("E0500");
 
+        // Add preconditions as a note
         if !requires_exprs.is_empty() {
             let req_strs: Vec<String> = requires_exprs.iter().map(format_expr).collect();
             let req_span = requires_spans
@@ -967,11 +1003,12 @@ impl crate::verifier::Verifier {
                 .copied()
                 .unwrap_or_else(|| Span::single(func.pos.0, func.pos.1));
             diag = diag.with_note(
-                format!("preconditions satisfied: {}", req_strs.join(", ")),
+                format!("preconditions (all satisfied): {}", req_strs.join(", ")),
                 req_span,
             );
         }
 
+        // Add each violated postcondition as a note
         for &idx in counterexample.violated_indices.iter() {
             if let Some(ens) = ensures_exprs.get(idx) {
                 let ens_span = ensures_spans
@@ -979,7 +1016,7 @@ impl crate::verifier::Verifier {
                     .copied()
                     .unwrap_or_else(|| Span::single(func.pos.0, func.pos.1));
                 diag = diag.with_note(
-                    format!("postcondition '{}' is false", format_expr(ens)),
+                    format!("postcondition '{}' evaluates to false", format_expr(ens)),
                     ens_span,
                 );
             }

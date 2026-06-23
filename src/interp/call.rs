@@ -6,7 +6,7 @@ impl<'a> Interpreter<'a> {
         if func.params.len() != args.len() {
             let expected_types: Vec<String> = func.params.iter().map(|p| crate::core::fmt_type(&p.ty)).collect();
             let actual_types: Vec<String> = args.iter().map(|a| crate::interp::value::type_name(a).to_string()).collect();
-            return Err(InterpError::new(
+            return Err(InterpError::wrong_arg_count(
                 format!("function '{}' expects {} arguments [{}], got {} [{}]",
                     func.name, func.params.len(), expected_types.join(", "), args.len(), actual_types.join(", "))
             ));
@@ -35,7 +35,7 @@ impl<'a> Interpreter<'a> {
                     if !is_truthy(&cond) {
                         self.pop_scope();
                         self.pop_call();
-                        return Err(InterpError::new(format!("requires condition failed for '{}': {}", func.name, cond)));
+                        return Err(InterpError::contract_violation(format!("requires condition failed for '{}': {}", func.name, cond)));
                     }
                 }
             }
@@ -69,7 +69,7 @@ impl<'a> Interpreter<'a> {
                         if let Stmt::Ensures(expr, _) = stmt {
                             let cond = self.eval_expr(expr)?;
                             if !is_truthy(&cond) {
-                                return Err(InterpError::new(format!("ensures condition failed for '{}': {}", func.name, cond)));
+                                return Err(InterpError::contract_violation(format!("ensures condition failed for '{}': {}", func.name, cond)));
                             }
                         }
                     }
@@ -101,7 +101,7 @@ impl<'a> Interpreter<'a> {
             match v {
                 Value::Closure { params, ret: _, body, captured } => {
                     if params.len() != args.len() {
-                        return Err(InterpError::new(
+                        return Err(InterpError::wrong_arg_count(
                             format!("closure '{}' expects {} arguments, got {}", name, params.len(), args.len())
                         ));
                     }
@@ -277,7 +277,7 @@ impl<'a> Interpreter<'a> {
     /// Call an async function - spawns a new thread and returns a Future
     fn call_async_func(&mut self, func: &FuncDef, args: Vec<Value>) -> Result<Value, InterpError> {
         if func.params.len() != args.len() {
-            return Err(InterpError::new(
+            return Err(InterpError::wrong_arg_count(
                 format!("function {} expects {} arguments, got {}", func.name, func.params.len(), args.len())
             ));
         }
@@ -317,7 +317,7 @@ impl<'a> Interpreter<'a> {
                 match method {
                     "clone" => Ok(Value::Shared(Arc::clone(arc))),
                     "deref" | "inner" => {
-                        let inner = arc.read().map_err(|e| InterpError::new(format!("shared read lock failed: {}", e)))?;
+                        let inner = arc.read().map_err(|e| InterpError::lock_error(format!("shared read lock failed: {}", e)))?;
                         Ok(inner.clone())
                     }
                     _ => Err(InterpError::new(format!("shared value has no method '{}' (type: {})", method, crate::interp::value::type_name(obj)))),
@@ -407,10 +407,10 @@ impl<'a> Interpreter<'a> {
                                 response: tx,
                             };
                             actor_arc.mailbox.send(msg)
-                                .map_err(|_| InterpError::new("actor mailbox send failed".to_string()))?;
+                                .map_err(|_| InterpError::lock_error("actor mailbox send failed".to_string()))?;
                             match rx.recv() {
                                 Ok(result) => result,
-                                Err(_) => Err(InterpError::new("actor worker terminated".to_string())),
+                                Err(_) => Err(InterpError::lock_error("actor worker terminated".to_string())),
                             }
                         }
                     }

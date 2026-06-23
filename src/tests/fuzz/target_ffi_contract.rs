@@ -49,7 +49,7 @@ fn interp_ffi_verify(src: &str) -> Result<String, String> {
     interp.verify_ffi = true;
     interp.verify_contracts = true;
     // Use no_fork because FFI returns pointers incompatible with fork isolation
-    interp.run().map(|v| format!("{}", v)).map_err(|e| e.message)
+    interp.run().map(|v| format!("{}", v)).map_err(|e| e.message().to_string())
 }
 
 /// Run the type checker (which also validates contract syntax).

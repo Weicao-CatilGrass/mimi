@@ -63,7 +63,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                             self.context.bool_type().const_int(0, false), "is_true"
                         ).map_err(|e| format!("cmp error: {}", e))?;
                         let function = self.current_function()
-                            .ok_or_else(|| "[E0712] to_json: no enclosing function".to_string())?;
+                            .ok_or(CompileError::CodegenJson("to_json: no enclosing function".into()))?;
                         let true_bb = self.context.append_basic_block(function, "json_true_bb");
                         let false_bb = self.context.append_basic_block(function, "json_false_bb");
                         let merge_bb = self.context.append_basic_block(function, "json_merge_bb");
