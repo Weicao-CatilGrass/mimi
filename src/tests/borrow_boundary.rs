@@ -261,16 +261,17 @@ func main() -> i32 {
 }
 
 #[test]
-#[ignore = "v1.2: no borrow tracking through conditional paths"]
 fn borrow_conditional_return() {
+    // Mimi does not support explicit lifetime params; the test validates that
+    // conditional branches returning references type-check correctly.
     let src = r#"
-func max_ref<'a>(x: &'a i32, y: &'a i32) -> &'a i32 {
-    if *x > *y { x } else { y }
+func choose(cond: bool, x: &i32, y: &i32) -> &i32 {
+    if cond { x } else { y }
 }
 func main() -> i32 {
     let a = 10;
     let b = 20;
-    let r = max_ref(&a, &b);
+    let r = choose(true, &a, &b);
     *r
 }
 "#;
@@ -278,13 +279,12 @@ func main() -> i32 {
 }
 
 #[test]
-#[ignore = "v1.2: no closure capture borrow tracking"]
 fn borrow_closure_capture_ref() {
     let src = r#"
 func main() -> i32 {
     let a = 42;
     let r = &a;
-    let f = || -> i32 { *r };
+    let f = fn() -> i32 { *r };
     f()
 }
 "#;
@@ -292,16 +292,12 @@ func main() -> i32 {
 }
 
 #[test]
-#[ignore = "v1.2: no self-referential struct borrow tracking"]
 fn borrow_self_referential() {
     let src = r#"
-struct SelfRef<'a> {
-    val: i32,
-    ptr: &'a i32,
-}
+type Container { val: i32, ptr: &i32 }
 func main() -> i32 {
     let v = 42;
-    let _s = SelfRef { val: 0, ptr: &v };
+    let _c = Container { val: 0, ptr: &v };
     0
 }
 "#;
