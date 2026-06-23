@@ -30,7 +30,7 @@ impl<'ctx> CodeGenerator<'ctx> {
     ) -> MimiResult<IntValue<'ctx>> {
         let list_struct_ty = self.list_struct_type();
         let len_gep = self
-            .builder
+            .gep()
             .build_struct_gep(list_struct_ty, list_ptr, 0, "list_len")
             .map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?;
         let len = self
@@ -49,7 +49,7 @@ impl<'ctx> CodeGenerator<'ctx> {
         let list_struct_ty = self.list_struct_type();
         let i8_ptr = self.context.i8_type().ptr_type(AddressSpace::default());
         let data_gep = self
-            .builder
+            .gep()
             .build_struct_gep(list_struct_ty, list_ptr, 1, "list_data")
             .map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?;
         let data_i8 = self
@@ -90,14 +90,14 @@ impl<'ctx> CodeGenerator<'ctx> {
             .build_alloca(list_struct_ty, "list_result")
             .map_err(|e| CompileError::LlvmError(format!("alloca error: {}", e)))?;
         let len_gep = self
-            .builder
+            .gep()
             .build_struct_gep(list_struct_ty, result_alloca, 0, "list_result_len")
             .map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?;
         self.builder
             .build_store(len_gep, len)
             .map_err(|e| CompileError::LlvmError(format!("store error: {}", e)))?;
         let data_gep = self
-            .builder
+            .gep()
             .build_struct_gep(list_struct_ty, result_alloca, 1, "list_result_data")
             .map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?;
         self.builder
