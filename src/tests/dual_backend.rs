@@ -2256,7 +2256,6 @@ fn dual_ffi_reprc_struct() {
 }
 
 #[test]
-#[ignore = "codegen gap: struct-by-value extern params broken (LLVM ABI mismatch)"]
 fn dual_ffi_struct_multiple_fields() {
     if !can_cc() { eprintln!("SKIP: cc not available"); return; }
     if !can_link() { eprintln!("SKIP: linker not available"); return; }
@@ -2269,15 +2268,16 @@ fn dual_ffi_struct_multiple_fields() {
         extern "C" {
             func test_mixed_struct(s: MixedStruct) -> f64
         }
-        func main() -> f64 {
+        func main() -> i32 {
             println(test_mixed_struct(MixedStruct { id: 10, value: 3.5, flag: 1 }))
-            0.0
+            0
         }
     "#;
     let _interp = run_source(src);
     let codegen_stdout = compile_and_run(src).expect("codegen failed");
     std::env::remove_var("MIMI_FFI_LIB");
     // 10 + 3.5 + 1 = 14.5 (the C function sums all fields)
-    assert_eq!(codegen_stdout.trim(), "14.5",
+    // Note: %f format prints 6 decimal places, so "14.500000"
+    assert_eq!(codegen_stdout.trim(), "14.500000",
         "codegen mixed struct FFI mismatch");
 }
