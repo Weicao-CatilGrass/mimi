@@ -30,6 +30,11 @@ pub struct ExternBlock {
     /// If true, the compiler wraps all FFI calls in this block with
     /// catch_unwind (Rust panics) and signal handlers (SIGSEGV/SIGABRT).
     pub no_panic: bool,
+    /// If true, bypasses the passport-type checker, allowing raw
+    /// shared/ref/record/closure types to cross the FFI boundary.
+    /// This is an escape hatch for users who need to interface with
+    /// C libraries that don't fit the passport-type model.
+    pub unsafe_: bool,
 }
 
 #[derive(Debug, Clone)]

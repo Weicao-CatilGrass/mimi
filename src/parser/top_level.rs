@@ -97,6 +97,14 @@ impl Parser {
             TokenKind::Cap => Ok(Item::Cap(self.parse_cap_def()?)),
             TokenKind::Trait => Ok(Item::Trait(self.parse_trait_def()?)),
             TokenKind::Impl => Ok(Item::Impl(self.parse_impl_def()?)),
+            TokenKind::Unsafe => {
+                // unsafe extern "C" { ... } — bypass passport-type checking
+                self.advance(); // consume `unsafe`
+                self.skip_newlines();
+                let mut extern_block = self.parse_extern_block_with_no_panic(no_panic_block)?;
+                extern_block.unsafe_ = true;
+                Ok(Item::ExternBlock(extern_block))
+            }
             TokenKind::Extern => {
                 // Check if this is `extern "C" func` (export) or `extern "C" { ... }` (import)
                 // Peek at the token AFTER `extern` to see if it's a string literal
@@ -368,7 +376,7 @@ impl Parser {
             });
         }
         self.expect(TokenKind::RBrace, "`}`")?;
-        Ok(ExternBlock { abi, funcs, no_panic })
+        Ok(ExternBlock { abi, funcs, no_panic, unsafe_: false })
     }
 
     fn parse_actor_def(&mut self) -> Result<ActorDef, ParseError> {
