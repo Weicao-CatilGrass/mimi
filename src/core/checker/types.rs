@@ -238,12 +238,79 @@ impl<'a> Checker<'a> {
         }
     }
 
-    /// Check if a type implements a trait
+    /// Check if a type implements a trait (built-in or user-defined)
     pub(crate) fn type_implements_trait(&self, ty: &Type, trait_name: &str) -> bool {
+        // Check built-in traits first
+        if self.type_implements_builtin_trait(ty, trait_name) {
+            return true;
+        }
+        // Check user-defined trait implementations
         match ty {
             Type::Name(type_name, _) => {
                 self.impls.contains_key(&(trait_name.to_string(), type_name.clone()))
             }
+            _ => false,
+        }
+    }
+
+    /// Check if a type automatically implements a built-in trait (Clone/Default/Copy/Eq)
+    fn type_implements_builtin_trait(&self, ty: &Type, trait_name: &str) -> bool {
+        match trait_name {
+            "Clone" => {
+                // All types in Mimi are cloneable via assignment copy
+                matches!(ty, Type::Name(_, _) | Type::Tuple(_) | Type::Option(_)
+                    | Type::Result(_, _) | Type::Array(_, _) | Type::Slice(_))
+            }
+            "Copy" => {
+                // Only primitive scalar types are Copy
+                self.type_is_primitive_scalar(ty)
+            }
+            "Default" => {
+                self.type_has_default(ty)
+            }
+            "Eq" => {
+                // Types with == operator
+                self.type_is_eq_comparable(ty)
+            }
+            _ => false,
+        }
+    }
+
+    /// Check if a type is a primitive scalar (i32, i64, f64, bool, unit)
+    fn type_is_primitive_scalar(&self, ty: &Type) -> bool {
+        match ty {
+            Type::Name(name, _) => matches!(name.as_str(), "i32" | "i64" | "f64" | "bool" | "unit"),
+            _ => false,
+        }
+    }
+
+    /// Check if a type has a default value
+    fn type_has_default(&self, ty: &Type) -> bool {
+        match ty {
+            Type::Name(name, args) => {
+                if matches!(name.as_str(), "i32" | "i64" | "f64" | "bool" | "string" | "unit") {
+                    return true;
+                }
+                // Option types have default (None)
+                if name == "Option" && args.len() == 1 {
+                    return true;
+                }
+                // List<T> has default (empty list)
+                if name == "List" && args.len() == 1 {
+                    return true;
+                }
+                false
+            }
+            Type::Tuple(elems) => elems.iter().all(|e| self.type_has_default(e)),
+            _ => false,
+        }
+    }
+
+    /// Check if a type supports equality comparison
+    fn type_is_eq_comparable(&self, ty: &Type) -> bool {
+        match ty {
+            Type::Name(name, _) => matches!(name.as_str(), "i32" | "i64" | "f64" | "bool" | "string" | "unit"),
+            Type::Tuple(elems) => elems.iter().all(|e| self.type_is_eq_comparable(e)),
             _ => false,
         }
     }

@@ -363,6 +363,28 @@ impl<'a> Checker<'a> {
                 }
             }
 
+            // Check generic param bounds (e.g., <T: Clone>)
+            for gp in &generics {
+                if !gp.bounds.is_empty() {
+                    if let Some(concrete_type) = type_map.get(&gp.name) {
+                        for bound in &gp.bounds {
+                            if !self.type_implements_trait(concrete_type, bound) {
+                                self.emit_code(
+                                    crate::diagnostic::codes::E0253,
+                                    format!(
+                                        "type '{}' does not implement trait '{}' (required by generic parameter '{}' of function '{}')",
+                                        fmt_type(concrete_type),
+                                        bound,
+                                        gp.name,
+                                        name
+                                    ),
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+
             // Check arguments with substituted types
             for (i, (arg, param)) in args.iter().zip(params.iter()).enumerate() {
                 let at = self.infer_expr(arg, scopes);
