@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased] — 0.14.0
+## [Unreleased] — 0.16.0-dev
 
 ### Added
 - (none yet)
@@ -10,6 +10,39 @@
 
 ### Security
 - (none yet)
+
+## [0.15.0] - 2026-06-23
+
+### Added
+- C runtime Rust 重写：`mimi_runtime.c` (~2,361 行) → `src/runtime/mod.rs` (~2,194 行)
+- JSON、HTTP、引用计数、正则、字符串操作、信号处理、数学、时间、环境、网络、capability 全部 Rust 实现
+- Allocator 跟踪：所有分配通过 Rust 分配器，heap_allocs 覆盖率 100%
+- Windows 统一：Win32 分支在 Rust 层用 `#[cfg(windows)]` 处理
+- Standalone 编译：`src/runtime/standalone.rs` 作为 `--crate-type staticlib`
+
+### Fixed
+- **Item 1**: 线程池 TOCTOU 竞态修复（Rust `Mutex` + `Condvar`）
+- **Item 4**: JSON 无递归深度限制修复（Rust 递归 + `json_max_depth` 守卫）
+- **Item 6**: 无边界字符串操作修复（Rust `String`/`Vec` 安全边界）
+- **Item 9**: map 表除零风险修复（Rust `HashMap` 永不零容量）
+- Tier B 字符串泄漏：C runtime 内部 malloc 不被 heap_allocs 跟踪 — Rust runtime 自动修复
+
+### Tests
+- 基线：2,007 passed, 0 failed, 34 ignored
+
+## [0.14.0] - 2026-06-23
+
+### Added
+- InterpError 错误码重构：枚举变体全部映射 E0800-E0814
+- 编译期错误码补充：E0712 作为 CompileError::CodegenJson
+- Z3 反例输出美化：human-readable + 函数签名 + span
+- Z3 求解统计 `--stats`：约束数、求解耗时
+- Z3 debug 日志 `--dump-z3`：SMT-LIB2 格式可选打印
+- 求解器超时反馈：Unknown 显示函数名/约束数/耗时
+- 反例过滤：每个后置条件独立报告，无重复
+
+### Fixed
+- 编译期错误码 E0240/E0241 标记为已废弃
 
 ## [0.13.0] - 2026-06-23
 
