@@ -1,6 +1,17 @@
 # Changelog
 
-## [Unreleased] — 0.18.0-dev
+## [Unreleased] — 0.19.0-dev
+
+### Added
+- (none yet)
+
+### Fixed
+- (none yet)
+
+### Security
+- (none yet)
+
+## [0.18.0] - 2026-06-23
 
 ### Added
 - 泛型约束检查：`GenericParam::bounds` 读取与验证（`func<T: Clone>` 在调用处检查）
