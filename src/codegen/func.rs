@@ -2,7 +2,7 @@ use crate::ast::*;
 use crate::codegen::types;
 use std::collections::HashMap;
 
-use inkwell::types::{BasicType, BasicTypeEnum};
+use inkwell::types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum};
 use inkwell::values::{BasicMetadataValueEnum, BasicValueEnum};
 use inkwell::AddressSpace;
 
@@ -71,78 +71,71 @@ impl<'ctx> CodeGenerator<'ctx> {
         };
         self.compile_func(&body_func)?;
 
-        // 2. Compile the public async function:
-        //    foo(args...) -> i8*  (returns pointer to heap-allocated MimiFuture)
-        //    Body: allocates a future, evaluates body, stores result, marks completed, returns ptr.
         let result_ty = func.ret.as_ref()
             .map(|t| self.llvm_type_for(t))
             .flatten()
             .unwrap_or(BasicTypeEnum::IntType(self.context.i64_type()));
         let result_size = self.llvm_type_size_bytes(result_ty);
+        let aligned_result = result_size.max(8);
 
-        // Determine param types
+        // Determine param types and sizes
         let mut param_types = Vec::new();
+        let mut param_sizes: Vec<u64> = Vec::new();
         for param in &func.params {
             if let Some(ty) = self.llvm_type_for(&param.ty) {
                 param_types.push(ty);
+                param_sizes.push(self.llvm_type_size_bytes(ty));
             }
         }
-        let metadata_params: Vec<_> = param_types.iter()
-            .map(|t| types::basic_to_metadata(self.context, *t))
-            .collect();
+        let total_args_size: u64 = param_sizes.iter().sum();
+        // total allocation: 8 header + aligned_result (result) + total_args_size (args)
+        let total_alloc_size = 8 + aligned_result + total_args_size;
+        let args_offset: u64 = 8 + aligned_result;
 
+        // i8 pointer type
         let i8_ty = self.context.i8_type();
         let i8_ptr_ty = i8_ty.ptr_type(inkwell::AddressSpace::default());
-        let fn_type = i8_ptr_ty.fn_type(&metadata_params, false);
-        let function = self.module.add_function(&func.name, fn_type, None);
-        let entry = self.context.append_basic_block(function, "entry");
-        self.builder.position_at_end(entry);
-
-        // Alloca and store params
-        self.push_cap_scope();
-        self.push_comp_scope();
-        self.push_heap_scope();
-
-        let mut vars: HashMap<String, VarEntry<'ctx>> = HashMap::new();
-        for (i, param) in func.params.iter().enumerate() {
-            if let Some(ty) = self.llvm_type_for(&param.ty) {
-                let alloca = self.builder.build_alloca(ty, &param.name)
-                    .map_err(|e| CompileError::LlvmError(format!("alloca error: {}", e)))?;
-                let param_val = function.get_nth_param(i as u32)
-                    .ok_or_else(|| CompileError::LlvmError(format!("param {} not found", i)))?;
-                self.builder.build_store(alloca, param_val)
-                    .map_err(|e| CompileError::LlvmError(format!("store param error: {}", e)))?;
-                vars.insert(param.name.clone(), (alloca, ty));
-                if let Type::Name(tn, _) = &param.ty {
-                    self.var_type_names.insert(param.name.clone(), tn.clone());
-                }
-            }
-        }
-
-        // Allocate future: call mimi_future_alloc(result_size)
-        let alloc_fn = self.module.get_function("mimi_future_alloc")
-            .ok_or_else(|| CompileError::LlvmError("mimi_future_alloc not declared".into()))?;
         let i64_ty = self.context.i64_type();
-        let size_val = i64_ty.const_int(result_size, false);
-        let future_ptr = self.builder.build_call(alloc_fn, &[
-            BasicMetadataValueEnum::IntValue(size_val),
-        ], "future_alloc")
-            .map_err(|e| CompileError::LlvmError(format!("future_alloc error: {}", e)))?
-            .try_as_basic_value_opt()
-            .and_then(|v: BasicValueEnum<'ctx>| Some(v.into_pointer_value()))
-            .ok_or_else(|| CompileError::LlvmError("future_alloc returned non-pointer".into()))?;
 
-        // Build call to body function
+        // ── Step 2a: Generate poll function ──
+        // void @foo_poll(i8* %future_ptr)
+        let poll_name = format!("{}__poll", func.name);
+        let poll_fn_type = i8_ty.fn_type(&[BasicMetadataTypeEnum::PointerType(i8_ptr_ty)], false);
+        let poll_fn = self.module.add_function(&poll_name, poll_fn_type,
+            Some(inkwell::module::Linkage::Internal));
+        let poll_entry = self.context.append_basic_block(poll_fn, "entry");
+        let saved_block = self.builder.get_insert_block();
+        self.builder.position_at_end(poll_entry);
+
+        let poll_future_ptr = poll_fn.get_nth_param(0)
+            .ok_or_else(|| CompileError::LlvmError("poll_fn: param 0 not found".into()))?
+            .into_pointer_value();
+
+        // Load args from future + args_offset and call body
         let body_fn = self.module.get_function(&body_name)
             .ok_or_else(|| CompileError::LlvmError(format!("body fn '{}' not found", body_name)))?;
-        let mut call_metadata_args = Vec::new();
-        for (i, param) in func.params.iter().enumerate() {
-            if let Some(ty) = self.llvm_type_for(&param.ty) {
-                let alloca = vars.get(&param.name)
-                    .ok_or_else(|| CompileError::LlvmError(format!("var '{}' not found", param.name)))?;
-                let val = self.builder.build_load(ty, alloca.0, &format!("load_{}", param.name))
-                    .map_err(|e| CompileError::LlvmError(format!("load error: {}", e)))?;
-                call_metadata_args.push(match val {
+        let mut poll_call_args = Vec::new();
+        let mut current_arg_offset = args_offset;
+        for (param_idx, _param) in func.params.iter().enumerate() {
+            if param_idx < param_types.len() {
+                let ty = param_types[param_idx];
+                let size = param_sizes[param_idx];
+                // GEP to load arg: future + current_arg_offset
+                let arg_ptr_i8 = unsafe {
+                    self.builder.build_gep(i8_ty, poll_future_ptr,
+                        &[i64_ty.const_int(current_arg_offset, false)],
+                        &format!("poll_arg_{}", param_idx))
+                        .map_err(|e| CompileError::LlvmError(format!("poll arg gep: {}", e)))?
+                };
+                let arg_typed_ptr = self.builder.build_pointer_cast(
+                    arg_ptr_i8,
+                    ty.ptr_type(inkwell::AddressSpace::default()),
+                    &format!("poll_arg_typed_{}", param_idx),
+                ).map_err(|e| CompileError::LlvmError(format!("poll arg cast: {}", e)))?;
+                let arg_val = self.builder.build_load(ty, arg_typed_ptr,
+                    &format!("poll_arg_val_{}", param_idx))
+                    .map_err(|e| CompileError::LlvmError(format!("poll arg load: {}", e)))?;
+                poll_call_args.push(match arg_val {
                     BasicValueEnum::IntValue(iv) => BasicMetadataValueEnum::IntValue(iv),
                     BasicValueEnum::FloatValue(fv) => BasicMetadataValueEnum::FloatValue(fv),
                     BasicValueEnum::PointerValue(pv) => BasicMetadataValueEnum::PointerValue(pv),
@@ -151,38 +144,133 @@ impl<'ctx> CodeGenerator<'ctx> {
                     BasicValueEnum::VectorValue(vv) => BasicMetadataValueEnum::VectorValue(vv),
                     BasicValueEnum::ScalableVectorValue(svv) => BasicMetadataValueEnum::ScalableVectorValue(svv),
                 });
+                current_arg_offset += size;
             }
         }
-        let body_result = self.builder.build_call(body_fn, &call_metadata_args, "body_call")
-            .map_err(|e| CompileError::LlvmError(format!("body call error: {}", e)))?
-            .try_as_basic_value_opt()
-            .ok_or_else(|| CompileError::LlvmError("body returned void".into()))?;
 
-        // Store result at future_ptr + 8
-        // GEP: i8* base + 8 bytes (skip completed flag, which is stored at offset 0)
+        let poll_body_result = self.builder.build_call(body_fn, &poll_call_args, "poll_body_call")
+            .map_err(|e| CompileError::LlvmError(format!("poll body call: {}", e)))?
+            .try_as_basic_value_opt()
+            .ok_or_else(|| CompileError::LlvmError("poll body returned void".into()))?;
+
+        // Store result at future + 8
         if !func.ret.as_ref().map_or(true, |t| matches!(t, Type::Name(n, _) if n == "unit")) {
-            let result_data_ptr = unsafe {
-                self.builder.build_gep(i8_ty, future_ptr, &[i64_ty.const_int(8, false)], "result_slot")
-                    .map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?
+            let result_ptr_i8 = unsafe {
+                self.builder.build_gep(i8_ty, poll_future_ptr,
+                    &[i64_ty.const_int(8, false)], "poll_result_ptr")
+                    .map_err(|e| CompileError::LlvmError(format!("poll result gep: {}", e)))?
             };
             let result_typed_ptr = self.builder.build_pointer_cast(
-                result_data_ptr,
+                result_ptr_i8,
                 result_ty.ptr_type(inkwell::AddressSpace::default()),
-                "result_typed",
-            ).map_err(|e| CompileError::LlvmError(format!("pointer cast error: {}", e)))?;
-            self.builder.build_store(result_typed_ptr, body_result)
-                .map_err(|e| CompileError::LlvmError(format!("store result error: {}", e)))?;
+                "poll_result_typed",
+            ).map_err(|e| CompileError::LlvmError(format!("poll result cast: {}", e)))?;
+            self.builder.build_store(result_typed_ptr, poll_body_result)
+                .map_err(|e| CompileError::LlvmError(format!("poll result store: {}", e)))?;
         }
 
-        // Mark future as completed
-        let set_completed_fn = self.module.get_function("mimi_future_set_completed")
+        // Set completed
+        let set_c_fn = self.module.get_function("mimi_future_set_completed")
             .ok_or_else(|| CompileError::LlvmError("mimi_future_set_completed not declared".into()))?;
-        self.builder.build_call(set_completed_fn, &[
-            BasicMetadataValueEnum::PointerValue(future_ptr),
-        ], "set_completed")
-            .map_err(|e| CompileError::LlvmError(format!("set_completed error: {}", e)))?;
+        self.builder.build_call(set_c_fn, &[
+            BasicMetadataValueEnum::PointerValue(poll_future_ptr),
+        ], "poll_set_completed")
+            .map_err(|e| CompileError::LlvmError(format!("poll set completed: {}", e)))?;
 
-        // Return the future pointer (i8*)
+        self.builder.build_return(None)
+            .map_err(|e| CompileError::LlvmError(format!("poll return: {}", e)))?;
+
+        // Restore insertion point
+        if let Some(bb) = saved_block {
+            self.builder.position_at_end(bb);
+        }
+
+        // ── Step 2b: Generate async constructor function ──
+        // foo(args...) -> i8*  (returns future pointer, submitted to executor)
+        let metadata_params: Vec<_> = param_types.iter()
+            .map(|t| types::basic_to_metadata(self.context, *t))
+            .collect();
+
+        let fn_type = i8_ptr_ty.fn_type(&metadata_params, false);
+        let function = self.module.add_function(&func.name, fn_type, None);
+        let entry = self.context.append_basic_block(function, "entry");
+        self.builder.position_at_end(entry);
+
+        self.push_cap_scope();
+        self.push_comp_scope();
+        self.push_heap_scope();
+
+        let mut vars: HashMap<String, VarEntry<'ctx>> = HashMap::new();
+        for (i, param) in func.params.iter().enumerate() {
+            if i < param_types.len() {
+                let ty = param_types[i];
+                let alloca = self.builder.build_alloca(ty, &param.name)
+                    .map_err(|e| CompileError::LlvmError(format!("alloca error: {}", e)))?;
+                let param_val = function.get_nth_param(i as u32)
+                    .ok_or_else(|| CompileError::LlvmError(format!("param {} not found", i)))?;
+                self.builder.build_store(alloca, param_val)
+                    .map_err(|e| CompileError::LlvmError(format!("store param: {}", e)))?;
+                vars.insert(param.name.clone(), (alloca, ty));
+                if let Type::Name(tn, _) = &param.ty {
+                    self.var_type_names.insert(param.name.clone(), tn.clone());
+                }
+            }
+        }
+
+        // Allocate future: call mimi_future_alloc(total_size)
+        let alloc_fn = self.module.get_function("mimi_future_alloc")
+            .ok_or_else(|| CompileError::LlvmError("mimi_future_alloc not declared".into()))?;
+        let total_size_val = i64_ty.const_int(total_alloc_size, false);
+        let future_ptr = self.builder.build_call(alloc_fn, &[
+            BasicMetadataValueEnum::IntValue(total_size_val),
+        ], "future_alloc")
+            .map_err(|e| CompileError::LlvmError(format!("future_alloc error: {}", e)))?
+            .try_as_basic_value_opt()
+            .and_then(|v: BasicValueEnum<'ctx>| Some(v.into_pointer_value()))
+            .ok_or_else(|| CompileError::LlvmError("future_alloc returned non-pointer".into()))?;
+
+        // Store args in future at args_offset
+        let mut current_arg_store_offset = args_offset;
+        for (param_idx, param) in func.params.iter().enumerate() {
+            if param_idx < param_types.len() {
+                let ty = param_types[param_idx];
+                let size = param_sizes[param_idx];
+                let alloca = vars.get(&param.name)
+                    .ok_or_else(|| CompileError::LlvmError(format!("var '{}' not found", param.name)))?;
+                let val = self.builder.build_load(ty, alloca.0, &format!("store_{}", param.name))
+                    .map_err(|e| CompileError::LlvmError(format!("load for store: {}", e)))?;
+                let arg_slot_i8 = unsafe {
+                    self.builder.build_gep(i8_ty, future_ptr,
+                        &[i64_ty.const_int(current_arg_store_offset, false)],
+                        &format!("arg_slot_{}", param_idx))
+                        .map_err(|e| CompileError::LlvmError(format!("arg slot gep: {}", e)))?
+                };
+                let arg_slot_typed = self.builder.build_pointer_cast(
+                    arg_slot_i8,
+                    ty.ptr_type(inkwell::AddressSpace::default()),
+                    &format!("arg_slot_typed_{}", param_idx),
+                ).map_err(|e| CompileError::LlvmError(format!("arg slot cast: {}", e)))?;
+                self.builder.build_store(arg_slot_typed, val)
+                    .map_err(|e| CompileError::LlvmError(format!("arg store: {}", e)))?;
+                current_arg_store_offset += size;
+            }
+        }
+
+        // Call mimi_executor_spawn(future, poll_fn)
+        let spawn_fn = self.module.get_function("mimi_executor_spawn")
+            .ok_or_else(|| CompileError::LlvmError("mimi_executor_spawn not declared".into()))?;
+        let poll_fn_as_i8 = self.builder.build_pointer_cast(
+            poll_fn.as_global_value().as_pointer_value(),
+            i8_ptr_ty,
+            "poll_fn_i8",
+        ).map_err(|e| CompileError::LlvmError(format!("poll fn cast: {}", e)))?;
+        self.builder.build_call(spawn_fn, &[
+            BasicMetadataValueEnum::PointerValue(future_ptr),
+            BasicMetadataValueEnum::PointerValue(poll_fn_as_i8),
+        ], "executor_spawn")
+            .map_err(|e| CompileError::LlvmError(format!("executor_spawn error: {}", e)))?;
+
+        // Return the future pointer
         self.builder.build_return(Some(&BasicValueEnum::PointerValue(future_ptr)))
             .map_err(|e| CompileError::LlvmError(format!("return error: {}", e)))?;
 

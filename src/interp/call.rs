@@ -274,8 +274,8 @@ impl<'a> Interpreter<'a> {
         }
     }
 
-    /// Evaluate an async function body synchronously and return a poll-based Future.
-    /// The future is immediately Ready since async fn evaluates synchronously.
+    /// Create a deferred future and submit it to the executor.
+    /// The future will be polled by the executor when `executor_run()` is called.
     fn call_async_func(&mut self, func: &FuncDef, args: Vec<Value>) -> Result<Value, InterpError> {
         if func.params.len() != args.len() {
             return Err(InterpError::wrong_arg_count(
@@ -283,26 +283,18 @@ impl<'a> Interpreter<'a> {
             ));
         }
 
-        // Evaluate synchronously in a fresh interpreter
-        let file_clone = self.file.clone();
-        let mut interp = Interpreter::new(&file_clone);
-        interp.push_scope();
-        for (p, a) in func.params.iter().zip(args) {
-            if let Err(e) = interp.bind(&p.name, a) {
-                interp.pop_scope();
-                return Ok(Value::Future(std::sync::Arc::new(std::sync::Mutex::new(
-                    crate::interp::value::PollFuture::Ready(Err(e))
-                ))));
+        let future = std::sync::Arc::new(std::sync::Mutex::new(
+            crate::interp::value::PollFuture::Deferred {
+                file: Box::new(self.file.clone()),
+                func: func.clone(),
+                args,
             }
-        }
-        let block_result = interp.eval_block(&func.body).map(|v| v.unwrap_or(Value::Unit));
-        let result = interp.early_return.take()
-            .map_or(block_result, Ok);
-        interp.pop_scope();
+        ));
 
-        Ok(Value::Future(std::sync::Arc::new(std::sync::Mutex::new(
-            crate::interp::value::PollFuture::Ready(result)
-        ))))
+        // Submit to the global executor
+        crate::interp::value::executor_submit(future.clone());
+
+        Ok(Value::Future(future))
     }
 
     pub(crate) fn call_method(&mut self, obj: &Value, method: &str, args: Vec<Value>) -> Result<Value, InterpError> {

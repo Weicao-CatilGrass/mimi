@@ -153,6 +153,10 @@ declare void @mimi_future_set_completed(ptr)
 
 declare i32 @mimi_future_is_completed(ptr)
 
+declare void @mimi_executor_spawn(ptr, ptr)
+
+declare void @mimi_executor_run()
+
 define i64 @main() {
 entry:
   %x = alloca i64, align 8

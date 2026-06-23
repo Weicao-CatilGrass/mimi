@@ -616,26 +616,32 @@ impl<'a> Interpreter<'a> {
     }
 
     pub(in crate::interp) fn eval_await(&mut self, expr: &Expr) -> Result<Value, InterpError> {
-        // Evaluate expression and get the value
         let v = self.eval_expr(expr)?;
         match v {
             Value::Future(state) => {
+                // Run the executor to ensure all deferred futures are completed
+                crate::interp::value::executor_run();
+
                 let mut state = state.lock()
                     .map_err(|e| InterpError::new(format!("await lock failed: {}", e)))?;
+
+                // After executor_run, deferred futures should be Ready.
+                // If still Deferred, poll inline.
+                crate::interp::value::poll_deferred(&mut state);
+
                 match &mut *state {
                     crate::interp::value::PollFuture::Ready(result) => {
-                        // Clone the result since we need to return it (can't take from Arc<Mutex>)
-                        // but we also need to keep the future valid for multiple awaits.
-                        // For now, take the result (future is consumed on first await).
                         match std::mem::replace(result, Err(InterpError::new("future already consumed"))) {
                             Ok(v) => Ok(v),
                             Err(e) => Err(e),
                         }
                     }
                     crate::interp::value::PollFuture::Pending(rx) => {
-                        // Block on the channel (actor spawn path)
                         rx.recv()
                             .map_err(|e| InterpError::new(format!("await recv failed: {}", e)))?
+                    }
+                    crate::interp::value::PollFuture::Deferred { .. } => {
+                        Err(InterpError::new("future still deferred after polling"))
                     }
                 }
             }

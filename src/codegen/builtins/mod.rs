@@ -456,7 +456,7 @@ pub fn register_runtime<'ctx>(module: &Module<'ctx>, ctx: &'ctx Context) {
         ], false),
         Some(inkwell::module::Linkage::External));
 
-    // ─── MimiFuture (poll-based async runtime) ───
+    // ─── MimiFuture + MimiExecutor (poll-based async runtime) ───
     // mimi_future_alloc(result_size: i64) -> i8*
     module.add_function("mimi_future_alloc",
         i8_ptr.fn_type(&[BasicMetadataTypeEnum::IntType(i64)], false),
@@ -472,6 +472,18 @@ pub fn register_runtime<'ctx>(module: &Module<'ctx>, ctx: &'ctx Context) {
     // mimi_future_is_completed(fut: i8*) -> i32
     module.add_function("mimi_future_is_completed",
         i32.fn_type(&[BasicMetadataTypeEnum::PointerType(i8_ptr)], false),
+        Some(inkwell::module::Linkage::External));
+    // MimiExecutor
+    // mimi_executor_spawn(future: i8*, poll_fn: i8*) -> void
+    module.add_function("mimi_executor_spawn",
+        void.fn_type(&[
+            BasicMetadataTypeEnum::PointerType(i8_ptr),
+            BasicMetadataTypeEnum::PointerType(i8_ptr),
+        ], false),
+        Some(inkwell::module::Linkage::External));
+    // mimi_executor_run() -> void
+    module.add_function("mimi_executor_run",
+        void.fn_type(&[], false),
         Some(inkwell::module::Linkage::External));
 }
 

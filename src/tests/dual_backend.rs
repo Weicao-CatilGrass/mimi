@@ -2365,6 +2365,26 @@ fn dual_async_nested_await() {
 }
 
 #[test]
+fn dual_async_future_cooperative() {
+    if !can_link() { return; }
+    // Multiple async fns spawned and awaited — executor runs them cooperatively.
+    // Note: without actual yielding, each async fn evaluates completely on first poll.
+    // This test verifies that the executor correctly handles multiple deferred futures.
+    dual_assert!(r#"
+        async func compute(n: i32) -> i32 {
+            n * 2
+        }
+        func main() -> i32 {
+            let a = compute(10);
+            let b = compute(21);
+            let sum = (await a) + (await b);
+            println(sum);
+            0
+        }
+    "#, "62");
+}
+
+#[test]
 #[ignore = "v0.20 — string return from future needs pointer lifetime tracking"]
 fn dual_async_future_string() {
     if !can_link() { return; }

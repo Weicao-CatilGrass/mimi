@@ -237,6 +237,12 @@ impl<'ctx> CodeGenerator<'ctx> {
                     .or_else(|| self.pending_spawn_type.take())
                     .unwrap_or_else(|| self.context.i64_type().into());
 
+                // Run the executor to ensure all pending futures are completed
+                let executor_run = self.module.get_function("mimi_executor_run")
+                    .ok_or_else(|| CompileError::LlvmError("mimi_executor_run not declared".into()))?;
+                self.builder.build_call(executor_run, &[], "executor_run")
+                    .map_err(|e| CompileError::LlvmError(format!("executor_run error: {}", e)))?;
+
                 let i8_ty = self.context.i8_type();
                 let i64_ty = self.context.i64_type();
 

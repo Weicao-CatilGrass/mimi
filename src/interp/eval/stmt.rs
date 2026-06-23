@@ -525,6 +525,7 @@ impl<'a> Interpreter<'a> {
         for fut in futures {
             let mut fut = fut.lock()
                 .map_err(|e| InterpError::new(format!("await lock failed: {}", e)))?;
+            crate::interp::value::poll_deferred(&mut fut);
             match &mut *fut {
                 crate::interp::value::PollFuture::Pending(rx) => {
                     if let Ok(Err(e)) = rx.recv() {
@@ -536,6 +537,9 @@ impl<'a> Interpreter<'a> {
                         return Err(InterpError::new(format!("parasteps error: {}", e)));
                     }
                 }
+                crate::interp::value::PollFuture::Deferred { .. } => {
+                    return Err(InterpError::new("future still deferred in parasteps"));
+                }
             }
         }
 
@@ -543,6 +547,7 @@ impl<'a> Interpreter<'a> {
         if let Some(Value::Future(fut)) = last_value {
             let mut fut = fut.lock()
                 .map_err(|e| InterpError::new(format!("await lock failed: {}", e)))?;
+            crate::interp::value::poll_deferred(&mut fut);
             match &mut *fut {
                 crate::interp::value::PollFuture::Pending(rx) => {
                     last_value = Some(rx.recv()
@@ -551,6 +556,9 @@ impl<'a> Interpreter<'a> {
                 crate::interp::value::PollFuture::Ready(result) => {
                     last_value = Some(std::mem::replace(result,
                         Err(InterpError::new("future already consumed")))?);
+                }
+                crate::interp::value::PollFuture::Deferred { .. } => {
+                    return Err(InterpError::new("future still deferred in parasteps"));
                 }
             }
         }
