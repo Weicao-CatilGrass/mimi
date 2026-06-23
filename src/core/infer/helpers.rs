@@ -50,7 +50,7 @@ impl<'a> Checker<'a> {
     pub(in crate::core) fn infer_comprehension(
         &mut self,
         expr: &Expr,
-        var: &String,
+        var: &str,
         iter: &Expr,
         guard: Option<&Expr>,
         scopes: &mut Vec<HashMap<String, Type>>,
@@ -77,7 +77,7 @@ impl<'a> Checker<'a> {
         };
         // Add var to scope
         if let Some(s) = scopes.last_mut() {
-            s.insert(var.clone(), elem_ty);
+            s.insert(var.to_owned(), elem_ty);
         }
         // Infer expression type
         let expr_ty = self.infer_expr(expr, scopes);

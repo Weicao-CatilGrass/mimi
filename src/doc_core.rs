@@ -166,7 +166,6 @@ pub fn generate_markdown(source: &str) -> Result<String, String> {
 
 /// Generate Markdown from a .mms source (MimiSpec parser).
 pub fn generate_markdown_from_mms(source: &str) -> Result<String, String> {
-    use mimispec::ast::*;
     use mimispec::parse;
 
     let result = parse(source);
@@ -204,15 +203,11 @@ fn append_fragment_markdown(frag: &mimispec::ast::Fragment, out: &mut String) {
             if let Some(d) = &func.desc {
                 out.push_str(&format!("{}\n\n", d.content.value));
             }
-            if let Some(cond) = &func.requires {
-                if let Condition::Structured { expr } = cond {
-                    out.push_str(&format!("requires: {}\n\n", expr_to_string(expr)));
-                }
+            if let Some(Condition::Structured { expr }) = &func.requires {
+                out.push_str(&format!("requires: {}\n\n", expr_to_string(expr)));
             }
-            if let Some(cond) = &func.ensures {
-                if let Condition::Structured { expr } = cond {
-                    out.push_str(&format!("ensures: {}\n\n", expr_to_string(expr)));
-                }
+            if let Some(Condition::Structured { expr }) = &func.ensures {
+                out.push_str(&format!("ensures: {}\n\n", expr_to_string(expr)));
             }
             for step in &func.steps {
                 if let Step::Desc { content } = step {
@@ -232,7 +227,7 @@ fn append_fragment_markdown(frag: &mimispec::ast::Fragment, out: &mut String) {
             if let TypeBody::Record { fields } = &typedef.body {
                 for f in fields {
                     let type_str: Vec<String> = f.type_hint.iter()
-                        .map(|a| atom_to_string(a))
+                        .map(atom_to_string)
                         .collect();
                     out.push_str(&format!("- `{}`: {}\n", f.name.name, type_str.join(" ")));
                     for r in &f.rules {
@@ -260,7 +255,7 @@ fn expr_to_string(expr: &mimispec::ast::Expr) -> String {
         Expr::Number { value } => value.clone(),
         Expr::Bool { value, .. } => value.to_string(),
         Expr::List { items } => {
-            let inner: Vec<String> = items.iter().map(|e| expr_to_string(e)).collect();
+            let inner: Vec<String> = items.iter().map(expr_to_string).collect();
             format!("[{}]", inner.join(", "))
         }
         Expr::Compare { left, op, right } => {
@@ -296,7 +291,7 @@ fn atom_to_string(atom: &mimispec::ast::Atom) -> String {
         Atom::List { items } => {
             let inner: Vec<String> = items.iter()
                 .map(|group| {
-                    group.iter().map(|a| atom_to_string(a)).collect::<Vec<_>>().join(", ")
+                    group.iter().map(atom_to_string).collect::<Vec<_>>().join(", ")
                 })
                 .collect();
             format!("[{}]", inner.join(", "))

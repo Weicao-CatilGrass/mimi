@@ -22,6 +22,8 @@
 
 // When compiled directly with rustc (--cfg standalone), provide our own POSIX FFI declarations.
 // When compiled via cargo, the real `libc` crate is used from Cargo.toml.
+
+
 #[cfg(standalone)]
 #[allow(non_camel_case_types, dead_code)]
 mod libc {
@@ -168,8 +170,8 @@ unsafe fn rc_header_from_ptr_mut(ptr: *mut std::ffi::c_void) -> &'static mut RcH
 #[no_mangle]
 pub extern "C" fn mimi_rc_alloc(size: i64) -> *mut std::ffi::c_void {
     let total = std::alloc::Layout::new::<RcHeader>()
-        .extend(std::alloc::Layout::array::<u8>(size as usize).unwrap())
-        .unwrap()
+        .extend(std::alloc::Layout::array::<u8>(size as usize).expect("invalid layout"))
+        .expect("layout extension failed")
         .0
         .pad_to_align();
     let ptr = unsafe { std::alloc::alloc(total) };
@@ -198,8 +200,8 @@ pub extern "C" fn mimi_rc_release(ptr: *mut std::ffi::c_void) {
         if hdr.weak.load(Ordering::Relaxed) == 0 {
             let hdr_mut = unsafe { rc_header_from_ptr_mut(ptr) };
             let layout = std::alloc::Layout::new::<RcHeader>()
-                .extend(std::alloc::Layout::array::<u8>(0).unwrap())
-                .unwrap()
+                .extend(std::alloc::Layout::array::<u8>(0).expect("invalid layout"))
+                .expect("layout extension failed")
                 .0
                 .pad_to_align();
             unsafe { std::alloc::dealloc(hdr_mut as *mut RcHeader as *mut u8, layout); }
@@ -223,8 +225,8 @@ pub extern "C" fn mimi_rc_weak_release(ptr: *mut std::ffi::c_void) {
         if hdr.strong.load(Ordering::Relaxed) <= 0 {
             let hdr_mut = unsafe { rc_header_from_ptr_mut(ptr) };
             let layout = std::alloc::Layout::new::<RcHeader>()
-                .extend(std::alloc::Layout::array::<u8>(0).unwrap())
-                .unwrap()
+                .extend(std::alloc::Layout::array::<u8>(0).expect("invalid layout"))
+                .expect("layout extension failed")
                 .0
                 .pad_to_align();
             unsafe { std::alloc::dealloc(hdr_mut as *mut RcHeader as *mut u8, layout); }
@@ -541,8 +543,8 @@ fn init_cli_args() {
 #[no_mangle]
 pub extern "C" fn mimi_args_init(argc: i32, argv: *mut *mut std::ffi::c_char) {
     init_cli_args();
-    let args_mutex = CLI_ARGS.get().unwrap();
-    let mut args = args_mutex.lock().unwrap();
+    let args_mutex = CLI_ARGS.get().expect("CLI_ARGS not initialized");
+    let mut args = args_mutex.lock().expect("lock poisoned");
     args.argc = argc;
     args.argv.clear();
     if !argv.is_null() && argc > 0 {
@@ -566,8 +568,8 @@ pub extern "C" fn mimi_getenv(name: *const std::ffi::c_char) -> *mut std::ffi::c
 #[no_mangle]
 pub extern "C" fn mimi_args_count() -> i64 {
     init_cli_args();
-    let args_mutex = CLI_ARGS.get().unwrap();
-    let args = args_mutex.lock().unwrap();
+    let args_mutex = CLI_ARGS.get().expect("CLI_ARGS not initialized");
+    let args = args_mutex.lock().expect("lock poisoned");
     if args.argc <= 1 { return 0; }
     (args.argc - 1) as i64
 }
@@ -575,8 +577,8 @@ pub extern "C" fn mimi_args_count() -> i64 {
 #[no_mangle]
 pub extern "C" fn mimi_args_get(i: i64) -> *mut std::ffi::c_char {
     init_cli_args();
-    let args_mutex = CLI_ARGS.get().unwrap();
-    let args = args_mutex.lock().unwrap();
+    let args_mutex = CLI_ARGS.get().expect("CLI_ARGS not initialized");
+    let args = args_mutex.lock().expect("lock poisoned");
     if i < 0 || i >= (args.argc - 1) as i64 { return std::ptr::null_mut(); }
     let idx = (i + 1) as usize; // +1 to skip program name
     args.argv.get(idx).copied().map(|p| p as *mut std::ffi::c_char).unwrap_or(std::ptr::null_mut())
@@ -866,7 +868,7 @@ fn json_get_inner(json_str: *const std::ffi::c_char, key: *const std::ffi::c_cha
         // Skip value
         let val_start = pos;
         let mut dummy_parser = JsonParser::new(&json[val_start..]);
-        if dummy_parser.parse_value().is_none() { return None; }
+        dummy_parser.parse_value()?;
         pos = val_start + dummy_parser.pos;
 
         while pos < bytes.len() && matches!(bytes[pos], b' ' | b'\t' | b'\n' | b'\r') { pos += 1; }
@@ -1255,7 +1257,7 @@ pub extern "C" fn mimi_connect(
     };
     if err != 0 || res.is_null() { return -1; }
 
-    let ret = unsafe {
+    unsafe {
         let r = libc::connect(fd as i32, (*res).ai_addr, (*res).ai_addrlen);
         if r == 0 {
             let flag: i32 = 1;
@@ -1265,8 +1267,7 @@ pub extern "C" fn mimi_connect(
         }
         libc::freeaddrinfo(res);
         r as i64
-    };
-    ret
+    }
 }
 
 #[no_mangle]
@@ -1485,7 +1486,7 @@ pub extern "C" fn mimi_json_serialize(
         match elem_type {
             1 => {
                 // Float: bitcast i64 to f64
-                let val: f64 = unsafe { std::mem::transmute(raw) };
+                let val: f64 = f64::from_bits(raw as u64);
                 let s = format!("{}", val);
                 // Trim trailing zeros
                 let trimmed = if s.contains('.') {
@@ -1603,7 +1604,7 @@ pub extern "C" fn mimi_json_deserialize(
                 pos = val_start + dummy_parser.pos;
                 if let Some(num_str) = parsed {
                     let f: f64 = num_str.parse().unwrap_or(0.0);
-                    data[idx as usize] = unsafe { std::mem::transmute(f) };
+                    data[idx as usize] = f64::to_bits(f) as i64;
                 }
                 idx += 1;
             }
@@ -1674,7 +1675,7 @@ pub extern "C" fn mimi_tuple_serialize(
         let tag = if i < types.len() { types[i] } else { 0 };
         match tag {
             1 => {
-                let val: f64 = unsafe { std::mem::transmute(raw) };
+                let val: f64 = f64::from_bits(raw as u64);
                 let s = format!("{}", val);
                 let trimmed = if s.contains('.') {
                     s.trim_end_matches('0').trim_end_matches('.').to_string()
@@ -1748,7 +1749,7 @@ pub extern "C" fn mimi_tuple_deserialize(
                 while end < bytes.len() && (bytes[end].is_ascii_digit() || bytes[end] == b'.' || bytes[end] == b'e' || bytes[end] == b'E' || bytes[end] == b'+' || bytes[end] == b'-') { end += 1; }
                 let num_str = std::str::from_utf8(&bytes[pos..end]).unwrap_or("0");
                 let f: f64 = num_str.parse().unwrap_or(0.0);
-                unsafe { *out_values.offset(idx as isize) = std::mem::transmute(f); }
+                unsafe { *out_values.offset(idx as isize) = f64::to_bits(f) as i64; }
                 pos = end;
                 idx += 1;
             }
@@ -2006,9 +2007,8 @@ mod no_panic {
         static NO_PANIC_JUMP_BUF: Cell<*mut SigJmpBuf> =
             const { Cell::new(std::ptr::null_mut()) };
         // Store old handlers as opaque usize values (libc::signal uses usize on Linux)
-        static OLD_HANDLERS: UnsafeCell<[usize; 5]> = {
-            const ERR: usize = usize::MAX;
-            UnsafeCell::new([ERR; 5])
+        static OLD_HANDLERS: UnsafeCell<[usize; 5]> = const {
+            UnsafeCell::new([usize::MAX; 5])
         };
     }
 
@@ -2129,7 +2129,7 @@ pub extern "C" fn mimi_runtime_abort(msg: *const std::ffi::c_char) -> ! {
     let handler_ptr = ERROR_HANDLER.load(Ordering::Acquire);
     if !handler_ptr.is_null() {
         ERROR_HANDLER.store(std::ptr::null_mut(), Ordering::Release); // prevent re-entry
-        let handler: ErrorHandler = unsafe { std::mem::transmute(handler_ptr) };
+        let handler: ErrorHandler = unsafe { std::mem::transmute::<*mut std::ffi::c_void, ErrorHandler>(handler_ptr) };
         unsafe { handler(msg) };
         std::process::abort();
     }
@@ -2161,7 +2161,7 @@ struct CapTableData {
 pub extern "C" fn mimi_cap_register(name: *const std::ffi::c_char) -> i64 {
     let n = if name.is_null() { String::new() } else { unsafe { cstr_to_string(name) } };
     CAP_TABLE.with(|table| {
-        let mut state = table.lock().unwrap();
+        let mut state = table.lock().expect("cap table lock poisoned");
         let id = state.next_id;
         state.next_id += 1;
         state.entries.push(CapEntry { id, name: n, consumed: false });
@@ -2228,7 +2228,7 @@ pub extern "C" fn mimi_executor_spawn(
     poll_fn: unsafe extern "C" fn(*mut std::ffi::c_void),
 ) {
     if future.is_null() { return; }
-    let mut queue = EXECUTOR_QUEUE.lock().unwrap();
+    let mut queue = EXECUTOR_QUEUE.lock().expect("executor queue lock poisoned");
     // Don't add duplicates
     if !queue.iter().any(|(_, f)| f.0 == future) {
         queue.push((poll_fn, SendPtr(future)));
@@ -2241,7 +2241,7 @@ pub extern "C" fn mimi_executor_spawn(
 pub extern "C" fn mimi_executor_run() {
     loop {
         let entry = {
-            let mut queue = EXECUTOR_QUEUE.lock().unwrap();
+            let mut queue = EXECUTOR_QUEUE.lock().expect("executor queue lock poisoned");
             if queue.is_empty() { return; }
             let mut found = None;
             for i in 0..queue.len() {
@@ -2275,7 +2275,7 @@ pub extern "C" fn mimi_executor_run() {
 pub extern "C" fn mimi_cap_check(cap: i64, name: *const std::ffi::c_char) -> bool {
     let n = if name.is_null() { "" } else { unsafe { CStr::from_ptr(name) }.to_str().unwrap_or("") };
     CAP_TABLE.with(|table| {
-        let state = table.lock().unwrap();
+        let state = table.lock().expect("cap table lock poisoned");
         state.entries.iter().any(|e| e.id == cap && !e.consumed && e.name == n)
     })
 }
@@ -2284,7 +2284,7 @@ pub extern "C" fn mimi_cap_check(cap: i64, name: *const std::ffi::c_char) -> boo
 pub extern "C" fn mimi_cap_consume(cap: i64, name: *const std::ffi::c_char) -> bool {
     let n = if name.is_null() { "" } else { unsafe { CStr::from_ptr(name) }.to_str().unwrap_or("") };
     CAP_TABLE.with(|table| {
-        let mut state = table.lock().unwrap();
+        let mut state = table.lock().expect("cap table lock poisoned");
         if let Some(entry) = state.entries.iter_mut().find(|e| e.id == cap && !e.consumed) {
             if entry.name == n {
                 entry.consumed = true;

@@ -112,7 +112,6 @@ impl LspServer {
         let after_cursor: String = current_line.chars().skip(character).collect();
         after_cursor
             .find(|c: char| !c.is_alphanumeric() && c != '_')
-            .map(|i| i)
             .unwrap_or_else(|| current_line.len().saturating_sub(character))
     }
 

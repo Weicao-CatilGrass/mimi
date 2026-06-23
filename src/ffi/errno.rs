@@ -308,9 +308,9 @@ impl Errno {
     ///
     /// ⚠️ This mapping is manually maintained in parallel with the enum
     /// variants above. Adding a new variant requires updating:
-    /// - The enum variant definition (above)
-    /// - `from_code()` match arm (here)
-    /// - `code()` match arm (below)
+    ///     - The enum variant definition (above)
+    ///     - `from_code()` match arm (here)
+    ///     - `code()` match arm (below)
     /// Consider using `strum::EnumIter` + `FromRepr` to automate this.
     pub fn from_code(code: i32) -> Self {
         match code {

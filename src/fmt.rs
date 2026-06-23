@@ -2,7 +2,6 @@
 ///
 /// Handles: indentation normalization (4 spaces), brace style, trailing commas,
 /// blank line normalization. Does NOT reorder imports or restructure code.
-
 pub struct Formatter {
     indent_size: usize,
 }

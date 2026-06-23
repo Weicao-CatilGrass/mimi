@@ -19,7 +19,7 @@ impl<'a> Interpreter<'a> {
         if !args.is_empty() { return Err(InterpError::new("args expects 0 arguments")); }
         let cli_args: Vec<Value> = std::env::args()
             .skip(1) // skip program name
-            .map(|a| Value::String(a))
+            .map(Value::String)
             .collect();
         Ok(Value::List(cli_args))
     }

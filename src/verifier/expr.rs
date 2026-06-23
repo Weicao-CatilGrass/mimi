@@ -126,7 +126,7 @@ impl crate::verifier::Verifier {
                 if let Some(v) = vars.get_real(name) {
                     Some(v.clone())
                 } else {
-                    vars.get_int(name).map(|v| Z3Real::from_int(v))
+                    vars.get_int(name).map(Z3Real::from_int)
                 }
             }
             Expr::Old(inner) => {
@@ -135,7 +135,7 @@ impl crate::verifier::Verifier {
                     if let Some(v) = vars.get_real(&old_name) {
                         return Some(v.clone());
                     }
-                    return vars.get_int(&old_name).map(|v| Z3Real::from_int(v));
+                    return vars.get_int(&old_name).map(Z3Real::from_int);
                 }
                 None
             }
@@ -225,7 +225,7 @@ impl crate::verifier::Verifier {
             Expr::Literal(Lit::Bool(b)) => Some(Z3Bool::from_bool(*b)),
             Expr::Ident(name) => {
                 if let Some(v) = vars.get_int(name) {
-                    Some(v.ne(&Z3Int::from_i64(0)))
+                    Some(v.ne(Z3Int::from_i64(0)))
                 } else {
                     None
                 }
@@ -234,7 +234,7 @@ impl crate::verifier::Verifier {
                 if let Expr::Ident(name) = inner.as_ref() {
                     let old_name = format!("old_{}", name);
                     if let Some(v) = vars.get_int(&old_name) {
-                        return Some(v.ne(&Z3Int::from_i64(0)));
+                        return Some(v.ne(Z3Int::from_i64(0)));
                     }
                 }
                 None
@@ -243,24 +243,24 @@ impl crate::verifier::Verifier {
                 let base = self.field_var_name(obj);
                 let key = format!("{}_{}", base, field);
                 if let Some(v) = vars.get_int(&key) {
-                    Some(v.ne(&Z3Int::from_i64(0)))
+                    Some(v.ne(Z3Int::from_i64(0)))
                 } else if let Some(v) = vars.get_real(&key) {
-                    Some(v.ne(&Z3Real::from_int(&Z3Int::from_i64(0))))
+                    Some(v.ne(Z3Real::from_int(&Z3Int::from_i64(0))))
                 } else {
                     let fresh = vars.get_or_create_int(&key);
-                    Some(fresh.ne(&Z3Int::from_i64(0)))
+                    Some(fresh.ne(Z3Int::from_i64(0)))
                 }
             }
             Expr::TupleIndex(obj, idx) => {
                 let base = self.field_var_name(obj);
                 let key = format!("{}_t{}", base, idx);
                 if let Some(v) = vars.get_int(&key) {
-                    Some(v.ne(&Z3Int::from_i64(0)))
+                    Some(v.ne(Z3Int::from_i64(0)))
                 } else if let Some(v) = vars.get_real(&key) {
-                    Some(v.ne(&Z3Real::from_int(&Z3Int::from_i64(0))))
+                    Some(v.ne(Z3Real::from_int(&Z3Int::from_i64(0))))
                 } else {
                     let fresh = vars.get_or_create_int(&key);
-                    Some(fresh.ne(&Z3Int::from_i64(0)))
+                    Some(fresh.ne(Z3Int::from_i64(0)))
                 }
             }
             Expr::Binary(op, lhs, rhs) => {
@@ -386,7 +386,7 @@ impl crate::verifier::Verifier {
                     if name == "len" && call_args.len() == 1 {
                         if let Expr::Ident(s) = &call_args[0] {
                             if let Some(len_var) = vars.get_string_len(s) {
-                                return Some(len_var.ne(&Z3Int::from_i64(0)));
+                                return Some(len_var.ne(Z3Int::from_i64(0)));
                             }
                         }
                     }
@@ -416,10 +416,10 @@ impl crate::verifier::Verifier {
                     }
                     let call_key = self.call_var_key(name, call_args);
                     if let Some(v) = vars.get_int(&call_key) {
-                        Some(v.ne(&Z3Int::from_i64(0)))
+                        Some(v.ne(Z3Int::from_i64(0)))
                     } else {
                         let fresh = vars.get_or_create_int(&call_key);
-                        Some(fresh.ne(&Z3Int::from_i64(0)))
+                        Some(fresh.ne(Z3Int::from_i64(0)))
                     }
                 } else {
                     None
@@ -458,7 +458,7 @@ impl crate::verifier::Verifier {
             }
             Expr::Unary(_, inner) => self.is_real_expr(inner, vars),
             Expr::Block(stmts) => {
-                block_tail_expr(stmts).map_or(false, |e| self.is_real_expr(&e, vars))
+                block_tail_expr(stmts).is_some_and(|e| self.is_real_expr(&e, vars))
             }
             Expr::Match(expr, arms) => {
                 if self.is_real_expr(expr, vars) { true }
@@ -499,11 +499,11 @@ impl crate::verifier::Verifier {
     /// previous PRECISION-scaling approach.
     /// Encode a pattern match condition: returns a Z3 boolean that is true
     /// when the pattern matches the given encoded matched term.
-    fn pattern_matches_z3(&mut self, matched: &Z3Int, pat: &Pattern, vars: &mut Z3VarMap) -> Option<Z3Bool> {
+    fn pattern_matches_z3(&mut self, matched: &Z3Int, pat: &Pattern, _vars: &mut Z3VarMap) -> Option<Z3Bool> {
         match pat {
             Pattern::Wildcard => Some(Z3Bool::from_bool(true)),
             Pattern::Variable(_) => Some(Z3Bool::from_bool(true)),
-            Pattern::Literal(Lit::Int(n)) => Some(matched.eq(&Z3Int::from_i64(*n))),
+            Pattern::Literal(Lit::Int(n)) => Some(matched.eq(Z3Int::from_i64(*n))),
             Pattern::Literal(Lit::Bool(b)) => {
                 let b_int = Z3Int::from_i64(if *b { 1 } else { 0 });
                 Some(matched.eq(&b_int))
@@ -569,8 +569,7 @@ impl crate::verifier::Verifier {
                     return None;
                 }
             } else {
-                let int_cond = self.pattern_matches_z3(&matched_int, &arm.pat, vars)?;
-                int_cond
+                self.pattern_matches_z3(&matched_int, &arm.pat, vars)?
             };
             let cond = if let Some(ref guard_expr) = arm.guard {
                 if let Some(g) = self.expr_to_z3_bool(guard_expr, vars) {

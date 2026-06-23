@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 
 /// Lock file entry for a resolved dependency
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Default, Deserialize, Serialize, Clone)]
 pub struct LockEntry {
     pub name: String,
     pub version: String,
@@ -13,7 +13,7 @@ pub struct LockEntry {
 }
 
 /// mimi.lock file structure
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Default, Deserialize, Serialize, Clone)]
 pub struct Lockfile {
     pub package: Vec<LockEntry>,
 }

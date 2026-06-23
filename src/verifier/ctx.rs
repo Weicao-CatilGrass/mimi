@@ -143,7 +143,7 @@ impl Verifier {
     }
 
     pub fn with_timeout(timeout_ms: u64) -> Result<Self, String> {
-        let solver = std::panic::catch_unwind(|| Solver::new())
+        let solver = std::panic::catch_unwind(Solver::new)
             .map_err(|_| "failed to initialize Z3 solver (is libz3 installed?)".to_string())?;
         let mut params = z3::Params::new();
         params.set_u32("timeout", timeout_ms as u32);

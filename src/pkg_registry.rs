@@ -32,12 +32,12 @@ pub fn compute_dir_checksum(dir: &Path) -> Result<String, String> {
     Ok(format!("{:016x}", hash))
 }
 
-fn collect_files(base: &Path, dir: &Path, entries: &mut Vec<std::path::PathBuf>) -> std::io::Result<()> {
+fn collect_files(_base: &Path, dir: &Path, entries: &mut Vec<std::path::PathBuf>) -> std::io::Result<()> {
     for entry in std::fs::read_dir(dir)? {
         let entry = entry?;
         let path = entry.path();
         if entry.file_type()?.is_dir() {
-            collect_files(base, &path, entries)?;
+            collect_files(_base, &path, entries)?;
         } else {
             entries.push(path);
         }

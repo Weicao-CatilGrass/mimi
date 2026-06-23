@@ -69,7 +69,7 @@ fn executor_queue() -> &'static std::sync::Mutex<Vec<std::sync::Arc<std::sync::M
 
 /// Submit a deferred future to the global executor.
 pub fn executor_submit(future: std::sync::Arc<std::sync::Mutex<PollFuture>>) {
-    executor_queue().lock().unwrap().push(future);
+    executor_queue().lock().expect("executor queue lock").push(future);
 }
 
 /// Run the executor: poll all deferred futures until all are completed.
@@ -77,12 +77,12 @@ pub fn executor_run() {
     loop {
         let entry = {
             let queue = executor_queue();
-            let mut guard = queue.lock().unwrap();
+            let mut guard = queue.lock().expect("executor queue lock");
             if guard.is_empty() { return; }
             let mut found = None;
             for i in 0..guard.len() {
                 let fut = &guard[i];
-                let state = fut.lock().unwrap();
+                let state = fut.lock().expect("future lock");
                 match &*state {
                     PollFuture::Deferred { .. } => {
                         found = Some(i);
@@ -103,7 +103,7 @@ pub fn executor_run() {
             }
         };
         if let Some(fut) = entry {
-            let mut state = fut.lock().unwrap();
+            let mut state = fut.lock().expect("future lock");
             poll_deferred(&mut state);
         }
     }
@@ -381,8 +381,8 @@ impl PartialEq for ActorHandle {
 
 static ACTOR_HANDLE_COUNTER: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
-/// Thread-local flag set when inside an actor's worker thread.
-/// Used to detect self-calls and avoid mailbox deadlock.
+// Thread-local flag set when inside an actor's worker thread.
+// Used to detect self-calls and avoid mailbox deadlock.
 thread_local! {
     static CURRENT_ACTOR_ID: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
@@ -659,11 +659,11 @@ pub(crate) fn contains_arena_ref(v: &Value, arena_id: usize) -> bool {
             false
         }
         Value::LocalShared(inner) => {
-            contains_arena_ref(&*inner.0.borrow(), arena_id)
+            contains_arena_ref(&inner.0.borrow(), arena_id)
         }
         Value::WeakLocal(inner) => {
             if let Some(rc) = inner.0.upgrade() {
-                contains_arena_ref(&*rc.borrow(), arena_id)
+                contains_arena_ref(&rc.borrow(), arena_id)
             } else {
                 false
             }
@@ -759,7 +759,7 @@ pub(crate) fn values_equal(a: &Value, b: &Value) -> bool {
             if let (Ok(va), Ok(vb)) = (a.read(), b.read()) { values_equal(&va, &vb) } else { false }
         }
         (Value::LocalShared(a), Value::LocalShared(b)) => {
-            values_equal(&*a.0.borrow(), &*b.0.borrow())
+            values_equal(&a.0.borrow(), &b.0.borrow())
         }
         (Value::Cap(a), Value::Cap(b)) => a == b,
         (Value::Range { start: as_, end: ae }, Value::Range { start: bs, end: be }) => as_ == bs && ae == be,

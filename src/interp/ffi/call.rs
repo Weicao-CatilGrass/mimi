@@ -3,7 +3,6 @@
 use super::super::*;
 use crate::ffi::FfiRetContract;
 use libffi::middle::{Cif, CodePtr};
-use std::cell::RefCell;
 use std::ffi::c_void;
 
 // sigsetjmp / siglongjmp are not bound in the libc crate, so we declare

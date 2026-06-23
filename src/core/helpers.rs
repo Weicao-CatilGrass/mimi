@@ -10,11 +10,11 @@ fn edit_distance(a: &str, b: &str) -> usize {
     let b_len = b_chars.len();
     let mut matrix = vec![vec![0usize; b_len + 1]; a_len + 1];
 
-    for i in 0..=a_len {
-        matrix[i][0] = i;
+    for (i, row) in matrix.iter_mut().enumerate().take(a_len + 1) {
+        row[0] = i;
     }
-    for j in 0..=b_len {
-        matrix[0][j] = j;
+    for (j, cell) in matrix[0].iter_mut().enumerate().take(b_len + 1) {
+        *cell = j;
     }
 
     for i in 1..=a_len {
@@ -61,32 +61,32 @@ pub fn is_type_param(name: &str, generics: &[GenericParam]) -> bool {
 
 /// Check if a type name appears within a type (occurs check).
 /// Prevents infinite recursion from self-referential type substitutions.
-fn occurs_check(name: &str, ty: &Type, generics: &[GenericParam]) -> bool {
+fn occurs_check(name: &str, ty: &Type, _generics: &[GenericParam]) -> bool {
     match ty {
         Type::Name(n, args) => {
             if n == name { return true; }
-            args.iter().any(|a| occurs_check(name, a, generics))
+            args.iter().any(|a| occurs_check(name, a, _generics))
         }
-        Type::Ref(_, inner) => occurs_check(name, inner, generics),
-        Type::RefMut(_, inner) => occurs_check(name, inner, generics),
-        Type::Option(inner) => occurs_check(name, inner, generics),
-        Type::Result(ok, err) => occurs_check(name, ok, generics) || occurs_check(name, err, generics),
-        Type::Tuple(elems) => elems.iter().any(|e| occurs_check(name, e, generics)),
-        Type::Func(args, ret) => args.iter().any(|a| occurs_check(name, a, generics)) || occurs_check(name, ret, generics),
-        Type::Shared(inner) => occurs_check(name, inner, generics),
-        Type::LocalShared(inner) => occurs_check(name, inner, generics),
-        Type::Weak(inner) => occurs_check(name, inner, generics),
-        Type::WeakLocal(inner) => occurs_check(name, inner, generics),
-        Type::RawPtr(inner) => occurs_check(name, inner, generics),
-        Type::RawPtrMut(inner) => occurs_check(name, inner, generics),
-        Type::CShared(inner) => occurs_check(name, inner, generics),
-        Type::CBorrow(inner) => occurs_check(name, inner, generics),
-        Type::CBorrowMut(inner) => occurs_check(name, inner, generics),
-        Type::Newtype(_, inner) => occurs_check(name, inner, generics),
-        Type::ExternFunc(args, ret) => args.iter().any(|a| occurs_check(name, a, generics)) || occurs_check(name, ret, generics),
-        Type::CBuffer(inner) => occurs_check(name, inner, generics),
-        Type::Array(inner, _) => occurs_check(name, inner, generics),
-        Type::Slice(inner) => occurs_check(name, inner, generics),
+        Type::Ref(_, inner) => occurs_check(name, inner, _generics),
+        Type::RefMut(_, inner) => occurs_check(name, inner, _generics),
+        Type::Option(inner) => occurs_check(name, inner, _generics),
+        Type::Result(ok, err) => occurs_check(name, ok, _generics) || occurs_check(name, err, _generics),
+        Type::Tuple(elems) => elems.iter().any(|e| occurs_check(name, e, _generics)),
+        Type::Func(args, ret) => args.iter().any(|a| occurs_check(name, a, _generics)) || occurs_check(name, ret, _generics),
+        Type::Shared(inner) => occurs_check(name, inner, _generics),
+        Type::LocalShared(inner) => occurs_check(name, inner, _generics),
+        Type::Weak(inner) => occurs_check(name, inner, _generics),
+        Type::WeakLocal(inner) => occurs_check(name, inner, _generics),
+        Type::RawPtr(inner) => occurs_check(name, inner, _generics),
+        Type::RawPtrMut(inner) => occurs_check(name, inner, _generics),
+        Type::CShared(inner) => occurs_check(name, inner, _generics),
+        Type::CBorrow(inner) => occurs_check(name, inner, _generics),
+        Type::CBorrowMut(inner) => occurs_check(name, inner, _generics),
+        Type::Newtype(_, inner) => occurs_check(name, inner, _generics),
+        Type::ExternFunc(args, ret) => args.iter().any(|a| occurs_check(name, a, _generics)) || occurs_check(name, ret, _generics),
+        Type::CBuffer(inner) => occurs_check(name, inner, _generics),
+        Type::Array(inner, _) => occurs_check(name, inner, _generics),
+        Type::Slice(inner) => occurs_check(name, inner, _generics),
         Type::Cap(_) | Type::Nothing | Type::RawString | Type::Allocator | Type::Infer
         | Type::ImplTrait(_) | Type::DynTrait(_) => false,
     }
@@ -385,9 +385,9 @@ pub(crate) fn type_contains_elided_lifetime(ty: &Type) -> bool {
         Type::Ref(Some(_), inner) | Type::RefMut(Some(_), inner) => type_contains_elided_lifetime(inner),
         Type::Option(inner) => type_contains_elided_lifetime(inner),
         Type::Result(ok, err) => type_contains_elided_lifetime(ok) || type_contains_elided_lifetime(err),
-        Type::Tuple(elems) => elems.iter().any(|e| type_contains_elided_lifetime(e)),
-        Type::Func(args, ret) => args.iter().any(|a| type_contains_elided_lifetime(a)) || type_contains_elided_lifetime(ret),
-        Type::Name(_, args) => args.iter().any(|a| type_contains_elided_lifetime(a)),
+        Type::Tuple(elems) => elems.iter().any(type_contains_elided_lifetime),
+        Type::Func(args, ret) => args.iter().any(type_contains_elided_lifetime) || type_contains_elided_lifetime(ret),
+        Type::Name(_, args) => args.iter().any(type_contains_elided_lifetime),
         _ => false,
     }
 }

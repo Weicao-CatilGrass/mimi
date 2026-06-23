@@ -10,7 +10,7 @@ impl<'a> Checker<'a> {
     pub(in crate::core) fn infer_unary(
         &mut self,
         op: UnOp,
-        e: &Box<Expr>,
+        e: &Expr,
         scopes: &mut Vec<HashMap<String, Type>>,
     ) -> Type {
         let t = self.infer_expr(e, scopes);
@@ -42,7 +42,7 @@ impl<'a> Checker<'a> {
                 }
             }
             UnOp::Ref => {
-                match e.as_ref() {
+                match e {
                     Expr::Ident(name) => {
                         // Whole-variable immutable borrow
                         if let Some(BorrowState::BorrowedMut { span }) = self.lookup_borrow(name) {
@@ -86,7 +86,7 @@ impl<'a> Checker<'a> {
                 Type::Ref(None, Box::new(t))
             }
             UnOp::RefMut => {
-                match e.as_ref() {
+                match e {
                     Expr::Ident(name) => {
                         // Whole-variable mutable borrow
                         if let Some(state) = self.lookup_borrow(name) {

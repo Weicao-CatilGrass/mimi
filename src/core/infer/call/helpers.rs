@@ -140,7 +140,7 @@ impl<'a> Checker<'a> {
                 }
             }
             "parse_int" => {
-                if args.len() != 0 {
+                if !args.is_empty() {
                     self.emit_code(
                         crate::diagnostic::codes::E0242,
                         "parse_int takes no arguments",
@@ -152,7 +152,7 @@ impl<'a> Checker<'a> {
                 )
             }
             "parse_float" => {
-                if args.len() != 0 {
+                if !args.is_empty() {
                     self.emit_code(
                         crate::diagnostic::codes::E0242,
                         "parse_float takes no arguments",

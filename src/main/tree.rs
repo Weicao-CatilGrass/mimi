@@ -46,7 +46,7 @@ pub(crate) fn tree() -> Result<(), String> {
             // Show transitive deps for this dep
             let dep_dir = deps_dir.join(&dep.name);
             let sub_prefix = if is_last { "    " } else { "│   " };
-            print_transitive_tree(&dep_dir, &sub_prefix, &mut HashSet::new())?;
+            print_transitive_tree(&dep_dir, sub_prefix, &mut HashSet::new())?;
         }
     }
 

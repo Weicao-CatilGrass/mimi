@@ -205,7 +205,7 @@ impl super::Verifier {
         };
 
         self.solver.push();
-        self.solver.assert(&z3_requires.not());
+        self.solver.assert(z3_requires.not());
         let constraint_count = 1;
 
         match self.check_safe() {

@@ -54,6 +54,12 @@ pub struct LspServer {
     cache_path: Option<PathBuf>,
 }
 
+impl Default for LspServer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl LspServer {
     pub fn new() -> Self {
         LspServer {

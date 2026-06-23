@@ -425,7 +425,7 @@ impl Parser {
                     return Err(ParseError::new("unterminated interpolation in f-string", 0, 0));
                 }
                 let tokens = crate::lexer::Lexer::new(&expr_str).tokenize()
-                    .map_err(|e| ParseError::new(&e.to_string(), 0, 0))?;
+                    .map_err(|e| ParseError::new(e.to_string(), 0, 0))?;
                 let expr = Parser::new(tokens).parse_expr(0)?;
                 parts.push(FStringPart::Interp(expr));
             } else if c == '\\' {

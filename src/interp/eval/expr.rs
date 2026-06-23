@@ -592,8 +592,7 @@ impl<'a> Interpreter<'a> {
                 let args_vals: Vec<Value> = args.iter()
                     .map(|a| self.eval_expr(a))
                     .collect::<Result<Vec<_>, _>>()?;
-                match obj_val {
-                    Value::Actor(handle) => {
+                if let Value::Actor(handle) = obj_val {
                         // Send through mailbox, return Future<T> for awaiting later
                         let (tx, rx) = std::sync::mpsc::channel();
                         let msg = crate::interp::value::ActorMailboxMsg {
@@ -606,8 +605,6 @@ impl<'a> Interpreter<'a> {
                         return Ok(Value::Future(std::sync::Arc::new(std::sync::Mutex::new(
                             crate::interp::value::PollFuture::Pending(rx)
                         ))));
-                    }
-                    _ => {}
                 }
             }
         }

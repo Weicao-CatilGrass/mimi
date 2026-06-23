@@ -1042,7 +1042,7 @@ impl<'a> Checker<'a> {
                         return Type::Option(Box::new(Type::Name("_".into(), vec![])));
                     }
                     "None" => {
-                        if args.len() != 0 {
+                        if !args.is_empty() {
                             self.emit_code(crate::diagnostic::codes::E0242, "None expects 0 arguments");
                         }
                         return Type::Option(Box::new(Type::Name("_".into(), vec![])));
