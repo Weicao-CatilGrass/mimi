@@ -277,6 +277,14 @@ impl<'ctx> CodeGenerator<'ctx> {
             // F7: Tuple is allowed via JSON serialization (same path as List/Record).
             // The interpreter path uses FfiArgContract::Json; the codegen path
             // uses mimi_tuple_serialize/mimi_tuple_deserialize runtime functions.
+            //
+            // ⚠️ F-4: JSON serialization inconsistency between interpreter and codegen.
+            // Interpreter uses serde_json (nested key-value maps, full type support).
+            // Codegen uses C runtime mimi_json_serialize (flat {i64*,len,type_tag},
+            // limited to one level of nesting). Complex/nested record types may be
+            // truncated or incorrectly serialized in the codegen path. This primarily
+            // affects non-#[repr(C)] records passed as JSON across the FFI boundary.
+            // #[repr(C)] records use struct-by-value and are not affected.
 
             // D: Reject Unsupported FFI contract types at codegen time with a
             // readable error rather than silently passing void* to C (UB risk).
