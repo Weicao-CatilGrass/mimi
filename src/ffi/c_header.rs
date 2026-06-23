@@ -64,6 +64,8 @@ impl CHeaderGenerator {
         writeln!(header, "void* mimi_string_from_raw(char* c_str);")?;
         writeln!(header, "/** Free a string obtained via mimi_string_into_raw() or C-allocated strings returned by extern functions. */")?;
         writeln!(header, "void mimi_string_free_raw(char* c_str);")?;
+        writeln!(header, "/** Free a C string pointer obtained from mimi_string_as_c_str() when no longer needed. */")?;
+        writeln!(header, "void mimi_string_as_c_str_free(const char* c_str);")?;
         writeln!(header)?;
 
         // Generate struct definitions for #[repr(C)] types
@@ -307,8 +309,8 @@ impl CHeaderGenerator {
             crate::ffi::contract::FfiRetContract::Unit => "void".to_string(),
             crate::ffi::contract::FfiRetContract::Int => "int64_t".to_string(),
             crate::ffi::contract::FfiRetContract::Float => "double".to_string(),
-            crate::ffi::contract::FfiRetContract::String => "char*".to_string(),
-            crate::ffi::contract::FfiRetContract::StringOwned => "char*".to_string(),
+            crate::ffi::contract::FfiRetContract::String => "/*borrowed*/ char*".to_string(),
+            crate::ffi::contract::FfiRetContract::StringOwned => "/*owned*/ char*".to_string(),
             crate::ffi::contract::FfiRetContract::Json => "char*".to_string(),
             crate::ffi::contract::FfiRetContract::StructByValue(type_name) => format!("struct {}", type_name),
             crate::ffi::contract::FfiRetContract::RawPtr(inner) | crate::ffi::contract::FfiRetContract::RawPtrMut(inner) => {

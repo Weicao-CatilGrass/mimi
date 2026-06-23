@@ -77,7 +77,13 @@ impl PyBindGenerator {
             .filter(|(_, td)| matches!(td.kind, crate::ast::TypeDefKind::Record(_)))
             .map(|(name, _)| name.clone())
             .collect();
-        FfiContract::from_extern_with_caps(func, &HashSet::new(), &record_type_names)
+        let repr_c_record_names: std::collections::HashSet<String> = self.type_defs.iter()
+            .filter(|(_, td)| td.attributes.contains(&crate::ast::TypeAttribute::ReprC))
+            .map(|(name, _)| name.clone())
+            .collect();
+        FfiContract::from_extern_with_caps_repr(
+            func, &HashSet::new(), &record_type_names, &repr_c_record_names,
+        )
     }
 
     fn mimi_type_to_python(&self, contract: &FfiContract, index: usize) -> String {
