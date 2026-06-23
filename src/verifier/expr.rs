@@ -444,7 +444,7 @@ impl crate::verifier::Verifier {
     /// Uses the function name and field-var-name of each argument to create
     /// a unique key, so the same call with the same args maps to the same
     /// Z3 variable (functional consistency within a provedure).
-    fn call_var_key(&self, name: &str, args: &[Expr]) -> String {
+    pub(crate) fn call_var_key(&self, name: &str, args: &[Expr]) -> String {
         let mut parts = vec![format!("call_{}", name)];
         for a in args {
             parts.push(self.field_var_name(a));

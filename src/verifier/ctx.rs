@@ -112,6 +112,9 @@ impl Z3VarMap {
 pub struct Verifier {
     pub(crate) solver: Solver,
     pub(crate) timeout_ms: u64,
+    /// Function definitions indexed by name, collected from the merged file.
+    /// Used by cross-module verification to look up callee ensures.
+    pub(crate) func_defs: HashMap<String, crate::ast::FuncDef>,
 }
 
 impl Verifier {
@@ -125,7 +128,7 @@ impl Verifier {
         let mut params = z3::Params::new();
         params.set_u32("timeout", timeout_ms as u32);
         solver.set_params(&params);
-        Ok(Self { solver, timeout_ms })
+        Ok(Self { solver, timeout_ms, func_defs: HashMap::new() })
     }
 
     /// Check satisfiability with timeout and crash protection.

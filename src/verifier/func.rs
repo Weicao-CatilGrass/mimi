@@ -12,6 +12,9 @@ use z3::SatResult;
 
 impl crate::verifier::Verifier {
     pub(crate) fn verify_items(&mut self, items: &[Item], results: &mut Vec<VerificationResult>) {
+        // Pre-populate func_defs so call-site verification can look up
+        // callee ensures (cross-module contract propagation).
+        self.collect_func_defs(items);
         for item in items {
             match item {
                 Item::Func(f) => {
@@ -27,6 +30,18 @@ impl crate::verifier::Verifier {
                         }
                     }
                 }
+                _ => {}
+            }
+        }
+    }
+
+    fn collect_func_defs(&mut self, items: &[Item]) {
+        for item in items {
+            match item {
+                Item::Func(f) => {
+                    self.func_defs.insert(f.name.clone(), f.clone());
+                }
+                Item::Module(m) => self.collect_func_defs(&m.items),
                 _ => {}
             }
         }
@@ -345,6 +360,13 @@ impl crate::verifier::Verifier {
                     self.solver.assert(&i.eq(&Z3Int::from_i64(0)));
                 }
             }
+        }
+
+        // 1.2: Cross-module ensures propagation — for each function call in
+        // the body, assert the callee's ensures as constraints on the call
+        // variable. This allows the verifier to reason across function calls.
+        if let Some(ref return_expr) = body_return {
+            self.assert_callee_ensures_in_expr(return_expr, &mut vars);
         }
 
         let num_real_params = func
@@ -927,5 +949,122 @@ impl crate::verifier::Verifier {
         }
 
         None
+    }
+
+    /// Walk an expression tree looking for `Expr::Call(Ident(name), args)`
+    /// and, for each call to a known function, assert the callee's ensures
+    /// as Z3 constraints. This enables cross-module contract reasoning
+    /// (e.g., caller can rely on callee's postconditions).
+    fn assert_callee_ensures_in_expr(&mut self, expr: &Expr, vars: &mut Z3VarMap) {
+        match expr {
+            Expr::Call(callee, call_args) => {
+                if let Expr::Ident(name) = callee.as_ref() {
+                    if let Some(callee_func) = self.func_defs.get(name) {
+                        let call_key = self.call_var_key(name, call_args);
+                        // Clone callee data to avoid borrow conflict with
+                        // self.expr_to_z3_bool (which needs &mut self).
+                        let callee_params = callee_func.params.clone();
+                        let callee_ensures: Vec<Expr> = callee_func.body.iter()
+                            .filter_map(|s| if let Stmt::Ensures(e, _) = s { Some(e.clone()) } else { None })
+                            .collect();
+                        // Drop the immutable borrow on self
+                        drop(callee_func);
+                        // Now assert each ensures as a Z3 constraint
+                        for ens_expr in &callee_ensures {
+                            let substituted = self.substitute_call(
+                                ens_expr, &callee_params, call_args, &call_key,
+                            );
+                            if let Some(z3_bool) = self.expr_to_z3_bool(&substituted, vars) {
+                                self.solver.assert(&z3_bool);
+                            }
+                        }
+                    }
+                }
+                // Recurse into call arguments
+                for arg in call_args {
+                    self.assert_callee_ensures_in_expr(arg, vars);
+                }
+            }
+            Expr::Binary(_, lhs, rhs) => {
+                self.assert_callee_ensures_in_expr(lhs, vars);
+                self.assert_callee_ensures_in_expr(rhs, vars);
+            }
+            Expr::Unary(_, inner) => self.assert_callee_ensures_in_expr(inner, vars),
+            Expr::Field(obj, _) => self.assert_callee_ensures_in_expr(obj, vars),
+            Expr::TupleIndex(obj, _) => self.assert_callee_ensures_in_expr(obj, vars),
+            Expr::Old(inner) => self.assert_callee_ensures_in_expr(inner, vars),
+            Expr::If { cond, then_, else_ } => {
+                self.assert_callee_ensures_in_expr(cond, vars);
+                for stmt in then_ {
+                    if let Stmt::Expr(e) = stmt {
+                        self.assert_callee_ensures_in_expr(e, vars);
+                    }
+                }
+                if let Some(else_block) = else_ {
+                    for stmt in else_block {
+                        if let Stmt::Expr(e) = stmt {
+                            self.assert_callee_ensures_in_expr(e, vars);
+                        }
+                    }
+                }
+            }
+            Expr::Match(_, arms) => {
+                for arm in arms {
+                    self.assert_callee_ensures_in_expr(&arm.body, vars);
+                }
+            }
+            Expr::Block(stmts) => {
+                for stmt in stmts {
+                    if let Stmt::Expr(e) = stmt {
+                        self.assert_callee_ensures_in_expr(e, vars);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Substitute `result` → `call_key` and formal param names → actual arg
+    /// expressions in an ensures expression. Returns the substituted expression.
+    fn substitute_call(
+        &self,
+        ensures: &Expr,
+        params: &[Param],
+        call_args: &[Expr],
+        call_key: &str,
+    ) -> Expr {
+        // Simple recursive substitution. For `result`, replace with a fresh
+        // Ident that matches the Z3 variable naming from call_var_key.
+        // For param names, replace with the actual call argument expressions.
+        match ensures {
+            Expr::Ident(name) if name == "result" => {
+                Expr::Ident(call_key.to_string())
+            }
+            Expr::Ident(name) => {
+                if let Some(idx) = params.iter().position(|p| p.name == *name) {
+                    if idx < call_args.len() {
+                        return call_args[idx].clone();
+                    }
+                }
+                ensures.clone()
+            }
+            Expr::Binary(op, lhs, rhs) => {
+                Expr::Binary(*op,
+                    Box::new(self.substitute_call(lhs, params, call_args, call_key)),
+                    Box::new(self.substitute_call(rhs, params, call_args, call_key)),
+                )
+            }
+            Expr::Unary(op, inner) => {
+                Expr::Unary(*op, Box::new(self.substitute_call(inner, params, call_args, call_key)))
+            }
+            Expr::Field(obj, name) => {
+                Expr::Field(Box::new(self.substitute_call(obj, params, call_args, call_key)), name.clone())
+            }
+            Expr::Old(inner) => {
+                Expr::Old(Box::new(self.substitute_call(inner, params, call_args, call_key)))
+            }
+            Expr::Literal(l) => Expr::Literal(l.clone()),
+            _ => ensures.clone(),
+        }
     }
 }

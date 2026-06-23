@@ -735,6 +735,54 @@ func main() -> i32 { 0 }
     }
 
     #[test]
+    fn verify_cross_module_ensures_propagation() {
+        require_z3!();
+        // 1.2: Function A calls function B. The verifier should propagate
+        // B's ensures to constrain the call variable for A, allowing A's
+        // ensures to be verified.
+        let src = r#"
+func double(x: i32) -> i32 {
+    ensures: result == x * 2
+    x * 2
+}
+func caller(y: i32) -> i32 {
+    ensures: result == y * 2
+    double(y)
+}
+func main() -> i32 { 0 }
+"#;
+        let results = verify_source(src).expect("src/verifier/tests.rs: cross_module_ensures");
+        let caller = results.iter().find(|r| r.func_name == "caller");
+        assert!(caller.is_some(), "caller should be present");
+        // caller ensures result == y * 2. double(y) ensures result == y * 2.
+        // With ensures propagation, the verifier can prove this.
+        assert_eq!(caller.unwrap().status, VerifStatus::Verified,
+            "caller should verify with ensures propagation: {:?}", caller.unwrap());
+    }
+
+    #[test]
+    fn verify_cross_module_ensures_violation() {
+        require_z3!();
+        // Caller violates ensures because callee's ensures don't guarantee it.
+        let src = r#"
+func add_one(x: i32) -> i32 {
+    ensures: result > x
+    x + 1
+}
+func caller_bad(y: i32) -> i32 {
+    ensures: result == y  // Violation: add_one(y) > y, cannot equal y
+    add_one(y)
+}
+func main() -> i32 { 0 }
+"#;
+        let results = verify_source(src).expect("src/verifier/tests.rs: cross_module_violation");
+        let caller = results.iter().find(|r| r.func_name == "caller_bad");
+        assert!(caller.is_some(), "caller_bad should be present");
+        assert_eq!(caller.unwrap().status, VerifStatus::Failed,
+            "caller_bad should fail: {:?}", caller.unwrap());
+    }
+
+    #[test]
     fn verify_f64_large_value_no_overflow() {
         require_z3!();
         // 3.1: Large f64 values should not overflow the verifier's encoding.
