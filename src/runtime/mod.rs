@@ -2169,6 +2169,46 @@ pub extern "C" fn mimi_cap_register(name: *const std::ffi::c_char) -> i64 {
     })
 }
 
+// ─── MimiFuture (poll-based async runtime) ──────────────────────
+//
+// Future memory layout (managed by codegen):
+//   offset 0: i32 (completed flag: 0=pending, 1=ready)
+//   offset 8: <result> (8-byte aligned, type known to codegen)
+//
+// We use malloc/free from the C runtime to ensure consistent memory
+// management between codegen (which uses malloc/free for other purposes)
+// and the future runtime.
+
+extern "C" {
+    fn malloc(size: u64) -> *mut std::ffi::c_void;
+    fn free(ptr: *mut std::ffi::c_void);
+}
+
+#[no_mangle]
+pub extern "C" fn mimi_future_alloc(_result_size: u64) -> *mut std::ffi::c_void {
+    unsafe { malloc(72) }  // 8 header + 64 result buffer
+}
+
+#[no_mangle]
+pub extern "C" fn mimi_future_free(fut: *mut std::ffi::c_void) {
+    if fut.is_null() { return; }
+    unsafe { free(fut); }
+}
+
+#[no_mangle]
+pub extern "C" fn mimi_future_set_completed(fut: *mut std::ffi::c_void) {
+    if fut.is_null() { return; }
+    unsafe { std::ptr::write(fut as *mut i32, 1); }
+}
+
+#[no_mangle]
+pub extern "C" fn mimi_future_is_completed(fut: *mut std::ffi::c_void) -> i32 {
+    if fut.is_null() { return 1; }
+    unsafe { std::ptr::read(fut as *const i32) }
+}
+
+// ─── Capability runtime ────────────────────────────────────────
+
 #[no_mangle]
 pub extern "C" fn mimi_cap_check(cap: i64, name: *const std::ffi::c_char) -> bool {
     let n = if name.is_null() { "" } else { unsafe { CStr::from_ptr(name) }.to_str().unwrap_or("") };

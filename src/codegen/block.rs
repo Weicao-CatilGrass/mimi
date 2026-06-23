@@ -191,22 +191,28 @@ impl<'ctx> CodeGenerator<'ctx> {
                                         self.var_type_names.insert(name.clone(), "Option".to_string());
                                     }
                                     _ => {
-                                        if let Some(fdef) = self.func_defs.get(func_name) {
-                                            if let Some(ret_ty) = &fdef.ret {
-                                                match ret_ty {
-                                                    Type::ImplTrait(traits) => {
-                                                        self.var_type_names.insert(
-                                                            name.clone(),
-                                                            format!("impl {}", traits.join(" + ")),
-                                                        );
+                                            if let Some(fdef) = self.func_defs.get(func_name) {
+                                                if let Some(ret_ty) = &fdef.ret {
+                                                    match ret_ty {
+                                                        Type::ImplTrait(traits) => {
+                                                            self.var_type_names.insert(
+                                                                name.clone(),
+                                                                format!("impl {}", traits.join(" + ")),
+                                                            );
+                                                        }
+                                                        Type::Name(tn, _) => {
+                                                            self.var_type_names.insert(name.clone(), tn.clone());
+                                                        }
+                                                        _ => {}
                                                     }
-                                                    Type::Name(tn, _) => {
-                                                        self.var_type_names.insert(name.clone(), tn.clone());
+                                                    // For async functions, track the inner result type for await.
+                                                    if fdef.is_async {
+                                                        if let Some(llvm_ret) = self.llvm_type_for(ret_ty) {
+                                                            self.async_var_inner_types.insert(name.clone(), llvm_ret);
+                                                        }
                                                     }
-                                                    _ => {}
                                                 }
                                             }
-                                        }
                                     }
                                 }
                             }

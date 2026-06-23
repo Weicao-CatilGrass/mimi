@@ -380,6 +380,16 @@ impl<'ctx> CodeGenerator<'ctx> {
                 self.builder.build_store(tls_ptr, null_i8)
                     .map_err(|e| CompileError::LlvmError(format!("clear tls: {}", e)))?;
             }
+            // If calling an async function, record the inner result type for await.
+            if let Some(fdef) = self.func_defs.get(name) {
+                if fdef.is_async {
+                    if let Some(ret_ty) = &fdef.ret {
+                        if let Some(llvm_ret) = self.llvm_type_for(ret_ty) {
+                            self.pending_spawn_type = Some(llvm_ret);
+                        }
+                    }
+                }
+            }
             Ok(call_try_basic_value(&call).unwrap_or(
                 self.context.i64_type().const_int(0, false).into()
             ))

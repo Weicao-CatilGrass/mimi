@@ -2296,3 +2296,85 @@ fn dual_ffi_struct_multiple_fields() {
     assert_eq!(codegen_stdout.trim(), "14.500000",
         "codegen mixed struct FFI mismatch");
 }
+
+// ─── 25. v0.20 — Async/Poll-based Future (5 tests) ────────────
+
+#[test]
+fn dual_async_future_basic() {
+    if !can_link() { return; }
+    dual_assert!(r#"
+        async func foo() -> i32 {
+            42
+        }
+        func main() -> i32 {
+            let f = foo();
+            println(await f);
+            0
+        }
+    "#, "42");
+}
+
+#[test]
+fn dual_async_future_with_args() {
+    if !can_link() { return; }
+    dual_assert!(r#"
+        async func add(a: i32, b: i32) -> i32 {
+            a + b
+        }
+        func main() -> i32 {
+            let f = add(20, 22);
+            println(await f);
+            0
+        }
+    "#, "42");
+}
+
+#[test]
+fn dual_async_future_multiple_await() {
+    if !can_link() { return; }
+    dual_assert!(r#"
+        async func double(x: i32) -> i32 {
+            x * 2
+        }
+        func main() -> i32 {
+            let a = double(5);
+            let b = double(10);
+            let r = (await a) + (await b);
+            println(r);
+            0
+        }
+    "#, "30");
+}
+
+#[test]
+fn dual_async_nested_await() {
+    if !can_link() { return; }
+    dual_assert!(r#"
+        async func step1(x: i32) -> i32 {
+            x + 1
+        }
+        async func step2() -> i32 {
+            let y = await step1(41);
+            y
+        }
+        func main() -> i32 {
+            println(await step2());
+            0
+        }
+    "#, "42");
+}
+
+#[test]
+#[ignore = "v0.20 — string return from future needs pointer lifetime tracking"]
+fn dual_async_future_string() {
+    if !can_link() { return; }
+    dual_assert!(r#"
+        async func greet(name: string) -> string {
+            "Hello, " + name
+        }
+        func main() -> i32 {
+            println(await greet("World"));
+            0
+        }
+    "#, "Hello, World");
+}

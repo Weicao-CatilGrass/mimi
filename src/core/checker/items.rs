@@ -94,7 +94,14 @@ impl<'a> Checker<'a> {
                     self.check_type_well_formed(&ret, &format!("return type of function '{}'", qualified_name));
                 }
                 self.generic_scope.truncate(self.generic_scope.len() - generic_names.len());
-                self.funcs.insert(qualified_name.clone(), (params, ret));
+                // For async functions, the declared return type is wrapped in Future<T>.
+                // e.g., `async func foo() -> i32` has signature `foo() -> Future<i32>`.
+                let func_sig_ret = if f.is_async {
+                    Type::Name("Future".into(), vec![ret])
+                } else {
+                    ret
+                };
+                self.funcs.insert(qualified_name.clone(), (params, func_sig_ret));
                 // Store generic parameters if present
                 if !f.generics.is_empty() {
                     self.func_generics.insert(qualified_name.clone(), f.generics.clone());

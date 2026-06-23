@@ -145,6 +145,14 @@ declare ptr @mimi_http_get(ptr)
 
 declare ptr @mimi_http_post(ptr, ptr)
 
+declare ptr @mimi_future_alloc(i64)
+
+declare void @mimi_future_free(ptr)
+
+declare void @mimi_future_set_completed(ptr)
+
+declare i32 @mimi_future_is_completed(ptr)
+
 define double @main() {
 entry:
   %a = alloca double, align 8
