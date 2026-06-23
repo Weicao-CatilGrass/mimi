@@ -3,13 +3,14 @@
 ## [Unreleased] — 0.18.0-dev
 
 ### Added
-- (none yet)
+- 泛型约束检查：`GenericParam::bounds` 读取与验证（`func<T: Clone>` 在调用处检查）
+- 内置 trait 集：识别 Clone/Default/Copy/Eq 四个内置 trait，自动判断类型是否满足
+- 泛型约束 codegen：`<T: Clone>` 在双后端中支持 `.clone()` 调用
+- 生命周期 elision：单输入引用时自动推断 `&T` → `&'a T`
 
 ### Fixed
-- (none yet)
-
-### Security
-- (none yet)
+- checker 不再丢弃生命周期：`resolve_type`/`subst_type_params` 保留生命周期字段
+- `borrow_fn_return_ref` 和 `borrow_fn_mut_to_imm_return` 解除 `#[ignore]`，现可通过类型检查
 
 ## [0.17.0] - 2026-06-23
 
