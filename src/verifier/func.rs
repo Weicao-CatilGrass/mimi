@@ -34,6 +34,10 @@ impl crate::verifier::Verifier {
 
     fn verify_extern_func(&mut self, func: &ExternFunc) -> VerificationResult {
         let start = Instant::now();
+        // 2.3: reset() clears all assertions. Z3's Params (incl. timeout) are NOT
+        // affected by reset() — they persist across calls. The solver is clean
+        // for each extern verification, preventing cross-contamination from
+        // prior verify_func calls.
         self.solver.reset();
 
         let requires_expr = func.requires.as_ref();

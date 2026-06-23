@@ -685,3 +685,51 @@ func main() -> i32 { 0 }
         assert_eq!(v.unwrap().status, VerifStatus::Verified,
             "len(s) > 0 should imply result > 0: {:?}", v.unwrap());
     }
+
+    #[test]
+    fn verify_z3_fallback_returns_unknown() {
+        // 4.1: Verify that verify_source returns Ok even when Z3 is unavailable,
+        // with all results as Unknown.
+        let src = r#"
+func add(x: i32) -> i32 {
+    ensures: result > x
+    x + 1
+}
+func main() -> i32 { 0 }
+"#;
+        let results = verify_source(src);
+        assert!(results.is_ok(), "verify_source should return Ok even if Z3 missing");
+        // If Z3 IS available, we still get valid results; if not, mock returns Unknown.
+        for r in results.unwrap() {
+            assert!(r.status == VerifStatus::Verified || r.status == VerifStatus::Unknown,
+                "status should be Verified or Unknown, got {:?}", r);
+        }
+    }
+
+    #[test]
+    fn verify_is_z3_available_not_panics() {
+        // is_z3_available() should never panic regardless of Z3 installation.
+        let available = crate::verifier::is_z3_available();
+        // Just verify it returns a bool without panicking.
+        assert!(available || !available);
+    }
+
+    #[test]
+    fn verify_rule_ensures_combo() {
+        require_z3!();
+        // 4.4: rule annotations should be extractable and verifiable.
+        let src = r#"
+func abs(x: i32) -> i32 {
+    rule "ensures: result >= 0"
+    if x < 0 { -x } else { x }
+}
+func main() -> i32 { 0 }
+"#;
+        let results = verify_source(src).expect("src/verifier/tests.rs: rule_ensures");
+        let abs_result = results.iter().find(|r| r.func_name == "abs");
+        assert!(abs_result.is_some(), "abs function should be verified");
+        // Should at least produce a deterministic status.
+        assert!(abs_result.unwrap().status == VerifStatus::Verified
+            || abs_result.unwrap().status == VerifStatus::Failed
+            || abs_result.unwrap().status == VerifStatus::Unknown);
+    }

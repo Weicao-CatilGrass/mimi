@@ -141,8 +141,12 @@ impl Verifier {
             Some(SatResult::Sat) => SatResult::Sat,
             Some(SatResult::Unsat) => SatResult::Unsat,
             _ => {
-                // Z3 crashed or timed out — solver may be corrupt.
-                // Drop it and create a fresh solver.
+                // 2.1/2.2: Z3 crashed or timed out — solver may be corrupt.
+                // Replace with a fresh solver. Params (incl. timeout) are
+                // re-applied because the new solver starts with defaults.
+                // Callers must check SatResult and return/abort on Unknown
+                // rather than continuing to use the solver's assertion stack
+                // (which is now empty after replacement).
                 let mut params = z3::Params::new();
                 params.set_u32("timeout", self.timeout_ms as u32);
                 let new_solver = Solver::new();
