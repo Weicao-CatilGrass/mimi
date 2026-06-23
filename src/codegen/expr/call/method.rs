@@ -290,6 +290,12 @@ impl<'ctx> CodeGenerator<'ctx> {
                 }
             }
         }
+        // 2b. Built-in clone: any concrete value can be cloned by copying the loaded value
+        if method_name == "clone" && args.is_empty() {
+            let obj_val = self.compile_expr(obj, vars)?;
+            return Ok(obj_val);
+        }
+
         // 3. True vtable indirect dispatch for dyn Trait objects
         if obj_type.starts_with("dyn ") {
             let trait_name = obj_type.strip_prefix("dyn ").unwrap_or("");

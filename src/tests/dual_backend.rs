@@ -1679,6 +1679,21 @@ fn dual_generic_nested_type() {
     "#, "42");
 }
 
+// ─── 31b. Generic bounds codegen (1 test) ─────────────────────
+
+#[test]
+fn dual_generic_bounds_clone_int() {
+    if !can_link() { return; }
+    dual_assert!(r#"
+func clone_it<T: Clone>(x: T) -> T { x.clone() }
+func main() -> i32 {
+    let a = clone_it(42);
+    println(a);
+    0
+}
+"#, "42");
+}
+
 // ─── 32.  Actor (3 tests) ──────────────────────────────────────
 
 #[test]
