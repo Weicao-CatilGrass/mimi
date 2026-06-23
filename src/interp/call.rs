@@ -312,6 +312,10 @@ impl<'a> Interpreter<'a> {
     }
 
     pub(crate) fn call_method(&mut self, obj: &Value, method: &str, args: Vec<Value>) -> Result<Value, InterpError> {
+        // Universal clone: any value can be cloned by value-copying
+        if method == "clone" && args.is_empty() {
+            return Ok(obj.clone());
+        }
         match obj {
             Value::Shared(arc) => {
                 match method {
