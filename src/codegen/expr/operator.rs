@@ -2,11 +2,42 @@ use crate::ast::*;
 use crate::codegen::{CallSiteValueExt, CodeGenerator, VarEntry};
 use crate::error::CompileError;
 
-use inkwell::types::BasicTypeEnum;
+use inkwell::types::{BasicType, BasicTypeEnum};
 use inkwell::values::{BasicMetadataValueEnum, BasicValueEnum};
 use std::collections::HashMap;
 
 impl<'ctx> CodeGenerator<'ctx> {
+
+    /// Wrap a raw C string pointer into a Mimi string struct `{ ptr, i64 }`.
+    /// Calls `strlen` to compute the length, then builds the struct.
+    fn wrap_c_string(&self, raw_ptr: inkwell::values::PointerValue<'ctx>) -> Result<BasicValueEnum<'ctx>, CompileError> {
+        let i8_ptr_ty = self.context.i8_type().ptr_type(inkwell::AddressSpace::default());
+        let string_struct_ty = self.context.struct_type(&[
+            BasicTypeEnum::PointerType(i8_ptr_ty),
+            BasicTypeEnum::IntType(self.context.i64_type()),
+        ], false);
+
+        // Call strlen to get the length
+        let strlen_fn = self.module.get_function("strlen")
+            .ok_or_else(|| CompileError::LlvmError("strlen not declared".into()))?;
+        let length = self.builder.build_call(strlen_fn, &[
+            BasicMetadataValueEnum::PointerValue(raw_ptr),
+        ], "strlen_call")
+            .map_err(|e| CompileError::LlvmError(format!("strlen error: {}", e)))?
+            .try_as_basic_value_opt()
+            .ok_or_else(|| CompileError::LlvmError("strlen returned void".into()))?
+            .into_int_value();
+
+        // Build the struct { data_ptr, len }
+        let str_val = self.builder.build_insert_value(
+            string_struct_ty.get_undef(), raw_ptr, 0, "str_data"
+        ).map_err(|e| CompileError::LlvmError(format!("insert str ptr: {}", e)))?;
+        let str_val = self.builder.build_insert_value(
+            str_val, length, 1, "str_len"
+        ).map_err(|e| CompileError::LlvmError(format!("insert str len: {}", e)))?;
+
+        Ok(str_val.into_struct_value().into())
+    }
 
     /// Extract a string data pointer from a Mimi string value.
     fn extract_string_ptr(&self, val: &BasicValueEnum<'ctx>) -> Option<inkwell::values::PointerValue<'ctx>> {
@@ -165,31 +196,33 @@ impl<'ctx> CodeGenerator<'ctx> {
                 (BasicValueEnum::FloatValue(l), BasicValueEnum::FloatValue(r)) =>
                     Ok(self.builder.build_float_add(l, r, "fadd").map_err(|e| CompileError::LlvmError(format!("add error: {}", e)))?.into()),
                 (BasicValueEnum::PointerValue(l), BasicValueEnum::PointerValue(r)) => {
-                    // String concatenation: use mimi_str_concat
+                    // String concatenation: use mimi_str_concat, then wrap into string struct
                     let concat_fn = self.module.get_function("mimi_str_concat")
                         .ok_or_else(|| CompileError::LlvmError("mimi_str_concat not declared".to_string()))?;
-                    let result = self.builder.build_call(concat_fn, &[
+                    let raw_result = self.builder.build_call(concat_fn, &[
                         BasicMetadataValueEnum::PointerValue(l),
                         BasicMetadataValueEnum::PointerValue(r),
                     ], "str_concat")
                         .map_err(|e| CompileError::LlvmError(format!("str_concat error: {}", e)))?
                         .try_as_basic_value_opt()
                         .ok_or_else(|| CompileError::LlvmError("mimi_str_concat returned void".to_string()))?;
-                    Ok(result)
+                    let raw_ptr = raw_result.into_pointer_value();
+                    self.wrap_c_string(raw_ptr)
                 }
                 _ => {
                     // Try extracting string pointers from struct-typed strings (function params)
                     if let (Some(l), Some(r)) = (self.extract_string_ptr(&lhs), self.extract_string_ptr(&rhs)) {
                         let concat_fn = self.module.get_function("mimi_str_concat")
                             .ok_or_else(|| CompileError::LlvmError("mimi_str_concat not declared".to_string()))?;
-                        let result = self.builder.build_call(concat_fn, &[
+                        let raw_result = self.builder.build_call(concat_fn, &[
                             BasicMetadataValueEnum::PointerValue(l),
                             BasicMetadataValueEnum::PointerValue(r),
                         ], "str_concat")
                             .map_err(|e| CompileError::LlvmError(format!("str_concat error: {}", e)))?
                             .try_as_basic_value_opt()
                             .ok_or_else(|| CompileError::LlvmError("mimi_str_concat returned void".to_string()))?;
-                        return Ok(result);
+                        let raw_ptr = raw_result.into_pointer_value();
+                        return self.wrap_c_string(raw_ptr);
                     }
                     Err("add requires same numeric types".into())
                 }
