@@ -2226,7 +2226,6 @@ fn dual_regex_replace_no_match() {
 // Requires: rustc compiler, cc linker, and standalone.rs compiled as .so
 
 #[test]
-#[ignore = "codegen gap: struct-by-value extern params broken (LLVM ABI mismatch)"]
 fn dual_ffi_reprc_struct() {
     if !can_cc() { eprintln!("SKIP: cc not available"); return; }
     if !can_link() { eprintln!("SKIP: linker not available"); return; }

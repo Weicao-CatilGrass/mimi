@@ -297,6 +297,31 @@ impl<'ctx> CodeGenerator<'ctx> {
                 }
             }
 
+        // For extern functions: load struct values from pointers for repr(C) struct-by-value params.
+        // compile_record_expr stores the struct on the stack and returns a PointerValue, but extern
+        // wrappers expect struct values passed by value per the C ABI. Without this load, the pointer
+        // address bits get interpreted as struct fields, producing garbage (F-16: LLVM ABI mismatch).
+        if self.extern_func_defs.contains_key(name) {
+            if let Some(ef) = self.extern_func_defs.get(name) {
+                for (i, arg) in compiled_args.iter_mut().enumerate() {
+                    if i >= ef.params.len() { break; }
+                    if let crate::ast::Type::Name(n, _) = &ef.params[i].ty {
+                        if self.repr_c_record_names.contains(n.as_str()) {
+                            if let BasicValueEnum::PointerValue(pv) = arg {
+                                if let Some(&BasicTypeEnum::StructType(sty)) = self.type_llvm.get(n.as_str()) {
+                                    let loaded = self.builder.build_load(
+                                        BasicTypeEnum::StructType(sty), *pv,
+                                        &format!("{}_extern_val", n),
+                                    ).map_err(|e| CompileError::LlvmError(format!("load struct for extern: {}", e)))?;
+                                    *arg = loaded;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         let metadata_args: Vec<_> = compiled_args.iter().map(|v| {
             match v {
                 BasicValueEnum::IntValue(iv) => BasicMetadataValueEnum::IntValue(*iv),
