@@ -148,8 +148,9 @@ fn adv_async_func() {
         func main() -> i32 { let f = compute(41); await f }
     "#);
     assert!(ir.contains("__async_body"), "async func should have body fn");
-    assert!(ir.contains("__spawn_wrapper"), "async func should have spawn wrapper");
-    assert!(ir.contains("pthread_create"), "async func should create thread");
+    assert!(ir.contains("mimi_future_alloc"), "async func should allocate a future");
+    assert!(ir.contains("mimi_future_set_completed"), "async func should mark future completed");
+    assert!(ir.contains("mimi_future_free"), "await should free the future");
 }
 
 // ===================== Capabilities =====================

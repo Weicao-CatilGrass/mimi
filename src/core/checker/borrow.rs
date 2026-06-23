@@ -75,14 +75,6 @@ impl<'a> Checker<'a> {
         }
     }
 
-    /// Release a borrow on a specific field path.
-    pub(crate) fn release_field_borrow(&mut self, var: &str, field: &str) {
-        if let Some(scope) = self.field_borrows.last_mut() {
-            let key = (var.to_string(), vec![field.to_string()]);
-            scope.insert(key, BorrowState::Unborrowed);
-        }
-    }
-
     /// Check if any field of a variable is borrowed (for whole-variable borrow checks).
     /// Returns true if any field is actively borrowed.
     pub(crate) fn any_field_borrowed(&self, var: &str) -> bool {

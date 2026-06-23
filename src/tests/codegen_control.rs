@@ -1526,15 +1526,17 @@ fn codegen_async_func_basic() {
     "#);
     // Should have the async body function
     assert!(ir.contains("__async_body"), "IR should contain async body:\n{}", ir);
-    // Should have a spawn wrapper (from the spawner calling spawn)
-    assert!(ir.contains("__spawn_wrapper"), "IR should contain spawn wrapper:\n{}", ir);
-    // Should have pthread_create (from the spawn)
-    assert!(ir.contains("pthread_create"), "IR should contain pthread_create:\n{}", ir);
+    // Should have future alloc (from async fn constructor)
+    assert!(ir.contains("mimi_future_alloc"), "IR should contain mimi_future_alloc:\n{}", ir);
+    // Should have future set_completed (from async fn constructor)
+    assert!(ir.contains("mimi_future_set_completed"), "IR should contain mimi_future_set_completed:\n{}", ir);
+    // Should have future free (from await)
+    assert!(ir.contains("mimi_future_free"), "IR should contain mimi_future_free:\n{}", ir);
 }
 
 #[test]
-fn codegen_async_func_returns_i64() {
-    // The spawner function should return i64 (thread ID) not the original return type
+fn codegen_async_func_returns_ptr() {
+    // The async function should return ptr (future pointer) not i64 (thread ID)
     let ir = compile_to_ir(r#"
         async func compute() -> i32 {
             42
@@ -1544,8 +1546,8 @@ fn codegen_async_func_returns_i64() {
             await f
         }
     "#);
-    // The spawner function (same name) should exist
-    assert!(ir.contains("define i64 @compute"), "Spawner should return i64:\n{}", ir);
+    // The async function (same name) should return ptr
+    assert!(ir.contains("define ptr @compute"), "Async func should return ptr:\n{}", ir);
 }
 
 // ===================== End-to-End Stdlib Codegen Tests =====================

@@ -175,30 +175,115 @@ impl<'ctx> CodeGenerator<'ctx> {
         self.pending_spawn_type = Some(result_type);
         Ok((thread_id_val, result_type))
     }
+
+    /// Infer the inner result type of a Future from an await expression.
+    /// Returns the LLVM type of the inner value, e.g. for `await f` where f: Future<i32>,
+    /// returns IntType(i32).
+    fn infer_future_inner_type(
+        &self,
+        expr: &Expr,
+        _vars: &HashMap<String, VarEntry<'ctx>>,
+    ) -> Option<BasicTypeEnum<'ctx>> {
+        match expr {
+            Expr::Ident(name) => {
+                // Check async_var_inner_types first (variable holding a future from async fn)
+                if let Some(&ty) = self.async_var_inner_types.get(name) {
+                    return Some(ty);
+                }
+                // Fallback: var_type_names lookup
+                if let Some(tn) = self.var_type_names.get(name) {
+                    if tn == "Future" {
+                        // We don't know the generic param from name alone, so return None
+                        // and let the caller use pending_spawn_type
+                        return None;
+                    }
+                    // Could be a plain type (not a future) — in that case it's a spawn handle
+                    return None;
+                }
+                None
+            }
+            Expr::Call(callee, _) => {
+                if let Expr::Ident(func_name) = callee.as_ref() {
+                    if let Some(fdef) = self.func_defs.get(func_name) {
+                        if let Some(ret_ty) = &fdef.ret {
+                            // The function's own return type (before Future wrapping)
+                            return self.llvm_type_for(ret_ty);
+                        }
+                    }
+                }
+                None
+            }
+            _ => None,
+        }
+    }
+
     pub(in crate::codegen) fn compile_await_expr(
         &mut self,
         expr: &Expr,
         vars: &HashMap<String, VarEntry<'ctx>>,
     ) -> Result<BasicValueEnum<'ctx>, CompileError> {
-        // Evaluate the child expression to get the spawn handle / thread ID
+        // Evaluate the child expression to get the handle
         let handle_val = self.compile_expr(expr, vars)?;
-        let handle = match handle_val {
-            BasicValueEnum::IntValue(iv) => iv,
-            BasicValueEnum::PointerValue(pv) => {
-                self.builder.build_load(BasicTypeEnum::IntType(self.context.i64_type()), pv, "thread")
-                    .map_err(|e| CompileError::LlvmError(format!("load error: {}", e)))?.into_int_value()
-            }
-            _ => return Err("await requires a thread (i64) value".into()),
-        };
 
+        match handle_val {
+            // Thread handle from spawn: i64 → pthread_join
+            BasicValueEnum::IntValue(handle) => {
+                self.compile_await_pthread(handle, expr, vars)
+            }
+            // Future pointer from async fn: i8* → load result and free
+            BasicValueEnum::PointerValue(future_ptr) => {
+                // Determine the result type from context
+                let result_type = self.infer_future_inner_type(expr, vars)
+                    .or_else(|| self.pending_spawn_type.take())
+                    .unwrap_or_else(|| self.context.i64_type().into());
+
+                let i8_ty = self.context.i8_type();
+                let i64_ty = self.context.i64_type();
+
+                // Load result from future_ptr + 8 (skip completed flag)
+                let result_data_ptr = unsafe {
+                    self.builder.build_gep(i8_ty, future_ptr, &[i64_ty.const_int(8, false)], "result_data")
+                        .map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?
+                };
+                let result_typed_ptr = self.builder.build_pointer_cast(
+                    result_data_ptr,
+                    result_type.ptr_type(inkwell::AddressSpace::default()),
+                    "result_typed",
+                ).map_err(|e| CompileError::LlvmError(format!("pointer cast error: {}", e)))?;
+                let result_val = self.builder.build_load(
+                    result_type,
+                    result_typed_ptr,
+                    "future_result",
+                ).map_err(|e| CompileError::LlvmError(format!("load error: {}", e)))?;
+
+                // Free the future
+                let free_fn = self.module.get_function("mimi_future_free")
+                    .ok_or_else(|| CompileError::LlvmError("mimi_future_free not declared".into()))?;
+                self.builder.build_call(free_fn, &[
+                    BasicMetadataValueEnum::PointerValue(future_ptr),
+                ], "future_free")
+                    .map_err(|e| CompileError::LlvmError(format!("future_free error: {}", e)))?;
+
+                Ok(result_val)
+            }
+            _ => Err(CompileError::Generic("await requires a thread (i64) or future (ptr) value".into())),
+        }
+    }
+
+    /// Handle `await` for thread handles from `spawn` (pthread_join path).
+    fn compile_await_pthread(
+        &mut self,
+        handle: inkwell::values::IntValue<'ctx>,
+        expr: &Expr,
+        vars: &HashMap<String, VarEntry<'ctx>>,
+    ) -> Result<BasicValueEnum<'ctx>, CompileError> {
         let i8_ptr = self.context.i8_type().ptr_type(inkwell::AddressSpace::default());
         let retval_storage = self.builder.build_alloca(i8_ptr, "retval_ptr")
             .map_err(|e| CompileError::LlvmError(format!("alloca error: {}", e)))?;
         self.builder.build_store(retval_storage, i8_ptr.const_null())
             .map_err(|e| CompileError::LlvmError(format!("store error: {}", e)))?;
-        
-        // Determine the result type: for parasteps, look up by thread ID;
-        // for standalone, use the pending spawn type tracked by compile_spawn_pthread.
+
+        // Determine the result type
         let result_type = if self.in_parasteps {
             let pos = self.parasteps_thread_ids.iter().position(|(id, _)| *id == handle);
             if let Some(pos) = pos {
@@ -212,9 +297,8 @@ impl<'ctx> CodeGenerator<'ctx> {
             self.pending_spawn_type.take()
                 .unwrap_or_else(|| self.context.i64_type().into())
         };
-        
+
         if self.in_parasteps {
-            // Also remove any remaining entries that match (defensive clean-up)
             self.parasteps_thread_ids.retain(|(id, _)| *id != handle);
         }
 
@@ -225,7 +309,7 @@ impl<'ctx> CodeGenerator<'ctx> {
             BasicMetadataValueEnum::PointerValue(retval_storage),
         ], "pthread_join_call")
             .map_err(|e| CompileError::LlvmError(format!("pthread_join error: {}", e)))?;
-        
+
         let result_i8_ptr = self.builder.build_load(
             BasicTypeEnum::PointerType(i8_ptr),
             retval_storage,
@@ -236,7 +320,7 @@ impl<'ctx> CodeGenerator<'ctx> {
         } else {
             return Err("expected pointer from pthread_join".into());
         };
-        
+
         let result_typed = self.builder.build_pointer_cast(
             result_ptr,
             result_type.ptr_type(inkwell::AddressSpace::default()),
@@ -247,14 +331,14 @@ impl<'ctx> CodeGenerator<'ctx> {
             result_typed,
             "spawn_result_val"
         ).map_err(|e| CompileError::LlvmError(format!("load error: {}", e)))?;
-        
+
         let free_fn = self.module.get_function("free")
             .ok_or_else(|| "free not declared".to_string())?;
         self.builder.build_call(free_fn, &[
             BasicMetadataValueEnum::PointerValue(result_ptr),
         ], "free_call")
             .map_err(|e| CompileError::LlvmError(format!("free error: {}", e)))?;
-        
+
         Ok(result_val)
     }
 }

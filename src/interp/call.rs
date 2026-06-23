@@ -274,7 +274,9 @@ impl<'a> Interpreter<'a> {
         }
     }
 
-    /// Call an async function - spawns a new thread and returns a Future
+    /// Evaluate an async function body synchronously and return a Future with the result.
+    /// The future is immediately ready since there is no actual non-blocking I/O yet.
+    /// This replaces the old thread-pool-based approach — async fn is now poll-based.
     fn call_async_func(&mut self, func: &FuncDef, args: Vec<Value>) -> Result<Value, InterpError> {
         if func.params.len() != args.len() {
             return Err(InterpError::wrong_arg_count(
@@ -282,32 +284,26 @@ impl<'a> Interpreter<'a> {
             ));
         }
 
-        // Clone the function and arguments for the new thread
-        let func_clone = func.clone();
-        let args_clone = args;
-
         // Create a channel for the result
         let (tx, rx) = std::sync::mpsc::channel();
 
-        // Spawn a new thread to execute the async function body directly
+        // Evaluate synchronously in a fresh interpreter (same as thread spawn but no thread)
         let file_clone = self.file.clone();
-        super::pool::get_pool().execute(move || {
-            let mut interp = Interpreter::new(&file_clone);
-            interp.push_scope();
-            for (p, a) in func_clone.params.iter().zip(args_clone) {
-                if let Err(e) = interp.bind(&p.name, a) {
-                    let _ = tx.send(Err(e));
-                    return;
-                }
+        let mut interp = Interpreter::new(&file_clone);
+        interp.push_scope();
+        for (p, a) in func.params.iter().zip(args) {
+            if let Err(e) = interp.bind(&p.name, a) {
+                let _ = tx.send(Err(e));
+                return Ok(Value::Future(std::sync::Arc::new(std::sync::Mutex::new(rx))));
             }
-            let block_result = interp.eval_block(&func_clone.body).map(|v| v.unwrap_or(Value::Unit));
-            let result = interp.early_return.take()
-                .map_or(block_result, Ok);
-            interp.pop_scope();
-            let _ = tx.send(result);
-        });
+        }
+        let block_result = interp.eval_block(&func.body).map(|v| v.unwrap_or(Value::Unit));
+        let result = interp.early_return.take()
+            .map_or(block_result, Ok);
+        interp.pop_scope();
+        let _ = tx.send(result);
 
-        // Return a Future value
+        // Return a Future value (result is already in the channel)
         Ok(Value::Future(std::sync::Arc::new(std::sync::Mutex::new(rx))))
     }
 

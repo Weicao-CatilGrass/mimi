@@ -455,6 +455,24 @@ pub fn register_runtime<'ctx>(module: &Module<'ctx>, ctx: &'ctx Context) {
             BasicMetadataTypeEnum::PointerType(i8_ptr),
         ], false),
         Some(inkwell::module::Linkage::External));
+
+    // ─── MimiFuture (poll-based async runtime) ───
+    // mimi_future_alloc(result_size: i64) -> i8*
+    module.add_function("mimi_future_alloc",
+        i8_ptr.fn_type(&[BasicMetadataTypeEnum::IntType(i64)], false),
+        Some(inkwell::module::Linkage::External));
+    // mimi_future_free(fut: i8*)
+    module.add_function("mimi_future_free",
+        void.fn_type(&[BasicMetadataTypeEnum::PointerType(i8_ptr)], false),
+        Some(inkwell::module::Linkage::External));
+    // mimi_future_set_completed(fut: i8*)
+    module.add_function("mimi_future_set_completed",
+        void.fn_type(&[BasicMetadataTypeEnum::PointerType(i8_ptr)], false),
+        Some(inkwell::module::Linkage::External));
+    // mimi_future_is_completed(fut: i8*) -> i32
+    module.add_function("mimi_future_is_completed",
+        i32.fn_type(&[BasicMetadataTypeEnum::PointerType(i8_ptr)], false),
+        Some(inkwell::module::Linkage::External));
 }
 
 pub fn is_builtin(name: &str) -> bool {
