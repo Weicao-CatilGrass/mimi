@@ -103,6 +103,8 @@ pub enum Errno {
     ENOTEMPTY,
     #[error("ELOOP (code 40): Too many symbolic links")]
     ELOOP,
+    #[error("EWOULDBLOCK (code 41): Operation would block (alias for EAGAIN on Linux)")]
+    EWOULDBLOCK,
     #[error("ENOMSG (code 42): No message of desired type")]
     ENOMSG,
     #[error("EIDRM (code 43): Identifier removed")]
@@ -135,6 +137,8 @@ pub enum Errno {
     EBADRQC,
     #[error("EBADSLT (code 57): Invalid slot")]
     EBADSLT,
+    #[error("ENOATOM (code 58): Atom does not exist (platform-specific; not used on Linux)")]
+    ENOATOM,
     #[error("EBFONT (code 59): Bad font file format")]
     EBFONT,
     #[error("ENOSTR (code 60): Device not a stream")]
@@ -343,6 +347,7 @@ impl Errno {
             38 => Self::ENOSYS,
             39 => Self::ENOTEMPTY,
             40 => Self::ELOOP,
+            41 => Self::EWOULDBLOCK,
             42 => Self::ENOMSG,
             43 => Self::EIDRM,
             44 => Self::ECHRNG,
@@ -359,6 +364,7 @@ impl Errno {
             55 => Self::ENOANO,
             56 => Self::EBADRQC,
             57 => Self::EBADSLT,
+            58 => Self::ENOATOM,
             59 => Self::EBFONT,
             60 => Self::ENOSTR,
             61 => Self::ENODATA,
@@ -491,6 +497,7 @@ impl Errno {
             Self::ENOSYS => 38,
             Self::ENOTEMPTY => 39,
             Self::ELOOP => 40,
+            Self::EWOULDBLOCK => 41,
             Self::ENOMSG => 42,
             Self::EIDRM => 43,
             Self::ECHRNG => 44,
@@ -507,6 +514,7 @@ impl Errno {
             Self::ENOANO => 55,
             Self::EBADRQC => 56,
             Self::EBADSLT => 57,
+            Self::ENOATOM => 58,
             Self::EBFONT => 59,
             Self::ENOSTR => 60,
             Self::ENODATA => 61,
