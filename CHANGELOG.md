@@ -1,6 +1,17 @@
 # Changelog
 
-## [Unreleased] — 0.16.0-dev
+## [Unreleased] — 0.17.0-dev
+
+### Added
+- (none yet)
+
+### Fixed
+- (none yet)
+
+### Security
+- (none yet)
+
+## [0.16.0] - 2026-06-23
 
 ### Added
 - 效果系统 cap 交叉验证：`with` 效果名须对应已声明的 `cap`
