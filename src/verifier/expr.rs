@@ -50,8 +50,7 @@ impl crate::verifier::Verifier {
                 let else_z3 = else_
                     .as_ref()
                     .and_then(|b| block_tail_expr(b))
-                    .and_then(|e| self.expr_to_z3_int(&e, vars))
-                    .unwrap_or_else(|| Z3Int::from_i64(0));
+                    .and_then(|e| self.expr_to_z3_int(&e, vars))?;
                 Some(cond_z3.ite(&then_z3, &else_z3))
             }
             _ => None,
@@ -157,8 +156,7 @@ impl crate::verifier::Verifier {
                 let else_z3 = else_
                     .as_ref()
                     .and_then(|b| block_tail_expr(b))
-                    .and_then(|e| self.expr_to_z3_real(&e, vars))
-                    .unwrap_or_else(|| Z3Real::from_int(&Z3Int::from_i64(0)));
+                    .and_then(|e| self.expr_to_z3_real(&e, vars))?;
                 Some(cond_z3.ite(&then_z3, &else_z3))
             }
             _ => None,
@@ -308,8 +306,7 @@ impl crate::verifier::Verifier {
                 let else_z3 = else_
                     .as_ref()
                     .and_then(|b| block_tail_expr(b))
-                    .and_then(|e| self.expr_to_z3_bool(&e, vars))
-                    .unwrap_or_else(|| Z3Bool::from_bool(true));
+                    .and_then(|e| self.expr_to_z3_bool(&e, vars))?;
                 Some(cond_z3.ite(&then_z3, &else_z3))
             }
             _ => None,
@@ -325,8 +322,18 @@ impl crate::verifier::Verifier {
                     let old_name = format!("old_{}", name);
                     vars.is_real(&old_name)
                 } else {
-                    false
+                    // Handle old(p.x) — use field_var_name for nested access
+                    let old_name = format!("old_{}", self.field_var_name(inner));
+                    vars.is_real(&old_name)
                 }
+            }
+            Expr::Field(obj, field) => {
+                let key = format!("{}_{}", self.field_var_name(obj), field);
+                vars.is_real(&key)
+            }
+            Expr::TupleIndex(obj, idx) => {
+                let key = format!("{}_t{}", self.field_var_name(obj), idx);
+                vars.is_real(&key)
             }
             Expr::Binary(_, lhs, rhs) => {
                 self.is_real_expr(lhs, vars) || self.is_real_expr(rhs, vars)

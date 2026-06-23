@@ -257,7 +257,10 @@ impl super::Verifier {
 
 fn substitute_args(expr: &Expr, params: &[ExternParam], args: &[Expr]) -> Expr {
     if params.len() != args.len() {
-        return expr.clone();
+        // Mismatch: return false to fail closed (safe side) rather than
+        // silently using un-substituted expressions (which could pass a
+        // constraint that was meant to refer to different variables).
+        return Expr::Literal(Lit::Bool(false));
     }
     match expr {
         Expr::Ident(name) => {
