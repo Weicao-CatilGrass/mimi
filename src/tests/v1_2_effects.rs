@@ -86,3 +86,5 @@ func main() -> i32 {
     let result = check_source(src);
     assert!(result.is_ok(), "expected success when chaining with-cap functions: {:?}", result);
 }
+
+
