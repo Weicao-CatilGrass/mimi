@@ -2,6 +2,7 @@ use crate::ast::{Expr, File};
 use crate::diagnostic::Diagnostic;
 use std::collections::HashMap;
 use z3::ast::{Bool as Z3Bool, Int as Z3Int, Real as Z3Real};
+use z3::ast::String as Z3String;
 use z3::SatResult;
 use z3::Solver;
 
@@ -38,6 +39,9 @@ pub(crate) struct Z3VarMap {
     pub(crate) string_nonempty: HashMap<String, Z3Bool>,
     /// String length variables: s_len = Z3Int for each string param.
     pub(crate) string_len: HashMap<String, Z3Int>,
+    /// Z3 string theory variables for string params. Enables string equality,
+    /// contains, at, and other native Z3 string operations.
+    pub(crate) string_vars: HashMap<String, Z3String>,
 }
 
 impl Z3VarMap {
@@ -47,6 +51,7 @@ impl Z3VarMap {
             real_vars: HashMap::new(),
             string_nonempty: HashMap::new(),
             string_len: HashMap::new(),
+            string_vars: HashMap::new(),
         }
     }
 
@@ -85,6 +90,16 @@ impl Z3VarMap {
     #[inline]
     pub(crate) fn get_string_len(&self, name: &str) -> Option<&Z3Int> {
         self.string_len.get(name)
+    }
+
+    /// Register a Z3 string theory variable for a string parameter.
+    pub(crate) fn insert_string_var(&mut self, name: impl Into<String>, var: Z3String) {
+        self.string_vars.insert(name.into(), var);
+    }
+
+    #[inline]
+    pub(crate) fn get_string_var(&self, name: &str) -> Option<&Z3String> {
+        self.string_vars.get(name)
     }
 
     #[inline]
