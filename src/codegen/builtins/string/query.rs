@@ -1,5 +1,5 @@
 use crate::codegen::CodeGenerator;
-use inkwell::types::BasicMetadataTypeEnum;
+use inkwell::types::{BasicMetadataTypeEnum, BasicTypeEnum};
 use crate::codegen::CallSiteValueExt;
 use inkwell::values::{BasicMetadataValueEnum, BasicValueEnum};
 use crate::error::{CompileError, MimiResult};
@@ -309,7 +309,37 @@ impl<'ctx> CodeGenerator<'ctx> {
                     .map_err(|e| CompileError::LlvmError(format!("ptr_to_int error: {}", e)))?;
                 let idx = self.builder.build_int_sub(found_int, s_int, "index")
                     .map_err(|e| CompileError::LlvmError(format!("sub error: {}", e)))?;
-                Ok(idx.into())
+                // Wrap in Option<i32> = {i1 disc, i32 payload}
+                let bool_ty = self.context.bool_type();
+                let i32_ty = self.context.i32_type();
+                // Check if strstr returned NULL (not found)
+                let null = i8_ptr.const_null();
+                let is_null = self.builder.build_is_null(found, "is_null")
+                    .map_err(|e| CompileError::LlvmError(format!("is_null: {}", e)))?;
+                let disc = self.builder.build_select(is_null, bool_ty.const_int(0, false), bool_ty.const_int(1, false), "opt_disc")
+                    .map_err(|e| CompileError::LlvmError(format!("select: {}", e)))?
+                    .into_int_value();
+                let payload = self.builder.build_int_truncate(idx, i32_ty, "opt_payload")
+                    .map_err(|e| CompileError::LlvmError(format!("trunc: {}", e)))?;
+                let opt_ty = self.context.struct_type(&[
+                    BasicTypeEnum::IntType(bool_ty),
+                    BasicTypeEnum::IntType(i32_ty),
+                ], false);
+                let opt_alloca = self.builder.build_alloca(
+                    BasicTypeEnum::StructType(opt_ty), "opt_alloca",
+                ).map_err(|e| CompileError::LlvmError(format!("alloca: {}", e)))?;
+                let disc_gep = self.gep().build_struct_gep(opt_ty, opt_alloca, 0, "disc_gep")
+                    .map_err(|e| CompileError::LlvmError(format!("disc_gep: {}", e)))?;
+                self.builder.build_store(disc_gep, BasicValueEnum::IntValue(disc))
+                    .map_err(|e| CompileError::LlvmError(format!("disc store: {}", e)))?;
+                let payload_gep = self.gep().build_struct_gep(opt_ty, opt_alloca, 1, "payload_gep")
+                    .map_err(|e| CompileError::LlvmError(format!("payload_gep: {}", e)))?;
+                self.builder.build_store(payload_gep, BasicValueEnum::IntValue(payload))
+                    .map_err(|e| CompileError::LlvmError(format!("payload store: {}", e)))?;
+                let result = self.builder.build_load(
+                    BasicTypeEnum::StructType(opt_ty), opt_alloca, "opt_result",
+                ).map_err(|e| CompileError::LlvmError(format!("load opt: {}", e)))?;
+                Ok(result)
 
     }
 }

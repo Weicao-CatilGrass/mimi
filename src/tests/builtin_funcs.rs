@@ -349,8 +349,11 @@ func main() -> bool {
 fn builtin_str_index_of() {
     let src = r#"
 func main() -> i32 {
-    let (found, idx) = str_index_of("hello world", "world")
-    idx
+    let found = str_index_of("hello world", "world")
+    match found {
+        Some(idx) => idx,
+        None => -1,
+    }
 }
 "#;
     let v = run_source(src);

@@ -40,7 +40,7 @@ trait Str {
     func repeat(n: i32) -> string
     func char_at(index: i32) -> string
     func substring(start: i32, end: i32) -> string
-    func index_of(sub: string) -> i32
+    func index_of(sub: string) -> Option<i32>
 }
 
 impl Str for string {
@@ -56,7 +56,7 @@ impl Str for string {
     func repeat(n: i32) -> string { str_repeat(self, n) }
     func char_at(index: i32) -> string { str_char_at(self, index) }
     func substring(start: i32, end: i32) -> string { str_substring(self, start, end) }
-    func index_of(sub: string) -> i32 { str_index_of(self, sub).1 }
+    func index_of(sub: string) -> Option<i32> { str_index_of(self, sub) }
 }
 
 func main() -> i32 {
@@ -192,12 +192,16 @@ func main() -> i32 {
 #[test]
 fn string_trait_index_of() {
     let src = r#"
-trait Str { func index_of(sub: string) -> i32 }
-impl Str for string { func index_of(sub: string) -> i32 { str_index_of(self, sub).1 } }
+trait Str { func index_of(sub: string) -> Option<i32> }
+impl Str for string { func index_of(sub: string) -> Option<i32> { str_index_of(self, sub) } }
 
 func main() -> i32 {
     let s = "hello world"
-    s.index_of("world")
+    let found = s.index_of("world")
+    match found {
+        Some(idx) => idx,
+        None => -1,
+    }
 }
 "#;
     let v = run_source(src);

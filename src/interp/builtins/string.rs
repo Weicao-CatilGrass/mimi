@@ -236,8 +236,8 @@ impl<'a> Interpreter<'a> {
         match (&args[0], &args[1]) {
             (Value::String(s), Value::String(sub)) => {
                 match s.find(sub.as_str()) {
-                    Some(idx) => Ok(Value::Tuple(vec![Value::Bool(true), Value::Int(idx as i64)])),
-                    None => Ok(Value::Tuple(vec![Value::Bool(false), Value::Int(-1)])),
+                    Some(idx) => Ok(Value::Variant("Some".into(), vec![Value::Int(idx as i64)])),
+                    None => Ok(Value::Variant("None".into(), vec![])),
                 }
             }
             _ => Err(InterpError::new("str_index_of expects (string, string)")),

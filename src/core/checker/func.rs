@@ -1,4 +1,5 @@
 use crate::ast::*;
+use crate::core::helpers::{fmt_type, is_numeric_coercion, same_type};
 use crate::diagnostic::codes;
 use crate::diagnostic::Diagnostic;
 use crate::span::Span;
@@ -66,6 +67,28 @@ impl<'a> Checker<'a> {
             );
         }
         self.check_block(&func.body, &ret, &mut scopes);
+        // Implicit return type check: last expression must match declared return type
+        if let Some(last_stmt) = func.body.last() {
+            if let Stmt::Expr(last_expr) = last_stmt {
+                let last_ty = self.infer_expr(last_expr, &mut scopes);
+                // Unwrap shared/aliasing wrappers for return type compatibility
+                let last_ty_clean = match &last_ty {
+                    Type::Shared(i) | Type::LocalShared(i) | Type::CShared(i) => (**i).clone(),
+                    _ => last_ty.clone(),
+                };
+                let type_ok = same_type(&ret, &last_ty_clean)
+                    || is_numeric_coercion(&ret, &last_ty_clean);
+                if !type_ok && !matches!(&ret, Type::Name(n, _) if n == "unit") {
+                    self.errors.push(
+                        Diagnostic::error_code(
+                            crate::diagnostic::codes::E0207,
+                            format!("implicit return: expected {}, found {}", fmt_type(&ret), fmt_type(&last_ty)),
+                            Span::single(self.current_line, self.current_col),
+                        ).with_help("the last expression in a function body is implicitly returned; make sure its type matches the declared return type")
+                    );
+                }
+            }
+        }
         // Check for unconsumed caps before popping
         self.check_unconsumed_caps();
         self.available_effects.pop();

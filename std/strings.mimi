@@ -14,7 +14,7 @@ trait Str {
     func repeat(n: i32) -> string
     func char_at(index: i32) -> string
     func substring(start: i32, end: i32) -> string
-    func index_of(sub: string) -> i32
+    func index_of(sub: string) -> Option<i32>
 }
 
 // Str implementation for built-in string type.
@@ -39,7 +39,7 @@ impl Str for string {
     func repeat(n: i32) -> string { str_repeat(self, n) }
     func char_at(index: i32) -> string { str_char_at(self, index) }
     func substring(start: i32, end: i32) -> string { str_substring(self, start, end) }
-    func index_of(sub: string) -> i32 { str_index_of(self, sub).1 }
+    func index_of(sub: string) -> Option<i32> { str_index_of(self, sub) }
 }
 
 // is_empty: Returns true if s has length 0.
@@ -102,8 +102,8 @@ pub func repeat(s: string, n: i32) -> string {
     str_repeat(s, n)
 }
 
-// index_of: Returns (true, pos) if sub is found in s, else (false, -1).
-pub func index_of(s: string, sub: string) -> (bool, i32) {
+// index_of: Returns Some(pos) if sub is found in s, else None.
+pub func index_of(s: string, sub: string) -> Option<i32> {
     str_index_of(s, sub)
 }
 
@@ -326,11 +326,12 @@ pub func count_substring(s: string, sub: string) -> i32 {
     let cs_sl = len(sub)
     while cs_pos < len(s) {
         let cs_found = str_index_of(str_substring(s, cs_pos, len(s)), sub)
-        if cs_found.0 {
-            cs_cnt += 1
-            cs_pos = cs_pos + cs_found.1 + cs_sl
-        } else {
-            break
+        match cs_found {
+            Some(cs_idx) => {
+                cs_cnt += 1
+                cs_pos = cs_pos + cs_idx + cs_sl
+            }
+            None => { break }
         }
     }
     cs_cnt
