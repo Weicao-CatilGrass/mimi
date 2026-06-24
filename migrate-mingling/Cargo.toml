@@ -1,0 +1,21 @@
+[package]
+name = "mimisub"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+mimi = { path = ".." }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[dependencies.mingling]
+git = "https://github.com/mingling-rs/mingling"
+rev = "85e5792e2d0b0c75eb4044c0450d60c07370afa4"
+features = [
+    "dispatch_tree",
+    "extra_macros",
+    "clap",
+    "general_renderer",
+    "parser",
+]
