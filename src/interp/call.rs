@@ -797,6 +797,8 @@ impl<'a> Interpreter<'a> {
                     ("Some", "map_err") => Ok(obj.clone()),
                     ("None", "map_err") => Ok(Value::Variant("None".into(), vec![])),
 
+                    (_, "to_string") => Ok(Value::String(self.value_to_debug_string(obj))),
+
                     _ => Err(InterpError::new(format!("variant '{}' has no method '{}'", name, method))),
                 }
             }

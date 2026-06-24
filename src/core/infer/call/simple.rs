@@ -24,8 +24,8 @@ impl<'a> Checker<'a> {
                 return Type::Name("unit".into(), vec![]);
             }
             "assert" => {
-                if args.len() != 1 {
-                    self.emit_code(crate::diagnostic::codes::E0242, "assert expects 1 argument");
+                if args.len() != 1 && args.len() != 2 {
+                    self.emit_code(crate::diagnostic::codes::E0242, "assert expects 1 or 2 arguments (condition, optional message)");
                 } else {
                     let t = self.infer_expr(&args[0], scopes);
                     if !is_bool(&t) {
@@ -33,6 +33,13 @@ impl<'a> Checker<'a> {
                             crate::diagnostic::codes::E0242,
                             format!("assert expects bool, found {}", fmt_type(&t)),
                         );
+                    }
+                    if args.len() == 2 {
+                        let msg_ty = self.infer_expr(&args[1], scopes);
+                        if !crate::core::helpers::is_string(&msg_ty) {
+                            self.emit_code(crate::diagnostic::codes::E0242,
+                                format!("assert message must be a string, found {}", fmt_type(&msg_ty)));
+                        }
                     }
                 }
                 return Type::Name("unit".into(), vec![]);

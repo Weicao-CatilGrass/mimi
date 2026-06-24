@@ -10,8 +10,14 @@ impl Parser {
             self.advance();
             path.push(self.expect_ident()?);
         }
+        let alias = if self.at(&TokenKind::As) {
+            self.advance();
+            Some(self.expect_ident()?)
+        } else {
+            None
+        };
         self.match_semi();
-        Ok(Import { path })
+        Ok(Import { path, alias })
     }
 
     pub(crate) fn parse_item(&mut self) -> Result<Item, ParseError> {

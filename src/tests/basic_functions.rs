@@ -313,3 +313,58 @@ func main() -> string {
     let v = run_source(src);
     assert_eq!(v, interp::Value::String("(0,5)".to_string()));
 }
+
+#[test]
+fn interp_assert_with_message() {
+    let src = r#"
+func main() -> i32 {
+    assert(true, "this should pass")
+    42
+}
+"#;
+    let v = run_source(src);
+    assert_eq!(v, interp::Value::Int(42));
+}
+
+#[test]
+fn interp_for_over_string() {
+    let src = r#"
+func main() -> string {
+    let mut result = ""
+    for c in "abc" {
+        result = result + c
+    }
+    result
+}
+"#;
+    let v = run_source(src);
+    assert_eq!(v, interp::Value::String("abc".to_string()));
+}
+
+#[test]
+fn interp_for_over_set() {
+    let src = r#"
+func main() -> i32 {
+    let mut sum = 0
+    for x in {1, 2, 3} {
+        sum = sum + x
+    }
+    sum
+}
+"#;
+    let v = run_source(src);
+    assert_eq!(v, interp::Value::Int(6));
+}
+
+#[test]
+fn interp_use_alias() {
+    // use with alias — just test it parses and type-checks
+    let src = r#"
+use strings as str;
+
+func main() -> i32 {
+    42
+}
+"#;
+    check_source(src).expect("use with alias should type-check");
+}

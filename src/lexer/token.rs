@@ -74,6 +74,7 @@ pub enum TokenKind {
     Or,
     Not,
     Loop,
+    As,
 
     // Types
     Nothing,
@@ -256,6 +257,7 @@ impl fmt::Display for TokenKind {
             TokenKind::Bang => "!",
             TokenKind::PipeArrow => "|>",
             TokenKind::Loop => "loop",
+            TokenKind::As => "as",
             TokenKind::Ellipsis => "...",
             TokenKind::At => "@",
             TokenKind::Hash => "#",
@@ -388,6 +390,7 @@ impl TokenKind {
             TokenKind::Bang => "!",
             TokenKind::PipeArrow => "|>",
             TokenKind::Loop => "loop",
+            TokenKind::As => "as",
             TokenKind::Ellipsis => "...",
             TokenKind::At => "@",
             TokenKind::Hash => "#",

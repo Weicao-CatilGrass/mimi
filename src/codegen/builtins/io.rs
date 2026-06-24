@@ -146,8 +146,8 @@ impl<'ctx> CodeGenerator<'ctx> {
         &self,
         args: &[BasicMetadataValueEnum<'ctx>],
     ) -> MimiResult<BasicValueEnum<'ctx>> {
-                if args.len() != 1 {
-                    return Err(CompileError::WrongArgCount("assert expects 1 argument".to_string()));
+                if args.is_empty() || args.len() > 2 {
+                    return Err(CompileError::WrongArgCount("assert expects 1 or 2 arguments (condition, optional message)".to_string()));
                 }
                 let cond = match args[0] {
                     BasicMetadataValueEnum::IntValue(iv) => iv,
@@ -160,14 +160,27 @@ impl<'ctx> CodeGenerator<'ctx> {
                     .map_err(|e| CompileError::LlvmError(format!("branch error: {}", e)))?;
 
                 self.builder.position_at_end(fail_bb);
-                let fmt_global = self.builder.build_global_string_ptr("assertion failed\n", "assert_msg")
-                    .map_err(|e| CompileError::LlvmError(format!("fmt error: {}", e)))?;
                 let printf = self.module.get_function("printf")
                     .ok_or_else(|| "printf not declared".to_string())?;
-                self.builder.build_call(printf, &[
-                    BasicMetadataValueEnum::PointerValue(fmt_global.as_pointer_value()),
-                ], "assert_printf")
-                    .map_err(|e| CompileError::LlvmError(format!("printf error: {}", e)))?;
+                if args.len() == 2 {
+                    // Use custom message
+                    let msg_ptr = match args[1] {
+                        BasicMetadataValueEnum::PointerValue(pv) => pv,
+                        _ => return Err(CompileError::TypeMismatch(
+                            "assert message argument must be a string pointer".to_string())),
+                    };
+                    self.builder.build_call(printf, &[
+                        BasicMetadataValueEnum::PointerValue(msg_ptr),
+                    ], "assert_printf")
+                        .map_err(|e| CompileError::LlvmError(format!("printf error: {}", e)))?;
+                } else {
+                    let fmt_global = self.builder.build_global_string_ptr("assertion failed\n", "assert_msg")
+                        .map_err(|e| CompileError::LlvmError(format!("fmt error: {}", e)))?;
+                    self.builder.build_call(printf, &[
+                        BasicMetadataValueEnum::PointerValue(fmt_global.as_pointer_value()),
+                    ], "assert_printf")
+                        .map_err(|e| CompileError::LlvmError(format!("printf error: {}", e)))?;
+                }
                 let exit_fn = self.module.get_function("exit")
                     .ok_or_else(|| "exit not declared".to_string())?;
                 self.builder.build_call(exit_fn, &[

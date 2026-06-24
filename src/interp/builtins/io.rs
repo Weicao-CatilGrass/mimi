@@ -29,11 +29,19 @@ impl<'a> Interpreter<'a> {
 
     // === Assertions ===
     pub(crate) fn builtin_assert(&self, args: Vec<Value>) -> Result<Value, InterpError> {
-        if args.len() != 1 {
-            return Err(InterpError::new("assert expects 1 argument"));
+        if args.is_empty() || args.len() > 2 {
+            return Err(InterpError::new("assert expects 1 or 2 arguments (condition, optional message)"));
         }
+        let msg = if args.len() == 2 {
+            match &args[1] {
+                Value::String(s) => s.clone(),
+                other => format!("{}", other),
+            }
+        } else {
+            format!("{}", args[0])
+        };
         if !is_truthy(&args[0]) {
-            return Err(InterpError::new(format!("assertion failed: {}", args[0])));
+            return Err(InterpError::new(format!("assertion failed: {}", msg)));
         }
         Ok(Value::Unit)
     }

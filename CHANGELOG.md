@@ -1,6 +1,18 @@
 # Changelog
 
-## [Unreleased] — 0.22.7-dev
+## [Unreleased] — 0.22.8-dev
+
+### Added
+- `assert(cond, msg)` — 断言支持可选自定义消息（typeck/interp/codegen）
+- `use path::to::module as alias` — 模块导入别名（lexer/parser/checker）
+- `for c in "string"` — for 循环支持字符串遍历
+- `for x in {1, 2, 3}` — for 循环支持 Set 遍历
+- `for (k, v) in map` — for 循环支持 Map/Record 遍历
+- Record Display 统一格式: `TypeName { field: val }`（包含类型名）
+- Variant `to_string()` 方法支持
+- 4 个测试: assert_msg, for_string, for_set, use_alias
+
+## [v0.22.7] - 2026-06-24
 
 ### Added
 - 默认参数值: `func f(x: i32 = 0) { ... }` 支持带默认值的参数

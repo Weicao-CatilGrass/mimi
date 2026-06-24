@@ -201,6 +201,13 @@ impl<'a> Interpreter<'a> {
                 }
                 items
             }
+            Value::String(s) => {
+                s.chars().map(|c| Value::String(c.to_string())).collect::<Vec<_>>()
+            }
+            Value::Set(elems) => elems,
+            Value::Record(_, fields) => {
+                fields.iter().map(|(k, v)| Value::Tuple(vec![Value::String(k.clone()), v.clone()])).collect()
+            }
             other => return Err(InterpError::new(format!("cannot iterate over {}", other))),
         };
         for item in list {

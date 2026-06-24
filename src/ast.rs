@@ -9,6 +9,7 @@ pub struct File {
 #[derive(Debug, Clone)]
 pub struct Import {
     pub path: Vec<String>,
+    pub alias: Option<String>,
 }
 
 #[derive(Debug, Clone)]
