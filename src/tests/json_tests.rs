@@ -377,3 +377,105 @@ fn json_from_json_typed_nested_record() {
     "#);
     assert_eq!(v, interp::Value::String("Alice lives in NYC".into()));
 }
+
+// ─── Additional typed deserialization edge cases ───────────────
+
+#[test]
+fn json_from_json_typed_empty_list() {
+    let v = run_source(r#"
+        func main() -> i32 {
+            let nums = from_json::<List<i32>>("[]");
+            nums.len()
+        }
+    "#);
+    assert_eq!(v, interp::Value::Int(0));
+}
+
+#[test]
+fn json_from_json_typed_list_string() {
+    let v = run_source(r#"
+        func main() -> string {
+            let items = from_json::<List<string>>("[\"a\", \"b\", \"c\"]");
+            items[0] + items[1] + items[2]
+        }
+    "#);
+    assert_eq!(v, interp::Value::String("abc".into()));
+}
+
+#[test]
+fn json_from_json_typed_f64_negative() {
+    let v = run_source(r#"func main() -> f64 { from_json::<f64>("-1.5") }"#);
+    assert_eq!(v, interp::Value::Float(-1.5));
+}
+
+#[test]
+fn json_from_json_typed_f64_zero() {
+    let v = run_source(r#"func main() -> f64 { from_json::<f64>("0.0") }"#);
+    assert_eq!(v, interp::Value::Float(0.0));
+}
+
+#[test]
+fn json_from_json_typed_i32_negative() {
+    let v = run_source(r#"func main() -> i32 { from_json::<i32>("-42") }"#);
+    assert_eq!(v, interp::Value::Int(-42));
+}
+
+#[test]
+fn json_from_json_typed_record_with_list() {
+    let v = run_source(r#"
+        type Team { name: string, members: List<string> }
+        func main() -> string {
+            let t = from_json::<Team>("{\"name\": \"dev\", \"members\": [\"A\", \"B\"]}");
+            t.name + ": " + t.members[0] + ", " + t.members[1]
+        }
+    "#);
+    assert_eq!(v, interp::Value::String("dev: A, B".into()));
+}
+
+#[test]
+fn json_from_json_typed_enum_unit_variant() {
+    let v = run_source(r#"
+        type Color { Red, Green, Blue }
+        func main() -> string {
+            let c = from_json::<Color>("\"Red\"");
+            type_name(c)
+        }
+    "#);
+    assert_eq!(v, interp::Value::String("Red".into()));
+}
+
+#[test]
+fn json_from_json_typed_enum_with_payload() {
+    let v = run_source(r#"
+        type Shape { Circle(f64), Rect(f64, f64) }
+        func main() -> f64 {
+            let s = from_json::<Shape>("{\"Circle\": 2.5}");
+            // Pattern match would be ideal but checker may not support it
+            // Just verify it deserializes without error
+            1.0
+        }
+    "#);
+    assert_eq!(v, interp::Value::Float(1.0));
+}
+
+#[test]
+fn json_from_json_typed_invalid_json_error() {
+    let result = run_source_result(r#"func main() -> i32 { from_json::<i32>("not json") }"#);
+    assert!(result.is_err());
+    let err = result.unwrap_err();
+    assert!(err.contains("JSON parse error") || err.contains("from_json"), "error: {}", err);
+}
+
+#[test]
+fn json_from_json_typed_type_mismatch_string_as_int() {
+    let result = run_source_result(r#"func main() -> i32 { from_json::<i32>("\"hello\"") }"#);
+    assert!(result.is_err());
+    let err = result.unwrap_err();
+    assert!(err.contains("expected integer"), "error: {}", err);
+}
+
+#[test]
+fn json_from_json_untyped_backward_compat() {
+    let v = run_source(r#"func main() -> string { from_json("\"hello\"") }"#);
+    assert_eq!(v, interp::Value::String("\"hello\"".into()));
+}
