@@ -283,6 +283,11 @@ pub(crate) fn collect_idents_in_stmt(stmt: &Stmt, idents: &mut Vec<String>) {
                 collect_idents_in_stmt(s, idents);
             }
         }
+        Stmt::Loop(body) => {
+            for s in body {
+                collect_idents_in_stmt(s, idents);
+            }
+        }
         Stmt::Block(block)
         | Stmt::Arena(block)
         | Stmt::OnFailure(block)
