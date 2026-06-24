@@ -313,4 +313,49 @@ impl<'a> Checker<'a> {
             }
         }
     }
+
+    pub(in crate::core) fn check_set_method(
+        &mut self,
+        method: &str,
+        inner: &Type,
+        args: &[Expr],
+        scopes: &mut Vec<HashMap<String, Type>>,
+    ) -> Type {
+        match method {
+            "size" | "len" => Type::Name("i32".into(), vec![]),
+            "is_empty" | "contains" => Type::Name("bool".into(), vec![]),
+            "insert" | "remove" => {
+                if args.len() != 1 {
+                    self.emit_code(
+                        crate::diagnostic::codes::E0242,
+                        format!("set.{} expects 1 argument", method),
+                    );
+                } else {
+                    let arg_ty = self.infer_expr(&args[0], scopes);
+                    if !same_type(&arg_ty, inner) {
+                        self.emit_code(
+                            crate::diagnostic::codes::E0242,
+                            format!(
+                                "set.{} expected element type {}, found {}",
+                                method,
+                                fmt_type(inner),
+                                fmt_type(&arg_ty)
+                            ),
+                        );
+                    }
+                }
+                Type::Name("Set".into(), vec![(*inner).clone()])
+            }
+            "to_list" => {
+                Type::Name("List".into(), vec![(*inner).clone()])
+            }
+            _ => {
+                self.emit_code(
+                    crate::diagnostic::codes::E0242,
+                    format!("Set<{}> has no method '{}'", fmt_type(inner), method),
+                );
+                Type::Name("unknown".into(), vec![])
+            }
+        }
+    }
 }

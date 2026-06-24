@@ -108,6 +108,10 @@ impl<'a> Interpreter<'a> {
                 let is_: Vec<String> = items.iter().map(|i| self.value_to_debug_string(i)).collect();
                 format!("[{}]", is_.join(", "))
             }
+            Value::Set(items) => {
+                let is_: Vec<String> = items.iter().map(|i| self.value_to_debug_string(i)).collect();
+                format!("Set{{{}}}", is_.join(", "))
+            }
             Value::Tuple(items) => {
                 let ts: Vec<String> = items.iter().map(|i| self.value_to_debug_string(i)).collect();
                 format!("({})", ts.join(", "))

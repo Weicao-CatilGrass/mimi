@@ -322,6 +322,10 @@ impl Parser {
                 if let Some(entries) = self.try_parse_map_literal() {
                     return self.parse_postfix(Expr::MapLiteral { entries });
                 }
+                // Try to parse as set literal {1, 2, 3, ...}
+                if let Some(elems) = self.try_parse_set_literal() {
+                    return self.parse_postfix(Expr::SetLiteral(elems));
+                }
                 let block = self.parse_block()?;
                 return self.parse_postfix(Expr::Block(block));
             }
@@ -691,6 +695,55 @@ impl Parser {
         }
         self.advance(); // consume '}'
         Some(entries)
+    }
+
+    /// Try to parse a set literal `{expr, expr, ...}` from the current position.
+    /// Returns None if the token stream doesn't start a set literal (fallback to block parsing).
+    /// Disambiguation: `{expr}` is always a block; `{expr, ...}` with 2+ elements is a set.
+    fn try_parse_set_literal(&mut self) -> Option<Vec<Expr>> {
+        let saved = self.pos;
+        let saved_depth = self.recursion_depth.get();
+        // Quick check for stmt-start keyword or closing brace
+        let first = self.peek_kind().clone();
+        if is_stmt_start_keyword(&first) || matches!(first, TokenKind::RBrace) {
+            return None;
+        }
+        // Parse first expression
+        let first_elem = match self.parse_expr(0) {
+            Ok(e) => e,
+            Err(_) => { self.pos = saved; self.recursion_depth.set(saved_depth); return None; }
+        };
+        // Must have a comma to be a set literal (single expr is block)
+        if !self.at(&TokenKind::Comma) {
+            self.pos = saved;
+            self.recursion_depth.set(saved_depth);
+            return None;
+        }
+        self.advance(); // consume ','
+        let mut elems = vec![first_elem];
+        // Parse remaining elements
+        loop {
+            self.skip_newlines();
+            if self.at(&TokenKind::RBrace) {
+                break; // trailing comma ok
+            }
+            match self.parse_expr(0) {
+                Ok(e) => elems.push(e),
+                Err(_) => { self.pos = saved; self.recursion_depth.set(saved_depth); return None; }
+            }
+            self.skip_newlines();
+            if self.at(&TokenKind::Comma) {
+                self.advance();
+            } else if self.at(&TokenKind::RBrace) {
+                break;
+            } else {
+                self.pos = saved;
+                self.recursion_depth.set(saved_depth);
+                return None;
+            }
+        }
+        self.advance(); // consume '}'
+        Some(elems)
     }
 }
 

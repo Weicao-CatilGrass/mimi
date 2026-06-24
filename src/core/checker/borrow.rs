@@ -150,6 +150,11 @@ impl<'a> Checker<'a> {
                     Self::collect_uses_in_expr(v, uses);
                 }
             }
+            Expr::SetLiteral(elems) => {
+                for e in elems {
+                    Self::collect_uses_in_expr(e, uses);
+                }
+            }
         }
     }
 

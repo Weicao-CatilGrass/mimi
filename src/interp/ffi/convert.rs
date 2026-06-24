@@ -450,7 +450,7 @@ impl<'a> Interpreter<'a> {
                         .to_string()
                 )
             }
-            Value::Record(_, _) | Value::Variant(_, _) | Value::List(_) | Value::Tuple(_) => {
+            Value::Record(_, _) | Value::Variant(_, _) | Value::List(_) | Value::Tuple(_) | Value::Set(_) => {
                 Errno::Generic(format!(
                     "FFI safety: unsupported argument type '{}' for extern function call. \
                      Only scalar types (i32/i64/f64/bool) and borrowed strings are allowed. \
@@ -483,6 +483,10 @@ impl<'a> Interpreter<'a> {
             Value::String(s) => Ok(serde_json::Value::String(s.clone())),
             Value::Unit => Ok(serde_json::Value::Null),
             Value::List(items) => {
+                let arr: Result<Vec<_>, _> = items.iter().map(|i| self.value_to_json(i)).collect();
+                Ok(serde_json::Value::Array(arr?))
+            }
+            Value::Set(items) => {
                 let arr: Result<Vec<_>, _> = items.iter().map(|i| self.value_to_json(i)).collect();
                 Ok(serde_json::Value::Array(arr?))
             }

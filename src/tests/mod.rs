@@ -74,6 +74,7 @@ pub(crate) mod property;
 
 // === JSON test modules ===
 pub(crate) mod json_tests;
+pub(crate) mod set_tests;
 
 // === CODEGEN test modules ===
 pub(crate) mod codegen_e2e;

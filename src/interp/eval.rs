@@ -206,6 +206,7 @@ impl<'a> Interpreter<'a> {
             Expr::TypeInfo(ty) => self.eval_type_info(ty),
             Expr::Range { start, end } => self.eval_range(start, end),
             Expr::MapLiteral { entries } => self.eval_map_literal(entries),
+            Expr::SetLiteral(elems) => self.eval_set_literal(elems),
         }
     }
 }
