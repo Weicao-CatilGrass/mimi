@@ -10,8 +10,11 @@ impl<'a> Checker<'a> {
     pub(crate) fn collect_decls(&mut self) {
         // Process imports: add module names to use_imports
         for import in &self.file.imports {
-            if let Some(module_name) = import.path.first() {
-                self.use_imports.push(module_name.clone());
+            let module_name = import.alias.as_deref()
+                .or_else(|| import.path.first().map(|s| s.as_str()))
+                .map(|s| s.to_string());
+            if let Some(name) = module_name {
+                self.use_imports.push(name);
             }
         }
         for item in &self.file.items {

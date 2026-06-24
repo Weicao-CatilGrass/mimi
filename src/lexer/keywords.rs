@@ -23,6 +23,7 @@ pub fn is_keyword_kind(kind: &TokenKind) -> bool {
         TokenKind::Spawn | TokenKind::Await | TokenKind::Quote | TokenKind::Old |
         TokenKind::Nothing |
         TokenKind::Loop |
+        TokenKind::As |
         TokenKind::True | TokenKind::False | TokenKind::Unit
     )
 }
@@ -88,6 +89,7 @@ pub fn keyword_or_ident(name: &str) -> TokenKind {
         "or" => TokenKind::Or,
         "not" => TokenKind::Not,
         "loop" => TokenKind::Loop,
+        "as" => TokenKind::As,
         "true" => TokenKind::True,
         "false" => TokenKind::False,
         "unit" => TokenKind::Unit,

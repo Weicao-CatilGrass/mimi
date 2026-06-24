@@ -377,9 +377,14 @@ impl<'a> Checker<'a> {
                 let elem_ty = match &it {
                     Type::Name(n, args) if n == "List" && args.len() == 1 => args[0].clone(),
                     Type::Name(n, _) if n == "Range" => Type::Name("i32".into(), vec![]),
+                    Type::Name(n, _) if n == "string" => Type::Name("string".into(), vec![]),
+                    Type::Name(n, args) if n == "Set" && args.len() == 1 => args[0].clone(),
+                    Type::Name(n, _) if n == "Map" || n == "Record" => {
+                        Type::Tuple(vec![Type::Name("string".into(), vec![]), Type::Name("Any".into(), vec![])])
+                    }
                     _ => {
                         self.emit_code(crate::diagnostic::codes::E0212, format!(
-                            "for loop requires a List or Range, found {}",
+                            "for loop requires a List, Range, string, Set, or Map, found {}",
                             fmt_type(&it)
                         ));
                         Type::Name("unknown".into(), vec![])

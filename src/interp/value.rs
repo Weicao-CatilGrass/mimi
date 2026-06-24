@@ -531,15 +531,20 @@ impl std::fmt::Display for Value {
                 }
                 write!(f, ")")
             }
-            Value::Record(_, fields) => {
-                write!(f, "{{")?;
-                let mut first = true;
-                for (k, v) in fields.iter() {
-                    if !first { write!(f, ", ")?; }
-                    first = false;
-                    write!(f, "{}: {}", k, v)?;
+            Value::Record(type_name, fields) => {
+                let name = type_name.as_deref().unwrap_or("Record");
+                if fields.is_empty() {
+                    write!(f, "{} {{}}", name)
+                } else {
+                    write!(f, "{} {{ ", name)?;
+                    let mut first = true;
+                    for (k, v) in fields.iter() {
+                        if !first { write!(f, ", ")?; }
+                        first = false;
+                        write!(f, "{}: {}", k, v)?;
+                    }
+                    write!(f, " }}")
                 }
-                write!(f, "}}")
             }
             Value::Future(_) => write!(f, "Future(...)"),
             Value::Error(msg) => write!(f, "Error({})", msg),
