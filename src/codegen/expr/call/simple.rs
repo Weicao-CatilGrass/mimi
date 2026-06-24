@@ -391,30 +391,48 @@ impl<'ctx> CodeGenerator<'ctx> {
         // Convert function pointers to closure structs when the parameter type
         // expects func(T) -> U. Named functions are compiled as i8* pointers,
         // but func(T) -> U parameters expect {i8*, i8*} closure structs.
-        if let Some(fdef) = self.func_defs.get(name) {
-            for (i, arg) in compiled_args.iter_mut().enumerate() {
-                if i < fdef.params.len() {
-                    if matches!(&fdef.params[i].ty, Type::Func(_, _)) {
-                        if let BasicValueEnum::PointerValue(pv) = arg {
-                            let closure_ty = crate::codegen::types::closure_struct_type(self.context);
-                            let closure_alloca = self.builder.build_alloca(
-                                BasicTypeEnum::StructType(closure_ty), "closure_arg",
-                            ).map_err(|e| CompileError::LlvmError(format!("closure alloca: {}", e)))?;
-                            let fn_gep = self.gep().build_struct_gep(closure_ty, closure_alloca, 0, "fn_gep")
-                                .map_err(|e| CompileError::LlvmError(format!("fn gep: {}", e)))?;
-                            self.builder.build_store(fn_gep, *pv)
-                                .map_err(|e| CompileError::LlvmError(format!("fn store: {}", e)))?;
-                            let env_gep = self.gep().build_struct_gep(closure_ty, closure_alloca, 1, "env_gep")
-                                .map_err(|e| CompileError::LlvmError(format!("env gep: {}", e)))?;
-                            let null_i8 = self.context.ptr_type(inkwell::AddressSpace::default()).const_null();
-                            self.builder.build_store(env_gep, BasicValueEnum::PointerValue(null_i8))
-                                .map_err(|e| CompileError::LlvmError(format!("env store: {}", e)))?;
-                            let loaded = self.builder.build_load(
-                                BasicTypeEnum::StructType(closure_ty), closure_alloca, "closure_loaded",
-                            ).map_err(|e| CompileError::LlvmError(format!("load closure: {}", e)))?;
-                            *arg = loaded;
-                        }
+        // For named functions, generate a thunk wrapper that accepts the closure
+        // ABI (env_ptr as first param) and forwards to the original function.
+        let fn_names_for_wrapping: Vec<Option<String>> = self.func_defs.get(name).map(|fdef| {
+            args.iter().enumerate().map(|(i, arg_expr)| {
+                if i < fdef.params.len() && matches!(&fdef.params[i].ty, Type::Func(_, _)) {
+                    if let Expr::Ident(fn_name) = arg_expr {
+                        return Some(fn_name.clone());
                     }
+                }
+                None
+            }).collect()
+        }).unwrap_or_default();
+        // Create wrappers outside the func_defs borrow
+        let mut wrapper_cache: Vec<Option<inkwell::values::PointerValue<'ctx>>> = Vec::new();
+        for fn_name_opt in &fn_names_for_wrapping {
+            if let Some(fn_name) = fn_name_opt {
+                wrapper_cache.push(Some(self.get_or_create_closure_wrapper(fn_name)?));
+            } else {
+                wrapper_cache.push(None);
+            }
+        }
+        // Apply wrappers to compiled_args
+        for (i, arg) in compiled_args.iter_mut().enumerate() {
+            if let Some(Some(wrapper)) = wrapper_cache.get(i) {
+                if let BasicValueEnum::PointerValue(_pv) = arg {
+                    let closure_ty = crate::codegen::types::closure_struct_type(self.context);
+                    let closure_alloca = self.builder.build_alloca(
+                        BasicTypeEnum::StructType(closure_ty), "closure_arg",
+                    ).map_err(|e| CompileError::LlvmError(format!("closure alloca: {}", e)))?;
+                    let fn_gep = self.gep().build_struct_gep(closure_ty, closure_alloca, 0, "fn_gep")
+                        .map_err(|e| CompileError::LlvmError(format!("fn gep: {}", e)))?;
+                    self.builder.build_store(fn_gep, BasicValueEnum::PointerValue(*wrapper))
+                        .map_err(|e| CompileError::LlvmError(format!("fn store: {}", e)))?;
+                    let env_gep = self.gep().build_struct_gep(closure_ty, closure_alloca, 1, "env_gep")
+                        .map_err(|e| CompileError::LlvmError(format!("env gep: {}", e)))?;
+                    let null_i8 = self.context.ptr_type(inkwell::AddressSpace::default()).const_null();
+                    self.builder.build_store(env_gep, BasicValueEnum::PointerValue(null_i8))
+                        .map_err(|e| CompileError::LlvmError(format!("env store: {}", e)))?;
+                    let loaded = self.builder.build_load(
+                        BasicTypeEnum::StructType(closure_ty), closure_alloca, "closure_loaded",
+                    ).map_err(|e| CompileError::LlvmError(format!("load closure: {}", e)))?;
+                    *arg = loaded;
                 }
             }
         }
@@ -542,6 +560,83 @@ impl<'ctx> CodeGenerator<'ctx> {
             Err(msg.into())
         }
     }
+    /// Get or create a closure ABI wrapper for a named function.
+    /// Named functions compile with direct ABI `fn(params...) -> ret`, but when
+    /// passed as a `func(T) -> U` parameter, the caller expects the closure ABI
+    /// `fn(env_ptr: i8*, params...) -> ret`. This method generates a tiny wrapper
+    /// that ignores env_ptr and forwards all params to the original function.
+    pub(in crate::codegen) fn get_or_create_closure_wrapper(
+        &mut self,
+        name: &str,
+    ) -> Result<inkwell::values::PointerValue<'ctx>, CompileError> {
+        // Check cache first
+        if let Some(cached) = self.closure_wrappers.get(name) {
+            return Ok(*cached);
+        }
+
+        let orig_fn = self.module.get_function(name)
+            .ok_or_else(|| CompileError::Generic(format!("cannot create closure wrapper for unknown function '{}'", name)))?;
+        let fn_type = orig_fn.get_type();
+        let param_tys = fn_type.get_param_types();
+        let ret_ty = fn_type.get_return_type()
+            .ok_or_else(|| CompileError::Generic(format!("closure wrapper: function '{}' has void return type", name)))?;
+
+        let i8_ptr = self.context.ptr_type(inkwell::AddressSpace::default());
+
+        // Build wrapper function type: fn(i8*, params...) -> ret
+        let mut wrapper_params: Vec<BasicMetadataTypeEnum<'ctx>> = Vec::new();
+        wrapper_params.push(BasicMetadataTypeEnum::PointerType(i8_ptr)); // env_ptr
+        for pt in &param_tys {
+            wrapper_params.push(*pt);
+        }
+
+        let wrapper_fn_type = match ret_ty {
+            BasicTypeEnum::IntType(t) => t.fn_type(&wrapper_params, false),
+            BasicTypeEnum::FloatType(t) => t.fn_type(&wrapper_params, false),
+            BasicTypeEnum::PointerType(t) => t.fn_type(&wrapper_params, false),
+            BasicTypeEnum::StructType(t) => t.fn_type(&wrapper_params, false),
+            BasicTypeEnum::ArrayType(t) => t.fn_type(&wrapper_params, false),
+            _ => return Err(CompileError::Generic(format!("closure wrapper: unsupported return type for '{}'", name))),
+        };
+
+        let wrapper_name = format!("__mimi_fn_wrapper_{}", name.replace('.', "_"));
+        let wrapper_fn = self.module.add_function(&wrapper_name, wrapper_fn_type, Some(inkwell::module::Linkage::Internal));
+
+        let saved_block = self.builder.get_insert_block();
+        let entry_bb = self.context.append_basic_block(wrapper_fn, "entry");
+        self.builder.position_at_end(entry_bb);
+
+        // Forward all params (skip env_ptr at index 0) to the original function
+        let mut call_args: Vec<BasicMetadataValueEnum<'ctx>> = Vec::new();
+        for i in 0..param_tys.len() {
+            let param = wrapper_fn.get_nth_param((i + 1) as u32) // +1 for env_ptr
+                .ok_or_else(|| CompileError::LlvmError(format!("wrapper: param {} not found", i + 1)))?;
+            call_args.push(match param {
+                BasicValueEnum::IntValue(iv) => BasicMetadataValueEnum::IntValue(iv),
+                BasicValueEnum::FloatValue(fv) => BasicMetadataValueEnum::FloatValue(fv),
+                BasicValueEnum::PointerValue(pv) => BasicMetadataValueEnum::PointerValue(pv),
+                BasicValueEnum::StructValue(sv) => BasicMetadataValueEnum::StructValue(sv),
+                BasicValueEnum::ArrayValue(av) => BasicMetadataValueEnum::ArrayValue(av),
+                _ => return Err(CompileError::LlvmError(format!("wrapper: unsupported param type at {}", i + 1))),
+            });
+        }
+
+        let call = self.builder.build_call(orig_fn, &call_args, "wrapper_call")
+            .map_err(|e| CompileError::LlvmError(format!("wrapper call: {}", e)))?;
+        let ret_val = crate::codegen::call_try_basic_value(&call)
+            .ok_or_else(|| CompileError::LlvmError("wrapper call returned void".to_string()))?;
+        self.builder.build_return(Some(&ret_val))
+            .map_err(|e| CompileError::LlvmError(format!("wrapper return: {}", e)))?;
+
+        if let Some(bb) = saved_block {
+            self.builder.position_at_end(bb);
+        }
+
+        let wrapper_ptr = wrapper_fn.as_global_value().as_pointer_value();
+        self.closure_wrappers.insert(name.to_string(), wrapper_ptr);
+        Ok(wrapper_ptr)
+    }
+
     /// Find a FuncDef by name from the codegen's stored func_defs
     pub(in crate::codegen) fn find_func_def(&self, name: &str) -> Result<FuncDef, CompileError> {
         self.func_defs.get(name)
