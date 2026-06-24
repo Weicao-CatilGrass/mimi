@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 安全漏洞 / Security Vulnerability
+    url: https://github.com/ontos-hpc/mimi/security/policy
+    about: 请通过 SECURITY.md 私下报告 / Please report via SECURITY.md
