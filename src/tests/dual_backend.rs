@@ -2487,9 +2487,7 @@ fn dual_higher_order_map() {
 
 #[test]
 fn dual_higher_order_list_param() {
-    // Known codegen limitation: named functions passed as func(T)->U parameters
-    // need a thunk wrapper to convert closure ABI (env_ptr first) to direct ABI.
-    dual_assert_interp_only!(r#"
+    dual_assert!(r#"
         func sum_first_two(xs: List<i32>) -> i32 { xs[0] + xs[1] }
         func apply_list<T, U>(xs: List<T>, f: func(List<T>) -> U) -> U { f(xs) }
         func main() -> i32 {
@@ -2497,7 +2495,7 @@ fn dual_higher_order_list_param() {
             println(r);
             0
         }
-    "#, interp::Value::Int(0));
+    "#, "30");
 }
 
 #[test]
