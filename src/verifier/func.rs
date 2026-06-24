@@ -1202,6 +1202,9 @@ impl crate::verifier::Verifier {
                 self.assert_callee_ensures_in_expr(cond, vars);
                 self.assert_callee_ensures_in_block(body, vars);
             }
+            Stmt::Loop(body) => {
+                self.assert_callee_ensures_in_block(body, vars);
+            }
             Stmt::Block(body)
             | Stmt::Arena(body)
             | Stmt::Unsafe(body)

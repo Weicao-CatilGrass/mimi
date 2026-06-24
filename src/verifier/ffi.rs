@@ -76,7 +76,7 @@ impl super::Verifier {
                         Self::find_extern_calls_in_block(else_block, extern_names, calls);
                     }
                 }
-                Stmt::While { body, .. } | Stmt::For { body, .. } => {
+                Stmt::While { body, .. } | Stmt::For { body, .. } | Stmt::Loop(body) => {
                     Self::find_extern_calls_in_block(body, extern_names, calls);
                 }
                 Stmt::Block(inner) | Stmt::Arena(inner) | Stmt::Unsafe(inner) | Stmt::Parasteps(inner) => {

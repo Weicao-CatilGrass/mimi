@@ -76,7 +76,7 @@ fn verify_rules_in_block(block: &[Stmt], errors: &mut Vec<String>, context: &str
                     last_was_rule = false;
                 }
             }
-            Stmt::While { body, .. } | Stmt::For { body, .. } => {
+            Stmt::While { body, .. } | Stmt::For { body, .. } | Stmt::Loop(body) => {
                 verify_rules_in_block(body, errors, context);
                 last_was_rule = false;
             }
