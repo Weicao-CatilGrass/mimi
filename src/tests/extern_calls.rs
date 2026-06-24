@@ -13,7 +13,11 @@ func main() -> i32 {
 }
 "#;
     let result = check_source(src);
-    assert!(result.is_ok(), "extern block should parse and type-check: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "extern block should parse and type-check: {:?}",
+        result.err()
+    );
 }
 
 #[test]
@@ -30,10 +34,20 @@ func main() -> i32 {
     let _guard = FfiEnvLock::lock();
     std::env::set_var("MIMI_FFI_LIB", "/nonexistent/lib.so");
     let result = run_source_result(src);
-    assert!(result.is_err(), "calling extern with nonexistent lib should fail: {:?}", result.ok());
+    assert!(
+        result.is_err(),
+        "calling extern with nonexistent lib should fail: {:?}",
+        result.ok()
+    );
     let err = result.unwrap_err();
-    assert!(err.contains("failed to load") || err.contains("cannot find") || err.contains("not found") || err.contains("not set"),
-        "error should mention library issue: {}", err);
+    assert!(
+        err.contains("failed to load")
+            || err.contains("cannot find")
+            || err.contains("not found")
+            || err.contains("not set"),
+        "error should mention library issue: {}",
+        err
+    );
     std::env::remove_var("MIMI_FFI_LIB");
 }
 
@@ -53,8 +67,11 @@ func main() -> i32 {
     let result = run_source_result(src);
     assert!(result.is_err(), "calling extern with bad lib should fail");
     let err = result.unwrap_err();
-    assert!(err.contains("failed to load") || err.contains("cannot find") || err.contains("not found"),
-        "error should mention library issue: {}", err);
+    assert!(
+        err.contains("failed to load") || err.contains("cannot find") || err.contains("not found"),
+        "error should mention library issue: {}",
+        err
+    );
     std::env::remove_var("MIMI_FFI_LIB");
 }
 
@@ -72,10 +89,13 @@ func main() -> i32 {
 }
 "#;
     let result = check_source(src);
-    assert!(result.is_ok(), "multiple extern funcs should parse: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "multiple extern funcs should parse: {:?}",
+        result.err()
+    );
 }
 
-#[test]
 #[test]
 fn extern_block_no_panic_attribute_parses() {
     let src = r#"
@@ -90,7 +110,11 @@ func main() -> i32 {
 }
 "#;
     let result = check_source(src);
-    assert!(result.is_ok(), "#[no_panic] extern block should parse and type-check: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "#[no_panic] extern block should parse and type-check: {:?}",
+        result.err()
+    );
 }
 
 #[test]
@@ -106,8 +130,12 @@ func main() -> i32 {
     42
 }
 "#;
-    let tokens = crate::lexer::Lexer::new(src).tokenize().expect("tokenize ok");
-    let file = crate::parser::Parser::new(tokens).parse_file().expect("parse ok");
+    let tokens = crate::lexer::Lexer::new(src)
+        .tokenize()
+        .expect("tokenize ok");
+    let file = crate::parser::Parser::new(tokens)
+        .parse_file()
+        .expect("parse ok");
     let has_no_panic = file.items.iter().any(|item| {
         if let crate::ast::Item::ExternBlock(block) = item {
             block.no_panic && block.funcs.iter().all(|f| f.no_panic)
@@ -115,9 +143,13 @@ func main() -> i32 {
             false
         }
     });
-    assert!(has_no_panic, "#[no_panic] attribute should be preserved on ExternBlock and all ExternFuncs");
+    assert!(
+        has_no_panic,
+        "#[no_panic] attribute should be preserved on ExternBlock and all ExternFuncs"
+    );
 }
 
+#[test]
 fn extern_func_with_no_return() {
     let src = r#"
 extern "C" {
@@ -129,5 +161,9 @@ func main() -> i32 {
 }
 "#;
     let result = check_source(src);
-    assert!(result.is_ok(), "void extern func should parse: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "void extern func should parse: {:?}",
+        result.err()
+    );
 }

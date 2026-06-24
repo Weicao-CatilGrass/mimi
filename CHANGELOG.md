@@ -13,6 +13,8 @@
 - 类型检查: `spawn expr` 返回 `Future<T>`（带泛型参数），修复 `await` 类型匹配
 - 解释器: `eval_spawn` 返回 Future 而非直接求值（同步包装，env capture 待实现）
 - `e2e_parasteps_spawn_and_await` 解除 `#[ignore]`（future 稳定，不再 flaky）
+- 核心：`core/mod.rs` — trait 导出顺序调整，删去 `is_float`
+- 测试：`tests/mod.rs` — 模块排序规范化；`cached_runtime_lib` 格式重组；新增跨发行版 `ffi_lib_path()` (`OnceLock` + 候选路径 + `ldd` 回退)；`FfiEnvLock` 格式整理；`compile_and_run_with_config` 等辅助函数统一格式
 
 ### Changed
 - `parasteps_thread_ids` → `parasteps_future_ptrs` (重新标注代码生成器字段)
