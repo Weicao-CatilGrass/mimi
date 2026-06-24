@@ -1,6 +1,15 @@
 # Changelog
 
-## [Unreleased] — 0.22.0-dev — 语言补全（Language Completion）
+## [Unreleased] — 0.22.1-dev
+
+### Added
+- 嵌套块注释 `/* */` 支持（词法分析器）
+- 嵌套 `List<List<T>>` 链式索引在 codegen 路径的类型推断
+
+### Tests
+- 基线: 2,054 passed, 0 failed, 21 ignored
+
+## [v0.22.0] - 2026-06-24 — 语言补全（Language Completion）
 
 ### Added
 - `char_code(s, i) -> i64` 和 `chr(code) -> i64` 内置函数（interp + codegen + typeck）
