@@ -205,7 +205,7 @@ func main() -> i32 {
 #[test]
 fn lsp_completion_keywords() {
     use crate::lsp::LspServer;
-    let server = LspServer::new();
+    let mut server = LspServer::new();
     let text = "";
     let items = server.compute_completion(text, 0, 0);
     let labels: Vec<&str> = items.iter()
@@ -220,7 +220,7 @@ fn lsp_completion_keywords() {
 #[test]
 fn lsp_completion_functions() {
     use crate::lsp::LspServer;
-    let server = LspServer::new();
+    let mut server = LspServer::new();
     let text = r#"
 func my_function() -> i32 {
     42
@@ -242,7 +242,7 @@ func main() -> i32 {
 #[test]
 fn lsp_completion_builtins() {
     use crate::lsp::LspServer;
-    let server = LspServer::new();
+    let mut server = LspServer::new();
     let text = "";
     let items = server.compute_completion(text, 0, 0);
     let labels: Vec<&str> = items.iter()
@@ -252,5 +252,37 @@ fn lsp_completion_builtins() {
     assert!(labels.contains(&"len"));
     assert!(labels.contains(&"map"));
     assert!(labels.contains(&"filter"));
+}
+
+#[test]
+fn lsp_completion_stdlib_functions() {
+    use crate::lsp::LspServer;
+    let mut server = LspServer::new();
+    let text = "";
+    let items = server.compute_completion(text, 0, 0);
+    let labels: Vec<&str> = items.iter()
+        .filter_map(|i| i.get("label").and_then(|l| l.as_str()))
+        .collect();
+    // stdlib functions should be present
+    assert!(labels.contains(&"replace_all"), "stdlib replace_all should be in completions");
+    assert!(labels.contains(&"print_line"), "stdlib print_line should be in completions");
+    assert!(labels.contains(&"assert_eq_int"), "stdlib assert_eq_int should be in completions");
+    assert!(labels.contains(&"identity"), "stdlib identity should be in completions");
+    assert!(labels.contains(&"parse"), "stdlib parse (csv) should be in completions");
+}
+
+#[test]
+fn lsp_completion_stdlib_modules_context() {
+    use crate::lsp::LspServer;
+    let mut server = LspServer::new();
+    let text = "use ";
+    let items = server.compute_completion(text, 0, 4);
+    let labels: Vec<&str> = items.iter()
+        .filter_map(|i| i.get("label").and_then(|l| l.as_str()))
+        .collect();
+    // stdlib module names should appear in "use" context
+    assert!(labels.contains(&"strings"), "strings module should appear in use context");
+    assert!(labels.contains(&"io"), "io module should appear in use context");
+    assert!(labels.contains(&"json"), "json module should appear in use context");
 }
 

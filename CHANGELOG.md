@@ -3,7 +3,10 @@
 ## [Unreleased] — 0.22.5-dev
 
 ### Added
-- (placeholder)
+- LSP stdlib completion: auto-scan `std/*.mimi` for `pub func` signatures, shown in "top" and "module" contexts
+- LSP `::` path completion: typing `strings::` shows functions from that stdlib module
+- Selective import: `use strings::replace_all` now resolves and loads the `strings` module
+- `loop` added to LSP keyword completions
 
 ## [v0.22.4] - 2026-06-24 — 管道符 + loop（Pipe Operator & Loop Keyword）
 

@@ -42,13 +42,14 @@ impl LspServer {
         "top"
     }
 
-    pub fn compute_completion(&self, text: &str, line: usize, character: usize) -> Vec<Value> {
+    pub fn compute_completion(&mut self, text: &str, line: usize, character: usize) -> Vec<Value> {
+        // Load stdlib completions lazily on first completion request
+        self.load_stdlib_completions();
         let mut items = Vec::new();
         let context = Self::completion_context(text, line, character);
 
         match context {
             "dot" => {
-                // Method completions after `.`
                 let methods = vec![
                     ("to_string", "to_string() -> string"),
                     ("len", "len() -> i64"),
@@ -78,7 +79,6 @@ impl LspServer {
                         "insertTextFormat": 2,
                     }));
                 }
-                // Add trait methods and actor methods from AST
                 if let Some(file) = self.parse_with_recovery(text) {
                     for item in &file.items {
                         match item {
@@ -87,12 +87,12 @@ impl LspServer {
                                     let params: Vec<String> = m
                                         .params
                                         .iter()
-                                        .map(|p| format!("{}: {}", p.name, Self::type_display(&p.ty)))
+                                        .map(|p| format!("{}: {}", p.name, crate::core::fmt_type(&p.ty)))
                                         .collect();
                                     let ret = m
                                         .ret
                                         .as_ref()
-                                        .map(|r| format!(" -> {}", Self::type_display(r)))
+                                        .map(|r| format!(" -> {}", crate::core::fmt_type(r)))
                                         .unwrap_or_default();
                                     items.push(serde_json::json!({
                                         "label": m.name,
@@ -115,6 +115,29 @@ impl LspServer {
                                 }
                             }
                             _ => {}
+                        }
+                    }
+                }
+                return items;
+            }
+            "path" => {
+                // Qualified path completions: show items from the module before `::`
+                let lines: Vec<&str> = text.lines().collect();
+                let current_line = lines.get(line).unwrap_or(&"");
+                let before_cursor: String = current_line.chars().take(character).collect();
+                let trimmed = before_cursor.trim().trim_end_matches(':');
+                let prefix = trimmed.trim();
+                // Check stdlib modules
+                if !prefix.is_empty() {
+                    if let Some(funcs) = self.stdlib_funcs.get(prefix) {
+                        for (name, detail, insert) in funcs {
+                            items.push(serde_json::json!({
+                                "label": name,
+                                "kind": 3, // Function
+                                "detail": detail,
+                                "insertText": insert,
+                                "insertTextFormat": 2,
+                            }));
                         }
                     }
                 }
@@ -157,10 +180,19 @@ impl LspServer {
                         }
                     }
                 }
+                // Add stdlib module names
+                let mut std_modules: Vec<&str> = self.stdlib_funcs.keys().map(|s| s.as_str()).collect();
+                std_modules.sort();
+                for name in std_modules {
+                    items.push(serde_json::json!({
+                        "label": name,
+                        "kind": 1, // Module
+                        "detail": format!("module {}", name),
+                    }));
+                }
                 return items;
             }
             "impl" => {
-                // Trait/type name completions
                 if let Some(file) = self.parse_with_recovery(text) {
                     for item in &file.items {
                         match item {
@@ -185,7 +217,6 @@ impl LspServer {
                 return items;
             }
             "extern" => {
-                // ABI string completions
                 items.push(serde_json::json!({
                     "label": "\"C\" { ... }",
                     "kind": 14, // Keyword
@@ -200,7 +231,6 @@ impl LspServer {
                     "insertText": "\"stdcall\" {\n\t${1}\n}",
                     "insertTextFormat": 2,
                 }));
-                // Common C functions
                 let c_funcs = vec![
                     ("strlen", "strlen(s: string) -> i64", "get string length"),
                     ("printf", "printf(format: &i8, ...) -> i32", "print formatted"),
@@ -241,6 +271,7 @@ impl LspServer {
             "match", "spawn", "await", "try", "comptime", "quote",
             "extern", "actor", "trait", "impl", "cap", "true", "false",
             "async", "newtype", "arena", "alloc", "requires", "ensures",
+            "loop",
         ];
 
         for kw in keywords {
@@ -330,6 +361,9 @@ impl LspServer {
                 "insertTextFormat": 2,
             }));
         }
+
+        // Stdlib functions (loaded lazily)
+        items.extend(self.stdlib_completions_raw.iter().cloned());
 
         items
     }
