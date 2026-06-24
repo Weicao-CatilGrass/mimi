@@ -539,6 +539,17 @@ pub fn register_runtime<'ctx>(module: &Module<'ctx>, ctx: &'ctx Context) {
     module.add_function("mimi_executor_run",
         void.fn_type(&[], false),
         Some(inkwell::module::Linkage::External));
+    // mimi_spawn_future(future: i8*, poll_fn: i8*) -> i8*
+    module.add_function("mimi_spawn_future",
+        i8_ptr.fn_type(&[
+            BasicMetadataTypeEnum::PointerType(i8_ptr),
+            BasicMetadataTypeEnum::PointerType(i8_ptr),
+        ], false),
+        Some(inkwell::module::Linkage::External));
+    // mimi_await_future(future: i8*) -> void
+    module.add_function("mimi_await_future",
+        void.fn_type(&[BasicMetadataTypeEnum::PointerType(i8_ptr)], false),
+        Some(inkwell::module::Linkage::External));
 }
 
 pub fn is_builtin(name: &str) -> bool {

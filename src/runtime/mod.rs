@@ -2316,6 +2316,33 @@ pub extern "C" fn mimi_future_is_completed(fut: *mut std::ffi::c_void) -> i32 {
     unsafe { std::ptr::read(fut as *const i32) }
 }
 
+/// Spawn a future on a real thread (used by codegen `spawn expr`).
+/// The poll function is called on a new thread, which sets completed=1 when done.
+/// Returns the future pointer (same as input).
+#[no_mangle]
+pub extern "C" fn mimi_spawn_future(
+    future: *mut std::ffi::c_void,
+    poll_fn: unsafe extern "C" fn(*mut std::ffi::c_void),
+) -> *mut std::ffi::c_void {
+    if future.is_null() { return std::ptr::null_mut(); }
+    let future_addr = future as usize;
+    std::thread::spawn(move || {
+        unsafe { poll_fn(future_addr as *mut std::ffi::c_void) };
+    });
+    future
+}
+
+/// Wait (spin) for a future to become completed. Used by codegen `await`
+/// for thread-spawned futures (not managed by the single-threaded executor).
+#[no_mangle]
+pub extern "C" fn mimi_await_future(future: *mut std::ffi::c_void) {
+    if future.is_null() { return; }
+    // Spin until completed (the spawned thread sets completed=1 after poll_fn returns)
+    while unsafe { std::ptr::read(future as *const i32) } == 0 {
+        std::thread::yield_now();
+    }
+}
+
 type PollFn = unsafe extern "C" fn(*mut std::ffi::c_void);
 
 /// Wrapper to make *mut c_void Send (needed for Mutex).

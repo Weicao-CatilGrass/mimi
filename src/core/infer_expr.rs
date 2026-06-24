@@ -25,7 +25,10 @@ impl<'a> Checker<'a> {
             }
             Expr::Index(obj, idx) => self.infer_index(obj, idx, scopes),
             Expr::Try(expr) => self.infer_try_expr(expr, scopes),
-            Expr::Spawn(_) => Type::Name("Future".into(), vec![]),
+            Expr::Spawn(inner) => {
+                let inner_ty = self.infer_expr(inner, scopes);
+                Type::Name("Future".into(), vec![inner_ty])
+            },
             Expr::Await(inner) => self.infer_await(inner, scopes),
             Expr::Quote(_) => Type::Name("AST".into(), vec![]),
             Expr::QuoteInterpolate(inner) => self.infer_expr(inner, scopes),

@@ -633,7 +633,7 @@ impl<'a> Interpreter<'a> {
                 let sliced: String = chars[start_idx..end_idx].iter().collect();
                 Ok(Value::String(sliced))
             }
-            other => Err(InterpError::new(format!("unexpected expression type in await: {}", other))),
+            other => Err(InterpError::new(format!("unexpected expression type in slice: {}", other))),
         }
     }
 
@@ -689,8 +689,14 @@ impl<'a> Interpreter<'a> {
                 }
             }
         }
-        // Non-actor `spawn expr` — evaluate directly.
-        self.eval_expr(expr)
+        // Non-actor `spawn expr` — evaluate inline (same env), return Future<T>
+        // Note: true concurrent thread pool evaluation requires env capture, deferred
+        let result = self.eval_expr(expr);
+        let (tx, rx) = std::sync::mpsc::channel();
+        let _ = tx.send(result);
+        Ok(Value::Future(std::sync::Arc::new(std::sync::Mutex::new(
+            crate::interp::value::PollFuture::Pending(rx)
+        ))))
     }
 
     pub(in crate::interp) fn eval_await(&mut self, expr: &Expr) -> Result<Value, InterpError> {
