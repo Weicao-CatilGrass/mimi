@@ -69,7 +69,7 @@
 
 **症状**: 必须 `use module` 然后 `module::function()`。
 **影响**: 🟢 低。只是语法糖缺失，不影响功能。
-**计划**: v0.22.5
+**计划**: ✅ v0.22.5 已实现：`use strings::replace_all` 现在 resolve 并直接可用。
 
 ### 3.3 `else if` 解析问题
 

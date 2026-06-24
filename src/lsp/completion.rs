@@ -126,10 +126,17 @@ impl LspServer {
                 let current_line = lines.get(line).unwrap_or(&"");
                 let before_cursor: String = current_line.chars().take(character).collect();
                 let trimmed = before_cursor.trim().trim_end_matches(':');
-                let prefix = trimmed.trim();
+                // Extract the last identifier before `::` (the module name)
+                let prefix = trimmed.split_whitespace()
+                    .last()
+                    .unwrap_or("")
+                    .trim_end_matches(':');
+                // Also handle `use std::strings::` → the text before final `::` might have more segments
+                // The prefix would be "std::strings" — only match the last segment for now
+                let module_name = prefix.split("::").last().unwrap_or(prefix);
                 // Check stdlib modules
-                if !prefix.is_empty() {
-                    if let Some(funcs) = self.stdlib_funcs.get(prefix) {
+                if !module_name.is_empty() {
+                    if let Some(funcs) = self.stdlib_funcs.get(module_name) {
                         for (name, detail, insert) in funcs {
                             items.push(serde_json::json!({
                                 "label": name,
