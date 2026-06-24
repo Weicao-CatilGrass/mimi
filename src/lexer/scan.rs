@@ -1,7 +1,7 @@
 use crate::lexer::errors::{
     dedent_mismatch, indent_not_multiple_of_four, tabs_not_allowed, unexpected_character,
-    unexpected_dollar, unterminated_escape, unterminated_fstring, unterminated_fstring_escape,
-    unterminated_interpolation, unterminated_string, LexerError,
+    unexpected_dollar, unterminated_block_comment, unterminated_escape, unterminated_fstring,
+    unterminated_fstring_escape, unterminated_interpolation, unterminated_string, LexerError,
 };
 use crate::lexer::keywords::keyword_or_ident;
 use crate::lexer::token::{LexerMode, Token, TokenKind};
@@ -32,6 +32,37 @@ impl<'a> super::Lexer<'a> {
             }
             self.advance();
         }
+    }
+
+    /// Skip a block comment `/* ... */`, supporting nesting.
+    pub(crate) fn skip_block_comment(&mut self) -> Result<(), LexerError> {
+        // consume '/*'
+        self.advance();
+        self.advance();
+        let mut depth: i32 = 1;
+        while depth > 0 {
+            match self.peek() {
+                None => return Err(unterminated_block_comment()),
+                Some('*') => {
+                    self.advance();
+                    if self.peek() == Some('/') {
+                        self.advance();
+                        depth -= 1;
+                    }
+                }
+                Some('/') => {
+                    self.advance();
+                    if self.peek() == Some('*') {
+                        self.advance();
+                        depth += 1;
+                    }
+                }
+                Some(_) => {
+                    self.advance();
+                }
+            }
+        }
+        Ok(())
     }
 
     pub(crate) fn skip_whitespace_inline(&mut self) {
@@ -346,17 +377,25 @@ impl<'a> super::Lexer<'a> {
             if self.peek().is_none() {
                 return Ok(());
             }
-            let is_comment =
-                self.peek() == Some('/') && self.chars.clone().next() == Some('/');
-            let is_blank = self.peek() == Some('\n');
-            if is_comment || is_blank {
-                if is_comment {
+            let mut is_comment_line = false;
+            if self.peek() == Some('/') {
+                let next = self.chars.clone().next();
+                if next == Some('/') {
+                    is_comment_line = true;
                     self.skip_line_comment();
+                } else if next == Some('*') {
+                    self.skip_block_comment()?;
+                    self.skip_whitespace_inline();
+                    if self.peek() == Some('\n') || self.peek().is_none() {
+                        is_comment_line = true;
+                    }
                 }
+            }
+            let is_blank = self.peek() == Some('\n');
+            if is_comment_line || is_blank {
                 if self.peek() == Some('\n') {
                     self.advance();
                 }
-                // continue to next line
                 continue;
             }
             // real content

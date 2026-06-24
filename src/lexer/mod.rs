@@ -75,6 +75,12 @@ impl<'a> Lexer<'a> {
                 return Err(unexpected_character('\\', line, col));
             }
 
+            // Block comment: /* ... */
+            if c == '/' && self.chars.clone().next() == Some('*') {
+                self.skip_block_comment()?;
+                continue;
+            }
+
             if c == '/' && self.chars.clone().next() == Some('/') {
                 self.skip_line_comment();
                 continue;
