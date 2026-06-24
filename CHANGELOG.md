@@ -1,13 +1,26 @@
 # Changelog
 
-## [Unreleased] — 0.22.1-dev
+## [Unreleased] — 0.22.2-dev
 
 ### Added
+- (placeholder)
+
+## [v0.22.1] - 2026-06-24 — 深度修复（Depth Repair）
+
+### Added
+- `Map<K,V>` 字面量 `{"key": value}` 语法 — 双后端支持（AST/parser/infer/interp/codegen）
+- `mimi run --watch` 模式 — 文件变更自动重跑解释器
+- `sort_f64` 和 `sort_str` 内置函数（interpreter 支持，codegen 待实现）
 - 嵌套块注释 `/* */` 支持（词法分析器）
 - 嵌套 `List<List<T>>` 链式索引在 codegen 路径的类型推断
 
+### Fixed
+- `assert_eq` codegen 诊断 — 失败时显示实际值 `1 != 2` / `hello != world`
+- `assert_eq_string`/`assert_eq_bool` 改用 `assert_eq` 而非 `assert(false)`（丢失诊断信息）
+
 ### Tests
-- 基线: 2,054 passed, 0 failed, 21 ignored
+- 新的双后端 L1 测试：`dual_map_literal_simple` / `dual_map_literal_size` / `dual_map_literal_variable_key`
+- 基线: 2,057 passed, 0 failed, 21 ignored
 
 ## [v0.22.0] - 2026-06-24 — 语言补全（Language Completion）
 
