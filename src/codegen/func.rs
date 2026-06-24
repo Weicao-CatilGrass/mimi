@@ -121,12 +121,10 @@ impl<'ctx> CodeGenerator<'ctx> {
                 let ty = param_types[param_idx];
                 let size = param_sizes[param_idx];
                 // GEP to load arg: future + current_arg_offset
-                let arg_ptr_i8 = unsafe {
-                    self.builder.build_gep(i8_ty, poll_future_ptr,
-                        &[i64_ty.const_int(current_arg_offset, false)],
-                        &format!("poll_arg_{}", param_idx))
-                        .map_err(|e| CompileError::LlvmError(format!("poll arg gep: {}", e)))?
-                };
+                let arg_ptr_i8 = self.gep().build_gep(i8_ty, poll_future_ptr,
+                    &[i64_ty.const_int(current_arg_offset, false)],
+                    &format!("poll_arg_{}", param_idx))
+                    .map_err(|e| CompileError::LlvmError(format!("poll arg gep: {}", e)))?;
                 let arg_typed_ptr = self.builder.build_pointer_cast(
                     arg_ptr_i8,
                     self.context.ptr_type(inkwell::AddressSpace::default()),
@@ -155,11 +153,9 @@ impl<'ctx> CodeGenerator<'ctx> {
 
         // Store result at future + 8
         if !func.ret.as_ref().map_or(true, |t| matches!(t, Type::Name(n, _) if n == "unit")) {
-            let result_ptr_i8 = unsafe {
-                self.builder.build_gep(i8_ty, poll_future_ptr,
-                    &[i64_ty.const_int(8, false)], "poll_result_ptr")
-                    .map_err(|e| CompileError::LlvmError(format!("poll result gep: {}", e)))?
-            };
+            let result_ptr_i8 = self.gep().build_gep(i8_ty, poll_future_ptr,
+                &[i64_ty.const_int(8, false)], "poll_result_ptr")
+                .map_err(|e| CompileError::LlvmError(format!("poll result gep: {}", e)))?;
             let result_typed_ptr = self.builder.build_pointer_cast(
                 result_ptr_i8,
                 self.context.ptr_type(inkwell::AddressSpace::default()),
@@ -245,12 +241,10 @@ impl<'ctx> CodeGenerator<'ctx> {
                     .ok_or_else(|| CompileError::LlvmError(format!("var '{}' not found", param.name)))?;
                 let val = self.builder.build_load(ty, alloca.0, &format!("store_{}", param.name))
                     .map_err(|e| CompileError::LlvmError(format!("load for store: {}", e)))?;
-                let arg_slot_i8 = unsafe {
-                    self.builder.build_gep(i8_ty, future_ptr,
-                        &[i64_ty.const_int(current_arg_store_offset, false)],
-                        &format!("arg_slot_{}", param_idx))
-                        .map_err(|e| CompileError::LlvmError(format!("arg slot gep: {}", e)))?
-                };
+                let arg_slot_i8 = self.gep().build_gep(i8_ty, future_ptr,
+                    &[i64_ty.const_int(current_arg_store_offset, false)],
+                    &format!("arg_slot_{}", param_idx))
+                    .map_err(|e| CompileError::LlvmError(format!("arg slot gep: {}", e)))?;
                 let arg_slot_typed = self.builder.build_pointer_cast(
                     arg_slot_i8,
                     self.context.ptr_type(inkwell::AddressSpace::default()),
