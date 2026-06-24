@@ -1,17 +1,24 @@
 # Changelog
 
-## [Unreleased] — 0.22.9-dev
+## [Unreleased] — 0.23.0-dev
 
 ### Added
-- `while let pattern = expr { body }` — 条件模式匹配循环（parser/typeck/interp 全路径）
-- `Pattern::Constructor` 支持 `Type::Name("Option"/"Result", ...)` 表示（修复 Option/Result 模式匹配）
-- Codegen: `compile_while_let_stmt` + `compile_pattern_check` — WhileLet 全后端支持
-- Codegen: NamedArg 优雅错误（替代通用 `_ => Err`）
+- (placeholder)
+
+## [v0.22.9] - 2026-06-24 — while let + 模式修复 + codegen缺口关闭
+
+### Added
+- `while let` — 条件模式匹配循环全路径（parser/typeck/interp/codegen）
+- `compile_pattern_check` — codegen 模式匹配布尔判定
+- Option/Result `Type::Name` vs `Type::Option/Result` 双表示桥接
+
+### Fixed
+- Codegen: NamedArg 优雅错误（替代 `_ => Err`）
 - Codegen: Ellipsis 加入无操作跳过分支（block/func/actors）
-- Checker: OnFailure 体类型检查
+- Codegen: WhileLet 五处 dispatch 全部关闭
+- Checker: OnFailure 体现在进行类型检查
 - Checker: ImplTrait trait 名称验证（同 DynTrait）
 - Checker: Map 字面量键类型强制为 string
-- 测试: interp_while_let_some, interp_while_let_simple
 
 ## [v0.22.8] - 2026-06-24
 
