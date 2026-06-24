@@ -388,6 +388,60 @@ pub fn register_runtime<'ctx>(module: &Module<'ctx>, ctx: &'ctx Context) {
             BasicMetadataTypeEnum::IntType(i64),
         ], false),
         Some(inkwell::module::Linkage::External));
+    // mimi_json_as_i64(json: i8*) -> i64
+    module.add_function("mimi_json_as_i64",
+        i64.fn_type(&[BasicMetadataTypeEnum::PointerType(i8_ptr)], false),
+        Some(inkwell::module::Linkage::External));
+    // mimi_json_as_f64(json: i8*) -> f64
+    module.add_function("mimi_json_as_f64",
+        ctx.f64_type().fn_type(&[BasicMetadataTypeEnum::PointerType(i8_ptr)], false),
+        Some(inkwell::module::Linkage::External));
+    // mimi_json_as_bool(json: i8*) -> i64
+    module.add_function("mimi_json_as_bool",
+        i64.fn_type(&[BasicMetadataTypeEnum::PointerType(i8_ptr)], false),
+        Some(inkwell::module::Linkage::External));
+
+    // ========== Set runtime functions ==========
+    // mimi_set_new() -> i64 (handle)
+    module.add_function("mimi_set_new",
+        i64.fn_type(&[], false),
+        Some(inkwell::module::Linkage::External));
+    // mimi_set_destroy(handle: i64)
+    module.add_function("mimi_set_destroy",
+        void.fn_type(&[BasicMetadataTypeEnum::IntType(i64)], false),
+        Some(inkwell::module::Linkage::External));
+    // mimi_set_insert(handle: i64, value: i64) -> i64 (handle)
+    module.add_function("mimi_set_insert",
+        i64.fn_type(&[
+            BasicMetadataTypeEnum::IntType(i64),
+            BasicMetadataTypeEnum::IntType(i64),
+        ], false),
+        Some(inkwell::module::Linkage::External));
+    // mimi_set_contains(handle: i64, value: i64) -> i64 (0/1)
+    module.add_function("mimi_set_contains",
+        i64.fn_type(&[
+            BasicMetadataTypeEnum::IntType(i64),
+            BasicMetadataTypeEnum::IntType(i64),
+        ], false),
+        Some(inkwell::module::Linkage::External));
+    // mimi_set_remove(handle: i64, value: i64) -> i64 (handle)
+    module.add_function("mimi_set_remove",
+        i64.fn_type(&[
+            BasicMetadataTypeEnum::IntType(i64),
+            BasicMetadataTypeEnum::IntType(i64),
+        ], false),
+        Some(inkwell::module::Linkage::External));
+    // mimi_set_size(handle: i64) -> i64
+    module.add_function("mimi_set_size",
+        i64.fn_type(&[BasicMetadataTypeEnum::IntType(i64)], false),
+        Some(inkwell::module::Linkage::External));
+    // mimi_set_to_list(handle: i64, out_len: *mut i64) -> *mut i64
+    module.add_function("mimi_set_to_list",
+        i8_ptr.fn_type(&[
+            BasicMetadataTypeEnum::IntType(i64),
+            BasicMetadataTypeEnum::PointerType(i8_ptr),
+        ], false),
+        Some(inkwell::module::Linkage::External));
 
     // ========== Network / Socket functions ==========
     // mimi_socket(domain: i64, type: i64, protocol: i64) -> i64

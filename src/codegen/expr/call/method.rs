@@ -470,10 +470,134 @@ impl<'ctx> CodeGenerator<'ctx> {
                     self.context.i64_type().const_int(0, false).into()
                 ));
             }
-            Err(CompileError::Generic(format!("method '{}' not compiled for type '{}' (missing crate?)", method_name, obj_type)))
-        } else {
-            Err(format!("cannot call method '{}' on unknown type '{}'", method_name, obj_type).into())
         }
+
+        // 4. Set built-in method dispatch
+        if obj_type == "set" || obj_type.starts_with("Set") || obj_type.starts_with("set") {
+            let obj_val = self.compile_expr(obj, vars)?;
+            let set_handle = match obj_val {
+                BasicValueEnum::IntValue(iv) => iv,
+                BasicValueEnum::PointerValue(pv) => {
+                    self.builder.build_ptr_to_int(pv, self.context.i64_type(), "set_handle")
+                        .map_err(|e| CompileError::LlvmError(format!("ptrtoint: {}", e)))?
+                }
+                _ => return Err(CompileError::Generic("expected set handle (i64)".into())),
+            };
+            let i64_ty = self.context.i64_type();
+            return match method_name {
+                "size" | "len" => {
+                    let func = self.module.get_function("mimi_set_size")
+                        .ok_or("mimi_set_size not declared")?;
+                    let result = self.builder.build_call(func, &[
+                        BasicMetadataValueEnum::IntValue(set_handle),
+                    ], "set_size")
+                        .map_err(|e| CompileError::LlvmError(format!("set_size: {}", e)))?;
+                    Ok(self.expect_basic_value(&result, "set_size")?)
+                }
+                "is_empty" => {
+                    let func = self.module.get_function("mimi_set_size")
+                        .ok_or("mimi_set_size not declared")?;
+                    let result = self.builder.build_call(func, &[
+                        BasicMetadataValueEnum::IntValue(set_handle),
+                    ], "set_size")
+                        .map_err(|e| CompileError::LlvmError(format!("set_size: {}", e)))?;
+                    let size = self.expect_basic_value(&result, "set_size")?.into_int_value();
+                    let zero = i64_ty.const_int(0, false);
+                    let is_empty = self.builder.build_int_compare(
+                        inkwell::IntPredicate::EQ, size, zero, "is_empty")
+                        .map_err(|e| CompileError::LlvmError(format!("cmp: {}", e)))?;
+                    Ok(BasicValueEnum::IntValue(is_empty))
+                }
+                "contains" => {
+                    if args.len() != 1 {
+                        return Err(CompileError::WrongArgCount("set.contains expects 1 argument".into()));
+                    }
+                    let arg = self.compile_expr(&args[0], vars)?;
+                    let arg_handle = self.any_value_to_handle(arg)?;
+                    let func = self.module.get_function("mimi_set_contains")
+                        .ok_or("mimi_set_contains not declared")?;
+                    let result = self.builder.build_call(func, &[
+                        BasicMetadataValueEnum::IntValue(set_handle),
+                        BasicMetadataValueEnum::IntValue(arg_handle),
+                    ], "set_contains")
+                        .map_err(|e| CompileError::LlvmError(format!("set_contains: {}", e)))?;
+                    let iv = self.expect_basic_value(&result, "set_contains")?.into_int_value();
+                    let one = i64_ty.const_int(1, false);
+                    let bv = self.builder.build_int_compare(
+                        inkwell::IntPredicate::EQ, iv, one, "to_bool")
+                        .map_err(|e| CompileError::LlvmError(format!("cmp: {}", e)))?;
+                    Ok(BasicValueEnum::IntValue(bv))
+                }
+                "insert" => {
+                    if args.len() != 1 {
+                        return Err(CompileError::WrongArgCount("set.insert expects 1 argument".into()));
+                    }
+                    let arg = self.compile_expr(&args[0], vars)?;
+                    let arg_handle = self.any_value_to_handle(arg)?;
+                    let func = self.module.get_function("mimi_set_insert")
+                        .ok_or("mimi_set_insert not declared")?;
+                    self.builder.build_call(func, &[
+                        BasicMetadataValueEnum::IntValue(set_handle),
+                        BasicMetadataValueEnum::IntValue(arg_handle),
+                    ], "set_insert")
+                        .map_err(|e| CompileError::LlvmError(format!("set_insert: {}", e)))?;
+                    Ok(BasicValueEnum::IntValue(set_handle))
+                }
+                "remove" => {
+                    if args.len() != 1 {
+                        return Err(CompileError::WrongArgCount("set.remove expects 1 argument".into()));
+                    }
+                    let arg = self.compile_expr(&args[0], vars)?;
+                    let arg_handle = self.any_value_to_handle(arg)?;
+                    let func = self.module.get_function("mimi_set_remove")
+                        .ok_or("mimi_set_remove not declared")?;
+                    self.builder.build_call(func, &[
+                        BasicMetadataValueEnum::IntValue(set_handle),
+                        BasicMetadataValueEnum::IntValue(arg_handle),
+                    ], "set_remove")
+                        .map_err(|e| CompileError::LlvmError(format!("set_remove: {}", e)))?;
+                    Ok(BasicValueEnum::IntValue(set_handle))
+                }
+                "to_list" => {
+                    let out_len_alloca = self.builder.build_alloca(i64_ty, "out_len")
+                        .map_err(|e| CompileError::LlvmError(format!("alloca: {}", e)))?;
+                    let func = self.module.get_function("mimi_set_to_list")
+                        .ok_or("mimi_set_to_list not declared")?;
+                    let result = self.builder.build_call(func, &[
+                        BasicMetadataValueEnum::IntValue(set_handle),
+                        BasicMetadataValueEnum::PointerValue(out_len_alloca),
+                    ], "set_to_list")
+                        .map_err(|e| CompileError::LlvmError(format!("set_to_list: {}", e)))?;
+                    let data_ptr = self.expect_basic_value(&result, "set_to_list")?
+                        .into_pointer_value();
+                    let len_val = self.builder.build_load(i64_ty, out_len_alloca, "list_len")
+                        .map_err(|e| CompileError::LlvmError(format!("load: {}", e)))?
+                        .into_int_value();
+                    let list_ty = self.context.struct_type(&[
+                        BasicTypeEnum::IntType(i64_ty),
+                        BasicTypeEnum::PointerType(self.context.ptr_type(inkwell::AddressSpace::default())),
+                    ], false);
+                    let alloca = self.builder.build_alloca(list_ty, "list_ret")
+                        .map_err(|e| CompileError::LlvmError(format!("alloca: {}", e)))?;
+                    let len_gep = self.gep().build_struct_gep(list_ty, alloca, 0, "len_gep")
+                        .map_err(|e| CompileError::LlvmError(format!("gep: {}", e)))?;
+                    self.builder.build_store(len_gep, len_val)
+                        .map_err(|e| CompileError::LlvmError(format!("store: {}", e)))?;
+                    let data_gep = self.gep().build_struct_gep(list_ty, alloca, 1, "data_gep")
+                        .map_err(|e| CompileError::LlvmError(format!("gep: {}", e)))?;
+                    let data_i64 = self.builder.build_ptr_to_int(data_ptr, i64_ty, "data_ptr_int")
+                        .map_err(|e| CompileError::LlvmError(format!("ptrtoint: {}", e)))?;
+                    self.builder.build_store(data_gep, data_i64)
+                        .map_err(|e| CompileError::LlvmError(format!("store: {}", e)))?;
+                    let ret = self.builder.build_load(list_ty, alloca, "list_ret_val")
+                        .map_err(|e| CompileError::LlvmError(format!("load: {}", e)))?;
+                    Ok(ret)
+                }
+                _ => Err(CompileError::Generic(format!("Set has no method '{}'", method_name))),
+            };
+        }
+
+        Err(CompileError::Generic(format!("method '{}' not compiled for type '{}' (missing crate?)", method_name, obj_type)))
     }
     pub(in crate::codegen) fn compile_turbofish_expr(
         &mut self,
@@ -484,9 +608,94 @@ impl<'ctx> CodeGenerator<'ctx> {
     ) -> Result<BasicValueEnum<'ctx>, CompileError> {
         // Special case: from_json::<T>(s) — typed JSON deserialization
         if name == "from_json" && !type_args.is_empty() {
-            return Err(CompileError::Generic(format!(
-                "from_json::<{:?}> codegen not yet implemented", type_args[0]
-            )));
+            if args.len() != 1 {
+                return Err(CompileError::WrongArgCount("from_json::<T> expects 1 argument".into()));
+            }
+            let json_val = self.compile_expr(&args[0], vars)?;
+            let raw_ptr = match &json_val {
+                BasicValueEnum::PointerValue(pv) => *pv,
+                BasicValueEnum::StructValue(sv) => {
+                    self.builder.build_extract_value(*sv, 0, "json_str_ptr")
+                        .map_err(|e| CompileError::LlvmError(format!("extract json string: {}", e)))?
+                        .into_pointer_value()
+                }
+                _ => return Err("from_json argument must be a string".into()),
+            };
+            return match &type_args[0] {
+                Type::Name(n, _) if n == "i32" || n == "i64" => {
+                    let func = self.module.get_function("mimi_json_as_i64")
+                        .ok_or("mimi_json_as_i64 not declared")?;
+                    let result = self.builder.build_call(func, &[
+                        BasicMetadataValueEnum::PointerValue(raw_ptr),
+                    ], "json_as_i64")
+                        .map_err(|e| CompileError::LlvmError(format!("json_as_i64: {}", e)))?;
+                    let iv = self.expect_basic_value(&result, "json_as_i64")?.into_int_value();
+                    Ok(BasicValueEnum::IntValue(iv))
+                }
+                Type::Name(n, _) if n == "f32" || n == "f64" => {
+                    let func = self.module.get_function("mimi_json_as_f64")
+                        .ok_or("mimi_json_as_f64 not declared")?;
+                    let result = self.builder.build_call(func, &[
+                        BasicMetadataValueEnum::PointerValue(raw_ptr),
+                    ], "json_as_f64")
+                        .map_err(|e| CompileError::LlvmError(format!("json_as_f64: {}", e)))?;
+                    let fv = self.expect_basic_value(&result, "json_as_f64")?.into_float_value();
+                    Ok(BasicValueEnum::FloatValue(fv))
+                }
+                Type::Name(n, _) if n == "bool" => {
+                    let func = self.module.get_function("mimi_json_as_bool")
+                        .ok_or("mimi_json_as_bool not declared")?;
+                    let result = self.builder.build_call(func, &[
+                        BasicMetadataValueEnum::PointerValue(raw_ptr),
+                    ], "json_as_bool")
+                        .map_err(|e| CompileError::LlvmError(format!("json_as_bool: {}", e)))?;
+                    let iv = self.expect_basic_value(&result, "json_as_bool")?.into_int_value();
+                    let one = self.context.i64_type().const_int(1, false);
+                    let bv = self.builder.build_int_compare(
+                        inkwell::IntPredicate::EQ, iv, one, "to_bool")
+                        .map_err(|e| CompileError::LlvmError(format!("to_bool: {}", e)))?;
+                    Ok(BasicValueEnum::IntValue(bv))
+                }
+                Type::Name(n, _) if n == "string" => {
+                    let func = self.module.get_function("mimi_from_json")
+                        .ok_or("mimi_from_json not declared")?;
+                    let result = self.builder.build_call(func, &[
+                        BasicMetadataValueEnum::PointerValue(raw_ptr),
+                    ], "from_json_string")
+                        .map_err(|e| CompileError::LlvmError(format!("from_json_string: {}", e)))?;
+                    let pv = self.expect_basic_value(&result, "from_json_string")?.into_pointer_value();
+                    let strlen_fn = self.module.get_function("strlen")
+                        .ok_or("strlen not declared")?;
+                    let len = self.builder.build_call(strlen_fn, &[
+                        BasicMetadataValueEnum::PointerValue(pv),
+                    ], "strlen")
+                        .map_err(|e| CompileError::LlvmError(format!("strlen: {}", e)))?
+                        .try_as_basic_value_opt()
+                        .ok_or("strlen returned void")?
+                        .into_int_value();
+                    let i8_ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
+                    let struct_ty = self.context.struct_type(&[
+                        BasicTypeEnum::PointerType(i8_ptr_ty),
+                        BasicTypeEnum::IntType(self.context.i64_type()),
+                    ], false);
+                    let alloca = self.builder.build_alloca(struct_ty, "string_ret")
+                        .map_err(|e| CompileError::LlvmError(format!("alloca: {}", e)))?;
+                    let ptr_gep = self.builder.build_struct_gep(struct_ty, alloca, 0, "str_ptr_gep")
+                        .map_err(|e| CompileError::LlvmError(format!("gep: {}", e)))?;
+                    self.builder.build_store(ptr_gep, pv)
+                        .map_err(|e| CompileError::LlvmError(format!("store: {}", e)))?;
+                    let len_gep = self.builder.build_struct_gep(struct_ty, alloca, 1, "str_len_gep")
+                        .map_err(|e| CompileError::LlvmError(format!("gep: {}", e)))?;
+                    self.builder.build_store(len_gep, len)
+                        .map_err(|e| CompileError::LlvmError(format!("store: {}", e)))?;
+                    let ret = self.builder.build_load(struct_ty, alloca, "string_ret_val")
+                        .map_err(|e| CompileError::LlvmError(format!("load: {}", e)))?;
+                    Ok(ret)
+                }
+                _ => Err(CompileError::Generic(format!(
+                    "from_json::<{:?}> codegen not yet implemented", type_args[0]
+                ))),
+            };
         }
         // Monomorphized call: func::<Type>(args)
         // Build type_map from explicit type args

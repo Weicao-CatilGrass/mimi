@@ -169,6 +169,8 @@ impl<'ctx> CodeGenerator<'ctx> {
                             self.var_type_names.insert(name.clone(), "string".to_string());
                         } else if let Expr::Record { ty: Some(tn), .. } = init {
                             self.var_type_names.insert(name.clone(), tn.clone());
+                        } else if matches!(init, Expr::SetLiteral(_)) {
+                            self.var_type_names.insert(name.clone(), "set".to_string());
                         } else if let Expr::Call(callee, _) = init {
                             if let Expr::Field(obj, method_name) = callee.as_ref() {
                                 if method_name == "spawn" {

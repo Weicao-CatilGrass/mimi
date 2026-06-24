@@ -938,9 +938,107 @@ pub extern "C" fn json_get_element(
     }
 }
 
-// ---------------------------------------------------------------------------
-// Regex (simple recursive backtracking engine, self-contained)
-// ---------------------------------------------------------------------------
+// ─── from_json::<T> typed parsing helpers ────────────────────────
+
+#[no_mangle]
+pub extern "C" fn mimi_json_as_i64(json: *const std::ffi::c_char) -> i64 {
+    if json.is_null() { return 0; }
+    let s = unsafe { cstr_to_string(json) };
+    let mut parser = JsonParser::new(&s);
+    match parser.parse_value() {
+        Some(val) => val.parse::<i64>().unwrap_or(0),
+        None => 0,
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn mimi_json_as_f64(json: *const std::ffi::c_char) -> f64 {
+    if json.is_null() { return 0.0; }
+    let s = unsafe { cstr_to_string(json) };
+    let mut parser = JsonParser::new(&s);
+    match parser.parse_value() {
+        Some(val) => val.parse::<f64>().unwrap_or(0.0),
+        None => 0.0,
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn mimi_json_as_bool(json: *const std::ffi::c_char) -> i64 {
+    if json.is_null() { return 0; }
+    let s = unsafe { cstr_to_string(json) };
+    let mut parser = JsonParser::new(&s);
+    match parser.parse_value() {
+        Some(val) => (val == "true") as i64,
+        None => 0,
+    }
+}
+
+// ─── Set operations ─────────────────────────────────────────────
+
+type SetHandle = i64;
+type SetValueHandle = i64;
+
+struct MimiSet {
+    inner: std::collections::HashSet<SetValueHandle>,
+}
+
+fn set_from_handle(handle: SetHandle) -> &'static mut MimiSet {
+    unsafe { &mut *(handle as *mut MimiSet) }
+}
+
+#[no_mangle]
+pub extern "C" fn mimi_set_new() -> SetHandle {
+    let set = Box::new(MimiSet { inner: std::collections::HashSet::new() });
+    Box::into_raw(set) as SetHandle
+}
+
+#[no_mangle]
+pub extern "C" fn mimi_set_destroy(handle: SetHandle) {
+    if handle == 0 { return; }
+    unsafe { drop(Box::from_raw(handle as *mut MimiSet)); }
+}
+
+#[no_mangle]
+pub extern "C" fn mimi_set_insert(handle: SetHandle, value: SetValueHandle) -> SetHandle {
+    if handle == 0 { return handle; }
+    set_from_handle(handle).inner.insert(value);
+    handle
+}
+
+#[no_mangle]
+pub extern "C" fn mimi_set_contains(handle: SetHandle, value: SetValueHandle) -> i64 {
+    if handle == 0 { return 0; }
+    set_from_handle(handle).inner.contains(&value) as i64
+}
+
+#[no_mangle]
+pub extern "C" fn mimi_set_remove(handle: SetHandle, value: SetValueHandle) -> SetHandle {
+    if handle == 0 { return handle; }
+    set_from_handle(handle).inner.remove(&value);
+    handle
+}
+
+#[no_mangle]
+pub extern "C" fn mimi_set_size(handle: SetHandle) -> i64 {
+    if handle == 0 { return 0; }
+    set_from_handle(handle).inner.len() as i64
+}
+
+#[no_mangle]
+pub extern "C" fn mimi_set_to_list(handle: SetHandle, out_len: *mut i64) -> *mut SetValueHandle {
+    if handle == 0 || out_len.is_null() { unsafe { if !out_len.is_null() { *out_len = 0; } } return std::ptr::null_mut(); }
+    let set = set_from_handle(handle);
+    let len = set.inner.len() as i64;
+    unsafe { *out_len = len; }
+    if len == 0 { return std::ptr::null_mut(); }
+    let mut vec: Vec<SetValueHandle> = set.inner.iter().copied().collect();
+    vec.shrink_to_fit();
+    let ptr = vec.as_mut_ptr();
+    std::mem::forget(vec); // ownership transferred to caller
+    ptr
+}
+
+// ─── Regex (simple recursive backtracking engine, self-contained) ───
 
 struct RegexEngine;
 

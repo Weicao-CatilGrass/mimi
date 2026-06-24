@@ -3044,12 +3044,82 @@ fn e2e_extern_rejects_unrepresentable_type() {
 // ===================== JSON typed deserialization =====================
 
 #[test]
-fn e2e_json_from_json_typed_codegen_stub() {
+fn e2e_json_from_json_typed_i32() {
     if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let result = compile_and_run(r#"func main() -> i32 { from_json::<i32>("42") }"#);
-    assert!(result.is_err(), "from_json::<T> codegen should return error, got Ok: {:?}", result);
-    let err = result.unwrap_err();
-    assert!(err.contains("codegen not yet implemented"), "expected codegen stub error, got: {}", err);
+    let stdout = compile_and_run(r#"func main() -> i32 { println(from_json::<i32>("42")); 0 }"#)
+        .expect("from_json::<i32> codegen failed");
+    assert_eq!(stdout.trim(), "42");
+}
+
+#[test]
+fn e2e_json_from_json_typed_bool() {
+    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    // Test that bool deserialization doesn't crash (no special output)
+    let result = compile_and_run(r##"func main() -> i32 { let b = from_json::<bool>("true"); 0 }"##);
+    assert!(result.is_ok(), "from_json::<bool> codegen should succeed, got: {:?}", result);
+}
+
+#[test]
+fn e2e_json_from_json_typed_f64() {
+    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    let stdout = compile_and_run(r##"func main() -> i32 { let f = from_json::<f64>("3.14"); println(f); 0 }"##)
+        .expect("from_json::<f64> codegen failed");
+    assert!(!stdout.trim().is_empty(), "expected f64 output");
+}
+
+#[test]
+fn e2e_json_from_json_typed_string() {
+    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    let stdout = compile_and_run(r#"func main() -> i32 { let s = from_json::<string>("\"hello\""); println(s); 0 }"#)
+        .expect("from_json::<string> codegen failed");
+    assert_eq!(stdout.trim(), "hello");
+}
+
+#[test]
+fn e2e_set_literal() {
+    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    let stdout = compile_and_run(r#"func main() -> i32 { let s = {1, 2, 3}; println(s.size()); 0 }"#)
+        .expect("set literal codegen failed");
+    assert_eq!(stdout.trim(), "3");
+}
+
+#[test]
+fn e2e_set_contains() {
+    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    let result = compile_and_run(r##"func main() -> i32 { let s = {10, 20, 30}; let b = s.contains(20); 0 }"##);
+    assert!(result.is_ok(), "set contains codegen failed: {:?}", result);
+}
+
+#[test]
+fn e2e_set_insert_and_size() {
+    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    let stdout = compile_and_run(r#"func main() -> i32 { let s = {1, 2}; s.insert(3); println(s.size()); 0 }"#)
+        .expect("set insert codegen failed");
+    assert_eq!(stdout.trim(), "3");
+}
+
+#[test]
+fn e2e_set_remove_and_size() {
+    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    let stdout = compile_and_run(r#"func main() -> i32 { let s = {1, 2, 3}; s.remove(2); println(s.size()); 0 }"#)
+        .expect("set remove codegen failed");
+    assert_eq!(stdout.trim(), "2");
+}
+
+#[test]
+fn e2e_set_is_empty() {
+    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    let stdout = compile_and_run(r#"func main() -> i32 { let s = {42, 99}; let sz = s.size(); println(sz); 0 }"#)
+        .expect("set is_empty codegen failed");
+    assert_eq!(stdout.trim(), "2");
+}
+
+#[test]
+fn e2e_set_to_list() {
+    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    let stdout = compile_and_run(r#"func main() -> i32 { let s = {1, 2, 3}; let lst = s.to_list(); println(lst); 0 }"#)
+        .expect("set to_list codegen failed");
+    assert!(!stdout.trim().is_empty(), "to_list should produce output");
 }
 
 
