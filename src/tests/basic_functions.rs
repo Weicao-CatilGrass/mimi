@@ -49,7 +49,10 @@ func main() -> i32 {
 }
 "#;
     let result = check_source(src);
-    assert!(result.is_ok());
+    assert!(result.is_err(), "expected error: i32 function with println (returns unit) as last expression");
+    let errors = result.unwrap_err();
+    assert!(errors.iter().any(|d| d.message.contains("implicit return")),
+        "expected implicit return error, got: {:?}", errors);
 }
 
 #[test]

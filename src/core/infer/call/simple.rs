@@ -401,7 +401,7 @@ impl<'a> Checker<'a> {
                 }
                 return Type::Name("i32".into(), vec![]);
             }
-            "pow" | "floor" | "ceil" | "round" => {
+            "pow" => {
                 if args.len() != 2 {
                     self.emit_code(
                         crate::diagnostic::codes::E0242,
@@ -410,6 +410,17 @@ impl<'a> Checker<'a> {
                 } else {
                     self.infer_expr(&args[0], scopes);
                     self.infer_expr(&args[1], scopes);
+                }
+                return Type::Name("f64".into(), vec![]);
+            }
+            "floor" | "ceil" | "round" => {
+                if args.len() != 1 {
+                    self.emit_code(
+                        crate::diagnostic::codes::E0242,
+                        format!("{} expects 1 argument", name),
+                    );
+                } else {
+                    self.infer_expr(&args[0], scopes);
                 }
                 return Type::Name("f64".into(), vec![]);
             }
@@ -766,8 +777,7 @@ impl<'a> Checker<'a> {
                     self.infer_expr(&args[0], scopes);
                     self.infer_expr(&args[1], scopes);
                 }
-                return Type::Result(
-                    Box::new(Type::Name("i32".into(), vec![])),
+                return Type::Option(
                     Box::new(Type::Name("i32".into(), vec![])),
                 );
             }
