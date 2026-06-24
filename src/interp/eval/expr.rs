@@ -679,7 +679,22 @@ impl<'a> Interpreter<'a> {
         })
     }
 
-    pub(in crate::interp) fn eval_turbofish(&mut self, name: &str, _type_args: &[Type], args: &[Expr]) -> Result<Value, InterpError> {
+    pub(in crate::interp) fn eval_turbofish(&mut self, name: &str, type_args: &[Type], args: &[Expr]) -> Result<Value, InterpError> {
+        // Special case: from_json::<T>(s) — typed JSON deserialization
+        if name == "from_json" && !type_args.is_empty() {
+            if args.len() != 1 {
+                return Err(InterpError::new("from_json::<T> expects 1 argument (json string)"));
+            }
+            let s_val = self.eval_expr(&args[0])?;
+            let json_str = match &s_val {
+                Value::String(s) => s.clone(),
+                _ => return Err(InterpError::new("from_json::<T> expects a string argument")),
+            };
+            let jv: serde_json::Value = serde_json::from_str(&json_str)
+                .map_err(|e| InterpError::new(format!("JSON parse error: {}", e)))?;
+            let val = self.json_to_value(&jv);
+            return self.coerce_value_to_type(val, &type_args[0]);
+        }
         // Turbofish: func::<Type>(args) — evaluate args and call the function
         // Type arguments are ignored at runtime (monomorphization happens at compile time)
         let func = self.find_function(name)
@@ -732,6 +747,247 @@ impl<'a> Interpreter<'a> {
         match (start_val, end_val) {
             (Value::Int(s), Value::Int(e)) => Ok(Value::Range { start: s, end: e }),
             _ => Err(InterpError::new("range requires integer operands")),
+        }
+    }
+
+    pub(in crate::interp) fn coerce_value_to_type(&self, val: Value, target: &Type) -> Result<Value, InterpError> {
+        match target {
+            Type::Name(name, type_args) => match name.as_str() {
+                "i32" | "i64" | "i8" | "i16" => match val {
+                    Value::Int(n) => Ok(Value::Int(n)),
+                    Value::Float(f) => Ok(Value::Int(f as i64)),
+                    _ => Err(InterpError::new(format!("expected integer, got {}", val))),
+                },
+                "f32" | "f64" => match val {
+                    Value::Float(f) => Ok(Value::Float(f)),
+                    Value::Int(n) => Ok(Value::Float(n as f64)),
+                    _ => Err(InterpError::new(format!("expected float, got {}", val))),
+                },
+                "string" => match val {
+                    Value::String(s) => Ok(Value::String(s)),
+                    _ => Err(InterpError::new(format!("expected string, got {}", val))),
+                },
+                "bool" => match val {
+                    Value::Bool(b) => Ok(Value::Bool(b)),
+                    _ => Err(InterpError::new(format!("expected bool, got {}", val))),
+                },
+                "unit" => Ok(Value::Unit),
+                "List" if type_args.len() == 1 => match val {
+                    Value::List(items) => {
+                        let converted: Result<Vec<Value>, _> = items
+                            .into_iter()
+                            .map(|item| self.coerce_value_to_type(item, &type_args[0]))
+                            .collect();
+                        Ok(Value::List(converted?))
+                    }
+                    _ => Err(InterpError::new(format!("expected list, got {}", val))),
+                },
+                "Option" if type_args.len() == 1 => match val {
+                    Value::Unit => Ok(Value::Unit),
+                    val => {
+                        let inner_val = self.coerce_value_to_type(val, &type_args[0])?;
+                        Ok(Value::Variant("Some".into(), vec![inner_val]))
+                    }
+                },
+                "Result" if type_args.len() == 2 => match val {
+                    Value::Variant(name, payload) if name == "Ok" => {
+                        let converted = payload
+                            .into_iter()
+                            .map(|v| self.coerce_value_to_type(v, &type_args[0]))
+                            .collect::<Result<Vec<_>, _>>()?;
+                        Ok(Value::Variant("Ok".to_string(), converted))
+                    }
+                    Value::Variant(name, payload) if name == "Err" => {
+                        let converted = payload
+                            .into_iter()
+                            .map(|v| self.coerce_value_to_type(v, &type_args[1]))
+                            .collect::<Result<Vec<_>, _>>()?;
+                        Ok(Value::Variant("Err".to_string(), converted))
+                    }
+                    _ => Err(InterpError::new(format!("expected Result, got {}", val))),
+                },
+                _ => {
+                    if let Some(type_def) = self.type_defs.get(name) {
+                        match &type_def.kind {
+                            TypeDefKind::Record(fields) => match val {
+                                Value::Record(_, mut existing_fields) => {
+                                    let mut typed_fields = HashMap::new();
+                                    for field in fields {
+                                        let field_val = existing_fields.remove(&field.name).ok_or_else(|| {
+                                            InterpError::new(format!(
+                                                "missing field '{}' in JSON for type '{}'",
+                                                field.name, name
+                                            ))
+                                        })?;
+                                        typed_fields.insert(
+                                            field.name.clone(),
+                                            self.coerce_value_to_type(field_val, &field.ty)?,
+                                        );
+                                    }
+                                    Ok(Value::Record(Some(name.clone()), typed_fields))
+                                }
+                                _ => Err(InterpError::new(format!(
+                                    "expected object for type '{}', got {}",
+                                    name, val
+                                ))),
+                            },
+                            TypeDefKind::Alias(inner_type) => {
+                                self.coerce_value_to_type(val, inner_type)
+                            }
+                            TypeDefKind::Newtype(inner_type) => {
+                                let inner_val = self.coerce_value_to_type(val, inner_type)?;
+                                let mut map = HashMap::new();
+                                map.insert("value".to_string(), inner_val);
+                                Ok(Value::Record(Some(name.clone()), map))
+                            }
+                            TypeDefKind::Enum(variants) => match val {
+                                Value::String(s) => {
+                                    if variants.iter().any(|v| v.name == s && v.payload.is_none()) {
+                                        Ok(Value::Variant(s, vec![]))
+                                    } else {
+                                        Err(InterpError::new(format!(
+                                            "unknown or payload-bearing variant '{}' for type '{}'",
+                                            s, name
+                                        )))
+                                    }
+                                }
+                                Value::Record(_, mut fields) => {
+                                    if fields.len() != 1 {
+                                        Err(InterpError::new(format!(
+                                            "enum '{}' expects exactly one key in JSON object",
+                                            name
+                                        )))
+                                    } else {
+                                        let (var_name, payload_val) = fields.drain().next().unwrap();
+                                        let variant = variants
+                                            .iter()
+                                            .find(|v| v.name == var_name)
+                                            .ok_or_else(|| {
+                                                InterpError::new(format!(
+                                                    "unknown variant '{}' for type '{}'",
+                                                    var_name, name
+                                                ))
+                                            })?;
+                                        match &variant.payload {
+                                            None => Ok(Value::Variant(var_name, vec![])),
+                                            Some(VariantPayload::Tuple(types)) => {
+                                                let payload_items = match payload_val {
+                                                    Value::List(items) => items,
+                                                    _ => vec![payload_val],
+                                                };
+                                                if payload_items.len() != types.len() {
+                                                    return Err(InterpError::new(format!(
+                                                        "variant '{}' expects {} payload fields, got {}",
+                                                        var_name,
+                                                        types.len(),
+                                                        payload_items.len()
+                                                    )));
+                                                }
+                                                let converted: Result<Vec<Value>, _> =
+                                                    payload_items
+                                                        .into_iter()
+                                                        .zip(types.iter())
+                                                        .map(|(item, ty)| {
+                                                            self.coerce_value_to_type(item, ty)
+                                                        })
+                                                        .collect();
+                                                Ok(Value::Variant(var_name, converted?))
+                                            }
+                                            Some(VariantPayload::Record(fields_def)) => {
+                                                let payload_map = match payload_val {
+                                                    Value::Record(_, map) => map,
+                                                    v => {
+                                                        let mut map = HashMap::new();
+                                                        map.insert("value".to_string(), v);
+                                                        map
+                                                    }
+                                                };
+                                                let mut typed_fields = HashMap::new();
+                                                for fdef in fields_def {
+                                                    let fval = payload_map
+                                                        .get(&fdef.name)
+                                                        .cloned()
+                                                        .unwrap_or(Value::Unit);
+                                                    typed_fields.insert(
+                                                        fdef.name.clone(),
+                                                        self.coerce_value_to_type(fval, &fdef.ty)?,
+                                                    );
+                                                }
+                                                Ok(Value::Variant(
+                                                    var_name.clone(),
+                                                    vec![Value::Record(
+                                                        Some(format!("{}_{}", name, var_name)),
+                                                        typed_fields,
+                                                    )],
+                                                ))
+                                            }
+                                        }
+                                    }
+                                }
+                                _ => Err(InterpError::new(format!(
+                                    "expected string or object for enum '{}', got {}",
+                                    name, val
+                                ))),
+                            },
+                            _ => Err(InterpError::new(format!(
+                                "cannot deserialize JSON to type '{}'",
+                                name
+                            ))),
+                        }
+                    } else {
+                        // Unknown named type (e.g., generic type parameter resolved to concrete)
+                        // Return the value as-is
+                        Ok(val)
+                    }
+                }
+            },
+            Type::Option(inner) => match val {
+                Value::Unit => Ok(Value::Unit),
+                val => {
+                    let inner_val = self.coerce_value_to_type(val, inner)?;
+                    Ok(Value::Variant("Some".into(), vec![inner_val]))
+                }
+            },
+            Type::Result(ok, err) => match val {
+                Value::Variant(name, payload) if name == "Ok" => {
+                    let converted = payload
+                        .into_iter()
+                        .map(|v| self.coerce_value_to_type(v, ok))
+                        .collect::<Result<Vec<_>, _>>()?;
+                    Ok(Value::Variant("Ok".to_string(), converted))
+                }
+                Value::Variant(name, payload) if name == "Err" => {
+                    let converted = payload
+                        .into_iter()
+                        .map(|v| self.coerce_value_to_type(v, err))
+                        .collect::<Result<Vec<_>, _>>()?;
+                    Ok(Value::Variant("Err".to_string(), converted))
+                }
+                _ => Err(InterpError::new(format!("expected Result, got {}", val))),
+            },
+            Type::Tuple(types) => match val {
+                Value::List(items) | Value::Tuple(items) => {
+                    if items.len() != types.len() {
+                        Err(InterpError::new(format!(
+                            "expected tuple of {} elements, got {}",
+                            types.len(),
+                            items.len()
+                        )))
+                    } else {
+                        let converted: Result<Vec<Value>, _> = items
+                            .into_iter()
+                            .zip(types.iter())
+                            .map(|(item, ty)| self.coerce_value_to_type(item, ty))
+                            .collect();
+                        Ok(Value::Tuple(converted?))
+                    }
+                }
+                _ => Err(InterpError::new(format!("expected tuple, got {}", val))),
+            },
+            _ => Err(InterpError::new(format!(
+                "unsupported target type for JSON deserialization: {:?}",
+                target
+            ))),
         }
     }
 }
