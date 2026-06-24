@@ -1,4 +1,5 @@
 use super::*;
+use crate::diagnostic::Diagnostic;
 
 impl<'a> Checker<'a> {
     pub(crate) fn check_block(&mut self, block: &Block, ret: &Type, scopes: &mut Vec<HashMap<String, Type>>) {
@@ -268,11 +269,13 @@ impl<'a> Checker<'a> {
                             init_ty.clone()
                         } else {
                             if !same_type(&d, &init_ty) && !is_numeric_coercion(&d, &init_ty) && !is_trait_coercion(&d, &init_ty, &self.impls) {
-                                self.emit_code(crate::diagnostic::codes::E0209, format!(
-                                    "pattern declared as {} but initialized with {}",
-                                    fmt_type(&d),
-                                    fmt_type(&init_ty)
-                                ));
+                                self.errors.push(
+                                    Diagnostic::error_code(
+                                        crate::diagnostic::codes::E0209,
+                                        format!("pattern declared as {} but initialized with {}", fmt_type(&d), fmt_type(&init_ty)),
+                                        Span::single(self.current_line, self.current_col),
+                                    ).with_help(format!("the expression has type '{}', not '{}'", fmt_type(&init_ty), fmt_type(&d)))
+                                );
                             }
                             d
                         }
@@ -515,12 +518,13 @@ impl<'a> Checker<'a> {
                         }
                         let target_ty = self.lookup_var(name, scopes);
                         if !same_type(&target_ty, &value_ty) {
-                            self.emit_code(crate::diagnostic::codes::E0209, format!(
-                                "cannot assign {} to variable '{}' of type {}",
-                                fmt_type(&value_ty),
-                                name,
-                                fmt_type(&target_ty)
-                            ));
+                            self.errors.push(
+                                Diagnostic::error_code(
+                                    crate::diagnostic::codes::E0209,
+                                    format!("cannot assign {} to variable '{}' of type {}", fmt_type(&value_ty), name, fmt_type(&target_ty)),
+                                    Span::single(self.current_line, self.current_col),
+                                ).with_help(format!("variable '{}' has type '{}', not '{}'", name, fmt_type(&target_ty), fmt_type(&value_ty)))
+                            );
                         }
                         // E0306: Arena escape — assigning arena-scoped ref to outer-scope variable
                         if self.arena_depth > 0 {
@@ -598,11 +602,13 @@ impl<'a> Checker<'a> {
                             Type::Name(n, args) if n == "List" && args.len() == 1 => {
                                 let elem_ty = &args[0];
                                 if !same_type(&value_ty, elem_ty) {
-                                    self.emit_code(crate::diagnostic::codes::E0209, format!(
-                                        "cannot assign {} to list element of type {}",
-                                        fmt_type(&value_ty),
-                                        fmt_type(elem_ty)
-                                    ));
+                                    self.errors.push(
+                                        Diagnostic::error_code(
+                                            crate::diagnostic::codes::E0209,
+                                            format!("cannot assign {} to list element of type {}", fmt_type(&value_ty), fmt_type(elem_ty)),
+                                            Span::single(self.current_line, self.current_col),
+                                        ).with_help(format!("the list contains elements of type '{}', not '{}'", fmt_type(elem_ty), fmt_type(&value_ty)))
+                                    );
                                 }
                             }
                             _ => {

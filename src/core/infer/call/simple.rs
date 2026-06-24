@@ -815,6 +815,19 @@ impl<'a> Checker<'a> {
                 }
                 return Type::Name("unit".into(), vec![]);
             }
+            "format" => {
+                if args.is_empty() {
+                    self.emit_code(crate::diagnostic::codes::E0242, "format expects at least 1 argument (template string)");
+                } else {
+                    let tpl = self.infer_expr(&args[0], scopes);
+                    if !crate::core::helpers::is_string(&tpl) {
+                        self.emit_code(crate::diagnostic::codes::E0242,
+                            format!("format expects a string template as first argument, found {}", fmt_type(&tpl)));
+                    }
+                    for a in &args[1..] { self.infer_expr(a, scopes); }
+                }
+                return Type::Name("string".into(), vec![]);
+            }
             "str_to_c_str" => {
                 if args.len() != 1 {
                     self.emit_code(
@@ -1213,15 +1226,12 @@ impl<'a> Checker<'a> {
                     let at = self.infer_expr(arg, scopes);
                     let subst_param = subst_type_params(param, &generics, &type_map);
                     if !same_type(&at, &subst_param) && !is_numeric_coercion(&subst_param, &at) {
-                        self.emit_code(
-                            crate::diagnostic::codes::E0211,
-                            format!(
-                                "argument {} of '{}' expected {}, found {}",
-                                i + 1,
-                                name,
-                                fmt_type(&subst_param),
-                                fmt_type(&at)
-                            ),
+                        self.errors.push(
+                            Diagnostic::error_code(
+                                crate::diagnostic::codes::E0211,
+                                format!("argument {} of '{}' expected {}, found {}", i + 1, name, fmt_type(&subst_param), fmt_type(&at)),
+                                Span::single(self.current_line, self.current_col),
+                            ).with_help(format!("argument {} has type '{}', but '{}' expects type '{}'", i + 1, fmt_type(&at), name, fmt_type(&subst_param)))
                         );
                     }
                 }
@@ -1231,15 +1241,12 @@ impl<'a> Checker<'a> {
                 for (i, (arg, param)) in args.iter().zip(params.iter()).enumerate() {
                     let at = self.infer_expr(arg, scopes);
                     if !same_type(&at, param) && !is_numeric_coercion(param, &at) {
-                        self.emit_code(
-                            crate::diagnostic::codes::E0211,
-                            format!(
-                                "argument {} of '{}' expected {}, found {}",
-                                i + 1,
-                                name,
-                                fmt_type(param),
-                                fmt_type(&at)
-                            ),
+                        self.errors.push(
+                            Diagnostic::error_code(
+                                crate::diagnostic::codes::E0211,
+                                format!("argument {} of '{}' expected {}, found {}", i + 1, name, fmt_type(param), fmt_type(&at)),
+                                Span::single(self.current_line, self.current_col),
+                            ).with_help(format!("argument {} has type '{}', but '{}' expects type '{}'", i + 1, fmt_type(&at), name, fmt_type(param)))
                         );
                     }
                 }

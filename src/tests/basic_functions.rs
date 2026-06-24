@@ -194,3 +194,47 @@ func main() -> i32 {
     let v = run_source(src);
     assert_eq!(v, interp::Value::Int(12));
 }
+
+#[test]
+fn interp_format_basic() {
+    let src = r#"
+func main() -> string {
+    format("hello {} world", "beautiful")
+}
+"#;
+    let v = run_source(src);
+    assert_eq!(v, interp::Value::String("hello beautiful world".to_string()));
+}
+
+#[test]
+fn interp_format_multi() {
+    let src = r#"
+func main() -> string {
+    format("{} + {} = {}", 1, 2, 3)
+}
+"#;
+    let v = run_source(src);
+    assert_eq!(v, interp::Value::String("1 + 2 = 3".to_string()));
+}
+
+#[test]
+fn interp_format_no_placeholders() {
+    let src = r#"
+func main() -> string {
+    format("hello world")
+}
+"#;
+    let v = run_source(src);
+    assert_eq!(v, interp::Value::String("hello world".to_string()));
+}
+
+#[test]
+fn interp_format_mixed_types() {
+    let src = r#"
+func main() -> string {
+    format("int={} float={} str={}", 42, 3.14, "test")
+}
+"#;
+    let v = run_source(src);
+    assert_eq!(v, interp::Value::String("int=42 float=3.14 str=test".to_string()));
+}
