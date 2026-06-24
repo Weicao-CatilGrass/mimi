@@ -3,7 +3,12 @@
 ## [Unreleased] — 0.22.3-dev
 
 ### Added
-- (placeholder)
+- Set 集合字面量 `{1, 2, 3}`（逗号分隔，≥2 元素）与操作：`size/len`, `is_empty`, `contains`, `insert`, `remove`, `to_list`
+- `std/set.mimi` — SetExt trait 定义
+- 16 个 Set 测试（字面量/disup/包含/插入/删除/链式操作/字符串元素）
+
+### Tests
+- 基线: 2,094 passed, 0 failed, 21 ignored
 
 ## [v0.22.2] - 2026-06-24 — JSON 类型化（JSON Typed Deserialization）
 

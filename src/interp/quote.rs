@@ -273,6 +273,10 @@ impl<'a> Interpreter<'a> {
                 let v = self.eval_expr(&Expr::MapLiteral { entries: entries.clone() })?;
                 Ok(QuotedAst::Interpolate(Box::new(v)))
             }
+            Expr::SetLiteral(elems) => {
+                let v = self.eval_expr(&Expr::SetLiteral(elems.clone()))?;
+                Ok(QuotedAst::Interpolate(Box::new(v)))
+            }
         }
     }
 

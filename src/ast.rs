@@ -382,6 +382,8 @@ pub enum Expr {
     MapLiteral {
         entries: Vec<(Expr, Expr)>,
     },
+    /// Set literal: {1, 2, 3}
+    SetLiteral(Vec<Expr>),
 }
 
 impl Expr {

@@ -111,4 +111,29 @@ impl<'a> Checker<'a> {
         }
         Type::Name("Record".into(), vec![])
     }
+
+    pub(in crate::core) fn infer_set_literal(
+        &mut self,
+        elems: &[Expr],
+        scopes: &mut Vec<HashMap<String, Type>>,
+    ) -> Type {
+        let mut elem_ty = Type::Name("unknown".into(), vec![]);
+        for (i, e) in elems.iter().enumerate() {
+            let t = self.infer_expr(e, scopes);
+            if i == 0 {
+                elem_ty = t;
+            } else if !same_type(&elem_ty, &t) {
+                self.emit_code(
+                    crate::diagnostic::codes::E0242,
+                    format!(
+                        "set element {} type {} does not match first element {}",
+                        i + 1,
+                        fmt_type(&t),
+                        fmt_type(&elem_ty)
+                    ),
+                );
+            }
+        }
+        Type::Name("Set".into(), vec![elem_ty])
+    }
 }

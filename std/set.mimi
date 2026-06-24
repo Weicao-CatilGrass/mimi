@@ -1,0 +1,19 @@
+// SetExt: Trait for Set operations.
+trait SetExt {
+    func size() -> i32
+    func is_empty() -> bool
+    func contains(value: Any) -> bool
+    func insert(value: Any) -> Set
+    func remove(value: Any) -> Set
+    func to_list() -> List
+}
+
+// SetExt implementation for built-in Set type.
+impl SetExt for Set {
+    func size() -> i32 { self.size() }
+    func is_empty() -> bool { self.is_empty() }
+    func contains(value: Any) -> bool { self.contains(value) }
+    func insert(value: Any) -> Set { self.insert(value) }
+    func remove(value: Any) -> Set { self.remove(value) }
+    func to_list() -> List { self.to_list() }
+}

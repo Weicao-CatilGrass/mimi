@@ -470,6 +470,17 @@ impl<'a> Interpreter<'a> {
         Ok(Value::Record(None, map))
     }
 
+    pub(in crate::interp) fn eval_set_literal(&mut self, elems: &[Expr]) -> Result<Value, InterpError> {
+        let mut vals: Vec<Value> = Vec::new();
+        for e in elems {
+            let v = self.eval_expr(e)?;
+            if !vals.iter().any(|existing| values_equal(existing, &v)) {
+                vals.push(v);
+            }
+        }
+        Ok(Value::Set(vals))
+    }
+
     pub(in crate::interp) fn eval_index(&mut self, obj_expr: &Expr, idx_expr: &Expr) -> Result<Value, InterpError> {
         let obj = self.eval_expr(obj_expr)?;
         let idx = self.eval_expr(idx_expr)?;

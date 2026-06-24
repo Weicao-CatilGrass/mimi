@@ -348,6 +348,17 @@ impl<'ctx> CodeGenerator<'ctx> {
             Expr::Block(block) => {
                 self.collect_free_vars(block, defined, vars, free_vars);
             }
+            Expr::SetLiteral(elems) => {
+                for e in elems {
+                    self.collect_free_vars_expr(e, defined, vars, free_vars);
+                }
+            }
+            Expr::MapLiteral { entries } => {
+                for (k, v) in entries {
+                    self.collect_free_vars_expr(k, defined, vars, free_vars);
+                    self.collect_free_vars_expr(v, defined, vars, free_vars);
+                }
+            }
             _ => {}
         }
     }

@@ -42,6 +42,7 @@ impl<'a> Checker<'a> {
                 self.infer_turbofish(name, type_args, args, scopes)
             }
             Expr::MapLiteral { entries } => self.infer_map_literal(entries, scopes),
+            Expr::SetLiteral(elems) => self.infer_set_literal(elems, scopes),
         }
     }
 }

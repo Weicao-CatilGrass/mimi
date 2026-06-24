@@ -111,7 +111,7 @@ impl<'a> Checker<'a> {
     pub(crate) fn builtin_type_names() -> Vec<String> {
         vec![
             "i32".into(), "i64".into(), "f64".into(), "bool".into(),
-            "string".into(), "unit".into(), "List".into(), "Future".into(),
+            "string".into(), "unit".into(), "List".into(), "Set".into(), "Future".into(),
             "Result".into(), "Option".into(),
         ]
     }

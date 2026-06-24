@@ -639,6 +639,60 @@ impl<'a> Interpreter<'a> {
                     _ => Err(InterpError::new(format!("List has no method '{}'", method))),
                 }
             }
+            Value::Set(set) => {
+                // Try trait method dispatch via type_impls first
+                if let Some(impls) = self.type_impls.get("Set") {
+                    for methods in impls.values() {
+                        if let Some(func) = methods.iter().find(|f| f.name == method) {
+                            let func = func.clone();
+                            self.push_scope();
+                            self.bind("self", obj.clone())?;
+                            let result = self.call_func(&func, args);
+                            self.pop_scope();
+                            return result;
+                        }
+                    }
+                }
+                match method {
+                    "size" | "len" => Ok(Value::Int(set.len() as i64)),
+                    "is_empty" => Ok(Value::Bool(set.is_empty())),
+                    "contains" => {
+                        if args.len() != 1 {
+                            return Err(InterpError::new("set.contains expects 1 argument"));
+                        }
+                        Ok(Value::Bool(set.iter().any(|e| values_equal(e, &args[0]))))
+                    }
+                    "insert" => {
+                        if args.len() != 1 {
+                            return Err(InterpError::new("set.insert expects 1 argument"));
+                        }
+                        let v = &args[0];
+                        if set.iter().any(|e| values_equal(e, v)) {
+                            Ok(obj.clone())
+                        } else {
+                            let mut new_set = set.clone();
+                            new_set.push(v.clone());
+                            Ok(Value::Set(new_set))
+                        }
+                    }
+                    "remove" => {
+                        if args.len() != 1 {
+                            return Err(InterpError::new("set.remove expects 1 argument"));
+                        }
+                        let v = &args[0];
+                        let pos = set.iter().position(|e| values_equal(e, v));
+                        if let Some(idx) = pos {
+                            let mut new_set = set.clone();
+                            new_set.remove(idx);
+                            Ok(Value::Set(new_set))
+                        } else {
+                            Ok(obj.clone())
+                        }
+                    }
+                    "to_list" => Ok(Value::List(set.clone())),
+                    _ => Err(InterpError::new(format!("Set has no method '{}'", method))),
+                }
+            }
             Value::Variant(name, vals) => {
                 // Option/Result combinator methods on enum variants
                 match (name.as_str(), method) {

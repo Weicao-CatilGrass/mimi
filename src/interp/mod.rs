@@ -498,6 +498,7 @@ impl<'a> Interpreter<'a> {
             Value::String(_) => "string".into(),
             Value::Unit => "unit".into(),
             Value::List(_) => "list".into(),
+            Value::Set(_) => "set".into(),
             Value::Array(_) => "array".into(),
             Value::Tuple(_) => "tuple".into(),
             Value::Variant(name, _) => name.clone(),

@@ -105,6 +105,11 @@ pub(crate) fn collect_expr_free_vars(
                 collect_expr_free_vars(e, bound, free);
             }
         }
+        Expr::SetLiteral(elems) => {
+            for e in elems {
+                collect_expr_free_vars(e, bound, free);
+            }
+        }
         Expr::Match(subject, arms) => {
             collect_expr_free_vars(subject, bound, free);
             for arm in arms {

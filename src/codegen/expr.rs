@@ -80,6 +80,9 @@ impl<'ctx> CodeGenerator<'ctx> {
                 Err("${ ... } interpolation encountered in runtime function: interpolation must be resolved before codegen (use `mimi run` to evaluate quote expressions)".into())
             }
             Expr::MapLiteral { entries } => self.compile_map_literal(entries, vars),
+            Expr::SetLiteral(_) => {
+                Err("set literal codegen not yet implemented".into())
+            }
             #[allow(unreachable_patterns)]
             _ => Err(format!("unsupported expression in codegen: {:?}", expr).into())
         }

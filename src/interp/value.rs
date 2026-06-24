@@ -179,6 +179,7 @@ pub enum Value {
     String(String),
     Unit,
     List(Vec<Value>),
+    Set(Vec<Value>),
     Tuple(Vec<Value>),
     Variant(String, Vec<Value>),
     Record(Option<String>, HashMap<String, Value>),
@@ -504,6 +505,14 @@ impl std::fmt::Display for Value {
                 }
                 write!(f, "]")
             }
+            Value::Set(vs) => {
+                write!(f, "Set{{")?;
+                for (i, v) in vs.iter().enumerate() {
+                    if i > 0 { write!(f, ", ")?; }
+                    write!(f, "{}", v)?;
+                }
+                write!(f, "}}")
+            }
             Value::Tuple(vs) => {
                 write!(f, "(")?;
                 for (i, v) in vs.iter().enumerate() {
@@ -602,6 +611,7 @@ pub(crate) fn contains_local_shared(v: &Value) -> bool {
     match v {
         Value::LocalShared(_) | Value::WeakLocal(_) => true,
         Value::List(elems) => elems.iter().any(contains_local_shared),
+        Value::Set(elems) => elems.iter().any(contains_local_shared),
         Value::Tuple(elems) => elems.iter().any(contains_local_shared),
         Value::Record(_, fields) => fields.values().any(contains_local_shared),
         Value::Variant(_, args) => args.iter().any(contains_local_shared),
@@ -630,6 +640,7 @@ pub(crate) fn contains_arena_ref(v: &Value, arena_id: usize) -> bool {
     match v {
         Value::ArenaRef(id, _) => *id == arena_id,
         Value::List(elems) => elems.iter().any(|e| contains_arena_ref(e, arena_id)),
+        Value::Set(elems) => elems.iter().any(|e| contains_arena_ref(e, arena_id)),
         Value::Tuple(elems) => elems.iter().any(|e| contains_arena_ref(e, arena_id)),
         Value::Record(_, fields) => fields.values().any(|v| contains_arena_ref(v, arena_id)),
         Value::Variant(_, args) => args.iter().any(|v| contains_arena_ref(v, arena_id)),
@@ -682,6 +693,7 @@ pub(crate) fn is_copy(v: &Value) -> bool {
         Value::Record(_, fields) => fields.values().all(is_copy),
         Value::Variant(_, args) => args.iter().all(is_copy),
         Value::Array(elems) => elems.iter().all(is_copy),
+        Value::Set(elems) => elems.iter().all(is_copy),
         _ => false,
     }
 }
@@ -693,6 +705,7 @@ pub(crate) fn is_truthy(v: &Value) -> bool {
         Value::Float(x) => *x != 0.0,
         Value::String(s) => !s.is_empty(),
         Value::List(l) => !l.is_empty(),
+        Value::Set(s) => !s.is_empty(),
         Value::Unit => false,
         Value::Newtype(inner) => is_truthy(inner),
         _ => true,
@@ -720,6 +733,7 @@ pub(crate) fn values_equal(a: &Value, b: &Value) -> bool {
         (Value::String(a), Value::String(b)) => a == b,
         (Value::Unit, Value::Unit) => true,
         (Value::List(a), Value::List(b)) => a.len() == b.len() && a.iter().zip(b.iter()).all(|(x, y)| values_equal(x, y)),
+        (Value::Set(a), Value::Set(b)) => a.len() == b.len() && a.iter().all(|x| b.iter().any(|y| values_equal(x, y))),
         (Value::Array(a), Value::Array(b)) => a.len() == b.len() && a.iter().zip(b.iter()).all(|(x, y)| values_equal(x, y)),
         (Value::Slice { source: a_src, start: a_s, end: a_e }, Value::Slice { source: b_src, start: b_s, end: b_e }) => {
             let a_slice = &a_src[*a_s..*a_e];
@@ -812,6 +826,7 @@ pub(crate) fn type_name(val: &Value) -> &'static str {
         Value::String(_) => "string",
         Value::Unit => "unit",
         Value::List(_) => "list",
+        Value::Set(_) => "set",
         Value::Array(_) => "array",
         Value::Tuple(_) => "tuple",
         Value::Variant(_, _) => "variant",

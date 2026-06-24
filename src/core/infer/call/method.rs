@@ -31,6 +31,11 @@ impl<'a> Checker<'a> {
                 if known.contains(&method_name) {
                     return self.check_option_method(method_name, &type_args[0], args, scopes);
                 }
+            } else if type_name == "Set" && type_args.len() == 1 {
+                let known = ["size", "len", "is_empty", "contains", "insert", "remove", "to_list"];
+                if known.contains(&method_name) {
+                    return self.check_set_method(method_name, &type_args[0], args, scopes);
+                }
             } else if type_name == "Result" && type_args.len() == 2 {
                 let known = [
                     "unwrap",
