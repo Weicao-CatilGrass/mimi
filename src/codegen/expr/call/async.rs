@@ -247,10 +247,8 @@ impl<'ctx> CodeGenerator<'ctx> {
                 let i64_ty = self.context.i64_type();
 
                 // Load result from future_ptr + 8 (skip completed flag)
-                let result_data_ptr = unsafe {
-                    self.builder.build_gep(i8_ty, future_ptr, &[i64_ty.const_int(8, false)], "result_data")
-                        .map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?
-                };
+                let result_data_ptr = self.gep().build_gep(i8_ty, future_ptr, &[i64_ty.const_int(8, false)], "result_data")
+                    .map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?;
                 let result_typed_ptr = self.builder.build_pointer_cast(
                     result_data_ptr,
                     self.context.ptr_type(inkwell::AddressSpace::default()),

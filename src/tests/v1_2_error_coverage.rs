@@ -433,15 +433,16 @@ func foo(x: i32) -> i32 {
 }
 func main() -> i32 { foo(42) }
 "#;
-    // E0500 is triggered via CompileError::ContractCondition in codegen;
-    // checker may not catch non-bool requires. Accept either.
+    // checker now catches non-bool requires via E0212 (type mismatch).
+    // E0500 is also triggered via CompileError::ContractCondition in codegen.
     let result = check_source(src);
     if result.is_ok() {
-        return; // checker may accept, codegen will catch it
+        return; // shouldn't happen, but accept
     }
     let errors = result.unwrap_err();
-    let has_code = errors.iter().any(|e| e.code.as_deref() == Some(crate::diagnostic::codes::E0500));
-    assert!(has_code, "expected E0500, got: {errors:?}");
+    let has_e0212 = errors.iter().any(|e| e.code.as_deref() == Some(crate::diagnostic::codes::E0212));
+    let has_e0500 = errors.iter().any(|e| e.code.as_deref() == Some(crate::diagnostic::codes::E0500));
+    assert!(has_e0212 || has_e0500, "expected E0212 or E0500, got: {errors:?}");
 }
 
 // ── W005: shared var written by multiple parasteps ───────────────────

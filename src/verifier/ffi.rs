@@ -5,6 +5,7 @@ use crate::span::Span;
 use std::collections::{HashMap, HashSet};
 use std::time::Instant;
 use z3::ast::{Bool as Z3Bool, Int as Z3Int, Real as Z3Real};
+use z3::ast::String as Z3String;
 use z3::SatResult;
 
 impl super::Verifier {
@@ -150,6 +151,8 @@ impl super::Verifier {
             } else if matches!(&p.ty, Type::Name(n, _) if n == "string") {
                 vars.insert_int(p.name.as_str(), Z3Int::new_const(p.name.as_str()));
                 vars.insert_string_nonempty(p.name.as_str(), Z3Bool::new_const(format!("{}_ne", p.name)));
+                vars.insert_string_len(p.name.as_str(), Z3Int::new_const(format!("{}_len", p.name)));
+                vars.insert_string_var(p.name.as_str(), Z3String::new_const(p.name.as_str()));
             } else {
                 vars.insert_int(p.name.as_str(), Z3Int::new_const(p.name.as_str()));
             }

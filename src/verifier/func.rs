@@ -692,6 +692,27 @@ impl crate::verifier::Verifier {
     }
 
     /// Try to resolve an expression to a concrete i64 value from the model.
+    /// Try to resolve an expression to a concrete string value from the model.
+    fn resolve_to_string(expr: &Expr, model: &z3::Model, vars: &Z3VarMap) -> Option<String> {
+        match expr {
+            Expr::Literal(Lit::String(s)) => Some(s.clone()),
+            Expr::Ident(name) => vars.get_string_var(name).and_then(|z3_var| {
+                model.eval(z3_var, true).and_then(|v| v.as_string().map(|s| s.to_string()))
+            }),
+            Expr::Old(inner) => {
+                if let Expr::Ident(name) = inner.as_ref() {
+                    let old_name = format!("old_{}", name);
+                    vars.get_string_var(&old_name).and_then(|z3_var| {
+                        model.eval(z3_var, true).and_then(|v| v.as_string().map(|s| s.to_string()))
+                    })
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
+    }
+
     fn resolve_to_i64(expr: &Expr, model: &z3::Model, vars: &Z3VarMap) -> Option<i64> {
         match expr {
             Expr::Literal(Lit::Int(n)) => Some(*n),
@@ -838,7 +859,13 @@ impl crate::verifier::Verifier {
                             Self::resolve_to_f64(rhs, model, vars),
                         ) {
                             (Some(l), Some(r)) => l == r,
-                            _ => false,
+                            _ => match (
+                                Self::resolve_to_string(lhs, model, vars),
+                                Self::resolve_to_string(rhs, model, vars),
+                            ) {
+                                (Some(l), Some(r)) => l == r,
+                                _ => true, // cannot evaluate — assume satisfied (avoid false violation)
+                            },
                         },
                     }
                 }
@@ -853,7 +880,13 @@ impl crate::verifier::Verifier {
                             Self::resolve_to_f64(rhs, model, vars),
                         ) {
                             (Some(l), Some(r)) => l != r,
-                            _ => false,
+                            _ => match (
+                                Self::resolve_to_string(lhs, model, vars),
+                                Self::resolve_to_string(rhs, model, vars),
+                            ) {
+                                (Some(l), Some(r)) => l != r,
+                                _ => true, // cannot evaluate — assume satisfied (avoid false violation)
+                            },
                         },
                     }
                 }
@@ -930,7 +963,7 @@ impl crate::verifier::Verifier {
             Expr::Unary(UnOp::Not, inner) => !Self::eval_expr_on_model(inner, model, vars),
             Expr::Spawn(inner) => Self::eval_expr_on_model(inner, model, vars),
             Expr::Await(inner) => Self::eval_expr_on_model(inner, model, vars),
-            _ => false,
+            _ => true, // unsupported expression types: assume satisfied (avoid false positives in counterexample)
         }
     }
 

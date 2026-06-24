@@ -81,7 +81,30 @@ impl<'a> Checker<'a> {
                     self.check_expr_parasteps_safe(e, scopes);
                 }
             }
-            _ => {}
+            Stmt::Block(block) | Stmt::Arena(block) | Stmt::Unsafe(block)
+            | Stmt::Parasteps(block) | Stmt::OnFailure(block) => {
+                for s in block {
+                    self.check_stmt_parasteps_safe(s, scopes);
+                }
+            }
+            Stmt::Alloc { body, .. } => {
+                for s in body {
+                    self.check_stmt_parasteps_safe(s, scopes);
+                }
+            }
+            Stmt::Drop(e) => {
+                self.check_expr_parasteps_safe(e, scopes);
+            }
+            Stmt::SharedLet { init, .. } => {
+                self.check_expr_parasteps_safe(&init, scopes);
+            }
+            Stmt::Break(Some(e)) => {
+                self.check_expr_parasteps_safe(e, scopes);
+            }
+            Stmt::Return(None) | Stmt::Continue | Stmt::Break(None)
+            | Stmt::Let { init: None, .. }
+            | Stmt::Desc(..) | Stmt::Rule(..) | Stmt::MmsBlock { .. }
+            | Stmt::Ellipsis => {}
         }
     }
 
@@ -124,10 +147,112 @@ impl<'a> Checker<'a> {
             Stmt::For { body, .. } => {
                 for s in body { self.collect_shared_writes_in_stmt(s, scopes, writes); }
             }
-            Stmt::Block(block) | Stmt::Unsafe(block) | Stmt::Alloc { body: block, .. } => {
+            Stmt::Block(block) | Stmt::Unsafe(block) | Stmt::Alloc { body: block, .. }
+            | Stmt::Arena(block) | Stmt::Parasteps(block) | Stmt::OnFailure(block) => {
                 for s in block { self.collect_shared_writes_in_stmt(s, scopes, writes); }
             }
-            _ => {}
+            Stmt::Let { init: Some(e), .. } => {
+                self.collect_shared_writes_in_expr(e, scopes, writes);
+            }
+            Stmt::Return(Some(e)) | Stmt::Break(Some(e)) => {
+                self.collect_shared_writes_in_expr(e, scopes, writes);
+            }
+            Stmt::Drop(e) => {
+                self.collect_shared_writes_in_expr(e, scopes, writes);
+            }
+            Stmt::SharedLet { init, .. } => {
+                self.collect_shared_writes_in_expr(&init, scopes, writes);
+            }
+            Stmt::Requires(expr, _) | Stmt::Ensures(expr, _) | Stmt::Invariant(expr, _) => {
+                self.collect_shared_writes_in_expr(expr, scopes, writes);
+            }
+            Stmt::Math(exprs) => {
+                for e in exprs { self.collect_shared_writes_in_expr(e, scopes, writes); }
+            }
+            Stmt::Continue | Stmt::Break(None) | Stmt::Return(None)
+            | Stmt::Let { init: None, .. }
+            | Stmt::Expr(..)
+            | Stmt::Desc(..) | Stmt::Rule(..) | Stmt::MmsBlock { .. }
+            | Stmt::Ellipsis => {}
+        }
+    }
+
+    /// Collect shared writes inside an expression (recursive helper).
+    fn collect_shared_writes_in_expr(
+        &self,
+        expr: &Expr,
+        scopes: &[HashMap<String, Type>],
+        writes: &mut Vec<String>,
+    ) {
+        match expr {
+            Expr::Ident(name) => {
+                self.collect_shared_write(name, scopes, writes);
+            }
+            Expr::Binary(_, l, r) | Expr::Range { start: l, end: r } => {
+                self.collect_shared_writes_in_expr(l, scopes, writes);
+                self.collect_shared_writes_in_expr(r, scopes, writes);
+            }
+            Expr::Unary(_, e) | Expr::Spawn(e) | Expr::Await(e) | Expr::Try(e)
+            | Expr::Old(e) | Expr::TypeOf(e) => {
+                self.collect_shared_writes_in_expr(e, scopes, writes);
+            }
+            Expr::Call(callee, args) => {
+                self.collect_shared_writes_in_expr(callee, scopes, writes);
+                for a in args { self.collect_shared_writes_in_expr(a, scopes, writes); }
+            }
+            Expr::Field(obj, _) | Expr::TupleIndex(obj, _) => {
+                self.collect_shared_writes_in_expr(obj, scopes, writes);
+            }
+            Expr::Index(obj, idx) => {
+                self.collect_shared_writes_in_expr(obj, scopes, writes);
+                self.collect_shared_writes_in_expr(idx, scopes, writes);
+            }
+            Expr::SliceExpr { target, .. } => {
+                self.collect_shared_writes_in_expr(target, scopes, writes);
+            }
+            Expr::List(elems) | Expr::Tuple(elems) | Expr::SetLiteral(elems) => {
+                for e in elems { self.collect_shared_writes_in_expr(e, scopes, writes); }
+            }
+            Expr::Comprehension { expr, iter, guard, .. } => {
+                self.collect_shared_writes_in_expr(expr, scopes, writes);
+                self.collect_shared_writes_in_expr(iter, scopes, writes);
+                if let Some(g) = guard { self.collect_shared_writes_in_expr(g, scopes, writes); }
+            }
+            Expr::Match(matched, arms) => {
+                self.collect_shared_writes_in_expr(matched, scopes, writes);
+                for arm in arms { self.collect_shared_writes_in_expr(&arm.body, scopes, writes); }
+            }
+            Expr::Record { fields, .. } => {
+                for f in fields { self.collect_shared_writes_in_expr(&f.value, scopes, writes); }
+            }
+            Expr::MapLiteral { entries } => {
+                for (k, v) in entries {
+                    self.collect_shared_writes_in_expr(k, scopes, writes);
+                    self.collect_shared_writes_in_expr(v, scopes, writes);
+                }
+            }
+            Expr::NamedArg(_, e) => {
+                self.collect_shared_writes_in_expr(e, scopes, writes);
+            }
+            Expr::Turbofish(_, _, args) => {
+                for a in args { self.collect_shared_writes_in_expr(a, scopes, writes); }
+            }
+            Expr::Block(block) | Expr::Arena(block) | Expr::Comptime(block)
+            | Expr::Quote(block) => {
+                for s in block { self.collect_shared_writes_in_stmt(s, scopes, writes); }
+            }
+            Expr::If { cond, then_, else_ } => {
+                self.collect_shared_writes_in_expr(cond, scopes, writes);
+                for s in then_ { self.collect_shared_writes_in_stmt(s, scopes, writes); }
+                if let Some(eb) = else_ { for s in eb { self.collect_shared_writes_in_stmt(s, scopes, writes); } }
+            }
+            Expr::Lambda { body, .. } => {
+                for s in body { self.collect_shared_writes_in_stmt(s, scopes, writes); }
+            }
+            Expr::QuoteInterpolate(inner) => {
+                self.collect_shared_writes_in_expr(inner, scopes, writes);
+            }
+            Expr::Literal(_) | Expr::TypeInfo(_) => {}
         }
     }
 
@@ -235,7 +360,55 @@ impl<'a> Checker<'a> {
             Expr::Spawn(inner) | Expr::Await(inner) => {
                 self.check_expr_parasteps_safe(inner, scopes);
             }
-            _ => {}
+            Expr::Comprehension { expr, iter, guard, .. } => {
+                self.check_expr_parasteps_safe(expr, scopes);
+                self.check_expr_parasteps_safe(iter, scopes);
+                if let Some(g) = guard { self.check_expr_parasteps_safe(g, scopes); }
+            }
+            Expr::Match(matched, arms) => {
+                self.check_expr_parasteps_safe(matched, scopes);
+                for arm in arms { self.check_expr_parasteps_safe(&arm.body, scopes); }
+            }
+            Expr::Record { fields, .. } => {
+                for f in fields { self.check_expr_parasteps_safe(&f.value, scopes); }
+            }
+            Expr::Try(e) | Expr::Old(e) | Expr::TypeOf(e) => {
+                self.check_expr_parasteps_safe(e, scopes);
+            }
+            Expr::SliceExpr { target, start, end } => {
+                self.check_expr_parasteps_safe(target, scopes);
+                if let Some(s) = start { self.check_expr_parasteps_safe(s, scopes); }
+                if let Some(e) = end { self.check_expr_parasteps_safe(e, scopes); }
+            }
+            Expr::Range { start, end } => {
+                self.check_expr_parasteps_safe(start, scopes);
+                self.check_expr_parasteps_safe(end, scopes);
+            }
+            Expr::Arena(block) => {
+                for s in block { self.check_stmt_parasteps_safe(s, scopes); }
+            }
+            Expr::MapLiteral { entries } => {
+                for (k, v) in entries {
+                    self.check_expr_parasteps_safe(k, scopes);
+                    self.check_expr_parasteps_safe(v, scopes);
+                }
+            }
+            Expr::SetLiteral(elems) => {
+                for e in elems { self.check_expr_parasteps_safe(e, scopes); }
+            }
+            Expr::NamedArg(_, e) => {
+                self.check_expr_parasteps_safe(e, scopes);
+            }
+            Expr::Turbofish(_, _, args) => {
+                for a in args { self.check_expr_parasteps_safe(a, scopes); }
+            }
+            Expr::Quote(block) | Expr::Comptime(block) => {
+                for s in block { self.check_stmt_parasteps_safe(s, scopes); }
+            }
+            Expr::QuoteInterpolate(inner) => {
+                self.check_expr_parasteps_safe(inner, scopes);
+            }
+            Expr::Literal(_) | Expr::TypeInfo(_) => {}
         }
     }
 
@@ -671,10 +844,22 @@ impl<'a> Checker<'a> {
                 }
             }
             Stmt::Requires(expr, _) => {
-                self.infer_expr(expr, scopes);
+                let ty = self.infer_expr(expr, scopes);
+                if !matches!(&ty, Type::Name(n, _) if n == "bool") {
+                    self.emit_code(crate::diagnostic::codes::E0212, format!(
+                        "requires condition must be bool, found {}",
+                        fmt_type(&ty)
+                    ));
+                }
             }
             Stmt::Invariant(expr, _) => {
-                self.infer_expr(expr, scopes);
+                let ty = self.infer_expr(expr, scopes);
+                if !matches!(&ty, Type::Name(n, _) if n == "bool") {
+                    self.emit_code(crate::diagnostic::codes::E0212, format!(
+                        "invariant condition must be bool, found {}",
+                        fmt_type(&ty)
+                    ));
+                }
             }
             Stmt::Ensures(expr, _) => {
                 // Inject `result` (with the function's return type) and `old_*`
@@ -686,8 +871,14 @@ impl<'a> Checker<'a> {
                 // infer_expr on the inner expression, so any variable in scope
                 // naturally works.
                 scopes.push(ensure_scope);
-                self.infer_expr(expr, scopes);
+                let ty = self.infer_expr(expr, scopes);
                 scopes.pop();
+                if !matches!(&ty, Type::Name(n, _) if n == "bool") {
+                    self.emit_code(crate::diagnostic::codes::E0212, format!(
+                        "ensures condition must be bool, found {}",
+                        fmt_type(&ty)
+                    ));
+                }
             }
             Stmt::Math(exprs) => {
                 for expr in exprs {
