@@ -27,10 +27,10 @@ pub func assert_false(cond: bool) {
 
 // assert_eq_string: Asserts a == b for strings.
 pub func assert_eq_string(a: string, b: string) {
-    if a == b { } else { assert(false) }
+    assert_eq(a, b)
 }
 
 // assert_eq_bool: Asserts a == b for booleans.
 pub func assert_eq_bool(a: bool, b: bool) {
-    if a == b { } else { assert(false) }
+    assert_eq(a, b)
 }
