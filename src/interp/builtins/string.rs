@@ -1,7 +1,34 @@
 use super::*;
 
 impl<'a> Interpreter<'a> {
-    pub(crate) fn builtin_to_string(&self, args: Vec<Value>) -> Result<Value, InterpError> {
+    // === String formatting ===
+
+pub(crate) fn builtin_format(&self, args: Vec<Value>) -> Result<Value, InterpError> {
+    if args.is_empty() {
+        return Err(InterpError::new("format expects at least 1 argument (template string)"));
+    }
+    let template = match &args[0] {
+        Value::String(s) => s.clone(),
+        _ => return Err(InterpError::new("format expects a string template as first argument")),
+    };
+    let mut result = String::new();
+    let mut rest = template.as_str();
+    let mut arg_idx = 1;
+    while let Some(pos) = rest.find("{}") {
+        result.push_str(&rest[..pos]);
+        if arg_idx < args.len() {
+            result.push_str(&args[arg_idx].to_string());
+            arg_idx += 1;
+        } else {
+            result.push_str("{}");
+        }
+        rest = &rest[pos + 2..];
+    }
+    result.push_str(rest);
+    Ok(Value::String(result))
+}
+
+pub(crate) fn builtin_to_string(&self, args: Vec<Value>) -> Result<Value, InterpError> {
         if args.len() != 1 {
             return Err(InterpError::new("to_string expects 1 argument"));
         }

@@ -544,6 +544,7 @@ pub fn register_runtime<'ctx>(module: &Module<'ctx>, ctx: &'ctx Context) {
 pub fn is_builtin(name: &str) -> bool {
     matches!(name,
         "println" | "print" | "eprintln" | "assert" | "assert_eq" | "assert_ne"
+        | "format"
         | "assert_approx_eq" | "range" | "len" | "to_string" | "abs" | "min" | "max"
         | "push" | "pop" | "sqrt" | "floor" | "ceil" | "round"
         | "int_to_string" | "float_to_string" | "string_to_int"
@@ -598,6 +599,9 @@ impl<'ctx> CodeGenerator<'ctx> {
         match name {
             "println" => self.compile_println(args),
             "print" => self.compile_print(args),
+            "format" => {
+                Err(CompileError::BuiltinError("'format' is a runtime-only function, not available in codegen".to_string()))
+            }
             "eprintln" => self.compile_eprintln(args),
             "assert" => self.compile_assert(args),
             "assert_eq" => self.compile_assert_eq(args),

@@ -259,6 +259,7 @@ impl<'a> Interpreter<'a> {
             "parse" => self.builtin_parse(args),
             "str_to_c_str" => self.builtin_str_to_c_str(args),
             "c_str_to_string" => self.builtin_c_str_to_string(args),
+            "format" => self.builtin_format(args),
             "eprintln" => self.builtin_eprintln(args),
             "exit" => self.builtin_exit(args),
             "socket" => self.builtin_socket(args),
