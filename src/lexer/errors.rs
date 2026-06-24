@@ -12,6 +12,7 @@ pub enum LexerError {
     UnterminatedFString,
     UnterminatedFStringEscape,
     UnterminatedInterpolation,
+    UnterminatedBlockComment,
 }
 
 impl fmt::Display for LexerError {
@@ -27,6 +28,7 @@ impl fmt::Display for LexerError {
             LexerError::UnterminatedFString => write!(f, "unterminated f-string"),
             LexerError::UnterminatedFStringEscape => write!(f, "unterminated escape in f-string"),
             LexerError::UnterminatedInterpolation => write!(f, "unterminated interpolation in f-string"),
+            LexerError::UnterminatedBlockComment => write!(f, "unterminated block comment"),
         }
     }
 }
@@ -77,4 +79,8 @@ pub fn unterminated_fstring_escape() -> LexerError {
 
 pub fn unterminated_interpolation() -> LexerError {
     LexerError::UnterminatedInterpolation
+}
+
+pub fn unterminated_block_comment() -> LexerError {
+    LexerError::UnterminatedBlockComment
 }
