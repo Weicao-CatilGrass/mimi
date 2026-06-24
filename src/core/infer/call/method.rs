@@ -297,6 +297,25 @@ impl<'a> Checker<'a> {
         args: &[Expr],
         scopes: &mut Vec<HashMap<String, Type>>,
     ) -> Type {
+        // Special case: from_json::<T>(s) — typed JSON deserialization
+        if name == "from_json" && !type_args.is_empty() {
+            if type_args.len() != 1 {
+                self.emit_code(
+                    crate::diagnostic::codes::E0239,
+                    "from_json expects at most 1 type argument",
+                );
+                return Type::Name("unknown".into(), vec![]);
+            }
+            if args.len() != 1 {
+                self.emit_code(
+                    crate::diagnostic::codes::E0242,
+                    "from_json::<T> expects 1 argument (json string)",
+                );
+            } else {
+                self.infer_expr(&args[0], scopes);
+            }
+            return type_args[0].clone();
+        }
         // Turbofish: func::<Type>(args) — explicit type instantiation
         let (params, ret) = match self.funcs.get(name) {
             Some(sig) => sig.clone(),

@@ -3,7 +3,11 @@
 ## [Unreleased] — 0.22.2-dev
 
 ### Added
-- (placeholder)
+- `from_json::<T>(json_str)` 类型化 JSON 反序列化 — 支持 i32, f64, string, bool, List<T>, Option<T>, 记录类型, 嵌套记录, 枚举
+
+### Tests
+- 10 个新测试: `json_from_json_typed_*` (基本类型 + List + 记录 + Option + 嵌套记录)
+- 基线: 2,067 passed, 0 failed, 21 ignored
 
 ## [v0.22.1] - 2026-06-24 — 深度修复（Depth Repair）
 

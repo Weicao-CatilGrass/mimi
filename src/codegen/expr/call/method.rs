@@ -482,6 +482,12 @@ impl<'ctx> CodeGenerator<'ctx> {
         args: &[Expr],
         vars: &HashMap<String, VarEntry<'ctx>>,
     ) -> Result<BasicValueEnum<'ctx>, CompileError> {
+        // Special case: from_json::<T>(s) — typed JSON deserialization
+        if name == "from_json" && !type_args.is_empty() {
+            return Err(CompileError::Generic(format!(
+                "from_json::<{:?}> codegen not yet implemented", type_args[0]
+            )));
+        }
         // Monomorphized call: func::<Type>(args)
         // Build type_map from explicit type args
         let func = self.find_func_def(name)?;

@@ -286,3 +286,94 @@ fn json_is_valid_trailing_garbage() {
     let v = run_source(r#"func main() -> bool { json_is_valid("42abc") }"#);
     assert_eq!(v, interp::Value::Bool(false));
 }
+
+// ─── from_json::<T> typed deserialization (v0.22.2) ──────────────────
+
+#[test]
+fn json_from_json_typed_i32() {
+    let v = run_source(r#"func main() -> i32 { from_json::<i32>("42") }"#);
+    assert_eq!(v, interp::Value::Int(42));
+}
+
+#[test]
+fn json_from_json_typed_string() {
+    let v = run_source(r#"func main() -> string { from_json::<string>("\"hello\"") }"#);
+    assert_eq!(v, interp::Value::String("hello".into()));
+}
+
+#[test]
+fn json_from_json_typed_bool_true() {
+    let v = run_source(r#"func main() -> bool { from_json::<bool>("true") }"#);
+    assert_eq!(v, interp::Value::Bool(true));
+}
+
+#[test]
+fn json_from_json_typed_bool_false() {
+    let v = run_source(r#"func main() -> bool { from_json::<bool>("false") }"#);
+    assert_eq!(v, interp::Value::Bool(false));
+}
+
+#[test]
+fn json_from_json_typed_f64() {
+    let v = run_source(r#"func main() -> f64 { from_json::<f64>("3.14") }"#);
+    assert_eq!(v, interp::Value::Float(3.14));
+}
+
+#[test]
+fn json_from_json_typed_list_i32() {
+    let v = run_source(r#"
+        func main() -> i32 {
+            let nums = from_json::<List<i32>>("[1, 2, 3]");
+            nums[0] + nums[1] + nums[2]
+        }
+    "#);
+    assert_eq!(v, interp::Value::Int(6));
+}
+
+#[test]
+fn json_from_json_typed_record() {
+    let v = run_source(r#"
+        type Point { x: i32, y: i32 }
+        func main() -> i32 {
+            let p = from_json::<Point>("{\"x\": 10, \"y\": 20}");
+            p.x + p.y
+        }
+    "#);
+    assert_eq!(v, interp::Value::Int(30));
+}
+
+#[test]
+fn json_from_json_typed_option_some() {
+    let v = run_source(r#"
+        func main() -> i32 {
+            let x = from_json::<Option<i32>>("42");
+            x.unwrap()
+        }
+    "#);
+    assert_eq!(v, interp::Value::Int(42));
+}
+
+#[test]
+fn json_from_json_typed_option_none() {
+    let v = run_source(r#"
+        func main() -> string {
+            let x = from_json::<Option<i32>>("null");
+            // None gives unit, check type
+            type_name(x)
+        }
+    "#);
+    assert_eq!(v, interp::Value::String("unit".into()));
+}
+
+#[test]
+fn json_from_json_typed_nested_record() {
+    let v = run_source(r#"
+        type Address { city: string, zip: i32 }
+        type Person { name: string, addr: Address }
+        func main() -> string {
+            let p = from_json::<Person>("{\"name\": \"Alice\", \"addr\": {\"city\": \"NYC\", \"zip\": 10001}}");
+            p.name + " lives in " + p.addr.city
+        }
+    "#);
+    assert_eq!(v, interp::Value::String("Alice lives in NYC".into()));
+}
