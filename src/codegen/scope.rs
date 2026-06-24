@@ -12,28 +12,36 @@ use crate::error::{CompileError, MimiResult};
 impl<'ctx> CodeGenerator<'ctx> {
     pub(super) fn enter_parasteps(&mut self) {
         self.in_parasteps = true;
-        self.parasteps_thread_ids.clear();
+        self.parasteps_future_ptrs.clear();
     }
 
-    /// Leave parallel parasteps mode: join all spawned threads
+    /// Leave parallel parasteps mode: ensure all spawned futures are completed
     pub(super) fn leave_parasteps(&mut self) -> MimiResult<()> {
         if !self.in_parasteps {
             return Ok(());
         }
-        // Join any threads not yet awaited
-        let _i8_type = self.context.i8_type();
-        let i8_ptr = self.context.ptr_type(inkwell::AddressSpace::default());
-        let join_fn = self.module.get_function("pthread_join");
-        if let Some(join_fn) = join_fn {
-            for &(thread_id, _) in &self.parasteps_thread_ids {
-                self.builder.build_call(join_fn, &[
-                    BasicMetadataValueEnum::IntValue(thread_id),
-                    BasicMetadataValueEnum::PointerValue(i8_ptr.const_null()),
-                ], "parasteps_join")
-                    .map_err(|e| CompileError::LlvmError(format!("parasteps join error: {}", e)))?;
+        // Wait for any thread-spawned futures not yet awaited
+        if !self.parasteps_future_ptrs.is_empty() {
+            let await_fn = self.module.get_function("mimi_await_future");
+            if let Some(await_fn) = await_fn {
+                for &(future_ptr, _) in &self.parasteps_future_ptrs {
+                    self.builder.build_call(await_fn, &[
+                        BasicMetadataValueEnum::PointerValue(future_ptr),
+                    ], "parasteps_await")
+                        .map_err(|e| CompileError::LlvmError(format!("parasteps await error: {}", e)))?;
+                }
+            }
+            // Free all futures
+            if let Some(free_fn) = self.module.get_function("mimi_future_free") {
+                for &(future_ptr, _) in &self.parasteps_future_ptrs {
+                    self.builder.build_call(free_fn, &[
+                        BasicMetadataValueEnum::PointerValue(future_ptr),
+                    ], "parasteps_future_free")
+                        .map_err(|e| CompileError::LlvmError(format!("future free error: {}", e)))?;
+                }
             }
         }
-        self.parasteps_thread_ids.clear();
+        self.parasteps_future_ptrs.clear();
         self.in_parasteps = false;
         Ok(())
     }

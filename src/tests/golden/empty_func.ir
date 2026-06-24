@@ -177,6 +177,10 @@ declare void @mimi_executor_spawn(ptr, ptr)
 
 declare void @mimi_executor_run()
 
+declare ptr @mimi_spawn_future(ptr, ptr)
+
+declare void @mimi_await_future(ptr)
+
 define i64 @empty() {
 entry:
   ret i64 0

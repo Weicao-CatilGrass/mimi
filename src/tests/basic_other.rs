@@ -203,17 +203,18 @@ func main() -> i32 {
 }
 
 #[test]
-fn interp_spawn_non_actor_evaluates_directly() {
+fn interp_spawn_non_actor_returns_future() {
     let src = r#"
 func work() -> i32 { 42 }
 
 func main() -> i32 {
     let f = spawn work()
-    f
+    let r = await f
+    r
 }
 "#;
     let result = run_source_result(src);
-    assert!(result.is_ok(), "spawn of non-actor call should evaluate directly: {:?}", result.err());
+    assert!(result.is_ok(), "spawn of non-actor call should complete via await: {:?}", result.err());
     assert_eq!(result.expect("src/tests/basic_other.rs:217 unwrap failed"), interp::Value::Int(42));
 }
 
