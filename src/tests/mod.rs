@@ -124,7 +124,7 @@ pub(crate) fn cached_runtime_lib() -> Result<std::path::PathBuf, String> {
         return Ok(lib_path);
     }
 
-    let status = std::process::Command::new("rustc")
+    let output = std::process::Command::new("rustc")
         .arg("--edition").arg("2021")
         .arg("--crate-type").arg("staticlib")
         .arg("--cfg").arg("standalone")
@@ -132,10 +132,11 @@ pub(crate) fn cached_runtime_lib() -> Result<std::path::PathBuf, String> {
         .arg("-o")
         .arg(&lib_path)
         .arg(&runtime_rs)
-        .status()
+        .output()
         .map_err(|e| format!("rustc not found: {}", e))?;
-    if !status.success() {
-        return Err(format!("runtime compilation failed, exit: {:?}", status.code()));
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("runtime compilation failed, exit: {:?}, stderr: {}", output.status.code(), stderr));
     }
     Ok(lib_path)
 }

@@ -34,6 +34,9 @@ jobs:
         with:
           components: clippy
 
+      - name: Pre-build runtime (prime cache)
+        run: rustc --edition 2021 --crate-type staticlib --cfg standalone --crate-name mimi_runtime -o /tmp/mimi_runtime_test.a src/runtime/standalone.rs
+
       - name: Build
         run: cargo build --workspace
 
