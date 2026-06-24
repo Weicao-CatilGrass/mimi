@@ -18,10 +18,10 @@ pub(crate) fn run(path: Option<&Path>, verify_contracts: bool, verify_ffi: bool,
 fn run_once(path: &Path, verify_contracts: bool, verify_ffi: bool, allocator: &str, strict: bool) -> Result<(), String> {
     let source = fs::read_to_string(path)
         .map_err(|e| format!("failed to read {}: {}", path.display(), e))?;
-    if is_sketch(&path) {
+    if is_sketch(path) {
         return Err("cannot run a .mms sketch file directly; promote to .mimi first".into());
     }
-    if !is_production(&path) {
+    if !is_production(path) {
         return Err(format!(
             "expected .mimi production file, got {}",
             path.display()
@@ -34,7 +34,7 @@ fn run_once(path: &Path, verify_contracts: bool, verify_ffi: bool, allocator: &s
     let mut merged_file = if !file.imports.is_empty() {
         let base_dir = path.parent().unwrap_or_else(|| std::path::Path::new(".")).to_path_buf();
         let mut loader = loader::ModuleLoader::new(base_dir);
-        loader.load_main(&path)?;
+        loader.load_main(path)?;
         loader.merge_all()?
     } else {
         file
@@ -47,7 +47,7 @@ fn run_once(path: &Path, verify_contracts: bool, verify_ffi: bool, allocator: &s
     if let Err(diagnostics) = check_result {
         eprintln!("{} has {} type error(s):", path.display(), diagnostics.len());
         let use_color = colors_enabled();
-        let src = fs::read_to_string(&path).ok();
+        let src = fs::read_to_string(path).ok();
         let src_ref = src.as_deref();
         for d in &diagnostics {
             let formatted = format_diagnostic(d, src_ref, &path.display().to_string());
@@ -74,7 +74,7 @@ fn run_once(path: &Path, verify_contracts: bool, verify_ffi: bool, allocator: &s
         }
         Err(interp_err) => {
             let use_color = colors_enabled();
-            let src = fs::read_to_string(&path).ok();
+            let src = fs::read_to_string(path).ok();
             let src_ref = src.as_deref();
             let diagnostic = interp_err.to_diagnostic();
             let formatted = format_diagnostic(&diagnostic, src_ref, &path.display().to_string());

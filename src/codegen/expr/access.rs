@@ -16,16 +16,14 @@ impl<'ctx> CodeGenerator<'ctx> {
         base_var: Option<&str>,
     ) -> Result<Option<BasicValueEnum<'ctx>>, CompileError> {
         if let Some(var_name) = base_var {
-            if let Some(&elem_llvm) = self.list_elem_llvm_types.get(var_name) {
-                if let BasicTypeEnum::StructType(sty) = elem_llvm {
-                    let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
-                    let elem_ptr = self.builder.build_int_to_ptr(elem_int, ptr_ty, "elem_ptr")
-                        .map_err(|e| CompileError::LlvmError(format!("inttoptr: {}", e)))?;
-                    let struct_val = self.builder.build_load(
-                        BasicTypeEnum::StructType(sty), elem_ptr, "elem_struct",
-                    ).map_err(|e| CompileError::LlvmError(format!("load struct elem: {}", e)))?;
-                    return Ok(Some(struct_val));
-                }
+            if let Some(&BasicTypeEnum::StructType(sty)) = self.list_elem_llvm_types.get(var_name) {
+                let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
+                let elem_ptr = self.builder.build_int_to_ptr(elem_int, ptr_ty, "elem_ptr")
+                    .map_err(|e| CompileError::LlvmError(format!("inttoptr: {}", e)))?;
+                let struct_val = self.builder.build_load(
+                    BasicTypeEnum::StructType(sty), elem_ptr, "elem_struct",
+                ).map_err(|e| CompileError::LlvmError(format!("load struct elem: {}", e)))?;
+                return Ok(Some(struct_val));
             }
         }
         Ok(None)
@@ -44,16 +42,14 @@ impl<'ctx> CodeGenerator<'ctx> {
             return Ok(None);
         }
         if let Some(elem_ty) = crate::codegen::extract_list_elem_type(&obj_type) {
-            if let Some(llvm_elem) = types::mimi_type_to_llvm(self.context, &elem_ty) {
-                if let BasicTypeEnum::StructType(sty) = llvm_elem {
-                    let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
-                    let elem_ptr = self.builder.build_int_to_ptr(elem_int, ptr_ty, "elem_ptr")
-                        .map_err(|e| CompileError::LlvmError(format!("inttoptr: {}", e)))?;
-                    let struct_val = self.builder.build_load(
-                        BasicTypeEnum::StructType(sty), elem_ptr, "elem_struct",
-                    ).map_err(|e| CompileError::LlvmError(format!("load struct elem: {}", e)))?;
-                    return Ok(Some(struct_val));
-                }
+            if let Some(BasicTypeEnum::StructType(sty)) = types::mimi_type_to_llvm(self.context, &elem_ty) {
+                let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
+                let elem_ptr = self.builder.build_int_to_ptr(elem_int, ptr_ty, "elem_ptr")
+                    .map_err(|e| CompileError::LlvmError(format!("inttoptr: {}", e)))?;
+                let struct_val = self.builder.build_load(
+                    BasicTypeEnum::StructType(sty), elem_ptr, "elem_struct",
+                ).map_err(|e| CompileError::LlvmError(format!("load struct elem: {}", e)))?;
+                return Ok(Some(struct_val));
             }
         }
         Ok(None)

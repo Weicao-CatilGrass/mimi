@@ -827,16 +827,14 @@ impl<'ctx> CodeGenerator<'ctx> {
                     .map_err(|e| CompileError::LlvmError(format!("printf: {}", e)))?;
             }
             BasicMetadataValueEnum::StructValue(sv) => {
-                if let Ok(field) = self.builder.build_extract_value(*sv, 0, "str_field") {
-                    if let BasicValueEnum::PointerValue(pv) = field {
-                        let fmt = self.builder.build_global_string_ptr("%s", "struct_str_fmt")
-                            .map_err(|e| CompileError::LlvmError(format!("fmt: {}", e)))?;
-                        self.builder.build_call(printf, &[
-                            BasicMetadataValueEnum::PointerValue(fmt.as_pointer_value()),
-                            BasicMetadataValueEnum::PointerValue(pv),
-                        ], "print_struct_str")
-                            .map_err(|e| CompileError::LlvmError(format!("printf: {}", e)))?;
-                    }
+                if let Ok(BasicValueEnum::PointerValue(pv)) = self.builder.build_extract_value(*sv, 0, "str_field") {
+                    let fmt = self.builder.build_global_string_ptr("%s", "struct_str_fmt")
+                        .map_err(|e| CompileError::LlvmError(format!("fmt: {}", e)))?;
+                    self.builder.build_call(printf, &[
+                        BasicMetadataValueEnum::PointerValue(fmt.as_pointer_value()),
+                        BasicMetadataValueEnum::PointerValue(pv),
+                    ], "print_struct_str")
+                        .map_err(|e| CompileError::LlvmError(format!("printf: {}", e)))?;
                 }
             }
             _ => {}

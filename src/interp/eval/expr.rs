@@ -858,7 +858,7 @@ impl<'a> Interpreter<'a> {
                                             name
                                         )))
                                     } else {
-                                        let (var_name, payload_val) = fields.drain().next().unwrap();
+                                        let (var_name, payload_val) = fields.drain().next().expect("enum variant fields should non-empty");
                                         let variant = variants
                                             .iter()
                                             .find(|v| v.name == var_name)

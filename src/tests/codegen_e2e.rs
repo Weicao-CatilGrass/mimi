@@ -3041,4 +3041,15 @@ fn e2e_extern_rejects_unrepresentable_type() {
     assert!(result.is_err(), "nothing type in extern should fail, got Ok");
 }
 
+// ===================== JSON typed deserialization =====================
+
+#[test]
+fn e2e_json_from_json_typed_codegen_stub() {
+    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    let result = compile_and_run(r#"func main() -> i32 { from_json::<i32>("42") }"#);
+    assert!(result.is_err(), "from_json::<T> codegen should return error, got Ok: {:?}", result);
+    let err = result.unwrap_err();
+    assert!(err.contains("codegen not yet implemented"), "expected codegen stub error, got: {}", err);
+}
+
 

@@ -183,8 +183,7 @@ impl<'ctx> CodeGenerator<'ctx> {
             Expr::Index(obj, _) => {
                 // Index into a List<T> returns T. Infer the list's element type.
                 let obj_type = self.infer_object_type(obj, vars);
-                if obj_type.starts_with("List<") {
-                    let inner = &obj_type[5..];
+                if let Some(inner) = obj_type.strip_prefix("List<") {
                     let mut depth = 0u32;
                     for (i, ch) in inner.char_indices() {
                         match ch {

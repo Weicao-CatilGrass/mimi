@@ -313,7 +313,6 @@ impl<'ctx> CodeGenerator<'ctx> {
                 let bool_ty = self.context.bool_type();
                 let i32_ty = self.context.i32_type();
                 // Check if strstr returned NULL (not found)
-                let null = i8_ptr.const_null();
                 let is_null = self.builder.build_is_null(found, "is_null")
                     .map_err(|e| CompileError::LlvmError(format!("is_null: {}", e)))?;
                 let disc = self.builder.build_select(is_null, bool_ty.const_int(0, false), bool_ty.const_int(1, false), "opt_disc")
