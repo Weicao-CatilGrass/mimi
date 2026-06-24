@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 /// Get the path to the built-in standard library directory.
 /// Resolved relative to the mimi binary (../std/) or overridable via MIMI_STDLIB env var.
-fn stdlib_dir() -> Option<PathBuf> {
+pub(crate) fn stdlib_dir() -> Option<PathBuf> {
     if let Ok(dir) = std::env::var("MIMI_STDLIB") {
         let p = PathBuf::from(dir);
         if p.exists() { return Some(p); }
@@ -229,6 +229,48 @@ impl ModuleLoader {
                 let std_path2 = std_dir.join(&sub_path).with_extension("mimi");
                 if std_path2.exists() {
                     return Ok(std_path2);
+                }
+            }
+        }
+
+        // Try selective import: if path has 2+ elements and doesn't resolve as a file,
+        // the last element may be a specific function/item imported from the prefix module.
+        // e.g., `use strings::replace_all` → resolve `strings.mimi`
+        if path.len() >= 2 {
+            let prefix: PathBuf = path[..path.len() - 1].iter().collect();
+            // Try relative to importing file
+            let prefix_file = base.join(&prefix).with_extension("mimi");
+            if prefix_file.exists() {
+                return Ok(prefix_file);
+            }
+            // Try relative to base_dir
+            let base_prefix = self.base_dir.join(&prefix).with_extension("mimi");
+            if base_prefix.exists() {
+                return Ok(base_prefix);
+            }
+            // Try dependency paths
+            if let Some(first) = path.first() {
+                if let Some(dep_dir) = self.dep_paths.get(first) {
+                    let dep_prefix: PathBuf = path[1..path.len() - 1].iter().collect();
+                    let dep_path = dep_dir.join(&dep_prefix).with_extension("mimi");
+                    if dep_path.exists() {
+                        return Ok(dep_path);
+                    }
+                }
+            }
+            // Try stdlib (both with and without "std" prefix)
+            if let Some(std_dir) = stdlib_dir() {
+                if path.first().map(|s| s == "std").unwrap_or(false) {
+                    let sub_prefix: PathBuf = path[1..path.len() - 1].iter().collect();
+                    let std_prefix = std_dir.join(&sub_prefix).with_extension("mimi");
+                    if std_prefix.exists() {
+                        return Ok(std_prefix);
+                    }
+                }
+                // Try as a bare stdlib module name (e.g., `use strings::replace_all`)
+                let std_prefix = std_dir.join(&prefix).with_extension("mimi");
+                if std_prefix.exists() {
+                    return Ok(std_prefix);
                 }
             }
         }

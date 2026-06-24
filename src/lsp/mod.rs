@@ -1,8 +1,10 @@
+use serde_json::Value;
 use std::collections::{HashMap, VecDeque};
 use std::fs;
 use std::io::{self, BufRead, Read, Write};
 use std::path::PathBuf;
 
+use crate::loader::stdlib_dir;
 use crate::verifier::{VerifStatus, Verifier};
 
 pub(crate) mod code_actions;
@@ -52,6 +54,11 @@ pub struct LspServer {
     cache_access_order: VecDeque<String>,
     verifier: Option<Verifier>,
     cache_path: Option<PathBuf>,
+    /// Stdlib completions: module_name -> Vec<(func_name, detail, insert_text)>
+    stdlib_funcs: HashMap<String, Vec<(String, String, String)>>,
+    /// Flat list of all stdlib function completion items for "top" context
+    stdlib_completions_raw: Vec<Value>,
+    stdlib_loaded: bool,
 }
 
 impl Default for LspServer {
@@ -71,6 +78,9 @@ impl LspServer {
             cache_access_order: VecDeque::new(),
             verifier: None,
             cache_path: None,
+            stdlib_funcs: HashMap::new(),
+            stdlib_completions_raw: Vec::new(),
+            stdlib_loaded: false,
         }
     }
 
@@ -148,6 +158,64 @@ impl LspServer {
         }
         if let Ok(data) = serde_json::to_string(&cache) {
             let _ = fs::write(path, data);
+        }
+    }
+
+    /// Load stdlib function completions by scanning stdlib .mimi files.
+    /// Populates stdlib_funcs and stdlib_completions_raw.
+    pub(crate) fn load_stdlib_completions(&mut self) {
+        if self.stdlib_loaded {
+            return;
+        }
+        self.stdlib_loaded = true;
+        let Some(std_dir) = stdlib_dir() else { return };
+        let dir = match fs::read_dir(&std_dir) {
+            Ok(d) => d,
+            Err(_) => return,
+        };
+        for entry in dir.flatten() {
+            let path = entry.path();
+            if path.extension().map(|e| e != "mimi").unwrap_or(true) {
+                continue;
+            }
+            let module_name = path.file_stem().and_then(|s| s.to_str()).unwrap_or("").to_string();
+            if module_name.is_empty() {
+                continue;
+            }
+            let source = match fs::read_to_string(&path) {
+                Ok(s) => s,
+                Err(_) => continue,
+            };
+            let tokens = match crate::lexer::Lexer::new(&source).tokenize() {
+                Ok(t) => t,
+                Err(_) => continue,
+            };
+            let (file, _parse_errors) = crate::parser::Parser::new(tokens).parse_file_with_recovery();
+
+            let mut funcs = Vec::new();
+            for item in &file.items {
+                if let crate::ast::Item::Func(f) = item {
+                    let params_str: Vec<String> = f.params.iter()
+                        .map(|p| format!("{}: {}", p.name, crate::core::fmt_type(&p.ty)))
+                        .collect();
+                    let ret_str = f.ret.as_ref()
+                        .map(crate::core::fmt_type)
+                        .unwrap_or_else(|| "unit".to_string());
+                    let detail = format!("{}({}) -> {}", f.name, params_str.join(", "), ret_str);
+                    let insert_text = format!("{}(${{1}})", f.name);
+                    self.stdlib_completions_raw.push(serde_json::json!({
+                        "label": f.name,
+                        "kind": 3, // Function
+                        "detail": detail,
+                        "insertText": insert_text,
+                        "insertTextFormat": 2,
+                    }));
+                    funcs.push((f.name.clone(), detail, format!("{}(${{1}})", f.name)));
+                }
+            }
+            if !funcs.is_empty() {
+                self.stdlib_funcs.insert(module_name, funcs);
+            }
         }
     }
 

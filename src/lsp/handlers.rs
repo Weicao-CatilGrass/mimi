@@ -178,8 +178,8 @@ pub(crate) fn handle_message(
                 })
                 .unwrap_or((0, 0));
             server.last_cursor_line = line;
-            let text = server.documents.get(uri)?;
-            let items = server.compute_completion(text, line, character);
+            let text = server.documents.get(uri)?.clone();
+            let items = server.compute_completion(&text, line, character);
             Some(serde_json::json!({
                 "jsonrpc": "2.0",
                 "id": id,

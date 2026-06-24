@@ -189,3 +189,41 @@ func f() -> i32 { 2 }
     let _ = result;
     cleanup(&dir);
 }
+
+#[test]
+fn loader_selective_import_resolve() {
+    let dir = temp_dir("selective");
+    let strings_path = dir.join("strings.mimi");
+    let main_path = dir.join("main.mimi");
+    fs::write(&strings_path, r#"
+pub func replace_all(s: string, from: string, to: string) -> string {
+    s // simplified
+}
+pub func contains(s: string, substr: string) -> bool {
+    true
+}
+"#).expect("src/tests/loader.rs: write strings.mimi");
+    fs::write(&main_path, r#"
+use strings::replace_all;
+
+func main() -> i32 {
+    42
+}
+"#).expect("src/tests/loader.rs: write main.mimi");
+
+    let mut loader = crate::loader::ModuleLoader::new(dir.clone());
+    let result = loader.load_main(&main_path);
+    assert!(result.is_ok(), "selective import should resolve: {:?}", result.err());
+    let merged = loader.merge_all().expect("merge should succeed");
+    // The merged file should contain replace_all (from strings.mimi)
+    let has_replace_all = merged.items.iter().any(|item| {
+        matches!(item, crate::ast::Item::Func(f) if f.name == "replace_all")
+    });
+    assert!(has_replace_all, "selective import should bring replace_all into scope");
+    // Also the import path should remain unchanged
+    let has_selective_import = merged.imports.iter().any(|imp| {
+        imp.path == vec!["strings", "replace_all"]
+    });
+    assert!(has_selective_import, "selective import path should be preserved");
+    cleanup(&dir);
+}
