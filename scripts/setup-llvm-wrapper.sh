@@ -7,6 +7,9 @@ cat > /tmp/llvm-wrapper/llvm-config << 'EOF'
 #!/bin/bash
 if [ "$1" = "--libdir" ]; then
     echo "/tmp/llvm-wrapper/lib"
+elif [ "$1" = "--ldflags" ]; then
+    # Ensure the wrapper lib dir is in the linker search path
+    echo "-L/tmp/llvm-wrapper/lib -L/usr/lib/llvm-18/lib"
 else
     exec /usr/bin/llvm-config-18 "$@"
 fi
