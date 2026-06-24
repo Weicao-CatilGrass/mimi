@@ -125,6 +125,26 @@ declare i64 @json_get_int(ptr, ptr)
 
 declare ptr @json_get_element(ptr, i64)
 
+declare i64 @mimi_json_as_i64(ptr)
+
+declare double @mimi_json_as_f64(ptr)
+
+declare i64 @mimi_json_as_bool(ptr)
+
+declare i64 @mimi_set_new()
+
+declare void @mimi_set_destroy(i64)
+
+declare i64 @mimi_set_insert(i64, i64)
+
+declare i64 @mimi_set_contains(i64, i64)
+
+declare i64 @mimi_set_remove(i64, i64)
+
+declare i64 @mimi_set_size(i64)
+
+declare ptr @mimi_set_to_list(i64, ptr)
+
 declare i64 @mimi_socket(i64, i64, i64)
 
 declare i64 @mimi_connect(i64, ptr, i64)

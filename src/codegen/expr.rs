@@ -80,9 +80,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                 Err("${ ... } interpolation encountered in runtime function: interpolation must be resolved before codegen (use `mimi run` to evaluate quote expressions)".into())
             }
             Expr::MapLiteral { entries } => self.compile_map_literal(entries, vars),
-            Expr::SetLiteral(_) => {
-                Err("set literal codegen not yet implemented".into())
-            }
+            Expr::SetLiteral(elems) => self.compile_set_literal(elems, vars),
             #[allow(unreachable_patterns)]
             _ => Err(format!("unsupported expression in codegen: {:?}", expr).into())
         }
@@ -325,6 +323,35 @@ impl<'ctx> CodeGenerator<'ctx> {
         }
 
         Ok(BasicValueEnum::IntValue(map_handle))
+    }
+
+    pub(super) fn compile_set_literal(
+        &mut self,
+        elems: &[Expr],
+        vars: &HashMap<String, VarEntry<'ctx>>,
+    ) -> Result<BasicValueEnum<'ctx>, CompileError> {
+        let set_new = self.module.get_function("mimi_set_new")
+            .ok_or("mimi_set_new not declared")?;
+        let result = self.builder.build_call(set_new, &[], "set_new_call")
+            .map_err(|e| format!("set_new error: {}", e))?;
+        let set_handle = call_try_basic_value(&result)
+            .ok_or("mimi_set_new returned void")?
+            .into_int_value();
+
+        let set_insert = self.module.get_function("mimi_set_insert")
+            .ok_or("mimi_set_insert not declared")?;
+
+        for elem in elems {
+            let val = self.compile_expr(elem, vars)?;
+            let val_i64 = self.any_value_to_handle(val)?;
+            self.builder.build_call(set_insert, &[
+                BasicMetadataValueEnum::IntValue(set_handle),
+                BasicMetadataValueEnum::IntValue(val_i64),
+            ], "set_insert_call")
+                .map_err(|e| format!("set_insert error: {}", e))?;
+        }
+
+        Ok(BasicValueEnum::IntValue(set_handle))
     }
 
     /// Convert any basic value to an i64 ValueHandle for map storage.
