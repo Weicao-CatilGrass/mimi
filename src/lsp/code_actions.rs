@@ -1,4 +1,4 @@
-use serde_json::Value;
+use serde_json::{Map, Value};
 
 use crate::lsp::LspServer;
 
@@ -16,20 +16,23 @@ impl LspServer {
             let Some(msg) = diag.get("message").and_then(|m| m.as_str()) else {
                 continue;
             };
-            let _range = diag.get("range").cloned().unwrap_or_default();
+            let range = diag.get("range").cloned().unwrap_or_default();
+            // Use the error location to insert new code after the relevant line
+            let insert_line = range.get("start").and_then(|s| s.get("line"))
+                .and_then(|l| l.as_u64())
+                .map(|l| l as usize)
+                .unwrap_or(0);
             match code {
                 crate::diagnostic::codes::E0400 => {
                     if let Some(name) = extract_quoted_name(msg) {
-                        let edit = serde_json::json!({
-                            "changes": {
-                                uri: [
-                                    {
-                                        "range": { "start": { "line": 0, "character": 0 }, "end": { "line": 0, "character": 0 } },
-                                        "newText": format!("let {} = \n", name)
-                                    }
-                                ]
+                        let mut changes = Map::new();
+                        changes.insert(uri.to_string(), serde_json::json!([
+                            {
+                                "range": { "start": { "line": insert_line, "character": 0 }, "end": { "line": insert_line, "character": 0 } },
+                                "newText": format!("let {} =\n", name)
                             }
-                        });
+                        ]));
+                        let edit = serde_json::json!({ "changes": changes });
                         actions.push(serde_json::json!({
                             "title": format!("Create variable `{}`", name),
                             "kind": "quickfix",
@@ -40,16 +43,14 @@ impl LspServer {
                 }
                 crate::diagnostic::codes::E0401 => {
                     if let Some(name) = extract_quoted_name(msg) {
-                        let edit = serde_json::json!({
-                            "changes": {
-                                uri: [
-                                    {
-                                        "range": { "start": { "line": 0, "character": 0 }, "end": { "line": 0, "character": 0 } },
-                                        "newText": format!("func {}() -> i32 {{\n    \n}}\n", name)
-                                    }
-                                ]
+                        let mut changes = Map::new();
+                        changes.insert(uri.to_string(), serde_json::json!([
+                            {
+                                "range": { "start": { "line": insert_line, "character": 0 }, "end": { "line": insert_line, "character": 0 } },
+                                "newText": format!("func {}() -> i32 {{\n    \n}}\n", name)
                             }
-                        });
+                        ]));
+                        let edit = serde_json::json!({ "changes": changes });
                         actions.push(serde_json::json!({
                             "title": format!("Create function `{}`", name),
                             "kind": "quickfix",
@@ -60,16 +61,14 @@ impl LspServer {
                 }
                 crate::diagnostic::codes::E0406 => {
                     if let Some(name) = extract_quoted_name(msg) {
-                        let edit = serde_json::json!({
-                            "changes": {
-                                uri: [
-                                    {
-                                        "range": { "start": { "line": 0, "character": 0 }, "end": { "line": 0, "character": 0 } },
-                                        "newText": format!("trait {} {{\n    \n}}\n", name)
-                                    }
-                                ]
+                        let mut changes = Map::new();
+                        changes.insert(uri.to_string(), serde_json::json!([
+                            {
+                                "range": { "start": { "line": insert_line, "character": 0 }, "end": { "line": insert_line, "character": 0 } },
+                                "newText": format!("trait {} {{\n    \n}}\n", name)
                             }
-                        });
+                        ]));
+                        let edit = serde_json::json!({ "changes": changes });
                         actions.push(serde_json::json!({
                             "title": format!("Create trait `{}`", name),
                             "kind": "quickfix",
@@ -80,16 +79,14 @@ impl LspServer {
                 }
                 crate::diagnostic::codes::E0231 | crate::diagnostic::codes::E0407 => {
                     if let Some(name) = extract_quoted_name(msg) {
-                        let edit = serde_json::json!({
-                            "changes": {
-                                uri: [
-                                    {
-                                        "range": { "start": { "line": 0, "character": 0 }, "end": { "line": 0, "character": 0 } },
-                                        "newText": format!("type {} = i64\n", name)
-                                    }
-                                ]
+                        let mut changes = Map::new();
+                        changes.insert(uri.to_string(), serde_json::json!([
+                            {
+                                "range": { "start": { "line": insert_line, "character": 0 }, "end": { "line": insert_line, "character": 0 } },
+                                "newText": format!("type {} = i64\n", name)
                             }
-                        });
+                        ]));
+                        let edit = serde_json::json!({ "changes": changes });
                         actions.push(serde_json::json!({
                             "title": format!("Create type alias `{}`", name),
                             "kind": "quickfix",

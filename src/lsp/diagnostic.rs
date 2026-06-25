@@ -25,10 +25,15 @@ pub(crate) fn diagnostic_to_lsp(diagnostic: &Diagnostic) -> Value {
 }
 
 pub(crate) fn parse_error_to_lsp(err: &ParseError) -> Value {
+    // err.col is the column where the error occurred (1-indexed).
+    // start: col-1 to get 0-indexed start position.
+    // end: col to point just after the error token, but ensure it's at least col-1 + 1.
+    let start_col = err.col.saturating_sub(1);
+    let end_col = (err.col).max(start_col + 1);
     serde_json::json!({
         "range": {
-            "start": { "line": err.line.saturating_sub(1), "character": err.col.saturating_sub(1) },
-            "end": { "line": err.line.saturating_sub(1), "character": err.col }
+            "start": { "line": err.line.saturating_sub(1), "character": start_col },
+            "end": { "line": err.line.saturating_sub(1), "character": end_col }
         },
         "severity": 1,
         "source": "mimi",

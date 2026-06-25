@@ -3,18 +3,51 @@ use std::hash::{Hash, Hasher};
 use crate::ast::{FuncDef, Item};
 use crate::lsp::LspServer;
 
-/// Decode percent-encoded URI characters (minimal implementation)
+/// Decode percent-encoded URI characters.
+/// Handles %XX (byte escape) and %uXXXX (Unicode escape).
 pub(crate) fn percent_decode(s: &str) -> String {
     let mut result = String::new();
-    let mut chars = s.chars();
+    let mut chars = s.chars().peekable();
     while let Some(c) = chars.next() {
         if c == '%' {
-            let hex: String = chars.by_ref().take(2).collect();
-            if let Ok(byte) = u8::from_str_radix(&hex, 16) {
-                result.push(byte as char);
+            if let Some(&'u') = chars.peek() {
+                // Unicode escape: %uXXXX
+                chars.next(); // consume 'u'
+                let hex: String = chars.by_ref().take(4).collect();
+                if hex.len() == 4 {
+                    if let Ok(code) = u32::from_str_radix(&hex, 16) {
+                        if let Some(ch) = char::from_u32(code) {
+                            result.push(ch);
+                        } else {
+                            // Invalid Unicode codepoint, keep original
+                            result.push_str("%u");
+                            result.push_str(&hex);
+                        }
+                    } else {
+                        result.push_str("%u");
+                        result.push_str(&hex);
+                    }
+                } else {
+                    // Not enough hex chars, keep as-is
+                    result.push_str("%u");
+                    result.push_str(&hex);
+                }
             } else {
-                result.push('%');
-                result.push_str(&hex);
+                // Byte escape: %XX
+                let hex: String = chars.by_ref().take(2).collect();
+                if hex.len() == 2 {
+                    if let Ok(byte) = u8::from_str_radix(&hex, 16) {
+                        result.push(byte as char);
+                    } else {
+                        result.push('%');
+                        result.push_str(&hex);
+                    }
+                } else {
+                    result.push('%');
+                    if !hex.is_empty() {
+                        result.push_str(&hex);
+                    }
+                }
             }
         } else {
             result.push(c);
@@ -24,29 +57,32 @@ pub(crate) fn percent_decode(s: &str) -> String {
 }
 
 /// Compute a hash of the function body source text for cache invalidation.
+/// func.pos.0 is 1-indexed (from lexer), so we subtract 1 to convert to 0-indexed.
+/// find_func_end_line returns 0-indexed line number.
 pub(crate) fn hash_func_body(text: &str, func: &FuncDef) -> u64 {
-    let end_line = find_func_end_line(text, func.pos.0);
+    let start_idx = func.pos.0.saturating_sub(1); // Convert 1-indexed to 0-indexed
+    let end_idx = find_func_end_line(text, func.pos.0); // Returns 0-indexed
     let lines: Vec<&str> = text.lines().collect();
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    for line in lines
-        .iter()
-        .take(end_line.min(lines.len().saturating_sub(1)) + 1)
-        .skip(func.pos.0)
-    {
+    // end_idx is 0-indexed, so we take (end_idx - start_idx + 1) lines
+    let count = (end_idx.saturating_sub(start_idx) + 1).min(lines.len().saturating_sub(start_idx));
+    for line in lines.iter().skip(start_idx).take(count) {
         line.hash(&mut hasher);
     }
     hasher.finish()
 }
 
 /// Find the closing brace line for a function starting at `start_line`.
+/// `start_line` is 1-indexed (from lexer span), returns 0-indexed line number.
 pub(crate) fn find_func_end_line(text: &str, start_line: usize) -> usize {
     let lines: Vec<&str> = text.lines().collect();
-    if start_line >= lines.len() {
-        return start_line;
+    let start_idx = start_line.saturating_sub(1); // Convert 1-indexed to 0-indexed
+    if start_idx >= lines.len() {
+        return start_line; // Return original 1-indexed value as fallback
     }
     let mut depth = 0;
     let mut started = false;
-    for (i, line) in lines.iter().enumerate().skip(start_line) {
+    for (i, line) in lines.iter().enumerate().skip(start_idx) {
         for ch in line.chars() {
             match ch {
                 '{' => {
@@ -60,7 +96,7 @@ pub(crate) fn find_func_end_line(text: &str, start_line: usize) -> usize {
             }
         }
         if started && depth == 0 {
-            return i;
+            return i; // Returns 0-indexed
         }
     }
     lines.len().saturating_sub(1)
@@ -116,7 +152,7 @@ impl LspServer {
         let after_cursor: String = current_line.chars().skip(character).collect();
         after_cursor
             .find(|c: char| !c.is_alphanumeric() && c != '_')
-            .unwrap_or_else(|| current_line.len().saturating_sub(character))
+            .unwrap_or_else(|| after_cursor.len())
     }
 
     /// Helper: get the word at a given position

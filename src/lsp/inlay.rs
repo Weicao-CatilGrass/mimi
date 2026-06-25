@@ -63,28 +63,33 @@ impl LspServer {
                             _ => "",
                         };
                         if !type_str.is_empty() {
-                            // Find the `=` position on the let line
+                            // Find the `=` position on the let line using AST info
                             let lines: Vec<&str> = text.lines().collect();
                             let pat_name = match pat {
                                 Pattern::Variable(n) => n.as_str(),
                                 _ => "",
                             };
-                            if let Some(let_line) = lines.iter().position(|l| {
-                                l.trim().starts_with("let")
-                                    && !pat_name.is_empty()
-                                    && l.contains(pat_name)
-                            }) {
-                                let line_text = lines[let_line];
-                                if let Some(eq_pos) = line_text.find('=') {
-                                    hints.push(serde_json::json!({
-                                        "position": {
-                                            "line": let_line,
-                                            "character": eq_pos + 1
-                                        },
-                                        "label": format!(": {}", type_str),
-                                        "kind": 1,  // Type
-                                        "paddingLeft": true
-                                    }));
+                            if !pat_name.is_empty() {
+                                // Find the line with `let <pat_name>` that also has `=`
+                                if let Some(let_line) = lines.iter().position(|l| {
+                                    let trimmed = l.trim();
+                                    trimmed.starts_with("let")
+                                        && trimmed.contains(pat_name)
+                                        && l.contains('=')
+                                }) {
+                                    let line_text = lines[let_line];
+                                    // Find the = sign, not in a comment
+                                    if let Some(eq_pos) = line_text.find('=') {
+                                        hints.push(serde_json::json!({
+                                            "position": {
+                                                "line": let_line,
+                                                "character": eq_pos + 1
+                                            },
+                                            "label": format!(": {}", type_str),
+                                            "kind": 1,  // Type
+                                            "paddingLeft": true
+                                        }));
+                                    }
                                 }
                             }
                         }

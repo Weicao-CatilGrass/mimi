@@ -35,7 +35,8 @@ impl LspServer {
             return "impl";
         }
         // After `extern` — ABI string or block
-        if trimmed.starts_with("extern") && !trimmed.starts_with("extern ") {
+        // "extern" (no space) triggers ABI completions; "extern " does not
+        if !trimmed.starts_with("extern ") && trimmed.starts_with("extern") {
             return "extern";
         }
         // Start of expression or after opening brace/paren
@@ -232,14 +233,14 @@ impl LspServer {
                     "label": "\"C\" { ... }",
                     "kind": 14, // Keyword
                     "detail": "extern \"C\" block with C function declarations",
-                    "insertText": "\"C\" {\n\t${1}\n}",
+                    "insertText": "\"C\" {\n  ${1}\n}",
                     "insertTextFormat": 2, // Snippet
                 }));
                 items.push(serde_json::json!({
                     "label": "\"stdcall\" { ... }",
                     "kind": 14,
                     "detail": "extern \"stdcall\" block (Windows)",
-                    "insertText": "\"stdcall\" {\n\t${1}\n}",
+                    "insertText": "\"stdcall\" {\n  ${1}\n}",
                     "insertTextFormat": 2,
                 }));
                 let c_funcs = vec![

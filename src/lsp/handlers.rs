@@ -36,7 +36,7 @@ pub(crate) fn handle_message(server: &mut LspServer, msg: &Value) -> Option<Valu
                         "openClose": true,
                         "change": 1,
                         "save": {
-                            "includeText": false
+                            "includeText": true
                         }
                     },
                     "completionProvider": {
@@ -69,6 +69,10 @@ pub(crate) fn handle_message(server: &mut LspServer, msg: &Value) -> Option<Valu
                     "documentHighlightProvider": true,
                     "inlayHintProvider": true,
                     "callHierarchyProvider": true
+                },
+                "serverInfo": {
+                    "name": "mimi",
+                    "version": "0.27.0"
                 }
             });
             Some(serde_json::json!({
@@ -143,19 +147,22 @@ pub(crate) fn handle_message(server: &mut LspServer, msg: &Value) -> Option<Valu
                 .get("textDocument")?
                 .get("uri")?
                 .as_str()?;
-            if let Some(text) = server.documents.get(uri) {
-                let diagnostics = server.compute_diagnostics(text);
-                Some(serde_json::json!({
-                    "jsonrpc": "2.0",
-                    "method": "textDocument/publishDiagnostics",
-                    "params": {
-                        "uri": uri,
-                        "diagnostics": diagnostics
-                    }
-                }))
-            } else {
-                None
-            }
+            // Use provided text if includeText was true, otherwise use cached text
+            let text = msg
+                .get("params")?
+                .get("text")
+                .and_then(|t| t.as_str())
+                .or_else(|| server.documents.get(uri).map(|s| s.as_str()))
+                .unwrap_or("");
+            let diagnostics = server.compute_diagnostics(text);
+            Some(serde_json::json!({
+                "jsonrpc": "2.0",
+                "method": "textDocument/publishDiagnostics",
+                "params": {
+                    "uri": uri,
+                    "diagnostics": diagnostics
+                }
+            }))
         }
         "textDocument/completion" => {
             let uri = msg
@@ -292,12 +299,25 @@ pub(crate) fn handle_message(server: &mut LspServer, msg: &Value) -> Option<Valu
             if word.is_empty() {
                 return None;
             }
+            // Use get_word_at to get proper word boundaries
+            let lines: Vec<&str> = text.lines().collect();
+            let current_line = lines.get(line)?;
+            let before_cursor: String = current_line.chars().take(character).collect();
+            let after_cursor: String = current_line.chars().skip(character).collect();
+            let word_start = before_cursor
+                .rfind(|c: char| !c.is_alphanumeric() && c != '_')
+                .map(|i| i + 1)
+                .unwrap_or(0);
+            let word_end = after_cursor
+                .find(|c: char| !c.is_alphanumeric() && c != '_')
+                .map(|i| character + i)
+                .unwrap_or(current_line.len());
             Some(serde_json::json!({
                 "jsonrpc": "2.0",
                 "id": id,
                 "result": {
-                    "start": { "line": line, "character": server.word_start_col(text, line, character) },
-                    "end": { "line": line, "character": character + server.word_end_offset(text, line, character) }
+                    "start": { "line": line, "character": word_start },
+                    "end": { "line": line, "character": word_end }
                 }
             }))
         }
@@ -330,8 +350,8 @@ pub(crate) fn handle_message(server: &mut LspServer, msg: &Value) -> Option<Valu
             let line = position.get("line")?.as_u64()? as usize;
             let character = position.get("character")?.as_u64()? as usize;
             server.last_cursor_line = line;
-            let text = server.documents.get(uri)?;
-            let sig_help = server.compute_signature_help(text, line, character);
+            let text = server.documents.get(uri)?.clone();
+            let sig_help = server.compute_signature_help(&text, line, character);
             Some(serde_json::json!({
                 "jsonrpc": "2.0",
                 "id": id,
@@ -442,10 +462,16 @@ pub(crate) fn handle_message(server: &mut LspServer, msg: &Value) -> Option<Valu
                 .and_then(|q| q.as_str())
                 .unwrap_or("");
             let symbols = server.compute_workspace_symbols(query);
+            // For large workspaces, consider returning isIncomplete: true
+            // when symbol count exceeds a threshold (e.g., 1000)
+            let is_incomplete = symbols.len() >= 1000;
             Some(serde_json::json!({
                 "jsonrpc": "2.0",
                 "id": id,
-                "result": symbols
+                "result": {
+                    "isIncomplete": is_incomplete,
+                    "symbols": symbols
+                }
             }))
         }
         "textDocument/codeLens" => {

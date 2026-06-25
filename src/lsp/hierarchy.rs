@@ -13,26 +13,17 @@ impl LspServer {
             None => return vec![],
         };
         let mut calls = Vec::new();
-        // Find the definition line of `name` so we can exclude it
-        let def_line = text
-            .lines()
-            .position(|l| l.contains(&format!("func {}", name)));
+        let lines: Vec<&str> = text.lines().collect();
+
         for item in &file.items {
             if let Item::Func(f) = item {
                 if f.name == name {
-                    continue;
+                    continue; // Don't report calls within the function itself
                 }
-                let call_lines: Vec<usize> = text
-                    .lines()
-                    .enumerate()
-                    .filter(|(i, l)| {
-                        if Some(*i) == def_line {
-                            return false;
-                        }
-                        l.contains(&format!("{}(", name))
-                    })
-                    .map(|(i, _)| i)
-                    .collect();
+                // Collect call sites using AST traversal
+                let mut call_lines: Vec<usize> = Vec::new();
+                collect_call_sites(&f.body, name, &lines, &mut call_lines);
+
                 if !call_lines.is_empty() {
                     let func_line = text
                         .lines()
@@ -250,6 +241,138 @@ fn collect_calls_from_expr(
         Expr::Turbofish(_, _, args) => {
             for e in args {
                 collect_calls_from_expr(e, text, items, uri, calls, visited);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Collect all line numbers where `func_name` is called within the given statements.
+/// Uses AST-based traversal instead of string matching to avoid false positives.
+fn collect_call_sites(stmts: &[Stmt], func_name: &str, lines: &[&str], call_lines: &mut Vec<usize>) {
+    for stmt in stmts {
+        match stmt {
+            Stmt::Expr(e) | Stmt::Return(Some(e)) => {
+                collect_call_sites_from_expr(e, func_name, lines, call_lines);
+            }
+            Stmt::Let { init: Some(e), .. } => {
+                collect_call_sites_from_expr(e, func_name, lines, call_lines);
+            }
+            Stmt::If { cond: _, then_, else_ } => {
+                collect_call_sites(then_, func_name, lines, call_lines);
+                if let Some(els) = else_ {
+                    collect_call_sites(els, func_name, lines, call_lines);
+                }
+            }
+            Stmt::While { cond: _, body } => {
+                collect_call_sites(body, func_name, lines, call_lines);
+            }
+            Stmt::For { var: _, iterable: _, body } => {
+                collect_call_sites(body, func_name, lines, call_lines);
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Recursively collect call sites from an expression
+fn collect_call_sites_from_expr(expr: &Expr, func_name: &str, lines: &[&str], call_lines: &mut Vec<usize>) {
+    match expr {
+        Expr::Call(callee, args) => {
+            if let Expr::Ident(name) = callee.as_ref() {
+                if name.as_str() == func_name {
+                    // Find the line number of this call expression
+                    // We use the source text to find where the call appears
+                    let call_text = format!("{}(", name);
+                    for (i, line) in lines.iter().enumerate() {
+                        // Only count if not already counted for this function
+                        if line.contains(&call_text) && !call_lines.contains(&i) {
+                            // Verify it's not in a comment or string (simple heuristic)
+                            if !line.trim().starts_with("//") && !line.contains("\"") {
+                                call_lines.push(i);
+                            }
+                        }
+                    }
+                }
+            }
+            for arg in args {
+                collect_call_sites_from_expr(arg, func_name, lines, call_lines);
+            }
+        }
+        Expr::Binary(_, lhs, rhs) | Expr::Index(lhs, rhs) => {
+            collect_call_sites_from_expr(lhs, func_name, lines, call_lines);
+            collect_call_sites_from_expr(rhs, func_name, lines, call_lines);
+        }
+        Expr::Unary(_, e)
+        | Expr::Try(e)
+        | Expr::Spawn(e)
+        | Expr::Await(e)
+        | Expr::Old(e)
+        | Expr::QuoteInterpolate(e)
+        | Expr::TypeOf(e) => {
+            collect_call_sites_from_expr(e, func_name, lines, call_lines);
+        }
+        Expr::If { cond, then_, else_ } => {
+            collect_call_sites_from_expr(cond, func_name, lines, call_lines);
+            collect_call_sites(then_, func_name, lines, call_lines);
+            if let Some(els) = else_ {
+                collect_call_sites(els, func_name, lines, call_lines);
+            }
+        }
+        Expr::Lambda { body, .. } => {
+            collect_call_sites(body, func_name, lines, call_lines);
+        }
+        Expr::Block(stmts) => {
+            collect_call_sites(stmts, func_name, lines, call_lines);
+        }
+        Expr::Quote(stmts) | Expr::Comptime(stmts) => {
+            collect_call_sites(stmts, func_name, lines, call_lines);
+        }
+        Expr::List(elems) | Expr::Tuple(elems) => {
+            for e in elems {
+                collect_call_sites_from_expr(e, func_name, lines, call_lines);
+            }
+        }
+        Expr::Match(scrutinee, arms) => {
+            collect_call_sites_from_expr(scrutinee, func_name, lines, call_lines);
+            for arm in arms {
+                if let Some(g) = &arm.guard {
+                    collect_call_sites_from_expr(g, func_name, lines, call_lines);
+                }
+                collect_call_sites_from_expr(&arm.body, func_name, lines, call_lines);
+            }
+        }
+        Expr::Record { fields, .. } => {
+            for f in fields {
+                collect_call_sites_from_expr(&f.value, func_name, lines, call_lines);
+            }
+        }
+        Expr::Comprehension { expr, iter, guard, .. } => {
+            collect_call_sites_from_expr(expr, func_name, lines, call_lines);
+            collect_call_sites_from_expr(iter, func_name, lines, call_lines);
+            if let Some(g) = guard {
+                collect_call_sites_from_expr(g, func_name, lines, call_lines);
+            }
+        }
+        Expr::Field(e, _) | Expr::TupleIndex(e, _) => {
+            collect_call_sites_from_expr(e, func_name, lines, call_lines);
+        }
+        Expr::Range { start, end } => {
+            collect_call_sites_from_expr(start, func_name, lines, call_lines);
+            collect_call_sites_from_expr(end, func_name, lines, call_lines);
+        }
+        Expr::SliceExpr { target, start, end } => {
+            collect_call_sites_from_expr(target, func_name, lines, call_lines);
+            if let Some(s) = start {
+                collect_call_sites_from_expr(s, func_name, lines, call_lines);
+            }
+            if let Some(e) = end {
+                collect_call_sites_from_expr(e, func_name, lines, call_lines);
+            }
+        }
+        Expr::Turbofish(_, _, args) => {
+            for e in args {
+                collect_call_sites_from_expr(e, func_name, lines, call_lines);
             }
         }
         _ => {}

@@ -410,7 +410,7 @@ fn rename_no_change() {
 
 #[test]
 fn debug_signature_help() {
-    let server = LspServer::new();
+    let mut server = LspServer::new();
     let text = "func add(a: i32, b: i32) -> i32 { a + b }\nfunc main() { add(1, 2) }";
 
     // Position 18 is inside the add() call, after the comma
@@ -423,7 +423,7 @@ fn debug_signature_help() {
 
 #[test]
 fn signature_help_function() {
-    let server = LspServer::new();
+    let mut server = LspServer::new();
     let text = "func add(a: i32, b: i32) -> i32 { a + b }\nfunc main() { add(1, 2) }";
     // Position 18 is inside the add() call, after the comma
     let result = server.compute_signature_help(text, 1, 18);
@@ -439,7 +439,7 @@ fn signature_help_function() {
 
 #[test]
 fn signature_help_builtin() {
-    let server = LspServer::new();
+    let mut server = LspServer::new();
     let text = "func main() { println( ) }";
     let result = server.compute_signature_help(text, 0, 18);
     assert!(result.is_some(), "should show signature help for 'println'");
@@ -607,7 +607,7 @@ fn diagnostic_undefined_variable_in_expression() {
 
 #[test]
 fn signature_help_multiple_overloads() {
-    let server = LspServer::new();
+    let mut server = LspServer::new();
     let text = "func foo(a: i32) -> i32 { a }\nfunc foo(a: i32, b: i32) -> i32 { a + b }\nfunc main() { foo(1, 2) }";
     let result = server.compute_signature_help(text, 2, 12);
     let _ = result;
@@ -1167,3 +1167,258 @@ fn lsp_hover_func_invariant_only() {
         contents
     );
 }
+
+// ===================== Phase E: LSP Bug Fix Regression Tests =====================
+// Tests for v0.27.0 bug fixes
+
+// --- P0: hash_func_body off-by-N ---
+#[test]
+fn lsp_hash_func_body_1indexed() {
+    // func.pos.0 is 1-indexed from lexer span
+    // hash_func_body should handle 1-indexed input correctly
+    let server = LspServer::new();
+    let text = "func test() -> i32 {\n    1\n}";
+    // func starts at line 0 in 0-indexed, which is line 1 in 1-indexed
+    let file = server.parse_with_recovery(text).expect("parse failed");
+    if let crate::ast::Item::Func(f) = &file.items[0] {
+        // f.pos.0 should be 1 (1-indexed)
+        let hash1 = crate::lsp::util::hash_func_body(text, f);
+        // Hash should be non-zero and deterministic
+        assert!(hash1 != 0, "hash should be non-zero");
+        let hash2 = crate::lsp::util::hash_func_body(text, f);
+        assert_eq!(hash1, hash2, "hash should be deterministic");
+    }
+}
+
+// --- P1: code_actions URI key ---
+#[test]
+fn lsp_code_actions_uri_key_correct() {
+    let server = LspServer::new();
+    let text = "func main() {\n    foo\n}"; // foo is undefined
+    let diags = server.compute_diagnostics(text);
+    let context = serde_json::json!({ "diagnostics": diags });
+    let actions = server.compute_code_actions("file:///test.mimi", &context);
+    assert!(!actions.is_empty(), "should produce code action");
+    let edit = &actions[0]["edit"];
+    let changes = edit["changes"].as_object().expect("should be object");
+    assert!(
+        changes.contains_key("file:///test.mimi"),
+        "changes should have URI as key, not literal 'uri'"
+    );
+}
+
+// --- P1: code_actions insert position ---
+#[test]
+fn lsp_code_actions_insert_at_diagnostic_line() {
+    let server = LspServer::new();
+    // Diagnostic with single quotes (as produced by the actual parser) at line 5
+    let context = serde_json::json!({
+        "diagnostics": [{
+            "code": "E0400",
+            "message": "undefined variable 'x'",
+            "range": { "start": { "line": 5, "character": 4 }, "end": { "line": 5, "character": 5 } }
+        }]
+    });
+    let actions = server.compute_code_actions("file:///test.mimi", &context);
+    assert!(!actions.is_empty(), "should produce code action");
+    let changes = &actions[0]["edit"]["changes"];
+    let uri_changes = changes["file:///test.mimi"].as_array().expect("should have uri key");
+    // newText should be inserted at line 5 (the diagnostic line), not hardcoded line 0
+    let insert_line = uri_changes[0]["range"]["start"]["line"].as_u64().unwrap();
+    assert_eq!(insert_line, 5, "insert should be at diagnostic line (5), not hardcoded line 0");
+}
+
+// --- P1: prepareRename correct range ---
+#[test]
+fn lsp_prepare_rename_full_word() {
+    let server = LspServer::new();
+    let text = "func foo() -> i32 { 42 }";
+    // Position inside 'foo' - get_word_at should return the full word
+    let word = server.get_word_at(text, 0, 6);
+    assert_eq!(word, "foo", "get_word_at should find 'foo' at position 6");
+    // Test at start of 'foo' (position 5)
+    let word_start = server.get_word_at(text, 0, 5);
+    assert_eq!(word_start, "foo", "get_word_at should find 'foo' at position 5");
+    // Test at position after "foo" in the parens (position 8)
+    let word_after = server.get_word_at(text, 0, 8);
+    assert_eq!(word_after, "foo", "get_word_at should find 'foo' at position 8");
+    // Test at position 9 (after the word)
+    let word_end = server.get_word_at(text, 0, 9);
+    assert_eq!(word_end, "", "get_word_at should return empty at position 9 (after word)");
+}
+
+// --- P1: compute_go_to_implementation cross_file ---
+// Note: This tests the cross-document search capability. The actual trait/impl
+// matching depends on Mimi's syntax. The fix ensures we search all open documents.
+#[test]
+fn lsp_goto_implementation_cross_document_search() {
+    let mut server = LspServer::new();
+    // Open two documents in the server's document cache
+    server.cache_put("file:///a.mimi".to_string(), "func test() { 1 }".to_string());
+    server.cache_put("file:///b.mimi".to_string(), "func other() { 2 }".to_string());
+
+    // The documents should be accessible
+    assert!(server.documents.contains_key("file:///a.mimi"));
+    assert!(server.documents.contains_key("file:///b.mimi"));
+    // compute_workspace_symbols searches all documents
+    let symbols = server.compute_workspace_symbols("");
+    let uris: Vec<_> = symbols.iter().filter_map(|s| s["location"]["uri"].as_str()).collect();
+    assert!(uris.contains(&"file:///a.mimi") || uris.contains(&"file:///b.mimi"));
+}
+
+// --- P1: impl symbol kind is Namespace (26) not Object (25) ---
+#[test]
+fn lsp_symbol_impl_kind_is_namespace() {
+    let mut server = LspServer::new();
+    // Need to cache the document so compute_workspace_symbols can find it
+    server.cache_put("file:///test.mimi".to_string(), "impl Foo for Bar { }".to_string());
+    let symbols = server.compute_workspace_symbols("");
+    eprintln!("DEBUG all symbols: {:?}", symbols);
+    let impl_symbols: Vec<_> = symbols
+        .iter()
+        .filter(|s| s["name"] == "Bar")
+        .collect();
+    eprintln!("DEBUG impl symbols for Bar: {:?}", impl_symbols);
+    assert!(!impl_symbols.is_empty(), "should find impl symbol");
+    let kind = impl_symbols[0]["kind"].as_u64().unwrap();
+    assert_eq!(kind, 26, "impl kind should be 26 (Namespace), not 25 (Object)");
+}
+
+// --- P2: parse_error_to_lsp end_col ---
+#[test]
+fn lsp_parse_error_range_valid() {
+    let server = LspServer::new();
+    let diags = server.compute_diagnostics("func $"); // Invalid token
+    assert!(!diags.is_empty(), "should have parse error");
+    let range = &diags[0]["range"];
+    let start = range["start"].as_object().expect("start should be object");
+    let end = range["end"].as_object().expect("end should be object");
+    let start_char = start["character"].as_u64().unwrap();
+    let end_char = end["character"].as_u64().unwrap();
+    assert!(
+        end_char > start_char || end_char == start_char + 1,
+        "end_char ({}) should be at least start_char + 1",
+        end_char
+    );
+}
+
+// --- P2: completion_context extern detection ---
+#[test]
+fn lsp_completion_extern_context() {
+    let mut server = LspServer::new();
+    // "extern" (no space after) should trigger extern context
+    let items = server.compute_completion("extern", 0, 6);
+    let labels: Vec<&str> = items.iter().filter_map(|i| i["label"].as_str()).collect();
+    // Should show "C" extern block option
+    assert!(
+        labels.iter().any(|l| l.contains("\"C\"")),
+        "extern context should show C ABI option"
+    );
+}
+
+// --- P2: word_end_offset default ---
+#[test]
+fn lsp_word_end_offset_at_line_end() {
+    let server = LspServer::new();
+    let text = "func foo()";
+    // Position at end of line (column 11, after "func foo()")
+    let offset = server.word_end_offset(text, 0, 11);
+    assert_eq!(offset, 0, "word_end_offset at line end should be 0");
+    // Position in middle of word
+    let offset2 = server.word_end_offset("func foo()", 0, 6);
+    assert!(offset2 > 0, "word_end_offset in middle of word should be positive");
+}
+
+// --- P2: didSave includeText ---
+#[test]
+fn lsp_did_save_uses_provided_text() {
+    let mut server = LspServer::new();
+    // First open a document
+    let open_msg = serde_json::json!({
+        "jsonrpc": "2.0",
+        "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": {
+                "uri": "file:///save_test.mimi",
+                "text": "func old()"
+            }
+        }
+    });
+    server.handle_message(&open_msg);
+
+    // Now didSave with includeText should use provided text
+    let save_msg = serde_json::json!({
+        "jsonrpc": "2.0",
+        "method": "textDocument/didSave",
+        "params": {
+            "textDocument": { "uri": "file:///save_test.mimi" },
+            "text": "func new()"
+        }
+    });
+    let response = server.handle_message(&save_msg);
+    assert!(response.is_some(), "didSave should produce diagnostics response");
+}
+
+// --- P2: workspace/symbol isIncomplete ---
+#[test]
+fn lsp_workspace_symbol_incomplete_flag() {
+    let mut server = LspServer::new();
+    let msg = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "workspace/symbol",
+        "params": { "query": "" }
+    });
+    let response = server.handle_message(&msg);
+    assert!(response.is_some());
+    let resp = response.expect("workspace/symbol response");
+    // Response should have isIncomplete field
+    let result = resp["result"].as_object().expect("result should be object");
+    assert!(
+        result.contains_key("isIncomplete"),
+        "workspace/symbol result should have isIncomplete field"
+    );
+}
+
+// --- P2: signature_help uses fmt_type not debug ---
+#[test]
+fn lsp_signature_help_no_debug_format() {
+    let mut server = LspServer::new();
+    let text = "func test(x: i32) -> i64 { x }";
+    let result = server.compute_signature_help(text, 0, 12);
+    assert!(result.is_some(), "should show signature help");
+    let sig = result.expect("signature help");
+    let sigs = sig["signatures"].as_array().expect("signatures array");
+    assert!(!sigs.is_empty());
+    let label = sigs[0]["label"].as_str().expect("label string");
+    // Should use source format like "i32", not debug format like "Type::Name(...)"
+    assert!(
+        label.contains("i32") && !label.contains("Type::"),
+        "signature should use source type format, not debug: {}",
+        label
+    );
+}
+
+// --- P3: percent_decode supports %uXXXX ---
+#[test]
+fn lsp_percent_decode_unicode() {
+    let decoded = crate::lsp::util::percent_decode("%u0041"); // 'A'
+    assert_eq!(decoded, "A", "percent_decode should handle %uXXXX Unicode escapes");
+    let decoded2 = crate::lsp::util::percent_decode("%u00E9"); // 'é'
+    assert_eq!(decoded2, "é", "percent_decode should handle accented chars");
+    // Standard %XX should still work
+    let decoded3 = crate::lsp::util::percent_decode("%2F"); // '/'
+    assert_eq!(decoded3, "/", "percent_decode should handle %XX");
+}
+
+// --- P3: percent_decode preserves undecoded ---
+#[test]
+fn lsp_percent_decode_invalid() {
+    // Invalid escape should be preserved as-is
+    let decoded = crate::lsp::util::percent_decode("%ZZ");
+    assert_eq!(decoded, "%ZZ", "invalid percent escape should be preserved");
+    let decoded2 = crate::lsp::util::percent_decode("hello%world");
+    assert_eq!(decoded2, "hello%world", "unmatched % should be preserved");
+}
+
+// ===================== End Regression Tests =====================

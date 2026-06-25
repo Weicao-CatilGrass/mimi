@@ -86,12 +86,13 @@ impl LspServer {
     }
 
     /// Go to implementation for a trait name: find all `impl` blocks for this trait
+    /// across all open documents in the workspace.
     pub fn compute_go_to_implementation(
         &self,
         text: &str,
         line: usize,
         character: usize,
-        uri: &str,
+        _uri: &str,
     ) -> Vec<Value> {
         let word = self.get_word_at(text, line, character);
         if word.is_empty() {
@@ -99,31 +100,35 @@ impl LspServer {
         }
 
         let mut locations = Vec::new();
-        if let Some(file) = self.parse_with_recovery(text) {
-            // Check if word is a trait name
-            let is_trait = file
-                .items
-                .iter()
-                .any(|item| matches!(item, Item::Trait(t) if t.name == word));
-            if !is_trait {
-                return locations; // Not a trait — no implementations to find
-            }
 
-            // Find all impl blocks for this trait
-            for impl_def in &file.items {
-                if let Item::Impl(imp) = impl_def {
-                    if imp.trait_name == word {
-                        let impl_line = text
-                            .lines()
-                            .position(|l| l.contains("impl") && l.contains(&word))
-                            .unwrap_or(0);
-                        locations.push(serde_json::json!({
-                            "uri": uri,
-                            "range": {
-                                "start": { "line": impl_line, "character": 0 },
-                                "end": { "line": impl_line, "character": 100 }
-                            }
-                        }));
+        // Check if word is a trait name in the current file
+        let is_trait = if let Some(file) = self.parse_with_recovery(text) {
+            file.items.iter().any(|item| matches!(item, Item::Trait(t) if t.name == word))
+        } else {
+            false
+        };
+        if !is_trait {
+            return locations; // Not a trait — no implementations to find
+        }
+
+        // Search across all open documents for impl blocks
+        for (doc_uri, doc_text) in &self.documents {
+            if let Some(file) = self.parse_with_recovery(doc_text) {
+                for impl_def in &file.items {
+                    if let Item::Impl(imp) = impl_def {
+                        if imp.trait_name == word {
+                            let impl_line = doc_text
+                                .lines()
+                                .position(|l| l.contains("impl") && l.contains(&word))
+                                .unwrap_or(0);
+                            locations.push(serde_json::json!({
+                                "uri": doc_uri,
+                                "range": {
+                                    "start": { "line": impl_line, "character": 0 },
+                                    "end": { "line": impl_line, "character": 100 }
+                                }
+                            }));
+                        }
                     }
                 }
             }
@@ -304,7 +309,7 @@ impl LspServer {
 
     /// Compute signature help at the given position
     pub fn compute_signature_help(
-        &self,
+        &mut self,
         text: &str,
         line: usize,
         character: usize,
@@ -337,6 +342,7 @@ impl LspServer {
         let mut signatures = Vec::new();
 
         if let Some(file) = self.parse_with_recovery(text) {
+            // Search user-defined functions
             for item in &file.items {
                 if let Item::Func(f) = item {
                     if f.name == func_name {
@@ -344,7 +350,7 @@ impl LspServer {
                             .params
                             .iter()
                             .map(|p| {
-                                let base = format!("{}: {:?}", p.name, p.ty);
+                                let base = format!("{}: {}", p.name, crate::core::fmt_type(&p.ty));
                                 if let Some(ref default_expr) = p.default_value {
                                     format!(
                                         "{} = {}",
@@ -359,14 +365,14 @@ impl LspServer {
                         let ret = f
                             .ret
                             .as_ref()
-                            .map(|t| format!(" -> {:?}", t))
+                            .map(|t| format!(" -> {}", crate::core::fmt_type(t)))
                             .unwrap_or_default();
                         signatures.push(serde_json::json!({
                             "label": format!("func {}({}){}", func_name, params.join(", "), ret),
                             "documentation": format!("Function {}", func_name),
                             "parameters": f.params.iter().map(|p| {
                                 let label = {
-                                    let base = format!("{}: {:?}", p.name, p.ty);
+                                    let base = format!("{}: {}", p.name, crate::core::fmt_type(&p.ty));
                                     if let Some(ref default_expr) = p.default_value {
                                         format!("{} = {}", base, crate::lsp::LspServer::format_expr_simple(default_expr))
                                     } else {
@@ -380,6 +386,79 @@ impl LspServer {
                             }).collect::<Vec<_>>()
                         }));
                     }
+                }
+            }
+
+            // Search trait methods
+            for item in &file.items {
+                match item {
+                    Item::Trait(t) => {
+                        for m in &t.methods {
+                            if m.name == func_name {
+                                let params: Vec<String> = m
+                                    .params
+                                    .iter()
+                                    .map(|p| format!("{}: {}", p.name, crate::core::fmt_type(&p.ty)))
+                                    .collect();
+                                let ret = m
+                                    .ret
+                                    .as_ref()
+                                    .map(|t| format!(" -> {}", crate::core::fmt_type(t)))
+                                    .unwrap_or_default();
+                                signatures.push(serde_json::json!({
+                                    "label": format!("{}.{}({}){}", t.name, func_name, params.join(", "), ret),
+                                    "documentation": format!("Trait method {}.{}", t.name, func_name),
+                                    "parameters": m.params.iter().map(|p| {
+                                        serde_json::json!({
+                                            "label": format!("{}: {}", p.name, crate::core::fmt_type(&p.ty)),
+                                            "documentation": format!("Parameter {}", p.name)
+                                        })
+                                    }).collect::<Vec<_>>()
+                                }));
+                            }
+                        }
+                    }
+                    Item::Impl(imp) => {
+                        for m in &imp.methods {
+                            if m.name == func_name {
+                                let params: Vec<String> = m
+                                    .params
+                                    .iter()
+                                    .map(|p| format!("{}: {}", p.name, crate::core::fmt_type(&p.ty)))
+                                    .collect();
+                                let ret = m
+                                    .ret
+                                    .as_ref()
+                                    .map(|t| format!(" -> {}", crate::core::fmt_type(t)))
+                                    .unwrap_or_default();
+                                signatures.push(serde_json::json!({
+                                    "label": format!("{}.{}({}){}", imp.type_name, func_name, params.join(", "), ret),
+                                    "documentation": format!("Impl method {}.{}", imp.type_name, func_name),
+                                    "parameters": m.params.iter().map(|p| {
+                                        serde_json::json!({
+                                            "label": format!("{}: {}", p.name, crate::core::fmt_type(&p.ty)),
+                                            "documentation": format!("Parameter {}", p.name)
+                                        })
+                                    }).collect::<Vec<_>>()
+                                }));
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        // Check stdlib functions (need to load first)
+        self.load_stdlib_completions();
+        for (module_name, funcs) in &self.stdlib_funcs {
+            for (name, detail, _insert) in funcs {
+                if name.as_str() == func_name {
+                    signatures.push(serde_json::json!({
+                        "label": format!("{}.{}", module_name, detail),
+                        "documentation": format!("Stdlib function {}.{}", module_name, func_name),
+                        "parameters": Vec::<serde_json::Value>::new()
+                    }));
                 }
             }
         }

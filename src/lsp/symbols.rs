@@ -173,7 +173,7 @@ impl LspServer {
                             continue;
                         }
                         let def_line = text.lines().position(|l| l.contains("impl")).unwrap_or(0);
-                        symbols.push(ws_symbol(&i.type_name, 25, uri, def_line, &i.trait_name));
+                        symbols.push(ws_symbol(&i.type_name, 26, uri, def_line, &i.trait_name));
                     }
                     Item::Actor(a) => {
                         if !query_lower.is_empty() && !a.name.to_lowercase().contains(&query_lower)
