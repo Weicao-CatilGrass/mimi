@@ -1593,16 +1593,6 @@ impl RegexEngine {
         }
     }
 
-    fn match_here(pattern: &[u8], text: &[u8]) -> i32 {
-        Self::match_here_with_depth(pattern, text, 0)
-    }
-
-    fn match_here_from(pattern: &[u8], start: usize, text: &[u8], ti: usize) -> i32 {
-        let sub_pat = &pattern[start..];
-        let sub_text = &text[ti..];
-        Self::match_here(sub_pat, sub_text)
-    }
-
     /// Parse pattern element starting at pi, return (end_pos, is_class).
     fn parse_element(pattern: &[u8], pi: usize) -> (usize, bool) {
         if pi >= pattern.len() {

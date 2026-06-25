@@ -359,7 +359,7 @@ impl<'a> Checker<'a> {
         };
 
         for (borrowed_var, field, borrow_ref) in &field_borrows {
-            if !self.is_field_borrowed(borrowed_var, field, false).is_some() {
+            if self.is_field_borrowed(borrowed_var, field, false).is_none() {
                 continue;
             }
             let ref_used_after = block[current_idx..].iter().any(|s| {
