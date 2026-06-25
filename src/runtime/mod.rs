@@ -1802,7 +1802,7 @@ pub extern "C" fn mimi_json_deserialize(
 
     let result = data.as_mut_ptr();
     std::mem::forget(data);
-    unsafe { *out_len = count; }
+    unsafe { *out_len = idx; }
     result as *mut std::ffi::c_void
 }
 
@@ -2162,7 +2162,9 @@ mod no_panic {
 
     static HANDLERS_INSTALLED: AtomicBool = AtomicBool::new(false);
 
-    const JMP_BUF_SIZE: usize = 128;
+    // glibc sigjmp_buf is ~200 bytes, macOS ~184, ARM64 ~200.
+    // Use 256 to cover all platforms safely.
+    const JMP_BUF_SIZE: usize = 256;
     type SigJmpBuf = [u8; JMP_BUF_SIZE];
 
     thread_local! {
@@ -2234,24 +2236,6 @@ mod no_panic {
 }
 
 #[cfg(not(any(target_os = "linux", target_os = "macos")))]
-mod no_panic {
-    #[no_mangle]
-    pub extern "C" fn mimi_install_no_panic_handlers() {}
-
-    #[no_mangle]
-    pub extern "C" fn mimi_restore_no_panic_handlers() {}
-}
-
-#[cfg(not(any(target_os = "linux", target_os = "macos")))]
-mod no_panic {
-    #[no_mangle]
-    pub extern "C" fn mimi_install_no_panic_handlers() {}
-
-    #[no_mangle]
-    pub extern "C" fn mimi_restore_no_panic_handlers() {}
-}
-
-#[cfg(not(target_os = "linux"))]
 mod no_panic {
     #[no_mangle]
     pub extern "C" fn mimi_install_no_panic_handlers() {}
