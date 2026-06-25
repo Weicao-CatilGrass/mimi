@@ -645,12 +645,18 @@ pub extern "C" fn mimi_str_replace(
 // Try/exit (? operator)
 // ---------------------------------------------------------------------------
 
+/// S18: Called by codegen `?` operator when Result is Err.
+/// Uses process::exit(1) instead of panic! because:
+/// - Panic across FFI boundary is undefined behavior (Rust ABI requirement)
+/// - process::exit skips destructors but is the safest exit path in FFI context
+/// - The calling codegen has already formatted the error message
 #[no_mangle]
 pub extern "C" fn mimi_try_exit(payload: i64) -> ! {
     eprintln!("Error: Result::Err({})", payload);
     std::process::exit(1);
 }
 
+/// S18: String variant of try_exit for string error messages.
 #[no_mangle]
 pub extern "C" fn mimi_try_exit_str(str: *const std::ffi::c_char, len: i64) -> ! {
     let msg = if str.is_null() || len <= 0 {

@@ -386,6 +386,13 @@ impl<'a> Interpreter<'a> {
     ///   2. sigsetjmp recovery point for C-level crashes
     ///   3. catch_unwind for Rust panics in callbacks
     ///
+    /// # S14: siglongjmp and destructors
+    /// siglongjmp skips all Rust destructors on the crash path. Any
+    /// Box/Vec/MutexGuard allocated between sigsetjmp and the crash will
+    /// be leaked. Mitigations: jump buffer is heap-allocated BEFORE
+    /// sigsetjmp, signal handlers are restored in crash path, minimal
+    /// resources are held between sigsetjmp and the C call.
+    ///
     /// On success: Ok(result)
     /// On C crash (signal): Err("FFI safety: C function crashed with SIG*")
     /// On Rust panic: Err("FFI safety: Rust panic in extern function: …")
@@ -483,6 +490,13 @@ impl<'a> Interpreter<'a> {
     /// documented limitation: users who set `MIMI_FFI_PREFORK` can disable
     /// fork isolation entirely and use `#[no_panic]` signal-based protection
     /// instead.
+    ///
+    /// # S13: fork mutex deadlock
+    /// fork() inherits all mutexes from the parent. If another thread holds
+    /// a lock at fork time, the child deadlocks on any lock acquisition.
+    /// The `FORK_LOCK` serializes fork() calls, but cannot prevent inheritance
+    /// of locks held by other threads. This is an inherent fork() limitation.
+    /// Workaround: use `MIMI_FFI_PREFORK=1` to disable fork isolation.
     pub(in crate::interp) fn call_ffi_with_fork_isolation(
         &self,
         cif: &Cif,

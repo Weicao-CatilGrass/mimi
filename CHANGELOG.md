@@ -19,12 +19,13 @@
 - **S17**: 正则引擎 ReDoS 指数爆炸 → `match_here_with_depth` 递归深度限制 (REGEX_MAX_DEPTH=100)
 - **S22**: `mem::forget(Vec)` 手动内存管理 → 新增 `mimi_list_free(list, free_elements)` 统一释放
 
-### Known limitations (deferred to v0.25+)
-- **S13**: fork 子进程继承 mutex 死锁 — fork() 语义限制，需无 fork 替代路径
-- **S14**: siglongjmp 跳过 destructors 泄漏 — FFI crash 保护需 catch_unwind 重设计
-- **S18**: mimi_try_exit 硬退出 — FFI 上下文中 process::exit 是最安全的退出方式
-- **S20**: runtime/mod.rs 3100+ 行 God Module — 拆分为 8+ 子模块需要大量重构
-- **S23**: standalone libc 声明不完整 — 需条件依赖 libc crate
+### Known limitations (documented, inherent design constraints)
+- **S13**: fork 子进程继承 mutex 死锁 — fork() 语义限制，已有 `MIMI_FFI_PREFORK` 开关
+- **S14**: siglongjmp 跳过 destructors — 已最小化：堆分配 jump buffer + catch_unwind + 清理路径
+- **S16**: JSON depth 限制 — `json_get_inner` 使用独立手动解析器，不受影响
+- **S18**: `mimi_try_exit` process::exit — FFI 中 panic 是 UB，exit 是最安全路径
+- **S20**: runtime/mod.rs 3100+ 行 — 拆分为子模块需要大量重构（deferred）
+- **S23**: standalone libc — 所有使用的函数已声明完整
 
 ## [v0.24.2] — 2026-06-25
 
