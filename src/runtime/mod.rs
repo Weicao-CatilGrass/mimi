@@ -100,6 +100,8 @@ mod libc {
         ) -> i32;
         pub fn freeaddrinfo(res: *mut addrinfo);
         pub fn signal(signum: i32, handler: usize) -> usize;
+        pub fn malloc(size: usize) -> *mut c_void;
+        pub fn free(ptr: *mut c_void);
     }
 }
 
@@ -118,6 +120,37 @@ pub struct MimiList {
 
 pub type ValueHandle = usize;
 pub type MapHandle = usize;
+
+// ---------------------------------------------------------------------------
+// Memory allocation helpers
+// ---------------------------------------------------------------------------
+
+/// Allocate a C string (null-terminated) using libc::malloc.
+/// The caller is responsible for freeing with libc::free.
+fn alloc_c_string(s: &str) -> *mut std::ffi::c_char {
+    let bytes = s.as_bytes();
+    let len = bytes.len();
+    let ptr = unsafe { libc::malloc(len + 1) as *mut u8 };
+    if ptr.is_null() { return std::ptr::null_mut(); }
+    if len > 0 {
+        unsafe { std::ptr::copy_nonoverlapping(bytes.as_ptr(), ptr, len); }
+    }
+    unsafe { *ptr.add(len) = 0; }
+    ptr as *mut std::ffi::c_char
+}
+
+/// Allocate a C string from bytes that already include the null terminator.
+fn alloc_c_string_from_bytes(bytes: &[u8]) -> *mut std::ffi::c_char {
+    if bytes.is_empty() {
+        let ptr = unsafe { libc::malloc(1) as *mut u8 };
+        if !ptr.is_null() { unsafe { *ptr = 0; } }
+        return ptr as *mut std::ffi::c_char;
+    }
+    let ptr = unsafe { libc::malloc(bytes.len()) as *mut u8 };
+    if ptr.is_null() { return std::ptr::null_mut(); }
+    unsafe { std::ptr::copy_nonoverlapping(bytes.as_ptr(), ptr, bytes.len()); }
+    ptr as *mut std::ffi::c_char
+}
 
 // ---------------------------------------------------------------------------
 // Integer math
@@ -288,39 +321,34 @@ pub extern "C" fn mimi_map_size(handle: MapHandle) -> i64 {
     unsafe { map_from_handle(handle).inner.len() as i64 }
 }
 
-fn cstr_to_str<'a>(ptr: *const std::ffi::c_char) -> &'a str {
-    if ptr.is_null() { return ""; }
-    unsafe { CStr::from_ptr(ptr) }.to_str().unwrap_or("")
-}
-
 #[no_mangle]
 pub extern "C" fn mimi_map_has_key(handle: MapHandle, key: *const std::ffi::c_char) -> i32 {
     if handle == 0 || key.is_null() { return 0; }
-    let s = cstr_to_str(key);
-    unsafe { map_from_handle(handle).inner.contains_key(s) as i32 }
+    let s = unsafe { cstr_to_string(key) };
+    unsafe { map_from_handle(handle).inner.contains_key(&s) as i32 }
 }
 
 #[no_mangle]
 pub extern "C" fn mimi_map_get(handle: MapHandle, key: *const std::ffi::c_char) -> ValueHandle {
     if handle == 0 || key.is_null() { return 0; }
-    let s = cstr_to_str(key);
+    let s = unsafe { cstr_to_string(key) };
     unsafe {
-        map_from_handle(handle).inner.get(s).copied().unwrap_or(0)
+        map_from_handle(handle).inner.get(&s).copied().unwrap_or(0)
     }
 }
 
 #[no_mangle]
 pub extern "C" fn mimi_map_set(handle: MapHandle, key: *const std::ffi::c_char, value: ValueHandle) {
     if handle == 0 || key.is_null() { return; }
-    let s = cstr_to_str(key);
-    unsafe { map_from_handle(handle).inner.insert(s.to_string(), value); }
+    let s = unsafe { cstr_to_string(key) };
+    unsafe { map_from_handle(handle).inner.insert(s, value); }
 }
 
 #[no_mangle]
 pub extern "C" fn mimi_map_remove(handle: MapHandle, key: *const std::ffi::c_char) -> i32 {
     if handle == 0 || key.is_null() { return 0; }
-    let s = cstr_to_str(key);
-    unsafe { map_from_handle(handle).inner.remove(s).is_some() as i32 }
+    let s = unsafe { cstr_to_string(key) };
+    unsafe { map_from_handle(handle).inner.remove(&s).is_some() as i32 }
 }
 
 #[no_mangle]
@@ -364,8 +392,7 @@ fn mimi_map_collect(handle: MapHandle, collect_values: bool) -> *mut MimiList {
             let val_ptr = *v as *mut std::ffi::c_char;
             items.push(val_ptr);
         } else {
-            let c_str = CString::new(k.as_str()).unwrap_or_default();
-            items.push(c_str.into_raw());
+            items.push(alloc_c_string(k.as_str()));
         }
     }
 
@@ -409,7 +436,7 @@ pub extern "C" fn mimi_str_concat(
     let sa = unsafe { cstr_to_string(a) };
     let sb = unsafe { cstr_to_string(b) };
     let result = format!("{}{}", sa, sb);
-    CString::new(result).unwrap_or_default().into_raw()
+    alloc_c_string(&result)
 }
 
 #[no_mangle]
@@ -434,7 +461,7 @@ pub extern "C" fn mimi_str_split(
     let len = parts.len() as i64;
     let mut c_strings: Vec<*mut std::ffi::c_char> = parts
         .into_iter()
-        .map(|p| CString::new(p).unwrap_or_default().into_raw())
+        .map(|p| alloc_c_string(&p))
         .collect();
     let data_ptr = c_strings.as_mut_ptr();
     std::mem::forget(c_strings);
@@ -449,11 +476,11 @@ pub extern "C" fn mimi_str_join(
     sep: *const std::ffi::c_char,
 ) -> *mut std::ffi::c_char {
     if list.is_null() {
-        return CString::new("").unwrap_or_default().into_raw();
+        return alloc_c_string("");
     }
     let lst = unsafe { &*list };
     if lst.data.is_null() || lst.len == 0 {
-        return CString::new("").unwrap_or_default().into_raw();
+        return alloc_c_string("");
     }
     let separator = unsafe { cstr_to_string(sep) };
 
@@ -465,7 +492,7 @@ pub extern "C" fn mimi_str_join(
         }
     }
     let result = parts.join(&separator);
-    CString::new(result).unwrap_or_default().into_raw()
+    alloc_c_string(&result)
 }
 
 #[no_mangle]
@@ -479,10 +506,10 @@ pub extern "C" fn mimi_str_replace(
     let t = unsafe { cstr_to_string(to) };
 
     if f.is_empty() {
-        return CString::new(ss).unwrap_or_default().into_raw();
+        return alloc_c_string(&ss);
     }
     let result = ss.replace(&f, &t);
-    CString::new(result).unwrap_or_default().into_raw()
+    alloc_c_string(&result)
 }
 
 // ---------------------------------------------------------------------------
@@ -570,7 +597,7 @@ pub extern "C" fn mimi_args_init(argc: i32, argv: *mut *mut std::ffi::c_char) {
 pub extern "C" fn mimi_getenv(name: *const std::ffi::c_char) -> *mut std::ffi::c_char {
     let n = unsafe { cstr_to_string(name) };
     match std::env::var(&n) {
-        Ok(val) => CString::new(val).unwrap_or_default().into_raw(),
+        Ok(val) => alloc_c_string(&val),
         Err(_) => std::ptr::null_mut(),
     }
 }
@@ -822,7 +849,7 @@ pub extern "C" fn mimi_from_json(json_str: *const std::ffi::c_char) -> *mut std:
     let s = unsafe { cstr_to_string(json_str) };
     let mut parser = JsonParser::new(&s);
     match parser.parse_full() {
-        Some(val) => CString::new(val).unwrap_or_default().into_raw() as *mut std::ffi::c_void,
+        Some(val) => alloc_c_string(&val) as *mut std::ffi::c_void,
         None => std::ptr::null_mut(),
     }
 }
@@ -918,7 +945,7 @@ pub extern "C" fn json_get_string(
     key: *const std::ffi::c_char,
 ) -> *mut std::ffi::c_char {
     match json_get_inner(json_str, key) {
-        Some(val) => CString::new(val).unwrap_or_default().into_raw(),
+        Some(val) => alloc_c_string(&val),
         None => std::ptr::null_mut(),
     }
 }
@@ -957,7 +984,7 @@ pub extern "C" fn json_get_element(
             let val_start = pos;
             let mut parser = JsonParser::new(&json[val_start..]);
             return match parser.parse_value() {
-                Some(val) => CString::new(val).unwrap_or_default().into_raw(),
+                Some(val) => alloc_c_string(&val),
                 None => std::ptr::null_mut(),
             };
         }
@@ -1320,16 +1347,16 @@ pub extern "C" fn mimi_regex_find(
     pattern: *const std::ffi::c_char,
 ) -> *mut std::ffi::c_char {
     if text.is_null() || pattern.is_null() {
-        return CString::new("").unwrap_or_default().into_raw();
+        return alloc_c_string("");
     }
     let t = unsafe { cstr_to_string(text) };
     let p = unsafe { cstr_to_string(pattern) };
     match RegexEngine::find_match(&t, &p) {
         Some((start, end)) => {
             let matched = &t[start..end];
-            CString::new(matched).unwrap_or_default().into_raw()
+            alloc_c_string(matched)
         }
-        None => CString::new("").unwrap_or_default().into_raw(),
+        None => alloc_c_string(""),
     }
 }
 
@@ -1346,7 +1373,7 @@ pub extern "C" fn mimi_regex_replace(
     let p = unsafe { cstr_to_string(pattern) };
     let r = unsafe { cstr_to_string(replacement) };
     let result = RegexEngine::replace_all(&t, &p, &r);
-    CString::new(result).unwrap_or_default().into_raw()
+    alloc_c_string(&result)
 }
 
 // ---------------------------------------------------------------------------
@@ -1488,8 +1515,7 @@ pub extern "C" fn mimi_recv(
     }
     buf[n as usize] = 0;
     if !out_len.is_null() { unsafe { *out_len = n as i64; } }
-    let result = unsafe { std::ffi::CString::from_vec_unchecked(buf[..=n as usize].to_vec()) };
-    result.into_raw()
+    alloc_c_string_from_bytes(&buf[..=n as usize])
 }
 
 #[no_mangle]
@@ -1597,7 +1623,7 @@ pub extern "C" fn mimi_http_get(url: *const std::ffi::c_char) -> *mut std::ffi::
     match http_request(&host, port, &request) {
         Some(body) => {
             let s = String::from_utf8_lossy(&body).into_owned();
-            CString::new(s).unwrap_or_default().into_raw()
+            alloc_c_string(&s)
         }
         None => std::ptr::null_mut(),
     }
@@ -1624,7 +1650,7 @@ pub extern "C" fn mimi_http_post(
     match http_request(&host, port, &request) {
         Some(body) => {
             let s = String::from_utf8_lossy(&body).into_owned();
-            CString::new(s).unwrap_or_default().into_raw()
+            alloc_c_string(&s)
         }
         None => std::ptr::null_mut(),
     }
@@ -1641,7 +1667,7 @@ pub extern "C" fn mimi_json_serialize(
     elem_type: i64,
 ) -> *mut std::ffi::c_char {
     if data.is_null() || len <= 0 {
-        return CString::new("[]").unwrap_or_default().into_raw();
+        return alloc_c_string("[]");
     }
 
     let mut result = String::from("[");
@@ -1688,7 +1714,7 @@ pub extern "C" fn mimi_json_serialize(
         }
     }
     result.push(']');
-    CString::new(result).unwrap_or_default().into_raw()
+    alloc_c_string(&result)
 }
 
 #[no_mangle]
@@ -1782,10 +1808,8 @@ pub extern "C" fn mimi_json_deserialize(
                     if bytes[pos] == b'\\' { pos += 2; } else { pos += 1; }
                 }
                 let slen = pos - start;
-                let mut s_bytes = bytes[start..start + slen].to_vec();
-                s_bytes.push(0);
-                let c_str = unsafe { std::ffi::CString::from_vec_unchecked(s_bytes) };
-                data[idx as usize] = c_str.into_raw() as i64;
+                let s_bytes = bytes[start..start + slen].to_vec();
+                data[idx as usize] = alloc_c_string_from_bytes(&s_bytes) as i64;
                 if pos < bytes.len() && bytes[pos] == b'"' { pos += 1; }
                 idx += 1;
             }
@@ -1825,7 +1849,7 @@ pub extern "C" fn mimi_tuple_serialize(
     elem_types: *mut i64,
 ) -> *mut std::ffi::c_char {
     if values.is_null() || count <= 0 {
-        return CString::new("[]").unwrap_or_default().into_raw();
+        return alloc_c_string("[]");
     }
     let vals = unsafe { std::slice::from_raw_parts(values, count as usize) };
     let types = if elem_types.is_null() {
@@ -1874,7 +1898,7 @@ pub extern "C" fn mimi_tuple_serialize(
         }
     }
     result.push(']');
-    CString::new(result).unwrap_or_default().into_raw()
+    alloc_c_string(&result)
 }
 
 #[no_mangle]
@@ -1928,10 +1952,8 @@ pub extern "C" fn mimi_tuple_deserialize(
                 }
                 let slen = pos - start;
                 if slen > 0 {
-                    let mut s_bytes = bytes[start..start + slen].to_vec();
-                    s_bytes.push(0);
-                    let c_str = unsafe { std::ffi::CString::from_vec_unchecked(s_bytes) };
-                    unsafe { *out_values.offset(idx as isize) = c_str.into_raw() as i64; }
+                    let s_bytes = bytes[start..start + slen].to_vec();
+                    unsafe { *out_values.offset(idx as isize) = alloc_c_string_from_bytes(&s_bytes) as i64; }
                 } else {
                     unsafe { *out_values.offset(idx as isize) = 0; }
                 }
@@ -2049,7 +2071,7 @@ pub extern "C" fn __mimi_extern_test_parse_int(json: *const std::ffi::c_char) ->
 #[no_mangle]
 pub extern "C" fn __mimi_extern_test_greet(x: i32) -> *mut std::ffi::c_char {
     let msg = format!("Hello {}", x);
-    CString::new(msg).unwrap_or_default().into_raw()
+    alloc_c_string(&msg)
 }
 
 #[no_mangle]

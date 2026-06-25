@@ -696,51 +696,57 @@ impl<'ctx> CodeGenerator<'ctx> {
                         .map_err(|e| CompileError::LlvmError(format!("branch error: {}", e)))?;
 
                     // Then block
-                    let then_val = {
-                        self.builder.position_at_end(then_bb);
-                        let mut then_vars = vars.clone();
-                        let v = self.compile_block_last_val(then_, &mut then_vars)?;
-                        let current = self.builder.get_insert_block().ok_or_else(|| CompileError::LlvmError("codegen: no insert block for then block".to_string()))?;
-                        if current.get_terminator().is_none() {
-                            self.builder.build_unconditional_branch(merge_bb)
-                                .map_err(|e| CompileError::LlvmError(format!("branch error: {}", e)))?;
-                        }
-                        v
-                    };
-                    let then_bb_end = self.builder.get_insert_block().ok_or_else(|| CompileError::LlvmError("codegen: no insert block after then".to_string()))?;
-
-                    // Else block
-                    let else_val = {
-                        self.builder.position_at_end(else_bb);
-                        if let Some(else_block) = else_ {
-                            let mut else_vars = vars.clone();
-                            let v = self.compile_block_last_val(else_block, &mut else_vars)?;
-                            let current = self.builder.get_insert_block().ok_or_else(|| CompileError::LlvmError("codegen: no insert block for else block".to_string()))?;
-                            if current.get_terminator().is_none() {
-                                self.builder.build_unconditional_branch(merge_bb)
-                                    .map_err(|e| CompileError::LlvmError(format!("branch error: {}", e)))?;
-                            }
-                            v
-                        } else {
-                            self.context.i64_type().const_int(0, false).into()
-                        }
-                    };
-                    let else_bb_end = self.builder.get_insert_block().ok_or_else(|| CompileError::LlvmError("codegen: no insert block after else".to_string()))?;
-                    // No-else case: else_bb has no terminator yet — supply one
-                    if else_bb_end.get_terminator().is_none() {
+                    self.builder.position_at_end(then_bb);
+                    let mut then_vars = vars.clone();
+                    let then_val = self.compile_block_last_val(then_, &mut then_vars)?;
+                    let then_reaches = !self.block_has_terminator();
+                    if then_reaches {
                         self.builder.build_unconditional_branch(merge_bb)
                             .map_err(|e| CompileError::LlvmError(format!("branch error: {}", e)))?;
                     }
+                    let then_bb_end = then_reaches
+                        .then(|| self.builder.get_insert_block())
+                        .flatten();
 
-                    // Continue at merge, produce phi if both branches have values
+                    // Else block
+                    self.builder.position_at_end(else_bb);
+                    let else_val = if let Some(else_block) = else_ {
+                        let mut else_vars = vars.clone();
+                        let v = self.compile_block_last_val(else_block, &mut else_vars)?;
+                        let reaches = !self.block_has_terminator();
+                        if reaches {
+                            self.builder.build_unconditional_branch(merge_bb)
+                                .map_err(|e| CompileError::LlvmError(format!("branch error: {}", e)))?;
+                        }
+                        (v, reaches)
+                    } else {
+                        let reaches = !self.block_has_terminator();
+                        if reaches {
+                            self.builder.build_unconditional_branch(merge_bb)
+                                .map_err(|e| CompileError::LlvmError(format!("branch error: {}", e)))?;
+                        }
+                        (self.context.i64_type().const_int(0, false).into(), reaches)
+                    };
+                    let (else_val, else_reaches) = else_val;
+                    let else_bb_end = else_reaches
+                        .then(|| self.builder.get_insert_block())
+                        .flatten();
+
+                    // Continue at merge, produce phi with only blocks that reach merge
                     self.builder.position_at_end(merge_bb);
                     if then_val.get_type() == else_val.get_type() {
                         let phi = self.builder.build_phi(then_val.get_type(), "if_result")
                             .map_err(|e| CompileError::LlvmError(format!("phi error: {}", e)))?;
-                        phi.add_incoming(&[
-                            (&then_val as &dyn inkwell::values::BasicValue, then_bb_end),
-                            (&else_val as &dyn inkwell::values::BasicValue, else_bb_end),
-                        ]);
+                        let mut phi_incoming: Vec<(&dyn inkwell::values::BasicValue, inkwell::basic_block::BasicBlock)> = Vec::new();
+                        if let Some(bb) = then_bb_end {
+                            phi_incoming.push((&then_val as &dyn inkwell::values::BasicValue, bb));
+                        }
+                        if let Some(bb) = else_bb_end {
+                            phi_incoming.push((&else_val as &dyn inkwell::values::BasicValue, bb));
+                        }
+                        if !phi_incoming.is_empty() {
+                            phi.add_incoming(&phi_incoming);
+                        }
                         last_val = phi.as_basic_value();
                     }
                 }

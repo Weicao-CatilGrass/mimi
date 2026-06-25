@@ -31,39 +31,52 @@ impl<'ctx> CodeGenerator<'ctx> {
         self.builder.position_at_end(then_bb);
         let mut then_vars = vars.clone();
         let then_val = self.compile_block_last_val(then_, &mut then_vars).map_err(|e| CompileError::Generic(e.to_string()))?;
-        if !self.block_has_terminator() {
+        let then_reaches = !self.block_has_terminator();
+        if then_reaches {
             self.builder.build_unconditional_branch(merge_bb)
                 .map_err(|e| CompileError::LlvmError(format!("branch error: {}", e)))?;
         }
-        let then_bb_end = self.builder.get_insert_block().ok_or_else(|| "codegen: no insert block after then branch".to_string())?;
+        let then_bb_end = then_reaches
+            .then(|| self.builder.get_insert_block())
+            .flatten();
         // Else branch
         self.builder.position_at_end(else_bb);
-        let else_val = if let Some(eb) = else_ {
+        let (else_val, else_reaches) = if let Some(eb) = else_ {
             let mut else_vars = vars.clone();
             let v = self.compile_block_last_val(eb, &mut else_vars).map_err(|e| CompileError::Generic(e.to_string()))?;
-            if !self.block_has_terminator() {
+            let reaches = !self.block_has_terminator();
+            if reaches {
                 self.builder.build_unconditional_branch(merge_bb)
                     .map_err(|e| CompileError::LlvmError(format!("branch error: {}", e)))?;
             }
-            Some(v)
+            (Some(v), reaches)
         } else {
-            if !self.block_has_terminator() {
+            let reaches = !self.block_has_terminator();
+            if reaches {
                 self.builder.build_unconditional_branch(merge_bb)
                     .map_err(|e| CompileError::LlvmError(format!("branch error: {}", e)))?;
             }
-            None
+            (None, reaches)
         };
-        let else_bb_end = self.builder.get_insert_block().ok_or_else(|| "codegen: no insert block after else branch".to_string())?;
-        // Merge with phi
+        let else_bb_end = else_reaches
+            .then(|| self.builder.get_insert_block())
+            .flatten();
+        // Merge with phi (only from blocks that actually reach merge)
         self.builder.position_at_end(merge_bb);
         let ty = then_val.get_type();
         let phi = self.builder.build_phi(ty, "ifexpr_result")
             .map_err(|e| CompileError::LlvmError(format!("phi error: {}", e)))?;
+        let mut phi_incoming: Vec<(&dyn inkwell::values::BasicValue, inkwell::basic_block::BasicBlock)> = Vec::new();
+        if let Some(bb) = then_bb_end {
+            phi_incoming.push((&then_val as &dyn inkwell::values::BasicValue, bb));
+        }
         let else_v = else_val.unwrap_or(self.context.i64_type().const_int(0, false).into());
-        phi.add_incoming(&[
-            (&then_val as &dyn inkwell::values::BasicValue, then_bb_end),
-            (&else_v as &dyn inkwell::values::BasicValue, else_bb_end),
-        ]);
+        if let Some(bb) = else_bb_end {
+            phi_incoming.push((&else_v as &dyn inkwell::values::BasicValue, bb));
+        }
+        if !phi_incoming.is_empty() {
+            phi.add_incoming(&phi_incoming);
+        }
         Ok(phi.as_basic_value())
     }
 
