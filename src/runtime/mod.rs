@@ -621,8 +621,15 @@ pub extern "C" fn mimi_try_exit(payload: i64) -> ! {
 }
 
 #[no_mangle]
-pub extern "C" fn mimi_try_exit_str(str: *const std::ffi::c_char, _len: i64) -> ! {
-    let msg = unsafe { cstr_to_string(str) };
+pub extern "C" fn mimi_try_exit_str(str: *const std::ffi::c_char, len: i64) -> ! {
+    let msg = if str.is_null() || len <= 0 {
+        String::new()
+    } else {
+        unsafe {
+            let slice = std::slice::from_raw_parts(str as *const u8, len as usize);
+            String::from_utf8_lossy(slice).into_owned()
+        }
+    };
     eprintln!("Error: Result::Err(\"{}\")", msg);
     std::process::exit(1);
 }
@@ -682,7 +689,7 @@ fn init_cli_args() {
 pub extern "C" fn mimi_args_init(argc: i32, argv: *mut *mut std::ffi::c_char) {
     init_cli_args();
     let args_mutex = CLI_ARGS.get().expect("CLI_ARGS not initialized");
-    let mut args = args_mutex.lock().expect("lock poisoned");
+    let mut args = args_mutex.lock().unwrap_or_else(|e| e.into_inner());
     args.argc = argc;
     args.argv.clear();
     // S9: Copy strings to owned memory instead of storing raw pointers.
@@ -711,7 +718,7 @@ pub extern "C" fn mimi_getenv(name: *const std::ffi::c_char) -> *mut std::ffi::c
 pub extern "C" fn mimi_args_count() -> i64 {
     init_cli_args();
     let args_mutex = CLI_ARGS.get().expect("CLI_ARGS not initialized");
-    let args = args_mutex.lock().expect("lock poisoned");
+    let args = args_mutex.lock().unwrap_or_else(|e| e.into_inner());
     if args.argc <= 1 {
         return 0;
     }
@@ -722,7 +729,7 @@ pub extern "C" fn mimi_args_count() -> i64 {
 pub extern "C" fn mimi_args_get(i: i64) -> *mut std::ffi::c_char {
     init_cli_args();
     let args_mutex = CLI_ARGS.get().expect("CLI_ARGS not initialized");
-    let args = args_mutex.lock().expect("lock poisoned");
+    let args = args_mutex.lock().unwrap_or_else(|e| e.into_inner());
     if i < 0 || i >= (args.argc - 1) as i64 {
         return std::ptr::null_mut();
     }
@@ -2815,12 +2822,13 @@ mod no_panic {
 use std::sync::atomic::AtomicPtr;
 
 type ErrorHandler = unsafe extern "C" fn(*const std::ffi::c_char);
-static ERROR_HANDLER: AtomicPtr<std::ffi::c_void> = AtomicPtr::new(std::ptr::null_mut());
+// S19: Use typed AtomicPtr<ErrorHandler> instead of AtomicPtr<c_void> + transmute.
+static ERROR_HANDLER: AtomicPtr<ErrorHandler> = AtomicPtr::new(std::ptr::null_mut());
 
 #[no_mangle]
 pub extern "C" fn mimi_runtime_set_error_handler(handler: Option<ErrorHandler>) {
-    let ptr: *mut std::ffi::c_void = match handler {
-        Some(f) => f as *const () as *mut std::ffi::c_void,
+    let ptr: *mut ErrorHandler = match handler {
+        Some(f) => f as *const ErrorHandler as *mut ErrorHandler,
         None => std::ptr::null_mut(),
     };
     ERROR_HANDLER.store(ptr, Ordering::Release);
@@ -2837,10 +2845,9 @@ pub extern "C" fn mimi_runtime_abort(msg: *const std::ffi::c_char) -> ! {
 
     let handler_ptr = ERROR_HANDLER.load(Ordering::Acquire);
     if !handler_ptr.is_null() {
-        ERROR_HANDLER.store(std::ptr::null_mut(), Ordering::Release); // prevent re-entry
-        let handler: ErrorHandler =
-            unsafe { std::mem::transmute::<*mut std::ffi::c_void, ErrorHandler>(handler_ptr) };
-        unsafe { handler(msg) };
+        ERROR_HANDLER.store(std::ptr::null_mut(), Ordering::Release);
+        let handler: &ErrorHandler = unsafe { &*handler_ptr };
+        unsafe { (*handler)(msg) };
         std::process::abort();
     }
 

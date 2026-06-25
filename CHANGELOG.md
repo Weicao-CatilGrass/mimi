@@ -12,6 +12,9 @@
 - **S8**: `mimi_recv` `n as usize` 截断越界 — 添加 `n.min(size)` clamp
 - **S9**: `mimi_args_init` 存储 argv 原始指针 — 改为 `alloc_c_string` 复制字符串
 - **S10**: `mimi_map_collect` 文档化 keys/values 收集策略差异
+- **S19**: `mimi_runtime_abort` transmute 类型擦除 → `AtomicPtr<ErrorHandler>` 类型化指针
+- **S21**: `.expect("lock poisoned")` 级联 panic → `unwrap_or_else(|e| e.into_inner())`
+- **S24**: `mimi_try_exit_str` 未使用 `_len` → 使用 len 做 `from_raw_parts` 边界安全读取
 
 ## [v0.24.2] — 2026-06-25
 
