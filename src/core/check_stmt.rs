@@ -556,10 +556,10 @@ impl<'a> Checker<'a> {
                             // _ type: infer from init expression
                             init_ty.clone()
                         } else {
-                            if !same_type(&d, &init_ty)
-                                && !is_numeric_coercion(&d, &init_ty)
-                                && !is_trait_coercion(&d, &init_ty, &self.impls)
-                            {
+                            // C2: try unification first, then coercion, then error
+                            let coerced = is_numeric_coercion(&d, &init_ty)
+                                || is_trait_coercion(&d, &init_ty, &self.impls);
+                            if !coerced && self.unification.unify(&d, &init_ty).is_err() {
                                 self.errors.push(
                                     Diagnostic::error_code(
                                         crate::diagnostic::codes::E0209,
@@ -577,7 +577,7 @@ impl<'a> Checker<'a> {
                                     )),
                                 );
                             }
-                            d
+                            self.unification.resolve(&d)
                         }
                     }
                     None => {
@@ -610,7 +610,8 @@ impl<'a> Checker<'a> {
                 }
             }
             Stmt::Return(None) => {
-                if !same_type(ret, &Type::Name("unit".into(), vec![])) {
+                // C2: use unification for unit return check
+                if self.unification.unify(ret, &Type::Name("unit".into(), vec![])).is_err() {
                     self.emit_code(
                         crate::diagnostic::codes::E0207,
                         format!(
@@ -622,7 +623,8 @@ impl<'a> Checker<'a> {
             }
             Stmt::Return(Some(e)) => {
                 let t = self.infer_expr(e, scopes);
-                if !same_type(ret, &t) {
+                // C2: use unification for return type checking
+                if self.unification.unify(ret, &t).is_err() {
                     self.errors.push(
                         Diagnostic::error_code(
                             crate::diagnostic::codes::E0207,
@@ -872,7 +874,8 @@ impl<'a> Checker<'a> {
                             );
                         }
                         let target_ty = self.lookup_var(name, scopes);
-                        if !same_type(&target_ty, &value_ty) {
+                        // C2: use unification for assignment type checking
+                        if self.unification.unify(&target_ty, &value_ty).is_err() {
                             self.errors.push(
                                 Diagnostic::error_code(
                                     crate::diagnostic::codes::E0209,
