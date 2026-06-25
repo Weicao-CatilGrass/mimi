@@ -1,13 +1,24 @@
 # Changelog
 
-## [Unreleased] — v0.26.1-dev
+## [Unreleased] — v0.26.3-dev
+
+## [v0.26.2] — 2026-06-25
 
 ### Fixed
-- **Fix-4**: `runtime/mod.rs` — `map_from_handle`/`set_from_handle` null-handle guard `panic!()` → `std::process::abort()` (aligns with S18 `mimi_try_exit` pattern; panic across FFI boundary is UB)
+- **Bug 8**: Field assignment type checking (`rec.field = wrong_type`) — `check_stmt` now unifies the value type with the field's declared type when assigning to a record field, producing E0209 on mismatch
+- **Bug 9**: UnificationTable binding overwrite (silent override) — `unification.rs` removed dead `union()` method that was never called; binding overwrite risk documented in `unify()` via explicit insert semantics
+- **Bug 10**: ForAll instantiation with named type params — `generalize()` now remaps free TypeVar IDs to sequential indices 0,1,2... in the ForAll body so that `instantiate()` (which substitutes TypeVar(i)→fresh) works correctly; added `remap_type_vars()` helper
+- **Arch-3**: TypeArena/TypeId dead code resolution — added module-level documentation noting TypeArena is reserved infrastructure (Arch-5 integration planned for v0.26.6), marked `TypeArena` struct with `#[allow(dead_code)]`
 
 ### Changed
+- **Fix-4**: `runtime/mod.rs` — `map_from_handle`/`set_from_handle` null-handle guard `panic!()` → `std::process::abort()` (aligns with S18 `mimi_try_exit` pattern; panic across FFI boundary is UB)
 - **Fix-5**: `codegen/registry/funcs.rs` — `// BUG 1` markers renamed to `// WORKAROUND` (string ABI mismatch char* vs {i8*,i64} is an intentionally-handled case, not an unfixed bug)
-## [v0.26.0] — 2026-06-25
+
+### Removed
+- `collect_free_type_vars()` redundant helper from `checker.rs` (Bug 6 single-traversal fix rendered it obsolete)
+- Duplicate `same_type()` re-export in `infer/match_.rs` (already available via `helpers` module)
+
+## [v0.26.1] — 2026-06-25
 
 > v0.26 核心工作（C2+C3+C4）在 v0.25.5/v0.25.6 发布时已全部合入 main，此处补录为正式版本。
 
@@ -19,6 +30,14 @@
 ### Changed
 - `core/unification.rs` 新增 public `find()` 和 `get_binding()` 访问器
 - 类型推断路径重构：match/call/return/switch/while 分支全部基于 unify 而非 same_type
+
+## [v0.26.0] — 2026-06-25
+
+> v0.26 核心工作（C2+C3+C4）在 v0.25.5/v0.25.6 发布时已全部合入 main，此处补录为正式版本。
+
+### Added
+- **C1**: TypeId Arena infrastructure (`type_id.rs`) with hash-consing + 6 tests
+- **C1**: `Type::TypeVar(u32)` and `Type::ForAll(Vec<String>, Box<Type>)` variants
 
 ## [v0.25.7] — 2026-06-25
 

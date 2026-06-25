@@ -1,3 +1,12 @@
+//! TypeArena: arena allocator with hash-consing for O(1) type equality.
+//!
+//! ## Architecture Note (Arch-3)
+//! This module contains the `TypeArena` and `TypeId` types introduced in C1
+//! (v0.26.0) for structural type deduplication. Currently they are unused by the
+//! checker/infer modules. Arch-5 (v0.26.6) plans to integrate TypeArena into
+//! the Checker for improved performance via hash-consing. Until then, this
+//! module is marked `#[allow(dead_code)]` to suppress linter warnings.
+
 use crate::ast::Type;
 use std::collections::HashMap;
 use std::fmt;
@@ -14,6 +23,8 @@ impl fmt::Debug for TypeId {
 }
 
 /// Arena for storing types with hash-consing (structural deduplication).
+/// Currently unused — see module-level Arch-3 note.
+#[allow(dead_code)]
 pub struct TypeArena {
     types: Vec<Type>,
     /// Map from type hash → list of (type_value, TypeId) for dedup

@@ -76,23 +76,6 @@ impl UnificationTable {
         id
     }
 
-    /// Union two type variables. Returns the root.
-    fn union(&mut self, a: u32, b: u32) -> u32 {
-        let ra = self.find(a);
-        let rb = self.find(b);
-        if ra == rb {
-            return ra;
-        }
-        // Prefer binding to the variable with lower ID (heuristic for readability)
-        if ra < rb {
-            self.parent.insert(rb, ra);
-            ra
-        } else {
-            self.parent.insert(ra, rb);
-            rb
-        }
-    }
-
     /// Check if a type variable occurs inside a type (for occur check).
     fn occurs_in(var: u32, ty: &Type) -> bool {
         match ty {

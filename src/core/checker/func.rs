@@ -1,5 +1,5 @@
 use crate::ast::*;
-use crate::core::helpers::{fmt_type, is_numeric_coercion, same_type};
+use crate::core::helpers::{fmt_type, is_numeric_coercion};
 use crate::diagnostic::codes;
 use crate::diagnostic::Diagnostic;
 use crate::span::Span;

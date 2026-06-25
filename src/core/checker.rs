@@ -67,6 +67,7 @@ pub(crate) struct Checker<'a> {
     pub(crate) unification: UnificationTable,
 }
 
+#[allow(dead_code)]
 impl<'a> Checker<'a> {
     pub(crate) fn new(file: &'a File) -> Self {
         Self {
@@ -166,6 +167,8 @@ impl<'a> Checker<'a> {
     ///
     /// Bug 6 fix: single-traversal resolve-and-collect (previously resolve + collect
     /// free vars were two separate O(N·D) tree walks; now done in one pass).
+    /// Bug 10 fix: remap free TypeVar IDs to sequential indices 0,1,2... in the
+    /// ForAll body so that `instantiate` (which substitutes TypeVar(i)→fresh) works correctly.
     pub(crate) fn generalize(&mut self, ty: &Type, env: &HashMap<String, Type>) -> Type {
         let (resolved, free_vars) = self.resolve_and_collect_free_vars(ty);
         let env_vars = self.collect_env_type_vars(env);
@@ -176,8 +179,84 @@ impl<'a> Checker<'a> {
         if generalized.is_empty() {
             resolved
         } else {
-            let param_names: Vec<String> = generalized.iter().map(|v| format!("T{}", v)).collect();
-            Type::ForAll(param_names, Box::new(resolved))
+            // Bug 10 fix: remap original TypeVar IDs to sequential indices 0,1,2,...
+            // so that instantiate() can correctly substitute TypeVar(i) → fresh_var.
+            let mut remap: HashMap<u32, u32> = HashMap::new();
+            for (i, old_id) in generalized.iter().enumerate() {
+                remap.insert(*old_id, i as u32);
+            }
+            let remapped_body = self.remap_type_vars(&resolved, &remap);
+            let param_names: Vec<String> = (0..generalized.len()).map(|i| format!("T{}", i)).collect();
+            Type::ForAll(param_names, Box::new(remapped_body))
+        }
+    }
+
+    /// Remap TypeVar IDs in a type according to the given mapping (Bug 10 fix).
+    fn remap_type_vars(&self, ty: &Type, remap: &HashMap<u32, u32>) -> Type {
+        match ty {
+            Type::TypeVar(id) => {
+                if let Some(&new_id) = remap.get(id) {
+                    Type::TypeVar(new_id)
+                } else {
+                    ty.clone()
+                }
+            }
+            Type::Option(inner) => Type::Option(Box::new(self.remap_type_vars(inner, remap))),
+            Type::Result(ok, err) => Type::Result(
+                Box::new(self.remap_type_vars(ok, remap)),
+                Box::new(self.remap_type_vars(err, remap)),
+            ),
+            Type::Tuple(elems) => Type::Tuple(
+                elems.iter().map(|e| self.remap_type_vars(e, remap)).collect(),
+            ),
+            Type::Func(args, ret) | Type::ExternFunc(args, ret) => {
+                Type::Func(
+                    args.iter().map(|a| self.remap_type_vars(a, remap)).collect(),
+                    Box::new(self.remap_type_vars(ret, remap)),
+                )
+            }
+            Type::Ref(lt, inner) => Type::Ref(
+                lt.clone(),
+                Box::new(self.remap_type_vars(inner, remap)),
+            ),
+            Type::RefMut(lt, inner) => Type::RefMut(
+                lt.clone(),
+                Box::new(self.remap_type_vars(inner, remap)),
+            ),
+            Type::Shared(inner) => Type::Shared(Box::new(self.remap_type_vars(inner, remap))),
+            Type::LocalShared(inner) => {
+                Type::LocalShared(Box::new(self.remap_type_vars(inner, remap)))
+            }
+            Type::Weak(inner) => Type::Weak(Box::new(self.remap_type_vars(inner, remap))),
+            Type::WeakLocal(inner) => {
+                Type::WeakLocal(Box::new(self.remap_type_vars(inner, remap)))
+            }
+            Type::RawPtr(inner) => Type::RawPtr(Box::new(self.remap_type_vars(inner, remap))),
+            Type::RawPtrMut(inner) => {
+                Type::RawPtrMut(Box::new(self.remap_type_vars(inner, remap)))
+            }
+            Type::CShared(inner) => Type::CShared(Box::new(self.remap_type_vars(inner, remap))),
+            Type::CBorrow(inner) => Type::CBorrow(Box::new(self.remap_type_vars(inner, remap))),
+            Type::CBorrowMut(inner) => {
+                Type::CBorrowMut(Box::new(self.remap_type_vars(inner, remap)))
+            }
+            Type::CBuffer(inner) => Type::CBuffer(Box::new(self.remap_type_vars(inner, remap))),
+            Type::Array(inner, size) => {
+                Type::Array(Box::new(self.remap_type_vars(inner, remap)), *size)
+            }
+            Type::Slice(inner) => Type::Slice(Box::new(self.remap_type_vars(inner, remap))),
+            Type::Newtype(name, inner) => {
+                Type::Newtype(name.clone(), Box::new(self.remap_type_vars(inner, remap)))
+            }
+            Type::Name(name, args) => Type::Name(
+                name.clone(),
+                args.iter().map(|a| self.remap_type_vars(a, remap)).collect(),
+            ),
+            Type::ForAll(params, body) => Type::ForAll(
+                params.clone(),
+                Box::new(self.remap_type_vars(body, remap)),
+            ),
+            _ => ty.clone(),
         }
     }
 
@@ -303,15 +382,6 @@ impl<'a> Checker<'a> {
             }
             _ => ty.clone(),
         }
-    }
-
-    /// Collect all free TypeVar IDs in a type.
-    fn collect_free_type_vars(&self, ty: &Type) -> Vec<u32> {
-        let mut vars = Vec::new();
-        self.collect_type_vars_inner(ty, &mut vars);
-        vars.sort();
-        vars.dedup();
-        vars
     }
 
     fn collect_type_vars_inner(&self, ty: &Type, vars: &mut Vec<u32>) {

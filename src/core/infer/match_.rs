@@ -188,6 +188,3 @@ impl<'a> Checker<'a> {
     }
 }
 
-fn same_type(a: &Type, b: &Type) -> bool {
-    crate::core::helpers::same_type(a, b)
-}

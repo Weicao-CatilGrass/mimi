@@ -958,12 +958,24 @@ impl<'a> Checker<'a> {
                     }
                     Expr::Field(obj, field) => {
                         let obj_ty = self.infer_expr(obj, scopes);
-                        // Validate field exists on the object type
-                        if let Type::Name(name, _) = &obj_ty {
+                        // Resolve obj_ty to handle TypeVar case
+                        let resolved_obj_ty = self.unification.resolve(&obj_ty);
+                        // Validate field exists and check type compatibility (Bug 8 fix)
+                        if let Type::Name(name, _) = &resolved_obj_ty {
                             if let Some(type_def) = self.types.get(name) {
                                 match &type_def.kind {
                                     TypeDefKind::Record(fields) => {
-                                        if !fields.iter().any(|f| f.name == *field) {
+                                        if let Some(field_def) = fields.iter().find(|f| f.name == *field) {
+                                            // Bug 8 fix: unify value type with field's declared type
+                                            if self.unification.unify(&field_def.ty, &value_ty).is_err() {
+                                                self.emit_code(crate::diagnostic::codes::E0209, format!(
+                                                    "cannot assign {} to field '{}' of type {}",
+                                                    fmt_type(&value_ty),
+                                                    field,
+                                                    fmt_type(&field_def.ty)
+                                                ));
+                                            }
+                                        } else {
                                             let available: Vec<&str> =
                                                 fields.iter().map(|f| f.name.as_str()).collect();
                                             if available.is_empty() {
