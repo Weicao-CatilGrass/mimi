@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased] — 0.24.2-dev
+## [v0.24.2] — 2026-06-25
 
 ### Fixed
 - **E1**: Z3 verifier `solver.pop(1)` underflow after Unknown/crash — added `push_depth` tracking; `solver_pop` guards against pop when solver was replaced
