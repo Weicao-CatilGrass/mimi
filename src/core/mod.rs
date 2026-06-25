@@ -8,6 +8,7 @@ mod borrow;
 mod checker;
 mod helpers;
 pub mod type_id;
+pub mod unification;
 
 mod check_stmt;
 mod infer;
