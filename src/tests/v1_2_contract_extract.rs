@@ -50,12 +50,25 @@ func main() -> i32 {
     // Verify mms block exists in the parsed AST
     let func = file.items.iter().find_map(|item| {
         if let crate::ast::Item::Func(f) = item {
-            if f.name == "pay" { Some(f) } else { None }
-        } else { None }
+            if f.name == "pay" {
+                Some(f)
+            } else {
+                None
+            }
+        } else {
+            None
+        }
     });
     assert!(func.is_some());
-    let has_mms = func.expect("src/tests/v1_2_contract_extract.rs:57 unwrap failed").body.iter().any(|s| matches!(s, crate::ast::Stmt::MmsBlock { .. }));
-    assert!(has_mms, "mms block should be present in parsed function body");
+    let has_mms = func
+        .expect("src/tests/v1_2_contract_extract.rs:57 unwrap failed")
+        .body
+        .iter()
+        .any(|s| matches!(s, crate::ast::Stmt::MmsBlock { .. }));
+    assert!(
+        has_mms,
+        "mms block should be present in parsed function body"
+    );
 }
 
 #[test]
@@ -73,14 +86,25 @@ func main() -> i32 {
 }
 "#;
     // Parse, bind contracts, then check
-    let tokens = crate::lexer::Lexer::new(src).tokenize().expect("src/tests/v1_2_contract_extract.rs:76 unwrap failed");
-    let mut file = crate::parser::Parser::new(tokens).parse_file().expect("src/tests/v1_2_contract_extract.rs:77 unwrap failed");
+    let tokens = crate::lexer::Lexer::new(src)
+        .tokenize()
+        .expect("src/tests/v1_2_contract_extract.rs:76 unwrap failed");
+    let mut file = crate::parser::Parser::new(tokens)
+        .parse_file()
+        .expect("src/tests/v1_2_contract_extract.rs:77 unwrap failed");
     let contracts_map = extract_contracts_from_file(&file);
     let errors = contracts::bind_contracts(&mut file, contracts_map);
-    assert!(errors.is_empty(), "contract binding should not produce errors: {:?}", errors);
+    assert!(
+        errors.is_empty(),
+        "contract binding should not produce errors: {:?}",
+        errors
+    );
     // Should type-check successfully
     let result = crate::core::check(&file);
-    assert!(result.is_ok(), "contract binding should not break type checking");
+    assert!(
+        result.is_ok(),
+        "contract binding should not break type checking"
+    );
 }
 
 fn extract_contracts_from_file(file: &crate::ast::File) -> HashMap<String, contracts::Contract> {
@@ -96,7 +120,10 @@ fn extract_contracts_from_file(file: &crate::ast::File) -> HashMap<String, contr
                     contract.math.extend(c.math);
                 }
             }
-            if !contract.requires.is_empty() || !contract.ensures.is_empty() || !contract.math.is_empty() {
+            if !contract.requires.is_empty()
+                || !contract.ensures.is_empty()
+                || !contract.math.is_empty()
+            {
                 result.insert(func.name.clone(), contract);
             }
         }

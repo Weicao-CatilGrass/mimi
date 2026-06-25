@@ -1,7 +1,7 @@
 use super::*;
 use crate::ast::{Field, TypeAttribute, TypeDefKind};
-use crate::ffi::{FfiArgContract, FfiContract, FfiRetContract, Errno};
-use libffi::middle::{Cif, Type as FfiType, CodePtr, arg as ffi_arg};
+use crate::ffi::{Errno, FfiArgContract, FfiContract, FfiRetContract};
+use libffi::middle::{arg as ffi_arg, Cif, CodePtr, Type as FfiType};
 use std::collections::HashMap;
 
 #[cfg(test)]
@@ -79,13 +79,18 @@ impl<'a> Interpreter<'a> {
             ))?;
 
         // Load library if not already loaded
-        let lib_idx = if let Some(idx) = self.loaded_libs.iter().position(|(path, _)| path == &lib_path) {
+        let lib_idx = if let Some(idx) = self
+            .loaded_libs
+            .iter()
+            .position(|(path, _)| path == &lib_path)
+        {
             idx
         } else {
             // SAFETY: libloading::Library::new loads a shared library via FFI; the path is guaranteed valid by environment variable check above.
             unsafe {
-                let lib = libloading::Library::new(&lib_path)
-                    .map_err(|e| Errno::Generic(format!("failed to load library '{}': {}", lib_path, e)))?;
+                let lib = libloading::Library::new(&lib_path).map_err(|e| {
+                    Errno::Generic(format!("failed to load library '{}': {}", lib_path, e))
+                })?;
                 self.loaded_libs.push((lib_path.clone(), lib));
                 self.loaded_libs.len() - 1
             }
@@ -101,9 +106,13 @@ impl<'a> Interpreter<'a> {
             // Capturing side reads errno via std::io::Error::last_os_error().
             if contract.check_errno {
                 #[cfg(any(target_os = "linux", target_os = "android"))]
-                unsafe { *libc::__errno_location() = 0; }
+                unsafe {
+                    *libc::__errno_location() = 0;
+                }
                 #[cfg(target_os = "macos")]
-                unsafe { *libc::__error() = 0; }
+                unsafe {
+                    *libc::__error() = 0;
+                }
             }
 
             // Build libffi type descriptors for arguments
@@ -113,9 +122,11 @@ impl<'a> Interpreter<'a> {
                     FfiArgContract::Float => cif_arg_types.push(FfiType::f64()),
                     FfiArgContract::Callback { .. } => cif_arg_types.push(FfiType::pointer()),
                     FfiArgContract::StructByValue(type_name) => {
-                        let fields = self.lookup_struct_fields(type_name)
+                        let fields = self
+                            .lookup_struct_fields(type_name)
                             .map_err(Errno::Generic)?;
-                        let field_types: Result<Vec<FfiType>, String> = fields.iter()
+                        let field_types: Result<Vec<FfiType>, String> = fields
+                            .iter()
                             .map(|f| self.ffi_type_from_mimi_type(&f.ty))
                             .collect();
                         let field_types = field_types.map_err(Errno::Generic)?;
@@ -131,14 +142,18 @@ impl<'a> Interpreter<'a> {
             let cif_ret_type = match &contract.ret {
                 FfiRetContract::Unit => FfiType::void(),
                 FfiRetContract::Float => FfiType::f64(),
-                FfiRetContract::String | FfiRetContract::StringOwned | FfiRetContract::Json => FfiType::pointer(),
+                FfiRetContract::String | FfiRetContract::StringOwned | FfiRetContract::Json => {
+                    FfiType::pointer()
+                }
                 FfiRetContract::StructByValue(type_name) => {
-                    let fields = self.lookup_struct_fields(type_name)
+                    let fields = self
+                        .lookup_struct_fields(type_name)
                         .map_err(Errno::Generic)?;
-                    let (total_size, _) = self.struct_size_align(&fields)
-                        .map_err(Errno::Generic)?;
+                    let (total_size, _) =
+                        self.struct_size_align(&fields).map_err(Errno::Generic)?;
                     struct_ret_size = Some(total_size);
-                    let field_types: Result<Vec<FfiType>, String> = fields.iter()
+                    let field_types: Result<Vec<FfiType>, String> = fields
+                        .iter()
                         .map(|f| self.ffi_type_from_mimi_type(&f.ty))
                         .collect();
                     let field_types = field_types.map_err(Errno::Generic)?;
@@ -150,7 +165,8 @@ impl<'a> Interpreter<'a> {
             let cif = Cif::new(cif_arg_types, cif_ret_type);
 
             // Prepare typed arguments for libffi call
-            let mut typed_storage: Vec<Box<dyn std::any::Any>> = Vec::with_capacity(contract.args.len());
+            let mut typed_storage: Vec<Box<dyn std::any::Any>> =
+                Vec::with_capacity(contract.args.len());
             let mut ffi_args: Vec<libffi::middle::Arg> = Vec::with_capacity(contract.args.len());
 
             for (i, (arg_val, arg_contract)) in args.iter().zip(&contract.args).enumerate() {
@@ -159,18 +175,28 @@ impl<'a> Interpreter<'a> {
                         let f = match arg_val {
                             Value::Float(f) => *f,
                             Value::Int(n) => *n as f64,
-                            _ => return Err(Errno::Generic("FFI contract violation: expected float or int".to_string())),
+                            _ => {
+                                return Err(Errno::Generic(
+                                    "FFI contract violation: expected float or int".to_string(),
+                                ))
+                            }
                         };
                         typed_storage.push(Box::new(f));
-                        let last = typed_storage.last().ok_or_else(|| "FFI call: typed_storage is empty after push (impossible)".to_string())?;
-                        let ptr = last.downcast_ref::<f64>()
-                            .ok_or_else(|| "FFI call: expected f64 in typed_storage but downcast failed".to_string())?;
+                        let last = typed_storage.last().ok_or_else(|| {
+                            "FFI call: typed_storage is empty after push (impossible)".to_string()
+                        })?;
+                        let ptr = last.downcast_ref::<f64>().ok_or_else(|| {
+                            "FFI call: expected f64 in typed_storage but downcast failed"
+                                .to_string()
+                        })?;
                         ffi_args.push(ffi_arg(ptr));
                     }
                     FfiArgContract::StructByValue(type_name) => {
-                        let fields = self.lookup_struct_fields(type_name)
+                        let fields = self
+                            .lookup_struct_fields(type_name)
                             .map_err(Errno::Generic)?;
-                        let buffer = self.marshall_record_to_buffer(arg_val, &fields)
+                        let buffer = self
+                            .marshall_record_to_buffer(arg_val, &fields)
                             .map_err(Errno::Generic)?;
                         // SAFETY: Buffer heap data is stable (Vec only moves handle).
                         // Arg::new stores a raw data pointer; struct_buffers keeps
@@ -185,9 +211,13 @@ impl<'a> Interpreter<'a> {
                     _ => {
                         let v = c_args[i];
                         typed_storage.push(Box::new(v));
-                        let last = typed_storage.last().ok_or_else(|| "FFI call: typed_storage is empty after push (impossible)".to_string())?;
-                        let ptr = last.downcast_ref::<i64>()
-                            .ok_or_else(|| "FFI call: expected i64 in typed_storage but downcast failed".to_string())?;
+                        let last = typed_storage.last().ok_or_else(|| {
+                            "FFI call: typed_storage is empty after push (impossible)".to_string()
+                        })?;
+                        let ptr = last.downcast_ref::<i64>().ok_or_else(|| {
+                            "FFI call: expected i64 in typed_storage but downcast failed"
+                                .to_string()
+                        })?;
                         ffi_args.push(ffi_arg(ptr));
                     }
                 }
@@ -203,7 +233,10 @@ impl<'a> Interpreter<'a> {
             let code_ptr = CodePtr(fn_ptr);
 
             // F8: Set up thread-local callback context if any callback contracts exist
-            let has_callbacks = contract.args.iter().any(|a| matches!(a, FfiArgContract::Callback { .. }));
+            let has_callbacks = contract
+                .args
+                .iter()
+                .any(|a| matches!(a, FfiArgContract::Callback { .. }));
             let mut prev_ctx: Option<super::ffi::callback::FfiCallbackCtx> = None;
             if has_callbacks {
                 // Save the previous context to handle nested FFI calls correctly.
@@ -240,14 +273,21 @@ impl<'a> Interpreter<'a> {
                 let rvalue = ret_buf.as_mut_ptr() as *mut std::ffi::c_void;
                 // F-16: Apply crash protection to struct-by-value returns.
                 if self.verify_ffi {
-                    self.call_ffi_with_fork_isolation_struct(&cif, code_ptr, &ffi_args, &mut ret_buf)?;
+                    self.call_ffi_with_fork_isolation_struct(
+                        &cif,
+                        code_ptr,
+                        &ffi_args,
+                        &mut ret_buf,
+                    )?;
                 } else if extern_func.no_panic {
                     self.call_ffi_no_panic_struct(&cif, code_ptr, &ffi_args, rvalue)?;
                 } else {
                     // SAFETY: call_ffi_raw_struct uses the low-level ffi_call API
                     // with a caller-provided return buffer. rvalue points to a valid
                     // ret_buf allocation.
-                    unsafe { Self::call_ffi_raw_struct(&cif, code_ptr, &ffi_args, rvalue); }
+                    unsafe {
+                        Self::call_ffi_raw_struct(&cif, code_ptr, &ffi_args, rvalue);
+                    }
                 }
                 struct_buffers.push(ret_buf);
                 Ok(0i64) // placeholder; actual result read from buffer below
@@ -288,12 +328,13 @@ impl<'a> Interpreter<'a> {
         let return_value = if let FfiRetContract::StructByValue(type_name) = &contract.ret {
             // Read the last buffer pushed to struct_buffers (the struct return buffer).
             if let Some(ret_buf) = struct_buffers.pop() {
-                let fields = self.lookup_struct_fields(type_name)
+                let fields = self
+                    .lookup_struct_fields(type_name)
                     .map_err(Errno::Generic)?;
                 self.unmarshall_buffer_to_record(&ret_buf, &fields)?
             } else {
                 return Err(Errno::Generic(
-                    "FFI wrapper: struct return buffer missing".to_string()
+                    "FFI wrapper: struct return buffer missing".to_string(),
                 ));
             }
         } else {
@@ -332,9 +373,10 @@ impl<'a> Interpreter<'a> {
         &self,
         type_name: &str,
     ) -> Result<Vec<Field>, String> {
-        let td = self.type_defs.get(type_name).ok_or_else(|| {
-            format!("StructByValue: type '{}' not found in type_defs", type_name)
-        })?;
+        let td = self
+            .type_defs
+            .get(type_name)
+            .ok_or_else(|| format!("StructByValue: type '{}' not found in type_defs", type_name))?;
         match &td.kind {
             TypeDefKind::Record(fields) => Ok(fields.clone()),
             _ => Err(format!(
@@ -347,7 +389,10 @@ impl<'a> Interpreter<'a> {
     /// Convert a Mimi `Type` to a libffi `Type` for struct field layout.
     /// Only supports types valid in #[repr(C)] records: scalars and nested
     /// #[repr(C)] records.
-    pub(in crate::interp) fn ffi_type_from_mimi_type(&self, ty: &crate::ast::Type) -> Result<FfiType, String> {
+    pub(in crate::interp) fn ffi_type_from_mimi_type(
+        &self,
+        ty: &crate::ast::Type,
+    ) -> Result<FfiType, String> {
         match ty {
             crate::ast::Type::Name(name, _) => match name.as_str() {
                 "i32" => Ok(FfiType::i32()),
@@ -426,11 +471,7 @@ impl<'a> Interpreter<'a> {
 
     /// Marshal a Mimi `Value::Record` into a byte buffer matching #[repr(C)]
     /// layout. The field types are used to compute offsets and sizes.
-    fn marshall_record_to_buffer(
-        &self,
-        val: &Value,
-        fields: &[Field],
-    ) -> Result<Vec<u8>, String> {
+    fn marshall_record_to_buffer(&self, val: &Value, fields: &[Field]) -> Result<Vec<u8>, String> {
         let field_vals = match val {
             Value::Record(_, map) => map,
             _ => return Err(format!("StructByValue: expected Record, got {}", val)),
@@ -454,7 +495,10 @@ impl<'a> Interpreter<'a> {
         for (i, field) in fields.iter().enumerate() {
             let offset = offsets[i];
             let fv = field_vals.get(&field.name).ok_or_else(|| {
-                format!("StructByValue: field '{}' missing in record value", field.name)
+                format!(
+                    "StructByValue: field '{}' missing in record value",
+                    field.name
+                )
             })?;
             self.write_field_to_buf(fv, &field.ty, &mut buf, offset)?;
         }
@@ -464,10 +508,21 @@ impl<'a> Interpreter<'a> {
 
     /// Write a single Mimi value into a byte buffer at the given offset,
     /// using the C ABI scalar layout (little-endian).
-    fn write_field_to_buf(&self, val: &Value, ty: &crate::ast::Type, buf: &mut [u8], offset: usize) -> Result<(), String> {
+    fn write_field_to_buf(
+        &self,
+        val: &Value,
+        ty: &crate::ast::Type,
+        buf: &mut [u8],
+        offset: usize,
+    ) -> Result<(), String> {
         let type_name = match ty {
             crate::ast::Type::Name(n, _) => n.as_str(),
-            _ => return Err(format!("StructByValue: cannot write field of type {:?}", ty)),
+            _ => {
+                return Err(format!(
+                    "StructByValue: cannot write field of type {:?}",
+                    ty
+                ))
+            }
         };
         match type_name {
             "i32" => {
@@ -477,7 +532,7 @@ impl<'a> Interpreter<'a> {
                     _ => return Err(format!("StructByValue: expected i32, got {}", val)),
                 };
                 let bytes = v.to_le_bytes();
-                buf[offset..offset+4].copy_from_slice(&bytes);
+                buf[offset..offset + 4].copy_from_slice(&bytes);
             }
             "i64" => {
                 let v = match val {
@@ -485,7 +540,7 @@ impl<'a> Interpreter<'a> {
                     _ => return Err(format!("StructByValue: expected i64, got {}", val)),
                 };
                 let bytes = v.to_le_bytes();
-                buf[offset..offset+8].copy_from_slice(&bytes);
+                buf[offset..offset + 8].copy_from_slice(&bytes);
             }
             "f64" => {
                 let v = match val {
@@ -494,13 +549,17 @@ impl<'a> Interpreter<'a> {
                     _ => return Err(format!("StructByValue: expected f64, got {}", val)),
                 };
                 let bytes = v.to_bits().to_le_bytes();
-                buf[offset..offset+8].copy_from_slice(&bytes);
+                buf[offset..offset + 8].copy_from_slice(&bytes);
             }
             "bool" => {
                 let v = match val {
                     Value::Bool(b) => *b as u8,
                     Value::Int(n) => {
-                        if *n == 0 { 0u8 } else { 1u8 }
+                        if *n == 0 {
+                            0u8
+                        } else {
+                            1u8
+                        }
                     }
                     _ => return Err(format!("StructByValue: expected bool, got {}", val)),
                 };
@@ -517,7 +576,7 @@ impl<'a> Interpreter<'a> {
                                 let sub_buf = self.marshall_record_to_buffer(&sub_val, fields)?;
                                 let len = sub_buf.len();
                                 if offset + len <= buf.len() {
-                                    buf[offset..offset+len].copy_from_slice(&sub_buf);
+                                    buf[offset..offset + len].copy_from_slice(&sub_buf);
                                     return Ok(());
                                 }
                             }
@@ -534,15 +593,12 @@ impl<'a> Interpreter<'a> {
     }
 
     /// Unmarshal a byte buffer (from C struct return) back to a Mimi Record.
-    fn unmarshall_buffer_to_record(
-        &self,
-        buf: &[u8],
-        fields: &[Field],
-    ) -> Result<Value, Errno> {
+    fn unmarshall_buffer_to_record(&self, buf: &[u8], fields: &[Field]) -> Result<Value, Errno> {
         let mut field_vals = std::collections::HashMap::new();
         let mut current_offset = 0usize;
         for field in fields {
-            let (size, align) = self.mimi_type_size_align(&field.ty)
+            let (size, align) = self
+                .mimi_type_size_align(&field.ty)
                 .map_err(Errno::Generic)?;
             let aligned = (current_offset + align - 1) & !(align - 1);
             let val = self.read_field_from_buf(buf, &field.ty, aligned)?;
@@ -553,32 +609,38 @@ impl<'a> Interpreter<'a> {
     }
 
     /// Read a single field value from a byte buffer at the given offset.
-    fn read_field_from_buf(&self, buf: &[u8], ty: &crate::ast::Type, offset: usize) -> Result<Value, Errno> {
+    fn read_field_from_buf(
+        &self,
+        buf: &[u8],
+        ty: &crate::ast::Type,
+        offset: usize,
+    ) -> Result<Value, Errno> {
         let type_name = match ty {
             crate::ast::Type::Name(n, _) => n.as_str(),
-            _ => return Err(Errno::Generic(format!(
-                "StructByValue: cannot read field of type {:?}", ty
-            ))),
+            _ => {
+                return Err(Errno::Generic(format!(
+                    "StructByValue: cannot read field of type {:?}",
+                    ty
+                )))
+            }
         };
         match type_name {
             "i32" => {
                 let mut bytes = [0u8; 4];
-                bytes.copy_from_slice(&buf[offset..offset+4]);
+                bytes.copy_from_slice(&buf[offset..offset + 4]);
                 Ok(Value::Int(i32::from_le_bytes(bytes) as i64))
             }
             "i64" => {
                 let mut bytes = [0u8; 8];
-                bytes.copy_from_slice(&buf[offset..offset+8]);
+                bytes.copy_from_slice(&buf[offset..offset + 8]);
                 Ok(Value::Int(i64::from_le_bytes(bytes)))
             }
             "f64" => {
                 let mut bytes = [0u8; 8];
-                bytes.copy_from_slice(&buf[offset..offset+8]);
+                bytes.copy_from_slice(&buf[offset..offset + 8]);
                 Ok(Value::Float(f64::from_le_bytes(bytes)))
             }
-            "bool" => {
-                Ok(Value::Bool(buf[offset] != 0))
-            }
+            "bool" => Ok(Value::Bool(buf[offset] != 0)),
             other => {
                 // Nested #[repr(C)] record
                 if let Some(td) = self.type_defs.get(other) {
@@ -589,7 +651,8 @@ impl<'a> Interpreter<'a> {
                     }
                 }
                 Err(Errno::Generic(format!(
-                    "StructByValue: unsupported field type '{}' in record return", other
+                    "StructByValue: unsupported field type '{}' in record return",
+                    other
                 )))
             }
         }
@@ -612,7 +675,10 @@ mod callback_leak_tests {
 
     #[test]
     fn test_free_mask_i32_args_no_free() {
-        let types = [Type::Name("i32".into(), Vec::new()), Type::Name("i64".into(), Vec::new())];
+        let types = [
+            Type::Name("i32".into(), Vec::new()),
+            Type::Name("i64".into(), Vec::new()),
+        ];
         assert_eq!(compute_free_mask(&types), [false, false]);
     }
 

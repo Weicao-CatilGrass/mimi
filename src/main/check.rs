@@ -1,12 +1,17 @@
 use std::fs;
 use std::path::Path;
 
+use crate::{extract_all_contracts, is_production, is_sketch, resolve_path};
 use mimi::contracts;
 use mimi::diagnostic::format::{colors_enabled, format_diagnostic, strip_ansi};
 use mimi::{lexer, parser};
-use crate::{extract_all_contracts, is_production, is_sketch, resolve_path};
 
-pub(crate) fn check(path: Option<&Path>, extract_contracts: bool, strict: bool, verify_rules: bool) -> Result<(), String> {
+pub(crate) fn check(
+    path: Option<&Path>,
+    extract_contracts: bool,
+    strict: bool,
+    verify_rules: bool,
+) -> Result<(), String> {
     let path = resolve_path(path)?;
     let source = fs::read_to_string(&path)
         .map_err(|e| format!("failed to read {}: {}", path.display(), e))?;
@@ -32,7 +37,10 @@ pub(crate) fn check(path: Option<&Path>, extract_contracts: bool, strict: bool, 
                     eprint!("{}", strip_ansi(&formatted));
                 }
             }
-            if parse_errors.iter().all(|e| e.span.as_ref().map_or(true, |s| s.start_line > 0)) {
+            if parse_errors
+                .iter()
+                .all(|e| e.span.as_ref().map_or(true, |s| s.start_line > 0))
+            {
                 // All errors have valid positions, continue to type checking
             } else {
                 return Err(format!("{} parse error(s)", parse_errors.len()));
@@ -78,7 +86,10 @@ pub(crate) fn check(path: Option<&Path>, extract_contracts: bool, strict: bool, 
             let src = fs::read_to_string(&path).ok();
             let src_ref = src.as_deref();
             for err in &contract_errors {
-                let d = mimi::diagnostic::Diagnostic::error(err.clone(), mimi::span::Span::single(0, 0));
+                let d = mimi::diagnostic::Diagnostic::error(
+                    err.clone(),
+                    mimi::span::Span::single(0, 0),
+                );
                 let formatted = format_diagnostic(&d, src_ref, &path.display().to_string());
                 if use_color {
                     eprint!("{}", formatted);
@@ -98,7 +109,11 @@ pub(crate) fn check(path: Option<&Path>, extract_contracts: bool, strict: bool, 
         mimi::core::check(&file)
     };
     if let Err(diagnostics) = check_result {
-        eprintln!("{} has {} type error(s):", path.display(), diagnostics.len());
+        eprintln!(
+            "{} has {} type error(s):",
+            path.display(),
+            diagnostics.len()
+        );
         let use_color = colors_enabled();
         let src = fs::read_to_string(&path).ok();
         let src_ref = src.as_deref();
@@ -117,7 +132,11 @@ pub(crate) fn check(path: Option<&Path>, extract_contracts: bool, strict: bool, 
     if verify_rules {
         let rule_errors = mimi::core::verify_rules(&file);
         if !rule_errors.is_empty() {
-            eprintln!("✗ {} has {} rule error(s):", path.display(), rule_errors.len());
+            eprintln!(
+                "✗ {} has {} rule error(s):",
+                path.display(),
+                rule_errors.len()
+            );
             for e in &rule_errors {
                 eprintln!("  - {}", e);
             }

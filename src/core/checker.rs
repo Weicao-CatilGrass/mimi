@@ -126,14 +126,15 @@ impl<'a> Checker<'a> {
 
     pub(crate) fn emit_warning_code(&mut self, code: &str, msg: impl Into<String>) {
         let span = Span::single(self.current_line, self.current_col);
-        self.warnings.push(Diagnostic::warning_code(code, msg, span));
+        self.warnings
+            .push(Diagnostic::warning_code(code, msg, span));
     }
 }
 
 mod borrow;
-mod types;
-mod items;
 mod func;
-mod pattern;
 mod generics;
+mod items;
+mod pattern;
+mod types;
 mod vars;

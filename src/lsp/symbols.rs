@@ -108,7 +108,8 @@ impl LspServer {
             for item in &file.items {
                 match item {
                     Item::Func(f) => {
-                        if !query_lower.is_empty() && !f.name.to_lowercase().contains(&query_lower) {
+                        if !query_lower.is_empty() && !f.name.to_lowercase().contains(&query_lower)
+                        {
                             continue;
                         }
                         let def_line = text
@@ -118,7 +119,8 @@ impl LspServer {
                         symbols.push(ws_symbol(&f.name, 12, uri, def_line, ""));
                     }
                     Item::Type(t) => {
-                        if !query_lower.is_empty() && !t.name.to_lowercase().contains(&query_lower) {
+                        if !query_lower.is_empty() && !t.name.to_lowercase().contains(&query_lower)
+                        {
                             continue;
                         }
                         let def_line = text
@@ -154,7 +156,8 @@ impl LspServer {
                         }
                     }
                     Item::Trait(t) => {
-                        if !query_lower.is_empty() && !t.name.to_lowercase().contains(&query_lower) {
+                        if !query_lower.is_empty() && !t.name.to_lowercase().contains(&query_lower)
+                        {
                             continue;
                         }
                         let def_line = text
@@ -173,7 +176,8 @@ impl LspServer {
                         symbols.push(ws_symbol(&i.type_name, 25, uri, def_line, &i.trait_name));
                     }
                     Item::Actor(a) => {
-                        if !query_lower.is_empty() && !a.name.to_lowercase().contains(&query_lower) {
+                        if !query_lower.is_empty() && !a.name.to_lowercase().contains(&query_lower)
+                        {
                             continue;
                         }
                         let def_line = text
@@ -183,7 +187,8 @@ impl LspServer {
                         symbols.push(ws_symbol(&a.name, 23, uri, def_line, ""));
                     }
                     Item::Module(m) => {
-                        if !query_lower.is_empty() && !m.name.to_lowercase().contains(&query_lower) {
+                        if !query_lower.is_empty() && !m.name.to_lowercase().contains(&query_lower)
+                        {
                             continue;
                         }
                         let def_line = text

@@ -1,6 +1,6 @@
 use crate::ast::*;
 use crate::core::checker::Checker;
-use crate::core::helpers::{fmt_type, same_type, suggest_name, subst_type_params};
+use crate::core::helpers::{fmt_type, same_type, subst_type_params, suggest_name};
 use crate::diagnostic::Diagnostic;
 use crate::span::Span;
 use std::collections::HashMap;
@@ -32,7 +32,9 @@ impl<'a> Checker<'a> {
                     return self.check_option_method(method_name, &type_args[0], args, scopes);
                 }
             } else if type_name == "Set" && type_args.len() == 1 {
-                let known = ["size", "len", "is_empty", "contains", "insert", "remove", "to_list"];
+                let known = [
+                    "size", "len", "is_empty", "contains", "insert", "remove", "to_list",
+                ];
                 if known.contains(&method_name) {
                     return self.check_set_method(method_name, &type_args[0], args, scopes);
                 }
@@ -89,35 +91,36 @@ impl<'a> Checker<'a> {
                         .get(&(trait_name.clone(), method_name.to_string()))
                         .cloned()
                     {
-                        let (method_params, method_ret) =
-                            if let Some(trait_generic_names) = self.trait_generics.get(&trait_name) {
-                                if !trait_generic_names.is_empty()
-                                    && trait_generic_names.len() == type_args.len()
-                                {
-                                    let type_map: HashMap<String, Type> = trait_generic_names
-                                        .iter()
-                                        .zip(type_args.iter())
-                                        .map(|(g, a)| (g.clone(), a.clone()))
-                                        .collect();
-                                    let gen_slice: Vec<GenericParam> = trait_generic_names
-                                        .iter()
-                                        .map(|g| GenericParam {
-                                            name: g.clone(),
-                                            bounds: vec![],
-                                        })
-                                        .collect();
-                                    let subst_params: Vec<Type> = params
-                                        .iter()
-                                        .map(|p| subst_type_params(p, &gen_slice, &type_map))
-                                        .collect();
-                                    let subst_ret = subst_type_params(&ret, &gen_slice, &type_map);
-                                    (subst_params, subst_ret)
-                                } else {
-                                    (params, ret)
-                                }
+                        let (method_params, method_ret) = if let Some(trait_generic_names) =
+                            self.trait_generics.get(&trait_name)
+                        {
+                            if !trait_generic_names.is_empty()
+                                && trait_generic_names.len() == type_args.len()
+                            {
+                                let type_map: HashMap<String, Type> = trait_generic_names
+                                    .iter()
+                                    .zip(type_args.iter())
+                                    .map(|(g, a)| (g.clone(), a.clone()))
+                                    .collect();
+                                let gen_slice: Vec<GenericParam> = trait_generic_names
+                                    .iter()
+                                    .map(|g| GenericParam {
+                                        name: g.clone(),
+                                        bounds: vec![],
+                                    })
+                                    .collect();
+                                let subst_params: Vec<Type> = params
+                                    .iter()
+                                    .map(|p| subst_type_params(p, &gen_slice, &type_map))
+                                    .collect();
+                                let subst_ret = subst_type_params(&ret, &gen_slice, &type_map);
+                                (subst_params, subst_ret)
                             } else {
                                 (params, ret)
-                            };
+                            }
+                        } else {
+                            (params, ret)
+                        };
                         let user_args = &args;
                         if user_args.len() != method_params.len() {
                             self.emit_code(
@@ -227,7 +230,10 @@ impl<'a> Checker<'a> {
             self.errors.push(
                 Diagnostic::error_code(
                     crate::diagnostic::codes::E0222,
-                    format!("method call requires a named type, found {}", fmt_type(&obj_ty)),
+                    format!(
+                        "method call requires a named type, found {}",
+                        fmt_type(&obj_ty)
+                    ),
                     Span::single(self.current_line, self.current_col),
                 )
                 .with_help("only named types (record, enum, actor) have methods"),
@@ -263,8 +269,7 @@ impl<'a> Checker<'a> {
                         ),
                     );
                 } else {
-                    for (i, (arg, param)) in
-                        user_args.iter().zip(method_params.iter()).enumerate()
+                    for (i, (arg, param)) in user_args.iter().zip(method_params.iter()).enumerate()
                     {
                         let at = self.infer_expr(arg, scopes);
                         if !same_type(&at, param) {

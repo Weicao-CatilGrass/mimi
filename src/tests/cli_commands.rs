@@ -3,7 +3,10 @@ use std::path::PathBuf;
 
 fn temp_dir() -> PathBuf {
     use std::time::{SystemTime, UNIX_EPOCH};
-    let nanos = SystemTime::now().duration_since(UNIX_EPOCH).expect("src/tests/cli_commands.rs:6 unwrap failed").as_nanos();
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("src/tests/cli_commands.rs:6 unwrap failed")
+        .as_nanos();
     let dir = std::env::temp_dir().join(format!("mimi_test_{}_{}", std::process::id(), nanos));
     fs::create_dir_all(&dir).expect("src/tests/cli_commands.rs:8 unwrap failed");
     dir
@@ -13,7 +16,8 @@ fn temp_dir() -> PathBuf {
 fn promote_clean_file() {
     let dir = temp_dir();
     let src_path = dir.join("test.mms");
-    fs::write(&src_path, "func add(a: i32, b: i32) -> i32 { a + b }").expect("src/tests/cli_commands.rs:16 unwrap failed");
+    fs::write(&src_path, "func add(a: i32, b: i32) -> i32 { a + b }")
+        .expect("src/tests/cli_commands.rs:16 unwrap failed");
 
     let output_path = dir.join("test.mimi");
     let result = super::main_promote(&src_path, Some(&output_path));
@@ -28,11 +32,15 @@ fn promote_clean_file() {
 fn promote_rejects_placeholders() {
     let dir = temp_dir();
     let src_path = dir.join("test.mms");
-    fs::write(&src_path, "func add(a: i32, b: i32) -> i32 { ... }").expect("src/tests/cli_commands.rs:31 unwrap failed");
+    fs::write(&src_path, "func add(a: i32, b: i32) -> i32 { ... }")
+        .expect("src/tests/cli_commands.rs:31 unwrap failed");
 
     let result = super::main_promote(&src_path, None);
     assert!(result.is_err(), "promote should fail with ...");
-    assert!(result.unwrap_err().contains("..."), "error should mention ...");
+    assert!(
+        result.unwrap_err().contains("..."),
+        "error should mention ..."
+    );
 
     // Cleanup
     fs::remove_dir_all(&dir).ok();
@@ -58,7 +66,11 @@ fn promote_default_output() {
 fn doc_markdown() {
     let dir = temp_dir();
     let src_path = dir.join("test.mimi");
-    fs::write(&src_path, "func add(a: i32, b: i32) -> i32 { a + b }\ntype Point { x: i32, y: i32 }").expect("src/tests/cli_commands.rs:61 unwrap failed");
+    fs::write(
+        &src_path,
+        "func add(a: i32, b: i32) -> i32 { a + b }\ntype Point { x: i32, y: i32 }",
+    )
+    .expect("src/tests/cli_commands.rs:61 unwrap failed");
 
     let result = super::main_doc(&src_path, "markdown", None);
     assert!(result.is_ok(), "doc should succeed: {:?}", result.err());
@@ -84,7 +96,8 @@ fn doc_empty_file() {
 fn promote_file_with_type_def() {
     let dir = temp_dir();
     let src_path = dir.join("test.mms");
-    fs::write(&src_path, "type Point { x: i32, y: i32 }\nfunc main() { }").expect("src/tests/cli_commands.rs:87 unwrap failed");
+    fs::write(&src_path, "type Point { x: i32, y: i32 }\nfunc main() { }")
+        .expect("src/tests/cli_commands.rs:87 unwrap failed");
 
     let result = super::main_promote(&src_path, None);
     assert!(result.is_ok(), "promote should succeed with type def");
@@ -123,14 +136,21 @@ fn doc_unsupported_format() {
 fn doc_with_output_file() {
     let dir = temp_dir();
     let src_path = dir.join("test.mimi");
-    fs::write(&src_path, "func add(a: i32, b: i32) -> i32 { desc \"This function adds two numbers\"\n a + b }").expect("write src");
+    fs::write(
+        &src_path,
+        "func add(a: i32, b: i32) -> i32 { desc \"This function adds two numbers\"\n a + b }",
+    )
+    .expect("write src");
 
     let output_path = dir.join("output.md");
     let result = super::main_doc(&src_path, "markdown", Some(&output_path));
     assert!(result.is_ok(), "doc should succeed: {:?}", result.err());
     assert!(output_path.exists(), "output file should exist");
     let content = fs::read_to_string(&output_path).expect("read output");
-    assert!(content.contains("add"), "output should contain function name");
+    assert!(
+        content.contains("add"),
+        "output should contain function name"
+    );
 
     // Cleanup
     fs::remove_dir_all(&dir).ok();
@@ -140,7 +160,9 @@ fn doc_with_output_file() {
 fn doc_mms_input_to_markdown() {
     let dir = temp_dir();
     let src_path = dir.join("shop.mms");
-    fs::write(&src_path, r#"module Shop:
+    fs::write(
+        &src_path,
+        r#"module Shop:
     desc "Shop module description"
     rule "payment must be idempotent"
     func Pay(order, amount):
@@ -149,16 +171,31 @@ fn doc_mms_input_to_markdown() {
         steps:
             check balance
             charge amount >>> done
-"#).expect("write mms");
+"#,
+    )
+    .expect("write mms");
 
     let output_path = dir.join("output.md");
     let result = super::main_doc(&src_path, "markdown", Some(&output_path));
-    assert!(result.is_ok(), "doc should succeed on .mms input: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "doc should succeed on .mms input: {:?}",
+        result.err()
+    );
     assert!(output_path.exists(), "output file should exist");
     let content = fs::read_to_string(&output_path).expect("read output");
-    assert!(content.contains("Shop"), "output should contain module name");
-    assert!(content.contains("Pay"), "output should contain function name");
-    assert!(content.contains("Shop module description"), "output should contain desc");
+    assert!(
+        content.contains("Shop"),
+        "output should contain module name"
+    );
+    assert!(
+        content.contains("Pay"),
+        "output should contain function name"
+    );
+    assert!(
+        content.contains("Shop module description"),
+        "output should contain desc"
+    );
 
     // Cleanup
     fs::remove_dir_all(&dir).ok();
@@ -168,7 +205,9 @@ fn doc_mms_input_to_markdown() {
 fn doc_mms_output_mms_format() {
     let dir = temp_dir();
     let src_path = dir.join("shop.mms");
-    fs::write(&src_path, r#"module Shop:
+    fs::write(
+        &src_path,
+        r#"module Shop:
     desc "Shop module description"
     func Pay(order, amount):
         desc "Process payment"
@@ -176,15 +215,27 @@ fn doc_mms_output_mms_format() {
         steps:
             check balance
             charge amount >>> done
-"#).expect("write mms");
+"#,
+    )
+    .expect("write mms");
 
     let output_path = dir.join("output.mms");
     let result = super::main_doc(&src_path, "mms", Some(&output_path));
-    assert!(result.is_ok(), "doc should succeed on mms format: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "doc should succeed on mms format: {:?}",
+        result.err()
+    );
     assert!(output_path.exists(), "output file should exist");
     let content = fs::read_to_string(&output_path).expect("read output");
-    assert!(content.contains("module Shop"), "output should contain module");
-    assert!(content.contains("Process payment"), "output should contain desc");
+    assert!(
+        content.contains("module Shop"),
+        "output should contain module"
+    );
+    assert!(
+        content.contains("Process payment"),
+        "output should contain desc"
+    );
 
     // Cleanup
     fs::remove_dir_all(&dir).ok();

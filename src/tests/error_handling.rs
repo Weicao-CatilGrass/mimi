@@ -23,10 +23,14 @@ func main() -> i32 {
 }
 "#;
     let result = run_source_result(src);
-    assert!(result.is_ok(), "? should propagate error as value, got: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "? should propagate error as value, got: {:?}",
+        result
+    );
     let val = result.expect("src/tests/error_handling.rs:27 unwrap failed");
     match &val {
-        interp::Value::Variant(name, _) if name == "Err" => {},
+        interp::Value::Variant(name, _) if name == "Err" => {}
         other => panic!("Expected Err variant, got: {}", other),
     }
 }
@@ -52,10 +56,14 @@ func main() -> i32 {
 }
 "#;
     let result = run_source_result(src);
-    assert!(result.is_ok(), "? should propagate error as value, got: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "? should propagate error as value, got: {:?}",
+        result
+    );
     let val = result.expect("src/tests/error_handling.rs:56 unwrap failed");
     match &val {
-        interp::Value::Variant(name, _) if name == "Err" => {},
+        interp::Value::Variant(name, _) if name == "Err" => {}
         other => panic!("Expected Err variant, got: {}", other),
     }
 }
@@ -79,7 +87,11 @@ func main() -> i32 {
 }
 "#;
     let v = run_source(src);
-    assert_eq!(v, interp::Value::Int(42), "Compensation should NOT execute on success");
+    assert_eq!(
+        v,
+        interp::Value::Int(42),
+        "Compensation should NOT execute on success"
+    );
 }
 
 #[test]
@@ -92,7 +104,11 @@ func main() -> i32 {
     let result = run_source_result(src);
     assert!(result.is_err());
     let err = result.unwrap_err();
-    assert!(err.contains("division by zero"), "Expected division by zero error, got: {}", err);
+    assert!(
+        err.contains("division by zero"),
+        "Expected division by zero error, got: {}",
+        err
+    );
 }
 
 #[test]
@@ -116,7 +132,11 @@ func main() -> i32 {
 }
 "#;
     let result = run_source_result(src);
-    assert!(result.is_ok(), "exit with code 1 should terminate: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "exit with code 1 should terminate: {:?}",
+        result
+    );
 }
 
 #[test]
@@ -140,7 +160,10 @@ func main() -> i32 {
 }
 "#;
     let result = run_source_result(src);
-    assert!(result.is_err(), "assert_approx_eq should fail for unequal floats");
+    assert!(
+        result.is_err(),
+        "assert_approx_eq should fail for unequal floats"
+    );
 }
 
 #[test]
@@ -153,7 +176,11 @@ func main() -> i32 {
     let result = run_source_result(src);
     assert!(result.is_err());
     let err = result.unwrap_err();
-    assert!(err.contains("division by zero") || err.contains("modulo"), "Expected division/modulo by zero error, got: {}", err);
+    assert!(
+        err.contains("division by zero") || err.contains("modulo"),
+        "Expected division/modulo by zero error, got: {}",
+        err
+    );
 }
 
 #[test]
@@ -166,7 +193,11 @@ func main() -> i32 {
     let result = run_source_result(src);
     assert!(result.is_err());
     let err = result.unwrap_err();
-    assert!(err.contains("negative exponent"), "Expected negative exponent error, got: {}", err);
+    assert!(
+        err.contains("negative exponent"),
+        "Expected negative exponent error, got: {}",
+        err
+    );
 }
 
 #[test]
@@ -181,7 +212,11 @@ func main() -> i32 {
     let result = run_source_result(src);
     assert!(result.is_err());
     let err = result.unwrap_err();
-    assert!(err.contains("immutable"), "Expected immutable error, got: {}", err);
+    assert!(
+        err.contains("immutable"),
+        "Expected immutable error, got: {}",
+        err
+    );
 }
 
 #[test]
@@ -214,10 +249,14 @@ func main() -> i32 {
 }
 "#;
     let result = run_source_result(src);
-    assert!(result.is_ok(), "? should propagate error as value through expr statement, got: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "? should propagate error as value through expr statement, got: {:?}",
+        result
+    );
     let val = result.expect("src/tests/error_handling.rs:170 unwrap failed");
     match &val {
-        interp::Value::Variant(name, _) if name == "Err" => {},
+        interp::Value::Variant(name, _) if name == "Err" => {}
         other => panic!("Expected Err variant, got: {}", other),
     }
 }
@@ -232,5 +271,9 @@ func main() -> f64 {
     let result = run_source_result(src);
     assert!(result.is_err());
     let err = result.unwrap_err();
-    assert!(err.contains("division by zero"), "Expected division by zero error, got: {}", err);
+    assert!(
+        err.contains("division by zero"),
+        "Expected division by zero error, got: {}",
+        err
+    );
 }

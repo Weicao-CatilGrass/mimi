@@ -24,7 +24,9 @@ func main() -> i32 {
 }
 "#;
     let errs = check_source(src).unwrap_err();
-    assert!(errs.iter().any(|d| d.message.contains("return type mismatch")));
+    assert!(errs
+        .iter()
+        .any(|d| d.message.contains("return type mismatch")));
 }
 
 #[test]
@@ -49,10 +51,16 @@ func main() -> i32 {
 }
 "#;
     let result = check_source(src);
-    assert!(result.is_err(), "expected error: i32 function with println (returns unit) as last expression");
+    assert!(
+        result.is_err(),
+        "expected error: i32 function with println (returns unit) as last expression"
+    );
     let errors = result.unwrap_err();
-    assert!(errors.iter().any(|d| d.message.contains("implicit return")),
-        "expected implicit return error, got: {:?}", errors);
+    assert!(
+        errors.iter().any(|d| d.message.contains("implicit return")),
+        "expected implicit return error, got: {:?}",
+        errors
+    );
 }
 
 #[test]
@@ -203,7 +211,10 @@ func main() -> string {
 }
 "#;
     let v = run_source(src);
-    assert_eq!(v, interp::Value::String("hello beautiful world".to_string()));
+    assert_eq!(
+        v,
+        interp::Value::String("hello beautiful world".to_string())
+    );
 }
 
 #[test]
@@ -236,7 +247,10 @@ func main() -> string {
 }
 "#;
     let v = run_source(src);
-    assert_eq!(v, interp::Value::String("int=42 float=3.14 str=test".to_string()));
+    assert_eq!(
+        v,
+        interp::Value::String("int=42 float=3.14 str=test".to_string())
+    );
 }
 
 #[test]

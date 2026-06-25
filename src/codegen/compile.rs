@@ -14,7 +14,8 @@ impl<'ctx> CodeGenerator<'ctx> {
         if type_map.is_empty() {
             return base.to_string();
         }
-        let mut parts: Vec<String> = type_map.iter()
+        let mut parts: Vec<String> = type_map
+            .iter()
             .map(|(k, v)| format!("{}_{}", k, crate::core::fmt_type(v)))
             .collect();
         parts.sort();
@@ -26,8 +27,13 @@ impl<'ctx> CodeGenerator<'ctx> {
         if self.type_map.is_empty() {
             return ty.clone();
         }
-        let generics: Vec<crate::ast::GenericParam> = self.type_map.keys()
-            .map(|k| crate::ast::GenericParam { name: k.clone(), bounds: vec![] })
+        let generics: Vec<crate::ast::GenericParam> = self
+            .type_map
+            .keys()
+            .map(|k| crate::ast::GenericParam {
+                name: k.clone(),
+                bounds: vec![],
+            })
             .collect();
         crate::core::subst_type_params(ty, &generics, &self.type_map)
     }
@@ -129,30 +135,42 @@ impl<'ctx> CodeGenerator<'ctx> {
         if self.target_triple.is_some() {
             Target::initialize_all(&InitializationConfig::default());
         } else {
-            Target::initialize_native(&InitializationConfig::default())
-                .map_err(|e| CompileError::LlvmError(format!("failed to initialize target: {}", e)))?;
+            Target::initialize_native(&InitializationConfig::default()).map_err(|e| {
+                CompileError::LlvmError(format!("failed to initialize target: {}", e))
+            })?;
         }
-        let triple_str = self.target_triple.clone()
-            .unwrap_or_else(|| {
-                TargetMachine::get_default_triple().as_str().to_string_lossy().to_string()
-            });
+        let triple_str = self.target_triple.clone().unwrap_or_else(|| {
+            TargetMachine::get_default_triple()
+                .as_str()
+                .to_string_lossy()
+                .to_string()
+        });
         let triple = inkwell::targets::TargetTriple::create(&triple_str);
         let target = Target::from_triple(&triple)
             .map_err(|e| CompileError::LlvmError(format!("failed to find target: {}", e)))?;
         let (cpu, features) = if self.target_triple.is_some() {
             (String::new(), String::new())
         } else {
-            (TargetMachine::get_host_cpu_name().to_string(),
-             TargetMachine::get_host_cpu_features().to_string())
+            (
+                TargetMachine::get_host_cpu_name().to_string(),
+                TargetMachine::get_host_cpu_features().to_string(),
+            )
         };
-        let tm = target.create_target_machine(
-            &triple, &cpu, &features,
-            OptimizationLevel::Aggressive,
-            inkwell::targets::RelocMode::Default,
-            inkwell::targets::CodeModel::Default,
-        ).ok_or_else(|| CompileError::LlvmError("failed to create target machine".to_string()))?;
+        let tm = target
+            .create_target_machine(
+                &triple,
+                &cpu,
+                &features,
+                OptimizationLevel::Aggressive,
+                inkwell::targets::RelocMode::Default,
+                inkwell::targets::CodeModel::Default,
+            )
+            .ok_or_else(|| {
+                CompileError::LlvmError("failed to create target machine".to_string())
+            })?;
         let options = PassBuilderOptions::create();
-        self.module.run_passes("default<O2>", &tm, options)
+        self.module
+            .run_passes("default<O2>", &tm, options)
             .map_err(|e| CompileError::LlvmError(format!("optimization failed: {}", e)))
     }
 }

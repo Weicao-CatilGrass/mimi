@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 use crate::ast::*;
-use crate::verifier::ctx::{VerificationResult, VerifStatus};
+use crate::verifier::ctx::{VerifStatus, VerificationResult};
 
 /// Extract the final value-producing expression from a block.
 /// Used in `expr_to_z3_*` to evaluate the tail expression of an if-else branch.
@@ -59,9 +59,15 @@ pub(crate) fn extract_body_return(block: &[Stmt]) -> Option<Expr> {
             Stmt::If { cond, then_, else_ } => {
                 return extract_if_return(cond, then_, else_);
             }
-            Stmt::Requires(_, _) | Stmt::Ensures(_, _) | Stmt::Invariant(_, _) | Stmt::Math(_)
-            | Stmt::Desc(..) | Stmt::Rule(..) | Stmt::MmsBlock { .. }
-            | Stmt::Let { .. } | Stmt::Assign { .. } => continue,
+            Stmt::Requires(_, _)
+            | Stmt::Ensures(_, _)
+            | Stmt::Invariant(_, _)
+            | Stmt::Math(_)
+            | Stmt::Desc(..)
+            | Stmt::Rule(..)
+            | Stmt::MmsBlock { .. }
+            | Stmt::Let { .. }
+            | Stmt::Assign { .. } => continue,
             _ => break,
         }
     }
@@ -211,7 +217,9 @@ pub(crate) fn collect_idents_in_expr(expr: &Expr, idents: &mut Vec<String>) {
                 collect_idents_in_stmt(s, idents);
             }
         }
-        Expr::Comprehension { expr, iter, guard, .. } => {
+        Expr::Comprehension {
+            expr, iter, guard, ..
+        } => {
             collect_idents_in_expr(expr, idents);
             collect_idents_in_expr(iter, idents);
             if let Some(g) = guard {
@@ -277,7 +285,12 @@ pub(crate) fn collect_idents_in_stmt(stmt: &Stmt, idents: &mut Vec<String>) {
                 }
             }
         }
-        Stmt::While { cond, body } | Stmt::For { iterable: cond, body, .. } => {
+        Stmt::While { cond, body }
+        | Stmt::For {
+            iterable: cond,
+            body,
+            ..
+        } => {
             collect_idents_in_expr(cond, idents);
             for s in body {
                 collect_idents_in_stmt(s, idents);
@@ -302,7 +315,9 @@ pub(crate) fn collect_idents_in_stmt(stmt: &Stmt, idents: &mut Vec<String>) {
                 collect_idents_in_stmt(s, idents);
             }
         }
-        Stmt::Requires(e, _) | Stmt::Ensures(e, _) | Stmt::Invariant(e, _) => collect_idents_in_expr(e, idents),
+        Stmt::Requires(e, _) | Stmt::Ensures(e, _) | Stmt::Invariant(e, _) => {
+            collect_idents_in_expr(e, idents)
+        }
         Stmt::Math(exprs) => {
             for e in exprs {
                 collect_idents_in_expr(e, idents);

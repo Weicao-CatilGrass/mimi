@@ -6,9 +6,11 @@ func main() -> string {
     "hello\nworld"
 }
 "#;
-    assert_eq!(run_source(src), interp::Value::String("hello\nworld".to_string()));
+    assert_eq!(
+        run_source(src),
+        interp::Value::String("hello\nworld".to_string())
+    );
 }
-
 
 #[test]
 fn comprehension_filter_all() {
@@ -21,7 +23,6 @@ func main() -> i32 {
     assert_eq!(run_source(src), interp::Value::Int(0));
 }
 
-
 #[test]
 fn comprehension_transform_strings() {
     let src = r#"
@@ -33,7 +34,6 @@ func main() -> i32 {
     assert_eq!(run_source(src), interp::Value::Int(3));
 }
 
-
 #[test]
 fn tuple_index() {
     let src = r#"
@@ -44,7 +44,6 @@ func main() -> i32 {
 "#;
     assert_eq!(run_source(src), interp::Value::Int(2));
 }
-
 
 #[test]
 fn match_on_literal() {
@@ -59,7 +58,6 @@ func main() -> i32 {
     assert_eq!(run_source(src), interp::Value::Int(100));
 }
 
-
 #[test]
 fn match_on_string() {
     let src = r#"
@@ -73,7 +71,6 @@ func main() -> i32 {
 "#;
     assert_eq!(run_source(src), interp::Value::Int(1));
 }
-
 
 #[test]
 fn nested_if_else() {
@@ -94,7 +91,6 @@ func main() -> i32 {
     assert_eq!(run_source(src), interp::Value::Int(10));
 }
 
-
 #[test]
 fn while_with_break_equivalent() {
     let src = r#"
@@ -109,7 +105,6 @@ func main() -> i32 {
     assert_eq!(run_source(src), interp::Value::Int(5));
 }
 
-
 #[test]
 fn type_alias_simple() {
     let src = r#"
@@ -123,7 +118,6 @@ func main() -> i32 {
     assert_eq!(run_source(src), interp::Value::Int(25));
 }
 
-
 #[test]
 fn newtype_isolation_runtime() {
     let src = r#"
@@ -136,7 +130,6 @@ func main() -> i32 {
 "#;
     assert_eq!(run_source(src), interp::Value::Int(42));
 }
-
 
 #[test]
 fn record_field_order_independent() {
@@ -154,7 +147,6 @@ func main() -> i32 {
     assert_eq!(run_source(src), interp::Value::Int(15));
 }
 
-
 #[test]
 fn closure_capture_and_call() {
     let src = r#"
@@ -167,7 +159,6 @@ func main() -> i32 {
     assert_eq!(run_source(src), interp::Value::Int(15));
 }
 
-
 #[test]
 fn closure_no_params() {
     let src = r#"
@@ -179,7 +170,6 @@ func main() -> i32 {
 "#;
     assert_eq!(run_source(src), interp::Value::Int(42));
 }
-
 
 #[test]
 fn mms_block_contract_extraction() {
@@ -194,19 +184,36 @@ func main() -> i32 {
 }
 "#;
     let file = parse(src);
-    let func = file.items.iter().find_map(|item| {
-        if let crate::ast::Item::Func(f) = item {
-            if f.name == "pay" { Some(f) } else { None }
-        } else { None }
-    }).expect("src/tests/v1_2_misc_remaining.rs:201 unwrap failed");
-    let mms_text = func.body.iter().find_map(|s| {
-        if let crate::ast::Stmt::MmsBlock { content: t, .. } = s { Some(t.clone()) } else { None }
-    }).expect("src/tests/v1_2_misc_remaining.rs:204 unwrap failed");
+    let func = file
+        .items
+        .iter()
+        .find_map(|item| {
+            if let crate::ast::Item::Func(f) = item {
+                if f.name == "pay" {
+                    Some(f)
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        })
+        .expect("src/tests/v1_2_misc_remaining.rs:201 unwrap failed");
+    let mms_text = func
+        .body
+        .iter()
+        .find_map(|s| {
+            if let crate::ast::Stmt::MmsBlock { content: t, .. } = s {
+                Some(t.clone())
+            } else {
+                None
+            }
+        })
+        .expect("src/tests/v1_2_misc_remaining.rs:204 unwrap failed");
     let contracts = crate::contracts::extract_contracts(&mms_text);
     assert_eq!(contracts.requires.len(), 1);
     assert_eq!(contracts.requires[0], "amount > 0");
 }
-
 
 #[test]
 fn strict_mode_non_locked_ok() {
@@ -216,9 +223,12 @@ func main() -> i32 {
 }
 "#;
     let result = check_source_strict(src);
-    assert!(result.is_ok(), "non-locked function should pass strict mode: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "non-locked function should pass strict mode: {:?}",
+        result.err()
+    );
 }
-
 
 #[test]
 fn desc_statement() {
@@ -231,7 +241,6 @@ func main() -> i32 {
     assert_eq!(run_source(src), interp::Value::Int(42));
 }
 
-
 #[test]
 fn rule_statement() {
     let src = r#"
@@ -242,7 +251,6 @@ func main() -> i32 {
 "#;
     assert_eq!(run_source(src), interp::Value::Int(42));
 }
-
 
 #[test]
 fn on_failure_basic() {
@@ -257,7 +265,6 @@ func main() -> i32 {
     assert_eq!(run_source(src), interp::Value::Int(42));
 }
 
-
 #[test]
 fn shared_ownership_basic() {
     let src = r#"
@@ -268,9 +275,12 @@ func main() -> i32 {
 }
 "#;
     let result = check_source(src);
-    assert!(result.is_ok(), "shared ownership should pass: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "shared ownership should pass: {:?}",
+        result.err()
+    );
 }
-
 
 #[test]
 fn local_shared_basic() {
@@ -281,9 +291,12 @@ func main() -> i32 {
 }
 "#;
     let result = check_source(src);
-    assert!(result.is_ok(), "local_shared should pass: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "local_shared should pass: {:?}",
+        result.err()
+    );
 }
-
 
 #[test]
 fn weak_shared_basic() {
@@ -295,9 +308,12 @@ func main() -> i32 {
 }
 "#;
     let result = check_source(src);
-    assert!(result.is_ok(), "weak from shared should pass: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "weak from shared should pass: {:?}",
+        result.err()
+    );
 }
-
 
 #[test]
 fn try_operator_option() {
@@ -324,7 +340,6 @@ func main() -> i32 {
 
 // ===== T300: 泛型单态化测试 =====
 
-
 #[test]
 fn ref_basic_creation_and_deref() {
     let src = r#"
@@ -336,7 +351,6 @@ func main() -> i32 {
 "#;
     assert_eq!(run_source(src), interp::Value::Int(42));
 }
-
 
 #[test]
 fn ref_mut_basic() {
@@ -351,7 +365,6 @@ func main() -> i32 {
     assert_eq!(run_source(src), interp::Value::Int(10));
 }
 
-
 #[test]
 fn ref_does_not_move() {
     let src = r#"
@@ -364,7 +377,6 @@ func main() -> i32 {
 "#;
     assert_eq!(run_source(src), interp::Value::Int(84));
 }
-
 
 #[test]
 fn ref_mut_through_deref_assign() {
@@ -380,7 +392,6 @@ func main() -> i32 {
     assert_eq!(run_source(src), interp::Value::Int(15));
 }
 
-
 #[test]
 fn ref_type_check_basic() {
     let src = r#"
@@ -392,7 +403,6 @@ func main() -> i32 {
 "#;
     assert!(check_source(src).is_ok());
 }
-
 
 #[test]
 fn ref_mut_type_check() {
@@ -407,7 +417,6 @@ func main() -> i32 {
     assert!(check_source(src).is_ok());
 }
 
-
 #[test]
 fn ref_type_check_deref_non_ref_error() {
     let src = r#"
@@ -419,7 +428,6 @@ func main() -> i32 {
     let err = check_source(src).unwrap_err();
     assert!(err.iter().any(|d| d.message.contains("cannot dereference")));
 }
-
 
 #[test]
 fn ref_mut_assign_through_imm_ref_error() {
@@ -435,7 +443,6 @@ func main() -> i32 {
     assert!(err.iter().any(|d| d.message.contains("non-mutable")));
 }
 
-
 #[test]
 fn ref_multiple_immut_borrows() {
     let src = r#"
@@ -449,7 +456,6 @@ func main() -> i32 {
     assert_eq!(run_source(src), interp::Value::Int(84));
     assert!(check_source(src).is_ok());
 }
-
 
 #[test]
 fn ref_nested() {
@@ -466,7 +472,6 @@ func main() -> i32 {
 
 // ===== T303: 模块命名空间隔离测试 =====
 
-
 #[test]
 fn module_qualified_function_call() {
     let src = r#"
@@ -482,7 +487,6 @@ func main() -> i32 {
 "#;
     assert_eq!(run_source(src), interp::Value::Int(3));
 }
-
 
 #[test]
 fn module_multiple_functions() {
@@ -505,7 +509,6 @@ func main() -> i32 {
     assert_eq!(run_source(src), interp::Value::Int(15));
 }
 
-
 #[test]
 fn module_nested_runtime() {
     let src = r#"
@@ -523,7 +526,6 @@ func main() -> i32 {
 "#;
     assert_eq!(run_source(src), interp::Value::Int(42));
 }
-
 
 #[test]
 fn module_qualified_type_check() {
@@ -544,7 +546,6 @@ func main() -> i32 {
 
 // ===== T304: extern FFI 测试 =====
 
-
 #[test]
 fn extern_block_parses() {
     let src = r#"
@@ -558,7 +559,6 @@ func main() -> i32 {
 "#;
     assert!(check_source(src).is_ok());
 }
-
 
 #[test]
 fn extern_block_multiple_funcs() {
@@ -575,7 +575,6 @@ func main() -> i32 {
     assert!(check_source(src).is_ok());
 }
 
-
 #[test]
 fn extern_function_type_check() {
     let src = r#"
@@ -590,7 +589,6 @@ func main() -> i32 {
     assert!(check_source(src).is_ok());
 }
 
-
 #[test]
 fn extern_function_wrong_arg_type() {
     let src = r#"
@@ -603,9 +601,10 @@ func main() -> i32 {
 }
 "#;
     let err = check_source(src).unwrap_err();
-    assert!(err.iter().any(|d| d.message.contains("expected i32") || d.message.contains("found string")));
+    assert!(err
+        .iter()
+        .any(|d| d.message.contains("expected i32") || d.message.contains("found string")));
 }
-
 
 #[test]
 fn extern_with_no_return() {
@@ -623,7 +622,6 @@ func main() -> i32 {
 
 // === T400: Comptime Reflection Tests ===
 
-
 #[test]
 fn user_func_not_shadowed_by_builtin() {
     let src = r#"
@@ -639,5 +637,3 @@ func main() -> i32 {
 }
 
 // === T502: Test Framework Tests ===
-
-

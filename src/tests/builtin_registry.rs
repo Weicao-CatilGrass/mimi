@@ -130,6 +130,10 @@ mod tests {
                 failures.push(format!("'{}' should NOT be in is_builtin()", name));
             }
         }
-        assert!(failures.is_empty(), "is_builtin() registry mismatches:\n{}", failures.join("\n"));
+        assert!(
+            failures.is_empty(),
+            "is_builtin() registry mismatches:\n{}",
+            failures.join("\n")
+        );
     }
 }

@@ -1,6 +1,6 @@
 use super::super::*;
 use crate::ast::*;
-use crate::ffi::{FfiContract, FfiArgContract, Errno};
+use crate::ffi::{Errno, FfiArgContract, FfiContract};
 
 impl<'a> Interpreter<'a> {
     /// F7: Validate extern ABI — checks callback contract validity and
@@ -70,7 +70,12 @@ impl<'a> Interpreter<'a> {
     ) -> Result<(), Errno> {
         if let Some(ensures_expr) = &contract.ensures {
             self.push_scope();
-            self.env.last_mut().ok_or_else(|| Errno::Generic("FFI call: no scope after push (impossible)".to_string()))?.insert("result".to_string(), return_value.clone());
+            self.env
+                .last_mut()
+                .ok_or_else(|| {
+                    Errno::Generic("FFI call: no scope after push (impossible)".to_string())
+                })?
+                .insert("result".to_string(), return_value.clone());
             let eval_result = self.eval_expr(ensures_expr);
             self.pop_scope();
             match eval_result {

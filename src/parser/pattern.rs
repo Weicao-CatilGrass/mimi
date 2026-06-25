@@ -72,7 +72,10 @@ impl Parser {
                         }
                     }
                     self.expect(TokenKind::RBrace, "`}`")?;
-                    Ok(Pattern::Constructor(name, fields.into_iter().map(|(_, p)| p).collect()))
+                    Ok(Pattern::Constructor(
+                        name,
+                        fields.into_iter().map(|(_, p)| p).collect(),
+                    ))
                 } else if name == "_" {
                     Ok(Pattern::Wildcard)
                 } else {
@@ -82,7 +85,10 @@ impl Parser {
             TokenKind::Int(v) => {
                 let (line, col) = (self.peek().line, self.peek().col);
                 self.advance();
-                let val = v.replace('_', "").parse::<i64>().map_err(|_| ParseError::new("invalid integer", line, col))?;
+                let val = v
+                    .replace('_', "")
+                    .parse::<i64>()
+                    .map_err(|_| ParseError::new("invalid integer", line, col))?;
                 Ok(Pattern::Literal(Lit::Int(val)))
             }
             TokenKind::String(v) => {
@@ -140,7 +146,11 @@ impl Parser {
                     Ok(Pattern::Array(pats))
                 }
             }
-            _ => Err(ParseError::new(format!("unexpected token in pattern {}", tok.kind), tok.line, tok.col)),
+            _ => Err(ParseError::new(
+                format!("unexpected token in pattern {}", tok.kind),
+                tok.line,
+                tok.col,
+            )),
         }
     }
 }

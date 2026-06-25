@@ -1,7 +1,11 @@
 use super::*;
 
 impl<'a> Checker<'a> {
-    pub(crate) fn infer_expr(&mut self, expr: &Expr, scopes: &mut Vec<HashMap<String, Type>>) -> Type {
+    pub(crate) fn infer_expr(
+        &mut self,
+        expr: &Expr,
+        scopes: &mut Vec<HashMap<String, Type>>,
+    ) -> Type {
         match expr {
             Expr::Literal(l) => self.infer_literal(l),
             Expr::Ident(name) => self.lookup_var(name, scopes),
@@ -14,13 +18,19 @@ impl<'a> Checker<'a> {
             Expr::Tuple(elems) => self.infer_tuple_expr(elems, scopes),
             Expr::TupleIndex(obj, idx) => self.infer_tuple_index(obj, *idx, scopes),
             Expr::List(elems) => self.infer_list_expr(elems, scopes),
-            Expr::Comprehension { expr, var, iter, guard } => {
-                self.infer_comprehension(expr, var, iter, guard.as_deref(), scopes)
-            }
+            Expr::Comprehension {
+                expr,
+                var,
+                iter,
+                guard,
+            } => self.infer_comprehension(expr, var, iter, guard.as_deref(), scopes),
             Expr::Arena(block) => self.infer_block_expr(block, scopes),
             Expr::Block(block) => self.infer_block_expr(block, scopes),
             Expr::If { cond, then_, else_ } => {
-                let else_ref = else_.as_ref().map(|b| { let v: &Block = b; v });
+                let else_ref = else_.as_ref().map(|b| {
+                    let v: &Block = b;
+                    v
+                });
                 self.infer_if_expr(cond, then_, else_ref, scopes)
             }
             Expr::Index(obj, idx) => self.infer_index(obj, idx, scopes),
@@ -28,7 +38,7 @@ impl<'a> Checker<'a> {
             Expr::Spawn(inner) => {
                 let inner_ty = self.infer_expr(inner, scopes);
                 Type::Name("Future".into(), vec![inner_ty])
-            },
+            }
             Expr::Await(inner) => self.infer_await(inner, scopes),
             Expr::Quote(_) => Type::Name("AST".into(), vec![]),
             Expr::QuoteInterpolate(inner) => self.infer_expr(inner, scopes),
@@ -40,7 +50,9 @@ impl<'a> Checker<'a> {
             Expr::Range { start, end } => self.infer_range(start, end, scopes),
             Expr::TypeInfo(_) => Type::Name("TypeInfo".into(), vec![]),
             Expr::Old(expr) => self.infer_expr(expr, scopes),
-            Expr::Lambda { params, ret, body } => self.infer_lambda(params, ret.as_ref(), body, scopes),
+            Expr::Lambda { params, ret, body } => {
+                self.infer_lambda(params, ret.as_ref(), body, scopes)
+            }
             Expr::Turbofish(name, type_args, args) => {
                 self.infer_turbofish(name, type_args, args, scopes)
             }

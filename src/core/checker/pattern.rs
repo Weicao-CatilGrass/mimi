@@ -21,8 +21,13 @@ impl<'a> Checker<'a> {
                 let is_constructor = match subject {
                     Type::Result(_, _) => name == "Ok" || name == "Err",
                     Type::Option(_) => name == "Some" || name == "None",
-                    Type::Name(tn, _) => self.types.get(tn)
-                        .and_then(|t| match &t.kind { TypeDefKind::Enum(vs) => Some(vs), _ => None })
+                    Type::Name(tn, _) => self
+                        .types
+                        .get(tn)
+                        .and_then(|t| match &t.kind {
+                            TypeDefKind::Enum(vs) => Some(vs),
+                            _ => None,
+                        })
                         .map(|vs| vs.iter().any(|v| v.name == *name))
                         .unwrap_or(false),
                     _ => false,
@@ -52,7 +57,11 @@ impl<'a> Checker<'a> {
                                 fmt_type(subject)
                             ),
                             Span::single(self.current_line, self.current_col),
-                        ).with_help(format!("change the pattern to match type {}", fmt_type(subject)))
+                        )
+                        .with_help(format!(
+                            "change the pattern to match type {}",
+                            fmt_type(subject)
+                        )),
                     );
                 }
             }
@@ -68,13 +77,18 @@ impl<'a> Checker<'a> {
                     if let Some(inner) = inner_opt {
                         if name == "Some" {
                             if pats.len() != 1 {
-                                self.emit_code(crate::diagnostic::codes::E0228,
-                                    format!("'Some' expects 1 argument, got {}", pats.len()));
+                                self.emit_code(
+                                    crate::diagnostic::codes::E0228,
+                                    format!("'Some' expects 1 argument, got {}", pats.len()),
+                                );
                             } else {
                                 self.check_pattern(&pats[0], inner, scopes);
                             }
                         } else if !pats.is_empty() {
-                            self.emit_code(crate::diagnostic::codes::E0227, "'None' expects no arguments".to_string());
+                            self.emit_code(
+                                crate::diagnostic::codes::E0227,
+                                "'None' expects no arguments".to_string(),
+                            );
                         }
                         return;
                     }
@@ -82,91 +96,113 @@ impl<'a> Checker<'a> {
                 if name == "Ok" || name == "Err" {
                     let ok_err: Option<(&Type, &Type)> = match subject {
                         Type::Result(ok, err) => Some((ok.as_ref(), err.as_ref())),
-                        Type::Name(n, args) if n == "Result" && args.len() == 2 => Some((&args[0], &args[1])),
+                        Type::Name(n, args) if n == "Result" && args.len() == 2 => {
+                            Some((&args[0], &args[1]))
+                        }
                         _ => None,
                     };
                     if let Some((ok_ty, err_ty)) = ok_err {
                         let expected_ty = if name == "Ok" { ok_ty } else { err_ty };
                         if pats.len() != 1 {
-                            self.emit_code(crate::diagnostic::codes::E0228,
-                                format!("'{}' expects 1 argument, got {}", name, pats.len()));
+                            self.emit_code(
+                                crate::diagnostic::codes::E0228,
+                                format!("'{}' expects 1 argument, got {}", name, pats.len()),
+                            );
                         } else {
                             self.check_pattern(&pats[0], expected_ty, scopes);
                         }
                         return;
                     }
                 }
-                let def = self.types.values().find(|t| {
-                    match &t.kind {
-                        TypeDefKind::Enum(variants) => variants.iter().any(|v| v.name == *name),
-                        TypeDefKind::Newtype(_) => t.name == *name,
-                        _ => false,
-                    }
+                let def = self.types.values().find(|t| match &t.kind {
+                    TypeDefKind::Enum(variants) => variants.iter().any(|v| v.name == *name),
+                    TypeDefKind::Newtype(_) => t.name == *name,
+                    _ => false,
                 });
                 match def {
-                    Some(tdef) => {
-                        match &tdef.kind {
-                            TypeDefKind::Enum(variants) => {
-                                if let Some(variant) = variants.iter().find(|v| v.name == *name) {
-                                    match &variant.payload {
-                                        None => {
-                                            if !pats.is_empty() {
-                                                self.emit_code(crate::diagnostic::codes::E0227, format!(
-                                                    "variant '{}' takes no arguments",
-                                                    name
-                                                ));
-                                            }
+                    Some(tdef) => match &tdef.kind {
+                        TypeDefKind::Enum(variants) => {
+                            if let Some(variant) = variants.iter().find(|v| v.name == *name) {
+                                match &variant.payload {
+                                    None => {
+                                        if !pats.is_empty() {
+                                            self.emit_code(
+                                                crate::diagnostic::codes::E0227,
+                                                format!("variant '{}' takes no arguments", name),
+                                            );
                                         }
-                                        Some(VariantPayload::Tuple(types)) => {
-                                            let types: Vec<Type> = types.clone();
-                                            if pats.len() != types.len() {
-                                                self.emit_code(crate::diagnostic::codes::E0228, format!(
+                                    }
+                                    Some(VariantPayload::Tuple(types)) => {
+                                        let types: Vec<Type> = types.clone();
+                                        if pats.len() != types.len() {
+                                            self.emit_code(
+                                                crate::diagnostic::codes::E0228,
+                                                format!(
                                                     "variant '{}' expects {} arguments, got {}",
                                                     name,
                                                     types.len(),
                                                     pats.len()
-                                                ));
-                                            } else {
-                                                for (p, t) in pats.iter().zip(types.iter()) {
-                                                    self.check_pattern(p, &self.resolve_type(t), scopes);
-                                                }
+                                                ),
+                                            );
+                                        } else {
+                                            for (p, t) in pats.iter().zip(types.iter()) {
+                                                self.check_pattern(
+                                                    p,
+                                                    &self.resolve_type(t),
+                                                    scopes,
+                                                );
                                             }
                                         }
-                                        Some(VariantPayload::Record(fields)) => {
-                                            if pats.len() != fields.len() {
-                                                self.emit_code(crate::diagnostic::codes::E0228, format!(
+                                    }
+                                    Some(VariantPayload::Record(fields)) => {
+                                        if pats.len() != fields.len() {
+                                            self.emit_code(
+                                                crate::diagnostic::codes::E0228,
+                                                format!(
                                                     "variant '{}' record expects {} fields, got {}",
                                                     name,
                                                     fields.len(),
                                                     pats.len()
-                                                ));
-                                            } else {
-                                                let resolved: Vec<Type> = fields.iter().map(|f| self.resolve_type(&f.ty)).collect();
-                                                for (p, t) in pats.iter().zip(resolved.iter()) {
-                                                    self.check_pattern(p, t, scopes);
-                                                }
+                                                ),
+                                            );
+                                        } else {
+                                            let resolved: Vec<Type> = fields
+                                                .iter()
+                                                .map(|f| self.resolve_type(&f.ty))
+                                                .collect();
+                                            for (p, t) in pats.iter().zip(resolved.iter()) {
+                                                self.check_pattern(p, t, scopes);
                                             }
                                         }
                                     }
-                                } else {
-                                    self.emit_code(crate::diagnostic::codes::E0226, format!("variant '{}' not found in type '{}'", name, tdef.name));
                                 }
-                            }
-                            TypeDefKind::Newtype(inner) => {
-                                if pats.len() != 1 {
-                                    self.emit_code(crate::diagnostic::codes::E0228, format!(
-                                        "newtype '{}' pattern expects exactly one argument",
-                                        name
-                                    ));
-                                } else {
-                                    self.check_pattern(&pats[0], &self.resolve_type(inner), scopes);
-                                }
-                            }
-                            _ => {
-                                self.emit_code(crate::diagnostic::codes::E0226, format!("'{}' is not an enum variant", name));
+                            } else {
+                                self.emit_code(
+                                    crate::diagnostic::codes::E0226,
+                                    format!("variant '{}' not found in type '{}'", name, tdef.name),
+                                );
                             }
                         }
-                    }
+                        TypeDefKind::Newtype(inner) => {
+                            if pats.len() != 1 {
+                                self.emit_code(
+                                    crate::diagnostic::codes::E0228,
+                                    format!(
+                                        "newtype '{}' pattern expects exactly one argument",
+                                        name
+                                    ),
+                                );
+                            } else {
+                                self.check_pattern(&pats[0], &self.resolve_type(inner), scopes);
+                            }
+                        }
+                        _ => {
+                            self.emit_code(
+                                crate::diagnostic::codes::E0226,
+                                format!("'{}' is not an enum variant", name),
+                            );
+                        }
+                    },
                     None => {
                         let mut constructors: Vec<String> = Vec::new();
                         for tdef in self.types.values() {
@@ -190,38 +226,45 @@ impl<'a> Checker<'a> {
                     }
                 }
             }
-            Pattern::Tuple(pats) => {
-                match subject {
-                    Type::Tuple(types) => {
-                        if pats.len() != types.len() {
-                            self.emit_code(crate::diagnostic::codes::E0251, format!(
+            Pattern::Tuple(pats) => match subject {
+                Type::Tuple(types) => {
+                    if pats.len() != types.len() {
+                        self.emit_code(
+                            crate::diagnostic::codes::E0251,
+                            format!(
                                 "tuple pattern expects {} elements, found {}",
                                 types.len(),
                                 pats.len()
-                            ));
-                        } else {
-                            for (p, t) in pats.iter().zip(types.iter()) {
-                                self.check_pattern(p, t, scopes);
-                            }
+                            ),
+                        );
+                    } else {
+                        for (p, t) in pats.iter().zip(types.iter()) {
+                            self.check_pattern(p, t, scopes);
                         }
                     }
-                    _ => {
-                        self.emit_code(crate::diagnostic::codes::E0251, format!(
+                }
+                _ => {
+                    self.emit_code(
+                        crate::diagnostic::codes::E0251,
+                        format!(
                             "cannot match tuple pattern against non-tuple type {}",
                             fmt_type(subject)
-                        ));
-                    }
+                        ),
+                    );
                 }
-            }
+            },
             Pattern::Array(pats) => {
                 match subject {
                     Type::Array(inner, size) => {
                         if pats.len() != *size {
-                            self.emit_code(crate::diagnostic::codes::E0251, format!(
-                                "array pattern expects {} elements, found {}",
-                                size,
-                                pats.len()
-                            ));
+                            self.emit_code(
+                                crate::diagnostic::codes::E0251,
+                                format!(
+                                    "array pattern expects {} elements, found {}",
+                                    size,
+                                    pats.len()
+                                ),
+                            );
                         } else {
                             for p in pats {
                                 self.check_pattern(p, inner, scopes);
@@ -233,10 +276,13 @@ impl<'a> Checker<'a> {
                         // For now, just check against the inner type if available
                     }
                     _ => {
-                        self.emit_code(crate::diagnostic::codes::E0251, format!(
-                            "cannot match array pattern against non-array type {}",
-                            fmt_type(subject)
-                        ));
+                        self.emit_code(
+                            crate::diagnostic::codes::E0251,
+                            format!(
+                                "cannot match array pattern against non-array type {}",
+                                fmt_type(subject)
+                            ),
+                        );
                     }
                 }
             }
@@ -255,10 +301,13 @@ impl<'a> Checker<'a> {
                         }
                     }
                     _ => {
-                        self.emit_code(crate::diagnostic::codes::E0251, format!(
-                            "cannot match slice pattern against non-slice type {}",
-                            fmt_type(subject)
-                        ));
+                        self.emit_code(
+                            crate::diagnostic::codes::E0251,
+                            format!(
+                                "cannot match slice pattern against non-slice type {}",
+                                fmt_type(subject)
+                            ),
+                        );
                     }
                 }
             }

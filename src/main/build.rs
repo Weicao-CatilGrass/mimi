@@ -1,10 +1,10 @@
 use std::fs;
 use std::path::Path;
 
+use crate::resolve_path;
 use mimi::codegen;
 use mimi::diagnostic::format::{colors_enabled, format_diagnostic, strip_ansi};
 use mimi::{lexer, loader, parser, verifier};
-use crate::resolve_path;
 
 /// Extract the OS component from a target triple (e.g. "x86_64-pc-windows-gnu" -> "windows")
 fn target_os(triple: &str) -> &str {
@@ -63,7 +63,17 @@ fn target_linker_flags(target: Option<&str>) -> Vec<&'static str> {
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn build(path: Option<&Path>, output: Option<&Path>, emit_ir: bool, strict: bool, no_std: bool, verify_contracts: bool, verify_ffi: bool, shared: bool, target: Option<&str>) -> Result<(), String> {
+pub(crate) fn build(
+    path: Option<&Path>,
+    output: Option<&Path>,
+    emit_ir: bool,
+    strict: bool,
+    no_std: bool,
+    verify_contracts: bool,
+    verify_ffi: bool,
+    shared: bool,
+    target: Option<&str>,
+) -> Result<(), String> {
     let path = resolve_path(path)?;
     let source = fs::read_to_string(&path)
         .map_err(|e| format!("failed to read {}: {}", path.display(), e))?;
@@ -72,7 +82,10 @@ pub(crate) fn build(path: Option<&Path>, output: Option<&Path>, emit_ir: bool, s
 
     // Load all imports and merge into single file
     let mut merged_file = if !file.imports.is_empty() {
-        let base_dir = path.parent().unwrap_or_else(|| std::path::Path::new(".")).to_path_buf();
+        let base_dir = path
+            .parent()
+            .unwrap_or_else(|| std::path::Path::new("."))
+            .to_path_buf();
         let mut loader = loader::ModuleLoader::new(base_dir);
         loader.load_main(&path)?;
         loader.merge_all()?
@@ -83,9 +96,17 @@ pub(crate) fn build(path: Option<&Path>, output: Option<&Path>, emit_ir: bool, s
     // Map inline rule statements to structured contracts
     mimi::contracts::map_rule_contracts(&mut merged_file);
 
-    let check_result = if strict { mimi::core::check_strict(&merged_file) } else { mimi::core::check(&merged_file) };
+    let check_result = if strict {
+        mimi::core::check_strict(&merged_file)
+    } else {
+        mimi::core::check(&merged_file)
+    };
     if let Err(diagnostics) = check_result {
-        eprintln!("{} has {} type error(s):", path.display(), diagnostics.len());
+        eprintln!(
+            "{} has {} type error(s):",
+            path.display(),
+            diagnostics.len()
+        );
         let use_color = colors_enabled();
         let src = fs::read_to_string(&path).ok();
         let src_ref = src.as_deref();
@@ -109,7 +130,8 @@ pub(crate) fn build(path: Option<&Path>, output: Option<&Path>, emit_ir: bool, s
                         verifier::VerifStatus::Failed => {
                             eprintln!("⚠  FFI violation: {} — {}", res.func_name, res.message);
                             if let Some(diag) = &res.diagnostic {
-                                let formatted = format_diagnostic(diag, None, &path.display().to_string());
+                                let formatted =
+                                    format_diagnostic(diag, None, &path.display().to_string());
                                 eprint!("{}", formatted);
                             }
                         }
@@ -119,7 +141,10 @@ pub(crate) fn build(path: Option<&Path>, output: Option<&Path>, emit_ir: bool, s
                         verifier::VerifStatus::Verified => {}
                     }
                 }
-                if ffi_results.iter().any(|r| r.status == verifier::VerifStatus::Failed) {
+                if ffi_results
+                    .iter()
+                    .any(|r| r.status == verifier::VerifStatus::Failed)
+                {
                     return Err("FFI contract verification failed".into());
                 }
             }
@@ -138,7 +163,9 @@ pub(crate) fn build(path: Option<&Path>, output: Option<&Path>, emit_ir: bool, s
     codegen.shared = shared;
     codegen.target_triple = target.map(|s| s.to_string());
 
-    codegen.compile_file(&merged_file).map_err(|e| e.to_diagnostic().to_string())?;
+    codegen
+        .compile_file(&merged_file)
+        .map_err(|e| e.to_diagnostic().to_string())?;
 
     if emit_ir {
         println!("{}", codegen.emit_ir());
@@ -157,7 +184,9 @@ pub(crate) fn build(path: Option<&Path>, output: Option<&Path>, emit_ir: bool, s
     });
     let output_path = output.unwrap_or(&output_path_buf);
 
-    codegen.compile_to_object(&output_path.with_extension("o")).map_err(|e| e.to_diagnostic().to_string())?;
+    codegen
+        .compile_to_object(&output_path.with_extension("o"))
+        .map_err(|e| e.to_diagnostic().to_string())?;
 
     // Determine the C compiler/linker to use (cross-compiler or native)
     let cc_cmd = target_linker(target).unwrap_or_else(|| "cc".to_string());
@@ -166,7 +195,10 @@ pub(crate) fn build(path: Option<&Path>, output: Option<&Path>, emit_ir: bool, s
     let obj_path = output_path.with_extension("o");
     let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let runtime_rs = manifest_dir.join("src/runtime/standalone.rs");
-    let runtime_lib = output_path.parent().unwrap_or(std::path::Path::new(".")).join("libmimi_runtime.a");
+    let runtime_lib = output_path
+        .parent()
+        .unwrap_or(std::path::Path::new("."))
+        .join("libmimi_runtime.a");
 
     // Compile the standalone runtime with rustc
     let mut rt_cmd = std::process::Command::new("rustc");
@@ -212,9 +244,17 @@ pub(crate) fn build(path: Option<&Path>, output: Option<&Path>, emit_ir: bool, s
     }
     let status = cmd
         .arg(obj_path.to_str().ok_or("object path is not valid UTF-8")?)
-        .arg(runtime_lib.to_str().ok_or("runtime library path is not valid UTF-8")?)
+        .arg(
+            runtime_lib
+                .to_str()
+                .ok_or("runtime library path is not valid UTF-8")?,
+        )
         .arg("-o")
-        .arg(output_path.to_str().ok_or("output path is not valid UTF-8")?)
+        .arg(
+            output_path
+                .to_str()
+                .ok_or("output path is not valid UTF-8")?,
+        )
         .status()
         .map_err(|e| format!("failed to run linker: {}", e))?;
 
@@ -223,8 +263,17 @@ pub(crate) fn build(path: Option<&Path>, output: Option<&Path>, emit_ir: bool, s
     let _ = std::fs::remove_file(&runtime_lib);
 
     if status.success() {
-        let kind = if shared { "shared library" } else { "executable" };
-        println!("✓ Compiled {} → {} ({})", path.display(), output_path.display(), kind);
+        let kind = if shared {
+            "shared library"
+        } else {
+            "executable"
+        };
+        println!(
+            "✓ Compiled {} → {} ({})",
+            path.display(),
+            output_path.display(),
+            kind
+        );
     } else {
         return Err(format!("linker failed with exit code {:?}", status.code()));
     }

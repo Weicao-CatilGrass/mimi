@@ -7,7 +7,10 @@ pub(crate) fn promote(path: &Path, output: Option<&Path>) -> Result<(), String> 
 
     // Check for ... placeholders
     if source.contains("...") {
-        return Err(format!("file contains '...' placeholders, cannot promote: {}", path.display()));
+        return Err(format!(
+            "file contains '...' placeholders, cannot promote: {}",
+            path.display()
+        ));
     }
 
     // Determine output path

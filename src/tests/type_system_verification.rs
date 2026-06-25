@@ -3,13 +3,17 @@
 
 #[cfg(test)]
 mod type_system_verification {
-    use crate::ast::{Type, ExternFunc, ExternParam};
-    use crate::ffi::contract::{FfiContract, FfiArgContract};
+    use crate::ast::{ExternFunc, ExternParam, Type};
     use crate::core::check;
+    use crate::ffi::contract::{FfiArgContract, FfiContract};
 
     fn parse_and_check(src: &str) -> Result<(), String> {
-        let tokens = crate::lexer::Lexer::new(src).tokenize().map_err(|e| e.to_string())?;
-        let file = crate::parser::Parser::new(tokens).parse_file().map_err(|e| e.message)?;
+        let tokens = crate::lexer::Lexer::new(src)
+            .tokenize()
+            .map_err(|e| e.to_string())?;
+        let file = crate::parser::Parser::new(tokens)
+            .parse_file()
+            .map_err(|e| e.message)?;
         check(&file).map_err(|diags| {
             let msgs: Vec<String> = diags.iter().map(|d| d.message.clone()).collect();
             msgs.join("; ")
@@ -18,8 +22,12 @@ mod type_system_verification {
 
     #[test]
     fn test_cbuffer_type_in_extern() {
-        let src = "extern \"C\" { func allocate(size: i64) -> CBuffer<u8>; }\nfunc main() -> i32 { 0 }";
-        assert!(parse_and_check(src).is_ok(), "CBuffer should be allowed in extern");
+        let src =
+            "extern \"C\" { func allocate(size: i64) -> CBuffer<u8>; }\nfunc main() -> i32 { 0 }";
+        assert!(
+            parse_and_check(src).is_ok(),
+            "CBuffer should be allowed in extern"
+        );
     }
 
     #[test]
@@ -35,7 +43,7 @@ mod type_system_verification {
             requires: None,
             ensures: None,
             variadic: false,
-                no_panic: false,
+            no_panic: false,
         };
         let contract = FfiContract::from_extern(&func);
         assert!(matches!(contract.args[0], FfiArgContract::RawPtr(_)));
@@ -49,7 +57,11 @@ mod type_system_verification {
             }
         "#;
         let result = parse_and_check(src);
-        assert!(result.is_ok(), "extern C fn type in extern block: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "extern C fn type in extern block: {:?}",
+            result.err()
+        );
     }
 
     #[test]
@@ -67,7 +79,7 @@ mod type_system_verification {
             requires: Some(crate::ast::Expr::Literal(crate::ast::Lit::Bool(true))),
             ensures: Some(crate::ast::Expr::Literal(crate::ast::Lit::Bool(true))),
             variadic: false,
-                no_panic: false,
+            no_panic: false,
         };
         let contract = FfiContract::from_extern(&func);
         assert!(contract.requires.is_some());
@@ -89,13 +101,21 @@ mod type_system_verification {
     #[test]
     fn test_cbuffer_rejected_outside_extern() {
         let src = "func bad(buf: CBuffer<u8>) -> i32 { 0 }\nfunc main() -> i32 { 0 }";
-        assert!(parse_and_check(src).is_err(), "CBuffer should be rejected outside extern");
+        assert!(
+            parse_and_check(src).is_err(),
+            "CBuffer should be rejected outside extern"
+        );
     }
 
     #[test]
     fn test_extern_fn_type_outside_extern() {
-        let src = "func bar(cb: extern \"C\" fn(i32) -> i32) -> i32 { 0 }\nfunc main() -> i32 { 0 }";
+        let src =
+            "func bar(cb: extern \"C\" fn(i32) -> i32) -> i32 { 0 }\nfunc main() -> i32 { 0 }";
         let result = parse_and_check(src);
-        assert!(result.is_ok(), "extern C fn type should be valid anywhere: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "extern C fn type should be valid anywhere: {:?}",
+            result.err()
+        );
     }
 }

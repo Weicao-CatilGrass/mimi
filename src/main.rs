@@ -6,28 +6,50 @@ use mimi::ast::{File, Item, Stmt};
 use mimi::contracts::Contract;
 use mimi::diagnostic::format::format_simple_error;
 
-#[path = "main/check.rs"]  mod check;
-#[path = "main/run.rs"]    mod run;
-#[path = "main/build.rs"]  mod build;
-#[path = "main/test.rs"]   mod test;
-#[path = "main/fmt_cmd.rs"] mod fmt_cmd;
-#[path = "main/lint_cmd.rs"] mod lint_cmd;
-#[path = "main/verify.rs"] mod verify;
-#[path = "main/lsp_cmd.rs"] mod lsp_cmd;
-#[path = "main/init.rs"]   mod init;
-#[path = "main/add.rs"]    mod add;
-#[path = "main/remove.rs"] mod remove;
-#[path = "main/list.rs"]   mod list;
-#[path = "main/tree.rs"]   mod tree;
-#[path = "main/emit.rs"]   mod emit;
-#[path = "main/promote.rs"] mod promote;
-#[path = "main/doc.rs"]    mod doc;
-#[path = "main/mms.rs"]    mod mms;
-#[path = "main/stats.rs"]  mod stats;
-#[path = "main/install.rs"] mod install;
-#[path = "main/publish.rs"] mod publish;
-#[path = "main/search.rs"] mod search;
-#[path = "main/update.rs"] mod update;
+#[path = "main/add.rs"]
+mod add;
+#[path = "main/build.rs"]
+mod build;
+#[path = "main/check.rs"]
+mod check;
+#[path = "main/doc.rs"]
+mod doc;
+#[path = "main/emit.rs"]
+mod emit;
+#[path = "main/fmt_cmd.rs"]
+mod fmt_cmd;
+#[path = "main/init.rs"]
+mod init;
+#[path = "main/install.rs"]
+mod install;
+#[path = "main/lint_cmd.rs"]
+mod lint_cmd;
+#[path = "main/list.rs"]
+mod list;
+#[path = "main/lsp_cmd.rs"]
+mod lsp_cmd;
+#[path = "main/mms.rs"]
+mod mms;
+#[path = "main/promote.rs"]
+mod promote;
+#[path = "main/publish.rs"]
+mod publish;
+#[path = "main/remove.rs"]
+mod remove;
+#[path = "main/run.rs"]
+mod run;
+#[path = "main/search.rs"]
+mod search;
+#[path = "main/stats.rs"]
+mod stats;
+#[path = "main/test.rs"]
+mod test;
+#[path = "main/tree.rs"]
+mod tree;
+#[path = "main/update.rs"]
+mod update;
+#[path = "main/verify.rs"]
+mod verify;
 
 #[derive(Parser, Debug)]
 #[command(name = "mimi", version = "0.23.0-dev", about = "Mimi language driver")]
@@ -229,9 +251,7 @@ enum Command {
         latex: bool,
     },
     /// Display Mimi usage statistics
-    Stats {
-        path: Option<PathBuf>,
-    },
+    Stats { path: Option<PathBuf> },
     /// Install dependencies from mimi.toml
     Install {
         /// Install all dependencies (default)
@@ -259,27 +279,111 @@ enum Command {
 fn main() {
     let args = Args::parse();
     let result = match args.cmd {
-        Command::Check { path, extract_contracts, strict, verify_rules } => check::check(path.as_deref(), extract_contracts, strict, verify_rules),
-        Command::Run { path, verify_contracts, verify_ffi, skip_verify_ffi, allocator, strict, watch } => {
+        Command::Check {
+            path,
+            extract_contracts,
+            strict,
+            verify_rules,
+        } => check::check(path.as_deref(), extract_contracts, strict, verify_rules),
+        Command::Run {
+            path,
+            verify_contracts,
+            verify_ffi,
+            skip_verify_ffi,
+            allocator,
+            strict,
+            watch,
+        } => {
             let ffi_check = verify_ffi && !skip_verify_ffi;
-            run::run(path.as_deref(), verify_contracts, ffi_check, &allocator, strict, watch)
+            run::run(
+                path.as_deref(),
+                verify_contracts,
+                ffi_check,
+                &allocator,
+                strict,
+                watch,
+            )
         }
-        Command::Test { path, allocator, filter, verbose, strict } => test::test(path.as_deref(), &allocator, filter.as_deref(), verbose, strict),
+        Command::Test {
+            path,
+            allocator,
+            filter,
+            verbose,
+            strict,
+        } => test::test(
+            path.as_deref(),
+            &allocator,
+            filter.as_deref(),
+            verbose,
+            strict,
+        ),
         Command::Init { name } => init::init(name.as_deref()),
-        Command::Add { name, version, path, git, tag } => add::add(&name, version.as_deref(), path.as_deref(), git.as_deref(), tag.as_deref()),
+        Command::Add {
+            name,
+            version,
+            path,
+            git,
+            tag,
+        } => add::add(
+            &name,
+            version.as_deref(),
+            path.as_deref(),
+            git.as_deref(),
+            tag.as_deref(),
+        ),
         Command::Remove { name } => remove::remove(&name),
         Command::List => list::list(),
         Command::Tree => tree::tree(),
         Command::Lsp => lsp_cmd::lsp(),
         Command::Fmt { files, check } => fmt_cmd::fmt_files(&files, check),
         Command::Lint { files } => lint_cmd::lint_files(&files),
-        Command::Verify { path, stats, dump_z3 } => verify::verify(path.as_deref(), stats, dump_z3),
-        Command::Build { path, output, emit_ir, strict, no_std, verify_contracts, verify_ffi, shared, target } => build::build(path.as_deref(), output.as_deref(), emit_ir, strict, no_std, verify_contracts, verify_ffi, shared, target.as_deref()),
-        Command::EmitCHeaders { path, output } => emit::emit_c_headers(path.as_deref(), output.as_deref()),
-        Command::EmitPyBindings { path, output, mimi_lib } => emit::emit_py_bindings(path.as_deref(), output.as_deref(), mimi_lib.as_deref()),
+        Command::Verify {
+            path,
+            stats,
+            dump_z3,
+        } => verify::verify(path.as_deref(), stats, dump_z3),
+        Command::Build {
+            path,
+            output,
+            emit_ir,
+            strict,
+            no_std,
+            verify_contracts,
+            verify_ffi,
+            shared,
+            target,
+        } => build::build(
+            path.as_deref(),
+            output.as_deref(),
+            emit_ir,
+            strict,
+            no_std,
+            verify_contracts,
+            verify_ffi,
+            shared,
+            target.as_deref(),
+        ),
+        Command::EmitCHeaders { path, output } => {
+            emit::emit_c_headers(path.as_deref(), output.as_deref())
+        }
+        Command::EmitPyBindings {
+            path,
+            output,
+            mimi_lib,
+        } => emit::emit_py_bindings(path.as_deref(), output.as_deref(), mimi_lib.as_deref()),
         Command::Promote { path, output } => promote::promote(&path, output.as_deref()),
-        Command::Doc { path, format, output } => doc::doc(&path, &format, output.as_deref()),
-        Command::Mms { files, ast, json, render, latex } => mms::mms(&files, ast, json, render, latex),
+        Command::Doc {
+            path,
+            format,
+            output,
+        } => doc::doc(&path, &format, output.as_deref()),
+        Command::Mms {
+            files,
+            ast,
+            json,
+            render,
+            latex,
+        } => mms::mms(&files, ast, json, render, latex),
         Command::Stats { path } => stats::stats(path.as_deref()),
         Command::Install { all } => install::install(all),
         Command::Update => update::update(),
@@ -326,7 +430,12 @@ pub(crate) fn extract_item_contracts(items: &[Item], out: &mut HashMap<String, C
             Item::Func(func) => {
                 let mut contract = Contract::default();
                 for stmt in &func.body {
-                    if let Stmt::MmsBlock { content: text, span, .. } = stmt {
+                    if let Stmt::MmsBlock {
+                        content: text,
+                        span,
+                        ..
+                    } = stmt
+                    {
                         let c = mimi::contracts::extract_contracts_with_span(text, *span);
                         contract.requires.extend(c.requires);
                         contract.ensures.extend(c.ensures);
@@ -334,7 +443,10 @@ pub(crate) fn extract_item_contracts(items: &[Item], out: &mut HashMap<String, C
                         contract.span = *span;
                     }
                 }
-                if !contract.requires.is_empty() || !contract.ensures.is_empty() || !contract.math.is_empty() {
+                if !contract.requires.is_empty()
+                    || !contract.ensures.is_empty()
+                    || !contract.math.is_empty()
+                {
                     out.insert(func.name.clone(), contract);
                 }
             }
@@ -345,5 +457,3 @@ pub(crate) fn extract_item_contracts(items: &[Item], out: &mut HashMap<String, C
         }
     }
 }
-
-

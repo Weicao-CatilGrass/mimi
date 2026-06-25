@@ -8,29 +8,63 @@ impl<'ctx> CodeGenerator<'ctx> {
     fn extract_closure_ptrs(
         &self,
         closure_val: BasicValueEnum<'ctx>,
-    ) -> Result<(inkwell::values::PointerValue<'ctx>, inkwell::values::PointerValue<'ctx>), CompileError> {
+    ) -> Result<
+        (
+            inkwell::values::PointerValue<'ctx>,
+            inkwell::values::PointerValue<'ctx>,
+        ),
+        CompileError,
+    > {
         match closure_val {
             BasicValueEnum::StructValue(sv) => {
-                let fn_ptr = self.builder.build_extract_value(sv, 0, "fn_ptr")
-                    .map_err(|e| CompileError::LlvmError(format!("extract fn_ptr: {}", e)))?.into_pointer_value();
-                let env_ptr = self.builder.build_extract_value(sv, 1, "env_ptr")
-                    .map_err(|e| CompileError::LlvmError(format!("extract env_ptr: {}", e)))?.into_pointer_value();
+                let fn_ptr = self
+                    .builder
+                    .build_extract_value(sv, 0, "fn_ptr")
+                    .map_err(|e| CompileError::LlvmError(format!("extract fn_ptr: {}", e)))?
+                    .into_pointer_value();
+                let env_ptr = self
+                    .builder
+                    .build_extract_value(sv, 1, "env_ptr")
+                    .map_err(|e| CompileError::LlvmError(format!("extract env_ptr: {}", e)))?
+                    .into_pointer_value();
                 Ok((fn_ptr, env_ptr))
             }
             BasicValueEnum::PointerValue(pv) => {
-                let closure_struct_ty = self.context.struct_type(&[
-                    BasicTypeEnum::PointerType(self.context.ptr_type(inkwell::AddressSpace::default())),
-                    BasicTypeEnum::PointerType(self.context.ptr_type(inkwell::AddressSpace::default())),
-                ], false);
-                let loaded = self.builder.build_load(BasicTypeEnum::StructType(closure_struct_ty), pv, "closure_loaded")
-                    .map_err(|e| CompileError::LlvmError(format!("load closure: {}", e)))?.into_struct_value();
-                let fn_ptr = self.builder.build_extract_value(loaded, 0, "fn_ptr")
-                    .map_err(|e| CompileError::LlvmError(format!("extract fn_ptr: {}", e)))?.into_pointer_value();
-                let env_ptr = self.builder.build_extract_value(loaded, 1, "env_ptr")
-                    .map_err(|e| CompileError::LlvmError(format!("extract env_ptr: {}", e)))?.into_pointer_value();
+                let closure_struct_ty = self.context.struct_type(
+                    &[
+                        BasicTypeEnum::PointerType(
+                            self.context.ptr_type(inkwell::AddressSpace::default()),
+                        ),
+                        BasicTypeEnum::PointerType(
+                            self.context.ptr_type(inkwell::AddressSpace::default()),
+                        ),
+                    ],
+                    false,
+                );
+                let loaded = self
+                    .builder
+                    .build_load(
+                        BasicTypeEnum::StructType(closure_struct_ty),
+                        pv,
+                        "closure_loaded",
+                    )
+                    .map_err(|e| CompileError::LlvmError(format!("load closure: {}", e)))?
+                    .into_struct_value();
+                let fn_ptr = self
+                    .builder
+                    .build_extract_value(loaded, 0, "fn_ptr")
+                    .map_err(|e| CompileError::LlvmError(format!("extract fn_ptr: {}", e)))?
+                    .into_pointer_value();
+                let env_ptr = self
+                    .builder
+                    .build_extract_value(loaded, 1, "env_ptr")
+                    .map_err(|e| CompileError::LlvmError(format!("extract env_ptr: {}", e)))?
+                    .into_pointer_value();
                 Ok((fn_ptr, env_ptr))
             }
-            _ => Err(CompileError::Generic("expected a closure struct or pointer".into())),
+            _ => Err(CompileError::Generic(
+                "expected a closure struct or pointer".into(),
+            )),
         }
     }
 
@@ -50,7 +84,9 @@ impl<'ctx> CodeGenerator<'ctx> {
             all_meta.push(match arg {
                 BasicValueEnum::IntValue(iv) => BasicMetadataTypeEnum::IntType(iv.get_type()),
                 BasicValueEnum::FloatValue(fv) => BasicMetadataTypeEnum::FloatType(fv.get_type()),
-                BasicValueEnum::PointerValue(pv) => BasicMetadataTypeEnum::PointerType(pv.get_type()),
+                BasicValueEnum::PointerValue(pv) => {
+                    BasicMetadataTypeEnum::PointerType(pv.get_type())
+                }
                 BasicValueEnum::StructValue(sv) => BasicMetadataTypeEnum::StructType(sv.get_type()),
                 BasicValueEnum::ArrayValue(av) => BasicMetadataTypeEnum::ArrayType(av.get_type()),
                 BasicValueEnum::VectorValue(vv) => BasicMetadataTypeEnum::VectorType(vv.get_type()),
@@ -58,9 +94,14 @@ impl<'ctx> CodeGenerator<'ctx> {
             });
         }
         let indirect_fn_type = i64_ty.fn_type(&all_meta, false);
-        let fn_ptr_typed = self.builder.build_pointer_cast(
-            fn_ptr, self.context.ptr_type(inkwell::AddressSpace::default()), "fn_typed"
-        ).map_err(|e| CompileError::LlvmError(format!("pointer cast: {}", e)))?;
+        let fn_ptr_typed = self
+            .builder
+            .build_pointer_cast(
+                fn_ptr,
+                self.context.ptr_type(inkwell::AddressSpace::default()),
+                "fn_typed",
+            )
+            .map_err(|e| CompileError::LlvmError(format!("pointer cast: {}", e)))?;
         let mut call_args = vec![BasicMetadataValueEnum::PointerValue(env_ptr)];
         for arg in args {
             call_args.push(match arg {
@@ -70,15 +111,17 @@ impl<'ctx> CodeGenerator<'ctx> {
                 BasicValueEnum::StructValue(sv) => BasicMetadataValueEnum::StructValue(*sv),
                 BasicValueEnum::ArrayValue(av) => BasicMetadataValueEnum::ArrayValue(*av),
                 BasicValueEnum::VectorValue(vv) => BasicMetadataValueEnum::VectorValue(*vv),
-                BasicValueEnum::ScalableVectorValue(_) => BasicMetadataValueEnum::IntValue(i64_ty.const_int(0, false)),
+                BasicValueEnum::ScalableVectorValue(_) => {
+                    BasicMetadataValueEnum::IntValue(i64_ty.const_int(0, false))
+                }
             });
         }
-        let call = self.builder.build_indirect_call(
-            indirect_fn_type, fn_ptr_typed, &call_args, "closure_call",
-        ).map_err(|e| CompileError::LlvmError(format!("indirect call: {}", e)))?;
-        Ok(call_try_basic_value(&call).unwrap_or(
-            BasicValueEnum::IntValue(i64_ty.const_int(0, false))
-        ))
+        let call = self
+            .builder
+            .build_indirect_call(indirect_fn_type, fn_ptr_typed, &call_args, "closure_call")
+            .map_err(|e| CompileError::LlvmError(format!("indirect call: {}", e)))?;
+        Ok(call_try_basic_value(&call)
+            .unwrap_or(BasicValueEnum::IntValue(i64_ty.const_int(0, false))))
     }
 
     /// Call a closure value with the given arguments.

@@ -8,17 +8,24 @@ impl<'a> Checker<'a> {
     pub(crate) fn type_uses_type_param(&self, ty: &Type, type_param: &str) -> bool {
         match ty {
             Type::Name(name, _) => name == type_param,
-            Type::Ref(_, inner) | Type::RefMut(_, inner) | Type::Option(inner) | Type::Shared(inner) | Type::LocalShared(inner) | Type::Weak(inner) | Type::WeakLocal(inner) => {
-                self.type_uses_type_param(inner, type_param)
-            }
+            Type::Ref(_, inner)
+            | Type::RefMut(_, inner)
+            | Type::Option(inner)
+            | Type::Shared(inner)
+            | Type::LocalShared(inner)
+            | Type::Weak(inner)
+            | Type::WeakLocal(inner) => self.type_uses_type_param(inner, type_param),
             Type::Result(ok, err) => {
-                self.type_uses_type_param(ok, type_param) || self.type_uses_type_param(err, type_param)
+                self.type_uses_type_param(ok, type_param)
+                    || self.type_uses_type_param(err, type_param)
             }
-            Type::Tuple(elems) => {
-                elems.iter().any(|e| self.type_uses_type_param(e, type_param))
-            }
+            Type::Tuple(elems) => elems
+                .iter()
+                .any(|e| self.type_uses_type_param(e, type_param)),
             Type::Func(args, ret) => {
-                args.iter().any(|a| self.type_uses_type_param(a, type_param)) || self.type_uses_type_param(ret, type_param)
+                args.iter()
+                    .any(|a| self.type_uses_type_param(a, type_param))
+                    || self.type_uses_type_param(ret, type_param)
             }
             Type::Newtype(_, inner) => self.type_uses_type_param(inner, type_param),
             _ => false,
@@ -34,12 +41,24 @@ impl<'a> Checker<'a> {
             Type::Option(inner) => Self::occurs_check(name, inner),
             Type::Result(ok, err) => Self::occurs_check(name, ok) || Self::occurs_check(name, err),
             Type::Tuple(elems) => elems.iter().any(|e| Self::occurs_check(name, e)),
-            Type::Func(args, ret) => args.iter().any(|a| Self::occurs_check(name, a)) || Self::occurs_check(name, ret),
-            Type::Shared(inner) | Type::LocalShared(inner) | Type::Weak(inner) | Type::WeakLocal(inner) => Self::occurs_check(name, inner),
+            Type::Func(args, ret) => {
+                args.iter().any(|a| Self::occurs_check(name, a)) || Self::occurs_check(name, ret)
+            }
+            Type::Shared(inner)
+            | Type::LocalShared(inner)
+            | Type::Weak(inner)
+            | Type::WeakLocal(inner) => Self::occurs_check(name, inner),
             Type::Newtype(_, inner) => Self::occurs_check(name, inner),
             Type::Array(inner, _) | Type::Slice(inner) => Self::occurs_check(name, inner),
-            Type::ExternFunc(args, ret) => args.iter().any(|a| Self::occurs_check(name, a)) || Self::occurs_check(name, ret),
-            Type::CBuffer(inner) | Type::RawPtr(inner) | Type::RawPtrMut(inner) | Type::CShared(inner) | Type::CBorrow(inner) | Type::CBorrowMut(inner) => Self::occurs_check(name, inner),
+            Type::ExternFunc(args, ret) => {
+                args.iter().any(|a| Self::occurs_check(name, a)) || Self::occurs_check(name, ret)
+            }
+            Type::CBuffer(inner)
+            | Type::RawPtr(inner)
+            | Type::RawPtrMut(inner)
+            | Type::CShared(inner)
+            | Type::CBorrow(inner)
+            | Type::CBorrowMut(inner) => Self::occurs_check(name, inner),
             _ => false,
         }
     }
@@ -55,13 +74,17 @@ impl<'a> Checker<'a> {
         match param {
             Type::Name(name, _) if is_type_param(name, generics) => {
                 if !Self::occurs_check(name, actual) {
-                    type_map.entry(name.clone()).or_insert_with(|| actual.clone());
+                    type_map
+                        .entry(name.clone())
+                        .or_insert_with(|| actual.clone());
                 }
             }
             Type::Name(name, p_args) => {
                 if is_type_param(name, generics) {
                     if !Self::occurs_check(name, actual) {
-                        type_map.entry(name.clone()).or_insert_with(|| actual.clone());
+                        type_map
+                            .entry(name.clone())
+                            .or_insert_with(|| actual.clone());
                     }
                 } else if !p_args.is_empty() {
                     if let Type::Name(_, a_args) = actual {

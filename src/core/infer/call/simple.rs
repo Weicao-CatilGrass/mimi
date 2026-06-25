@@ -1,8 +1,8 @@
 use crate::ast::*;
 use crate::core::checker::Checker;
 use crate::core::helpers::{
-    fmt_type, is_bool, is_int, is_numeric, is_numeric_coercion, same_type, suggest_name,
-    subst_type_params,
+    fmt_type, is_bool, is_int, is_numeric, is_numeric_coercion, same_type, subst_type_params,
+    suggest_name,
 };
 use crate::diagnostic::Diagnostic;
 use crate::span::Span;
@@ -25,7 +25,10 @@ impl<'a> Checker<'a> {
             }
             "assert" => {
                 if args.len() != 1 && args.len() != 2 {
-                    self.emit_code(crate::diagnostic::codes::E0242, "assert expects 1 or 2 arguments (condition, optional message)");
+                    self.emit_code(
+                        crate::diagnostic::codes::E0242,
+                        "assert expects 1 or 2 arguments (condition, optional message)",
+                    );
                 } else {
                     let t = self.infer_expr(&args[0], scopes);
                     if !is_bool(&t) {
@@ -37,8 +40,13 @@ impl<'a> Checker<'a> {
                     if args.len() == 2 {
                         let msg_ty = self.infer_expr(&args[1], scopes);
                         if !crate::core::helpers::is_string(&msg_ty) {
-                            self.emit_code(crate::diagnostic::codes::E0242,
-                                format!("assert message must be a string, found {}", fmt_type(&msg_ty)));
+                            self.emit_code(
+                                crate::diagnostic::codes::E0242,
+                                format!(
+                                    "assert message must be a string, found {}",
+                                    fmt_type(&msg_ty)
+                                ),
+                            );
                         }
                     }
                 }
@@ -276,10 +284,7 @@ impl<'a> Checker<'a> {
                 if !args.is_empty() {
                     self.emit_code(crate::diagnostic::codes::E0242, "args expects 0 arguments");
                 }
-                return Type::Name(
-                    "List".into(),
-                    vec![Type::Name("string".into(), vec![])],
-                );
+                return Type::Name("List".into(), vec![Type::Name("string".into(), vec![])]);
             }
             "getenv" => {
                 if args.len() != 1 {
@@ -369,7 +374,10 @@ impl<'a> Checker<'a> {
             }
             "reduce" => {
                 if args.len() != 3 {
-                    self.emit_code(crate::diagnostic::codes::E0242, "reduce expects 3 arguments");
+                    self.emit_code(
+                        crate::diagnostic::codes::E0242,
+                        "reduce expects 3 arguments",
+                    );
                 } else {
                     self.infer_expr(&args[0], scopes);
                     self.infer_expr(&args[1], scopes);
@@ -481,7 +489,10 @@ impl<'a> Checker<'a> {
             }
             "has_key" => {
                 if args.len() != 2 {
-                    self.emit_code(crate::diagnostic::codes::E0242, "has_key expects 2 arguments");
+                    self.emit_code(
+                        crate::diagnostic::codes::E0242,
+                        "has_key expects 2 arguments",
+                    );
                 } else {
                     self.infer_expr(&args[0], scopes);
                     self.infer_expr(&args[1], scopes);
@@ -784,9 +795,7 @@ impl<'a> Checker<'a> {
                     self.infer_expr(&args[0], scopes);
                     self.infer_expr(&args[1], scopes);
                 }
-                return Type::Option(
-                    Box::new(Type::Name("i32".into(), vec![])),
-                );
+                return Type::Option(Box::new(Type::Name("i32".into(), vec![])));
             }
             "str_parse_int" => {
                 if args.len() != 1 {
@@ -824,14 +833,24 @@ impl<'a> Checker<'a> {
             }
             "format" => {
                 if args.is_empty() {
-                    self.emit_code(crate::diagnostic::codes::E0242, "format expects at least 1 argument (template string)");
+                    self.emit_code(
+                        crate::diagnostic::codes::E0242,
+                        "format expects at least 1 argument (template string)",
+                    );
                 } else {
                     let tpl = self.infer_expr(&args[0], scopes);
                     if !crate::core::helpers::is_string(&tpl) {
-                        self.emit_code(crate::diagnostic::codes::E0242,
-                            format!("format expects a string template as first argument, found {}", fmt_type(&tpl)));
+                        self.emit_code(
+                            crate::diagnostic::codes::E0242,
+                            format!(
+                                "format expects a string template as first argument, found {}",
+                                fmt_type(&tpl)
+                            ),
+                        );
                     }
-                    for a in &args[1..] { self.infer_expr(a, scopes); }
+                    for a in &args[1..] {
+                        self.infer_expr(a, scopes);
+                    }
                 }
                 return Type::Name("string".into(), vec![]);
             }
@@ -1065,9 +1084,12 @@ impl<'a> Checker<'a> {
                             ),
                         );
                     } else {
-                        for (i, (arg, param_ty)) in args.iter().zip(param_types.iter()).enumerate() {
+                        for (i, (arg, param_ty)) in args.iter().zip(param_types.iter()).enumerate()
+                        {
                             let arg_ty = self.infer_expr(arg, scopes);
-                            if !same_type(&arg_ty, param_ty) && !is_numeric_coercion(param_ty, &arg_ty) {
+                            if !same_type(&arg_ty, param_ty)
+                                && !is_numeric_coercion(param_ty, &arg_ty)
+                            {
                                 self.emit_code(
                                     crate::diagnostic::codes::E0211,
                                     format!(
@@ -1087,7 +1109,10 @@ impl<'a> Checker<'a> {
                 match name {
                     "Some" => {
                         if args.len() != 1 {
-                            self.emit_code(crate::diagnostic::codes::E0242, "Some expects 1 argument");
+                            self.emit_code(
+                                crate::diagnostic::codes::E0242,
+                                "Some expects 1 argument",
+                            );
                         } else {
                             let inner = self.infer_expr(&args[0], scopes);
                             return Type::Option(Box::new(inner));
@@ -1096,13 +1121,19 @@ impl<'a> Checker<'a> {
                     }
                     "None" => {
                         if !args.is_empty() {
-                            self.emit_code(crate::diagnostic::codes::E0242, "None expects 0 arguments");
+                            self.emit_code(
+                                crate::diagnostic::codes::E0242,
+                                "None expects 0 arguments",
+                            );
                         }
                         return Type::Option(Box::new(Type::Name("_".into(), vec![])));
                     }
                     "Ok" => {
                         if args.len() != 1 {
-                            self.emit_code(crate::diagnostic::codes::E0242, "Ok expects 1 argument");
+                            self.emit_code(
+                                crate::diagnostic::codes::E0242,
+                                "Ok expects 1 argument",
+                            );
                         } else {
                             let inner = self.infer_expr(&args[0], scopes);
                             return Type::Result(
@@ -1117,7 +1148,10 @@ impl<'a> Checker<'a> {
                     }
                     "Err" => {
                         if args.len() != 1 {
-                            self.emit_code(crate::diagnostic::codes::E0242, "Err expects 1 argument");
+                            self.emit_code(
+                                crate::diagnostic::codes::E0242,
+                                "Err expects 1 argument",
+                            );
                         } else {
                             let inner = self.infer_expr(&args[0], scopes);
                             return Type::Result(
@@ -1166,7 +1200,10 @@ impl<'a> Checker<'a> {
         let has_named_args = args.iter().any(|a| matches!(a, Expr::NamedArg(_, _)));
         if has_named_args || (!args.is_empty() && args.len() != params.len()) {
             // Check if the function definition has param names (for named args) or defaults
-            let func_def_params: Option<&[Param]> = self.file.items.iter()
+            let func_def_params: Option<&[Param]> = self
+                .file
+                .items
+                .iter()
                 .filter_map(|item| match item {
                     Item::Func(f) if f.name == name => Some(f.params.as_slice()),
                     _ => None,
@@ -1184,12 +1221,19 @@ impl<'a> Checker<'a> {
                                     reordered[pos] = val;
                                     seen[pos] = true;
                                 } else {
-                                    self.emit_code(crate::diagnostic::codes::E0401,
-                                        format!("function '{}' has no parameter named '{}'", name, n));
+                                    self.emit_code(
+                                        crate::diagnostic::codes::E0401,
+                                        format!(
+                                            "function '{}' has no parameter named '{}'",
+                                            name, n
+                                        ),
+                                    );
                                 }
                             }
                             _ => {
-                                while pos_idx < seen.len() && seen[pos_idx] { pos_idx += 1; }
+                                while pos_idx < seen.len() && seen[pos_idx] {
+                                    pos_idx += 1;
+                                }
                                 if pos_idx < seen.len() {
                                     reordered[pos_idx] = arg;
                                     seen[pos_idx] = true;
@@ -1214,7 +1258,8 @@ impl<'a> Checker<'a> {
                     }
                     // Only recurse if we actually reordered or filled defaults
                     if has_named_args || (has_missing_defaults && args.len() < params.len()) {
-                        let reordered_args: Vec<Expr> = reordered.iter().map(|e| (*e).clone()).collect();
+                        let reordered_args: Vec<Expr> =
+                            reordered.iter().map(|e| (*e).clone()).collect();
                         return self.check_call(name, &reordered_args, scopes);
                     }
                 }
@@ -1295,9 +1340,22 @@ impl<'a> Checker<'a> {
                         self.errors.push(
                             Diagnostic::error_code(
                                 crate::diagnostic::codes::E0211,
-                                format!("argument {} of '{}' expected {}, found {}", i + 1, name, fmt_type(&subst_param), fmt_type(&at)),
+                                format!(
+                                    "argument {} of '{}' expected {}, found {}",
+                                    i + 1,
+                                    name,
+                                    fmt_type(&subst_param),
+                                    fmt_type(&at)
+                                ),
                                 Span::single(self.current_line, self.current_col),
-                            ).with_help(format!("argument {} has type '{}', but '{}' expects type '{}'", i + 1, fmt_type(&at), name, fmt_type(&subst_param)))
+                            )
+                            .with_help(format!(
+                                "argument {} has type '{}', but '{}' expects type '{}'",
+                                i + 1,
+                                fmt_type(&at),
+                                name,
+                                fmt_type(&subst_param)
+                            )),
                         );
                     }
                 }
@@ -1310,9 +1368,22 @@ impl<'a> Checker<'a> {
                         self.errors.push(
                             Diagnostic::error_code(
                                 crate::diagnostic::codes::E0211,
-                                format!("argument {} of '{}' expected {}, found {}", i + 1, name, fmt_type(param), fmt_type(&at)),
+                                format!(
+                                    "argument {} of '{}' expected {}, found {}",
+                                    i + 1,
+                                    name,
+                                    fmt_type(param),
+                                    fmt_type(&at)
+                                ),
                                 Span::single(self.current_line, self.current_col),
-                            ).with_help(format!("argument {} has type '{}', but '{}' expects type '{}'", i + 1, fmt_type(&at), name, fmt_type(param)))
+                            )
+                            .with_help(format!(
+                                "argument {} has type '{}', but '{}' expects type '{}'",
+                                i + 1,
+                                fmt_type(&at),
+                                name,
+                                fmt_type(param)
+                            )),
                         );
                     }
                 }

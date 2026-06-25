@@ -15,7 +15,8 @@ pub(crate) fn lint_files(files: &[PathBuf]) -> Result<(), String> {
     for path in files {
         let source = fs::read_to_string(path)
             .map_err(|e| format!("failed to read {}: {}", path.display(), e))?;
-        let tokens = lexer::Lexer::new(&source).tokenize()
+        let tokens = lexer::Lexer::new(&source)
+            .tokenize()
             .map_err(|e| format!("lexer error in {}: {}", path.display(), e))?;
         let (file, _parse_errors) = parser::Parser::new(tokens).parse_file_with_recovery();
         let result = linter.lint(&file, &source);

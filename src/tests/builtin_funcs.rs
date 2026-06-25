@@ -492,20 +492,24 @@ func main() -> i32 {
 
 #[test]
 fn builtin_getenv_exists() {
-    let result = run_source_result(r#"
+    let result = run_source_result(
+        r#"
 func main() -> string {
     getenv("PATH")
 }
-"#);
-    assert!(result.is_ok(), "getenv(\"PATH\") should succeed: {:?}", result);
+"#,
+    );
+    assert!(
+        result.is_ok(),
+        "getenv(\"PATH\") should succeed: {:?}",
+        result
+    );
     let val = result.unwrap();
     match &val {
-        interp::Value::Variant(tag, items) if tag == "Ok" && items.len() == 1 => {
-            match &items[0] {
-                interp::Value::String(s) => assert!(!s.is_empty(), "PATH should not be empty"),
-                _ => panic!("expected Ok(string), got Ok({:?})", items[0]),
-            }
-        }
+        interp::Value::Variant(tag, items) if tag == "Ok" && items.len() == 1 => match &items[0] {
+            interp::Value::String(s) => assert!(!s.is_empty(), "PATH should not be empty"),
+            _ => panic!("expected Ok(string), got Ok({:?})", items[0]),
+        },
         _ => panic!("expected Ok(string), got {:?}", val),
     }
 }
@@ -520,7 +524,8 @@ func main() -> string {
     let v = run_source(src);
     assert!(
         matches!(&v, interp::Value::Variant(tag, items) if tag == "Err"),
-        "missing env var should return Err, got {:?}", v
+        "missing env var should return Err, got {:?}",
+        v
     );
 }
 
@@ -532,7 +537,10 @@ func main() -> i32 {
 }
 "#;
     let v = run_source(src);
-    assert!(matches!(v, interp::Value::Int(n) if n >= 0), "args() should return a non-negative length");
+    assert!(
+        matches!(v, interp::Value::Int(n) if n >= 0),
+        "args() should return a non-negative length"
+    );
 }
 
 #[test]
@@ -544,7 +552,11 @@ func main() -> i32 {
 "#;
     let v = run_source(src);
     match v {
-        interp::Value::Int(n) => assert!(n > 1000000000, "now() should return Unix timestamp > 1e9, got {}", n),
+        interp::Value::Int(n) => assert!(
+            n > 1000000000,
+            "now() should return Unix timestamp > 1e9, got {}",
+            n
+        ),
         _ => panic!("expected i32, got {:?}", v),
     }
 }
@@ -558,7 +570,11 @@ func main() -> i32 {
 "#;
     let v = run_source(src);
     match v {
-        interp::Value::Int(n) => assert!(n > 1000000000000, "now_ms() should return Unix ms > 1e12, got {}", n),
+        interp::Value::Int(n) => assert!(
+            n > 1000000000000,
+            "now_ms() should return Unix ms > 1e12, got {}",
+            n
+        ),
         _ => panic!("expected i32, got {:?}", v),
     }
 }
@@ -572,7 +588,11 @@ func main() -> i32 {
 "#;
     let v = run_source(src);
     match v {
-        interp::Value::Int(n) => assert!(n > 1000000000, "timestamp() should return Unix timestamp > 1e9, got {}", n),
+        interp::Value::Int(n) => assert!(
+            n > 1000000000,
+            "timestamp() should return Unix timestamp > 1e9, got {}",
+            n
+        ),
         _ => panic!("expected i32, got {:?}", v),
     }
 }
@@ -597,7 +617,11 @@ func main() -> string {
 }
 "#;
     let v = run_source(src);
-    assert_eq!(v, interp::Value::String("i32".into()), "type_name(42) should return i32");
+    assert_eq!(
+        v,
+        interp::Value::String("i32".into()),
+        "type_name(42) should return i32"
+    );
 }
 
 #[test]
@@ -608,7 +632,11 @@ func main() -> string {
 }
 "#;
     let v = run_source(src);
-    assert_eq!(v, interp::Value::String("string".into()), "type_name(\"hello\") should return string");
+    assert_eq!(
+        v,
+        interp::Value::String("string".into()),
+        "type_name(\"hello\") should return string"
+    );
 }
 
 #[test]
@@ -619,7 +647,11 @@ func main() -> string {
 }
 "#;
     let v = run_source(src);
-    assert_eq!(v, interp::Value::String("bool".into()), "type_name(true) should return bool");
+    assert_eq!(
+        v,
+        interp::Value::String("bool".into()),
+        "type_name(true) should return bool"
+    );
 }
 
 #[test]

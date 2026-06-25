@@ -1,5 +1,5 @@
-use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
 
 /// mimi.toml package configuration
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -57,13 +57,11 @@ impl Manifest {
             // Check permission first to avoid false errors on inaccessible directories
             let toml_path = dir.join("mimi.toml");
             match std::fs::metadata(&toml_path) {
-                Ok(_) => {
-                    match Self::load(&dir) {
-                        Ok(Some(manifest)) => return Ok(Some((dir, manifest))),
-                        Ok(None) => {}
-                        Err(e) => return Err(e),
-                    }
-                }
+                Ok(_) => match Self::load(&dir) {
+                    Ok(Some(manifest)) => return Ok(Some((dir, manifest))),
+                    Ok(None) => {}
+                    Err(e) => return Err(e),
+                },
                 Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
                     // Permission error: skip this directory and continue upward
                 }
@@ -80,14 +78,23 @@ impl Manifest {
 
     /// Get the entry point file path
     pub fn entry_path(&self, base_dir: &Path) -> PathBuf {
-        let entry = self.package.as_ref()
+        let entry = self
+            .package
+            .as_ref()
             .and_then(|p| p.entry.as_deref())
             .unwrap_or("main.mimi");
         base_dir.join(entry)
     }
 
     /// Add a dependency
-    pub fn add_dependency(&mut self, name: &str, version: Option<&str>, path: Option<&str>, git: Option<&str>, tag: Option<&str>) {
+    pub fn add_dependency(
+        &mut self,
+        name: &str,
+        version: Option<&str>,
+        path: Option<&str>,
+        git: Option<&str>,
+        tag: Option<&str>,
+    ) {
         let deps = self.dependencies.get_or_insert_with(Vec::new);
         // Remove existing dependency with same name
         deps.retain(|d| d.name != name);
@@ -137,7 +144,8 @@ impl Manifest {
 
     /// Get the default registry URL
     pub fn registry_url(&self) -> &str {
-        self.registry.as_ref()
+        self.registry
+            .as_ref()
             .map(|r| r.url.as_str())
             .unwrap_or("https://registry.mimi-lang.org")
     }
@@ -146,7 +154,8 @@ impl Manifest {
     pub fn check_conflicts(&self) -> Vec<String> {
         let mut conflicts = Vec::new();
         if let Some(deps) = &self.dependencies {
-            let mut seen: std::collections::HashMap<String, Vec<&str>> = std::collections::HashMap::new();
+            let mut seen: std::collections::HashMap<String, Vec<&str>> =
+                std::collections::HashMap::new();
             for dep in deps {
                 let ver = dep.version.as_deref().unwrap_or("*");
                 seen.entry(dep.name.clone()).or_default().push(ver);
@@ -173,8 +182,20 @@ mod tests {
         let mut manifest = Manifest::new("test");
         // Manually add duplicate deps to simulate conflict
         manifest.dependencies = Some(vec![
-            Dependency { name: "foo".into(), version: Some("^1.0".into()), path: None, git: None, tag: None },
-            Dependency { name: "foo".into(), version: Some("^2.0".into()), path: None, git: None, tag: None },
+            Dependency {
+                name: "foo".into(),
+                version: Some("^1.0".into()),
+                path: None,
+                git: None,
+                tag: None,
+            },
+            Dependency {
+                name: "foo".into(),
+                version: Some("^2.0".into()),
+                path: None,
+                git: None,
+                tag: None,
+            },
         ]);
         let conflicts = manifest.check_conflicts();
         assert_eq!(conflicts.len(), 1);
@@ -196,7 +217,9 @@ mod tests {
         assert_eq!(manifest.registry_url(), "https://registry.mimi-lang.org");
 
         let mut manifest = Manifest::new("test");
-        manifest.registry = Some(Registry { url: "https://custom.registry.com".into() });
+        manifest.registry = Some(Registry {
+            url: "https://custom.registry.com".into(),
+        });
         assert_eq!(manifest.registry_url(), "https://custom.registry.com");
     }
 }

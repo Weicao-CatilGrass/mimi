@@ -2,11 +2,18 @@ use std::fs;
 use std::path::Path;
 use std::time::{Duration, SystemTime};
 
+use crate::{is_production, is_sketch, resolve_path};
 use mimi::diagnostic::format::{colors_enabled, format_diagnostic, strip_ansi};
 use mimi::{interp, lexer, loader, parser};
-use crate::{is_production, is_sketch, resolve_path};
 
-pub(crate) fn run(path: Option<&Path>, verify_contracts: bool, verify_ffi: bool, allocator: &str, strict: bool, watch: bool) -> Result<(), String> {
+pub(crate) fn run(
+    path: Option<&Path>,
+    verify_contracts: bool,
+    verify_ffi: bool,
+    allocator: &str,
+    strict: bool,
+    watch: bool,
+) -> Result<(), String> {
     let path = resolve_path(path)?;
     if watch {
         run_watch(&path, verify_contracts, verify_ffi, allocator, strict)
@@ -15,7 +22,13 @@ pub(crate) fn run(path: Option<&Path>, verify_contracts: bool, verify_ffi: bool,
     }
 }
 
-fn run_once(path: &Path, verify_contracts: bool, verify_ffi: bool, allocator: &str, strict: bool) -> Result<(), String> {
+fn run_once(
+    path: &Path,
+    verify_contracts: bool,
+    verify_ffi: bool,
+    allocator: &str,
+    strict: bool,
+) -> Result<(), String> {
     let source = fs::read_to_string(path)
         .map_err(|e| format!("failed to read {}: {}", path.display(), e))?;
     if is_sketch(path) {
@@ -32,7 +45,10 @@ fn run_once(path: &Path, verify_contracts: bool, verify_ffi: bool, allocator: &s
 
     // Load imports if any
     let mut merged_file = if !file.imports.is_empty() {
-        let base_dir = path.parent().unwrap_or_else(|| std::path::Path::new(".")).to_path_buf();
+        let base_dir = path
+            .parent()
+            .unwrap_or_else(|| std::path::Path::new("."))
+            .to_path_buf();
         let mut loader = loader::ModuleLoader::new(base_dir);
         loader.load_main(path)?;
         loader.merge_all()?
@@ -43,9 +59,17 @@ fn run_once(path: &Path, verify_contracts: bool, verify_ffi: bool, allocator: &s
     // Map inline rule statements to structured contracts
     mimi::contracts::map_rule_contracts(&mut merged_file);
 
-    let check_result = if strict { mimi::core::check_strict(&merged_file) } else { mimi::core::check(&merged_file) };
+    let check_result = if strict {
+        mimi::core::check_strict(&merged_file)
+    } else {
+        mimi::core::check(&merged_file)
+    };
     if let Err(diagnostics) = check_result {
-        eprintln!("{} has {} type error(s):", path.display(), diagnostics.len());
+        eprintln!(
+            "{} has {} type error(s):",
+            path.display(),
+            diagnostics.len()
+        );
         let use_color = colors_enabled();
         let src = fs::read_to_string(path).ok();
         let src_ref = src.as_deref();
@@ -88,7 +112,13 @@ fn run_once(path: &Path, verify_contracts: bool, verify_ffi: bool, allocator: &s
     }
 }
 
-fn run_watch(path: &Path, verify_contracts: bool, verify_ffi: bool, allocator: &str, strict: bool) -> Result<(), String> {
+fn run_watch(
+    path: &Path,
+    verify_contracts: bool,
+    verify_ffi: bool,
+    allocator: &str,
+    strict: bool,
+) -> Result<(), String> {
     println!("Watching {} for changes...", path.display());
     let mut last_modified = get_mtime(path)?;
     // Run once first

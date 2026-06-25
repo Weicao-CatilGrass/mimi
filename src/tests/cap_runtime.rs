@@ -96,5 +96,9 @@ func main() -> i32 {
 }
 "#;
     let result = run_source_result(src);
-    assert!(result.is_ok(), "cap drop in closure should work: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "cap drop in closure should work: {:?}",
+        result
+    );
 }

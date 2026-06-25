@@ -1,87 +1,87 @@
 pub(crate) mod basic_control_flow;
-pub(crate) mod basic_let;
 pub(crate) mod basic_functions;
-pub(crate) mod basic_operators;
-pub(crate) mod basic_literals;
+pub(crate) mod basic_let;
 pub(crate) mod basic_lists;
-pub(crate) mod basic_tuples;
+pub(crate) mod basic_literals;
+pub(crate) mod basic_operators;
 pub(crate) mod basic_other;
+pub(crate) mod basic_tuples;
 pub(crate) mod closures;
 
-pub(crate) mod strings;
-pub(crate) mod builtin_funcs;
-pub(crate) mod typecheck;
-pub(crate) mod error_handling;
-pub(crate) mod visibility;
-pub(crate) mod contracts;
-pub(crate) mod comptime;
-pub(crate) mod ownership;
 pub(crate) mod actors;
+pub(crate) mod builtin_funcs;
 pub(crate) mod capabilities;
-pub(crate) mod generics;
-pub(crate) mod extern_blocks;
 pub(crate) mod comprehension;
+pub(crate) mod comptime;
+pub(crate) mod contracts;
+pub(crate) mod error_handling;
+pub(crate) mod extern_blocks;
+pub(crate) mod generics;
+pub(crate) mod ownership;
+pub(crate) mod strings;
+pub(crate) mod typecheck;
+pub(crate) mod visibility;
 
-pub(crate) mod v1_2_generics;
-pub(crate) mod v1_2_traits;
-pub(crate) mod v1_2_parasteps;
-pub(crate) mod v1_2_mms;
-pub(crate) mod v1_2_effects;
-pub(crate) mod v1_2_contract_extract;
-pub(crate) mod v1_2_verification;
-pub(crate) mod v1_2_static;
-pub(crate) mod v1_2_boundary;
-pub(crate) mod v1_2_error_paths;
-pub(crate) mod v1_2_modules;
 pub(crate) mod v1_2_allocators;
-pub(crate) mod v1_2_codegen;
-pub(crate) mod v1_2_operators;
-pub(crate) mod v1_2_generics_misc;
-pub(crate) mod v1_2_traits_misc;
-pub(crate) mod v1_2_type_def_misc;
+pub(crate) mod v1_2_boundary;
 pub(crate) mod v1_2_builtin_hof;
+pub(crate) mod v1_2_codegen;
+pub(crate) mod v1_2_contract_extract;
+pub(crate) mod v1_2_core_edge;
+pub(crate) mod v1_2_effects;
+pub(crate) mod v1_2_error_coverage;
+pub(crate) mod v1_2_error_paths;
+pub(crate) mod v1_2_generics;
+pub(crate) mod v1_2_generics_misc;
 pub(crate) mod v1_2_infra;
 pub(crate) mod v1_2_misc_remaining;
-pub(crate) mod v1_2_core_edge;
-pub(crate) mod v1_2_error_coverage;
+pub(crate) mod v1_2_mms;
+pub(crate) mod v1_2_modules;
+pub(crate) mod v1_2_operators;
+pub(crate) mod v1_2_parasteps;
+pub(crate) mod v1_2_static;
+pub(crate) mod v1_2_traits;
+pub(crate) mod v1_2_traits_misc;
+pub(crate) mod v1_2_type_def_misc;
+pub(crate) mod v1_2_verification;
 
-pub(crate) mod loader;
-pub(crate) mod manifest;
-pub(crate) mod lsp;
-pub(crate) mod extern_calls;
-pub(crate) mod build_shared;
-pub(crate) mod ffi_safety;
-pub(crate) mod ffi_passport_types;
-pub(crate) mod ffi_verification;
-pub(crate) mod ffi_interp_e2e;
-pub(crate) mod type_system_verification;
 pub(crate) mod actor_concurrent;
-pub(crate) mod net;
-pub(crate) mod cross_compile;
 pub(crate) mod borrow_boundary;
+pub(crate) mod build_shared;
+pub(crate) mod builtin_extended;
+pub(crate) mod builtin_registry;
+pub(crate) mod cap_runtime;
+pub(crate) mod cli_commands;
+pub(crate) mod codegen_control;
+pub(crate) mod cross_compile;
 pub(crate) mod debug_info;
 pub(crate) mod derive_methods;
-pub(crate) mod builtin_registry;
-pub(crate) mod builtin_extended;
-pub(crate) mod cap_runtime;
-pub(crate) mod codegen_control;
+pub(crate) mod extern_calls;
+pub(crate) mod ffi_interp_e2e;
+pub(crate) mod ffi_passport_types;
+pub(crate) mod ffi_safety;
+pub(crate) mod ffi_verification;
+pub(crate) mod loader;
+pub(crate) mod lsp;
 pub(crate) mod lsp_extended;
-pub(crate) mod cli_commands;
+pub(crate) mod manifest;
 pub(crate) mod mms_integration;
+pub(crate) mod net;
 pub(crate) mod package_management;
-pub(crate) mod transitive_deps;
 pub(crate) mod property;
+pub(crate) mod transitive_deps;
+pub(crate) mod type_system_verification;
 
 // === JSON test modules ===
 pub(crate) mod json_tests;
-pub(crate) mod set_tests;
 pub(crate) mod pipe_loop_tests;
+pub(crate) mod set_tests;
 
 // === CODEGEN test modules ===
-pub(crate) mod codegen_e2e;
-pub(crate) mod codegen_ir;
 pub(crate) mod codegen_advanced;
+pub(crate) mod codegen_e2e;
 pub(crate) mod codegen_golden;
+pub(crate) mod codegen_ir;
 
 // === Fuzz test modules ===
 pub(crate) mod fuzz;
@@ -114,7 +114,8 @@ pub(crate) fn cached_runtime_lib() -> Result<std::path::PathBuf, String> {
     for path in [&runtime_rs, &mod_rs] {
         let mut f = std::fs::File::open(path).map_err(|e| format!("open {:?}: {}", path, e))?;
         let mut buf = Vec::with_capacity(8192);
-        f.read_to_end(&mut buf).map_err(|e| format!("read {:?}: {}", path, e))?;
+        f.read_to_end(&mut buf)
+            .map_err(|e| format!("read {:?}: {}", path, e))?;
         buf.hash(&mut hasher);
     }
     let hash = hasher.finish();
@@ -139,17 +140,23 @@ pub(crate) fn cached_runtime_lib() -> Result<std::path::PathBuf, String> {
     // Check again after acquiring lock (another thread may have compiled it)
     if lib_path.exists() {
         #[cfg(unix)]
-        unsafe { libc::flock(lock_file.as_raw_fd(), libc::LOCK_UN); }
+        unsafe {
+            libc::flock(lock_file.as_raw_fd(), libc::LOCK_UN);
+        }
         return Ok(lib_path);
     }
 
     // Write a temp file then atomically rename to avoid partial writes
     let tmp_path = cache_dir.join(format!("libmimi_runtime_{:016x}.tmp", hash));
     let output = std::process::Command::new("rustc")
-        .arg("--edition").arg("2021")
-        .arg("--crate-type").arg("staticlib")
-        .arg("--cfg").arg("standalone")
-        .arg("--crate-name").arg("mimi_runtime")
+        .arg("--edition")
+        .arg("2021")
+        .arg("--crate-type")
+        .arg("staticlib")
+        .arg("--cfg")
+        .arg("standalone")
+        .arg("--crate-name")
+        .arg("mimi_runtime")
         .arg("-o")
         .arg(&tmp_path)
         .arg(&runtime_rs)
@@ -158,13 +165,21 @@ pub(crate) fn cached_runtime_lib() -> Result<std::path::PathBuf, String> {
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         #[cfg(unix)]
-        unsafe { libc::flock(lock_file.as_raw_fd(), libc::LOCK_UN); }
-        return Err(format!("runtime compilation failed, exit: {:?}, stderr: {}", output.status.code(), stderr));
+        unsafe {
+            libc::flock(lock_file.as_raw_fd(), libc::LOCK_UN);
+        }
+        return Err(format!(
+            "runtime compilation failed, exit: {:?}, stderr: {}",
+            output.status.code(),
+            stderr
+        ));
     }
     std::fs::rename(&tmp_path, &lib_path).map_err(|e| format!("rename: {}", e))?;
 
     #[cfg(unix)]
-    unsafe { libc::flock(lock_file.as_raw_fd(), libc::LOCK_UN); }
+    unsafe {
+        libc::flock(lock_file.as_raw_fd(), libc::LOCK_UN);
+    }
     Ok(lib_path)
 }
 
@@ -183,14 +198,14 @@ impl FfiEnvLock {
             .write(true)
             .open(&lock_path)
             .expect("failed to create FFI test lock file");
-        
+
         // Use file locking to ensure exclusive access
         #[cfg(unix)]
         unsafe {
             use std::os::unix::io::AsRawFd;
             libc::flock(file.as_raw_fd(), libc::LOCK_EX);
         }
-        
+
         Self { _file: file }
     }
 }
@@ -223,19 +238,28 @@ pub(crate) fn build_interp_ffi_so() -> Result<std::path::PathBuf, String> {
         .arg("-Wl,--whole-archive")
         .arg(&lib_path)
         .arg("-Wl,--no-whole-archive")
-        .arg("-lpthread").arg("-ldl").arg("-lm")
+        .arg("-lpthread")
+        .arg("-ldl")
+        .arg("-lm")
         .status()
         .map_err(|e| format!("cc not found: {}", e))?;
     if !status.success() {
-        return Err(format!("failed to link test .so, exit code: {:?}", status.code()));
+        return Err(format!(
+            "failed to link test .so, exit code: {:?}",
+            status.code()
+        ));
     }
 
     Ok(so_path)
 }
 
 pub(crate) fn parse(src: &str) -> crate::ast::File {
-    let tokens = lexer::Lexer::new(src).tokenize().expect("src/tests/mod.rs:144 unwrap failed");
-    parser::Parser::new(tokens).parse_file().expect("src/tests/mod.rs:145 unwrap failed")
+    let tokens = lexer::Lexer::new(src)
+        .tokenize()
+        .expect("src/tests/mod.rs:144 unwrap failed");
+    parser::Parser::new(tokens)
+        .parse_file()
+        .expect("src/tests/mod.rs:145 unwrap failed")
 }
 
 pub(crate) fn run_source(src: &str) -> interp::Value {
@@ -247,7 +271,9 @@ pub(crate) fn run_source(src: &str) -> interp::Value {
 
 pub(crate) fn run_source_result(src: &str) -> Result<interp::Value, String> {
     let tokens = lexer::Lexer::new(src).tokenize().map_err(|e| e)?;
-    let mut file = parser::Parser::new(tokens).parse_file().map_err(|e| e.message)?;
+    let mut file = parser::Parser::new(tokens)
+        .parse_file()
+        .map_err(|e| e.message)?;
     crate::contracts::map_rule_contracts(&mut file);
     let mut interp = interp::Interpreter::new(&file);
     interp.verify_contracts = true;
@@ -260,7 +286,9 @@ pub(crate) fn run_source_result(src: &str) -> Result<interp::Value, String> {
 /// (child-process heap is not accessible from the parent).
 pub(crate) fn run_source_result_no_fork(src: &str) -> Result<interp::Value, String> {
     let tokens = lexer::Lexer::new(src).tokenize().map_err(|e| e)?;
-    let mut file = parser::Parser::new(tokens).parse_file().map_err(|e| e.message)?;
+    let mut file = parser::Parser::new(tokens)
+        .parse_file()
+        .map_err(|e| e.message)?;
     crate::contracts::map_rule_contracts(&mut file);
     let mut interp = interp::Interpreter::new(&file);
     interp.verify_ffi = false;
@@ -307,7 +335,11 @@ impl Default for E2EConfig {
             use_valgrind: false,
             use_asan: false,
             use_ubsan: false,
-            valgrind_args: vec!["--tool=memcheck".into(), "--error-exitcode=1".into(), "--leak-check=full".into()],
+            valgrind_args: vec![
+                "--tool=memcheck".into(),
+                "--error-exitcode=1".into(),
+                "--leak-check=full".into(),
+            ],
             extra_c_src: None,
         }
     }
@@ -321,8 +353,12 @@ fn compile_and_run_with_config(src: &str, config: &E2EConfig) -> Result<String, 
 
     let counter = E2E_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
-    let tokens = crate::lexer::Lexer::new(src).tokenize().map_err(|e| format!("lexer: {}", e))?;
-    let mut file = crate::parser::Parser::new(tokens).parse_file().map_err(|e| format!("parser: {}", e))?;
+    let tokens = crate::lexer::Lexer::new(src)
+        .tokenize()
+        .map_err(|e| format!("lexer: {}", e))?;
+    let mut file = crate::parser::Parser::new(tokens)
+        .parse_file()
+        .map_err(|e| format!("parser: {}", e))?;
     crate::contracts::map_rule_contracts(&mut file);
 
     let context = inkwell::context::Context::create();
@@ -339,9 +375,15 @@ fn compile_and_run_with_config(src: &str, config: &E2EConfig) -> Result<String, 
     let tmp_dir = std::env::temp_dir().join(format!("mimi_e2e_{}_{}", std::process::id(), counter));
     std::fs::create_dir_all(&tmp_dir).map_err(|e| format!("mkdir: {}", e))?;
     let obj_path = tmp_dir.join("test.o");
-    let bin_path = if cfg!(target_os = "windows") { tmp_dir.join("test.exe") } else { tmp_dir.join("test") };
+    let bin_path = if cfg!(target_os = "windows") {
+        tmp_dir.join("test.exe")
+    } else {
+        tmp_dir.join("test")
+    };
 
-    codegen.compile_to_object(&obj_path).map_err(|e| e.to_string())?;
+    codegen
+        .compile_to_object(&obj_path)
+        .map_err(|e| e.to_string())?;
 
     // Reuse cached runtime static library
     let runtime_lib = cached_runtime_lib().map_err(|e| {
@@ -357,18 +399,28 @@ fn compile_and_run_with_config(src: &str, config: &E2EConfig) -> Result<String, 
         std::fs::write(&extra_c_path, extra_c).map_err(|e| format!("write extra c: {}", e))?;
         let extra_o = tmp_dir.join("extra_test.o");
         let mut cc_extra = Command::new("cc");
-        cc_extra.arg("-c").arg(&extra_c_path).arg("-o").arg(&extra_o);
+        cc_extra
+            .arg("-c")
+            .arg(&extra_c_path)
+            .arg("-o")
+            .arg(&extra_o);
         if config.use_asan {
             cc_extra.arg("-fsanitize=address");
         }
         if config.use_ubsan {
-            cc_extra.arg("-fsanitize=undefined").arg("-fno-sanitize-recover=all");
+            cc_extra
+                .arg("-fsanitize=undefined")
+                .arg("-fno-sanitize-recover=all");
         }
-        let extra_status = cc_extra.status()
+        let extra_status = cc_extra
+            .status()
             .map_err(|e| format!("extra c compile: {}", e))?;
         if !extra_status.success() {
             let _ = std::fs::remove_dir_all(&tmp_dir);
-            return Err(format!("extra C source compile failed with exit code {:?}", extra_status.code()));
+            return Err(format!(
+                "extra C source compile failed with exit code {:?}",
+                extra_status.code()
+            ));
         }
         object_files.push(extra_o);
     }
@@ -387,8 +439,7 @@ fn compile_and_run_with_config(src: &str, config: &E2EConfig) -> Result<String, 
     if config.use_ubsan {
         cc_link.arg("-fsanitize=undefined");
     }
-    let status = cc_link.status()
-        .map_err(|e| format!("linker: {}", e))?;
+    let status = cc_link.status().map_err(|e| format!("linker: {}", e))?;
     if !status.success() {
         let _ = std::fs::remove_dir_all(&tmp_dir);
         return Err(format!("linker failed with exit code {:?}", status.code()));
@@ -402,7 +453,9 @@ fn compile_and_run_with_config(src: &str, config: &E2EConfig) -> Result<String, 
         cmd.arg(&bin_path);
         cmd.output().map_err(|e| format!("valgrind run: {}", e))?
     } else {
-        Command::new(&bin_path).output().map_err(|e| format!("run: {}", e))?
+        Command::new(&bin_path)
+            .output()
+            .map_err(|e| format!("run: {}", e))?
     };
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
 
@@ -410,7 +463,11 @@ fn compile_and_run_with_config(src: &str, config: &E2EConfig) -> Result<String, 
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("exit code {:?}, stderr: {}", output.status.code(), stderr));
+        return Err(format!(
+            "exit code {:?}, stderr: {}",
+            output.status.code(),
+            stderr
+        ));
     }
 
     Ok(stdout)
@@ -423,42 +480,78 @@ pub(crate) fn compile_and_run(src: &str) -> Result<String, String> {
 
 /// E2E codegen test with contracts verification enabled.
 pub(crate) fn compile_and_verify_contracts(src: &str) -> Result<String, String> {
-    compile_and_run_with_config(src, &E2EConfig { verify_contracts: true, ..Default::default() })
+    compile_and_run_with_config(
+        src,
+        &E2EConfig {
+            verify_contracts: true,
+            ..Default::default()
+        },
+    )
 }
 
 /// E2E test running the binary under valgrind memcheck.
 pub(crate) fn compile_and_run_valgrind(src: &str) -> Result<String, String> {
-    compile_and_run_with_config(src, &E2EConfig { use_valgrind: true, ..Default::default() })
+    compile_and_run_with_config(
+        src,
+        &E2EConfig {
+            use_valgrind: true,
+            ..Default::default()
+        },
+    )
 }
 
 /// E2E test compiled with AddressSanitizer and run directly.
 pub(crate) fn compile_and_run_asan(src: &str) -> Result<String, String> {
-    compile_and_run_with_config(src, &E2EConfig { use_asan: true, ..Default::default() })
+    compile_and_run_with_config(
+        src,
+        &E2EConfig {
+            use_asan: true,
+            ..Default::default()
+        },
+    )
 }
 
 /// E2E test compiled with UndefinedBehaviorSanitizer and run directly.
 pub(crate) fn compile_and_run_ubsan(src: &str) -> Result<String, String> {
-    compile_and_run_with_config(src, &E2EConfig { use_ubsan: true, ..Default::default() })
+    compile_and_run_with_config(
+        src,
+        &E2EConfig {
+            use_ubsan: true,
+            ..Default::default()
+        },
+    )
 }
 
 /// E2E codegen test with an extra C source file linked in.
 pub(crate) fn compile_and_run_with_csrc(src: &str, extra_c: &str) -> Result<String, String> {
-    compile_and_run_with_config(src, &E2EConfig { extra_c_src: Some(extra_c.to_string()), ..Default::default() })
+    compile_and_run_with_config(
+        src,
+        &E2EConfig {
+            extra_c_src: Some(extra_c.to_string()),
+            ..Default::default()
+        },
+    )
 }
 
 /// Compile Mimi source to an object file and return the path.
 /// The caller is responsible for cleaning up the returned path.
 pub(crate) fn compile_only(src: &str) -> Result<std::path::PathBuf, String> {
     let counter = E2E_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let tokens = crate::lexer::Lexer::new(src).tokenize().map_err(|e| format!("lexer: {}", e))?;
-    let file = crate::parser::Parser::new(tokens).parse_file().map_err(|e| format!("parser: {}", e))?;
+    let tokens = crate::lexer::Lexer::new(src)
+        .tokenize()
+        .map_err(|e| format!("lexer: {}", e))?;
+    let file = crate::parser::Parser::new(tokens)
+        .parse_file()
+        .map_err(|e| format!("parser: {}", e))?;
     let context = inkwell::context::Context::create();
     let mut codegen = crate::codegen::CodeGenerator::new(&context, "e2e_test");
     codegen.compile_file(&file).map_err(|e| e.to_string())?;
     let tmp_dir = std::env::temp_dir().join(format!("mimi_obj_{}_{}", std::process::id(), counter));
     std::fs::create_dir_all(&tmp_dir).map_err(|e| format!("mkdir: {}", e))?;
     let obj_path = tmp_dir.join("test.o");
-    codegen.compile_to_object(&obj_path).map_err(|e| e.to_string())?;
+    codegen
+        .compile_to_object(&obj_path)
+        .map_err(|e| e.to_string())?;
     Ok(obj_path)
 }
 
@@ -475,17 +568,26 @@ pub(crate) fn dual_assert_contract_ok(src: &str) {
 }
 
 /// Test helper: promote a .mms file to .mimi (copies source to output).
-pub fn main_promote(path: &std::path::Path, output: Option<&std::path::Path>) -> Result<(), String> {
+pub fn main_promote(
+    path: &std::path::Path,
+    output: Option<&std::path::Path>,
+) -> Result<(), String> {
     let source = std::fs::read_to_string(path)
         .map_err(|e| format!("failed to read {}: {}", path.display(), e))?;
     if source.contains("...") {
-        return Err(format!("file contains '...' placeholders, cannot promote: {}", path.display()));
+        return Err(format!(
+            "file contains '...' placeholders, cannot promote: {}",
+            path.display()
+        ));
     }
-    let output_path = output.map_or_else(|| {
-        let mut out = path.to_path_buf();
-        out.set_extension("mimi");
-        out
-    }, |p| p.to_path_buf());
+    let output_path = output.map_or_else(
+        || {
+            let mut out = path.to_path_buf();
+            out.set_extension("mimi");
+            out
+        },
+        |p| p.to_path_buf(),
+    );
     std::fs::write(&output_path, &source)
         .map_err(|e| format!("failed to write {}: {}", output_path.display(), e))?;
     Ok(())
@@ -505,11 +607,10 @@ pub fn main_update(dir: &std::path::Path) -> Result<(), String> {
 
     let reg = crate::pkg_registry::registry_dir()?;
     let deps_dir = dir.join(".mimi").join("deps");
-    std::fs::create_dir_all(&deps_dir)
-        .map_err(|e| format!("failed to create deps dir: {}", e))?;
+    std::fs::create_dir_all(&deps_dir).map_err(|e| format!("failed to create deps dir: {}", e))?;
 
-    let mut lock = crate::lockfile::Lockfile::load(dir)?
-        .unwrap_or_else(crate::lockfile::Lockfile::new);
+    let mut lock =
+        crate::lockfile::Lockfile::load(dir)?.unwrap_or_else(crate::lockfile::Lockfile::new);
 
     for dep in &deps {
         if dep.git.is_some() {
@@ -517,7 +618,12 @@ pub fn main_update(dir: &std::path::Path) -> Result<(), String> {
         }
         let dst = deps_dir.join(&dep.name);
         let resolved = crate::pkg_resolve::resolve_single_dep(dep, &dst, &reg)?;
-        lock.add_package(&resolved.name, &resolved.version, resolved.source.as_deref(), resolved.checksum.as_deref());
+        lock.add_package(
+            &resolved.name,
+            &resolved.version,
+            resolved.source.as_deref(),
+            resolved.checksum.as_deref(),
+        );
     }
 
     lock.save(dir)?;
@@ -526,7 +632,10 @@ pub fn main_update(dir: &std::path::Path) -> Result<(), String> {
 
 /// Test helper: transitive install (project dir, registry dir).
 /// Installs direct + transitive deps from registry only.
-pub fn main_install_transitive(project_dir: &std::path::Path, reg: &std::path::Path) -> Result<(), String> {
+pub fn main_install_transitive(
+    project_dir: &std::path::Path,
+    reg: &std::path::Path,
+) -> Result<(), String> {
     let manifest = match crate::manifest::Manifest::find(project_dir)? {
         Some((_d, m)) => m,
         None => return Err("no mimi.toml found".into()),
@@ -538,8 +647,7 @@ pub fn main_install_transitive(project_dir: &std::path::Path, reg: &std::path::P
     };
 
     let deps_dir = project_dir.join(".mimi").join("deps");
-    std::fs::create_dir_all(&deps_dir)
-        .map_err(|e| format!("failed to create deps dir: {}", e))?;
+    std::fs::create_dir_all(&deps_dir).map_err(|e| format!("failed to create deps dir: {}", e))?;
 
     let mut lock = crate::lockfile::Lockfile::new();
     let mut visited = std::collections::HashSet::new();
@@ -592,7 +700,11 @@ pub fn main_install_transitive(project_dir: &std::path::Path, reg: &std::path::P
 }
 
 /// Test helper: generate documentation from a Mimi source file.
-pub fn main_doc(path: &std::path::Path, format: &str, output: Option<&std::path::Path>) -> Result<(), String> {
+pub fn main_doc(
+    path: &std::path::Path,
+    format: &str,
+    output: Option<&std::path::Path>,
+) -> Result<(), String> {
     let source = std::fs::read_to_string(path)
         .map_err(|e| format!("failed to read {}: {}", path.display(), e))?;
 
@@ -631,4 +743,3 @@ pub fn main_doc(path: &std::path::Path, format: &str, output: Option<&std::path:
 
     Ok(())
 }
-

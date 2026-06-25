@@ -14,9 +14,9 @@ mod infer_expr;
 
 pub(crate) use checker::Checker;
 pub use helpers::{fmt_type, is_type_param, subst_type_params};
-pub(crate) use helpers::{is_bool, is_numeric_coercion, same_type, is_trait_coercion};
+pub(crate) use helpers::{is_bool, is_numeric_coercion, is_trait_coercion, same_type};
 #[cfg(test)]
-pub(crate) use helpers::{is_int, is_numeric, is_string, is_float};
+pub(crate) use helpers::{is_float, is_int, is_numeric, is_string};
 
 pub fn check(file: &File) -> Result<(), Vec<Diagnostic>> {
     let mut checker = Checker::new(file);

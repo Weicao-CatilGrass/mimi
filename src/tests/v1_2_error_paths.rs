@@ -10,7 +10,10 @@ func main() -> i32 {
     let result = crate::lexer::Lexer::new(src).tokenize();
     if let Ok(tokens) = result {
         let parse_result = crate::parser::Parser::new(tokens).parse_file();
-        assert!(parse_result.is_err(), "unclosed paren should cause parse error");
+        assert!(
+            parse_result.is_err(),
+            "unclosed paren should cause parse error"
+        );
     }
 }
 
@@ -22,7 +25,10 @@ func main() -> string {
 }
 "#;
     let result = crate::lexer::Lexer::new(src).tokenize();
-    assert!(result.is_err(), "unterminated string should cause lex error");
+    assert!(
+        result.is_err(),
+        "unterminated string should cause lex error"
+    );
 }
 
 #[test]
@@ -49,7 +55,11 @@ func main() -> i32 {
     let result = run_source_result(src);
     assert!(result.is_err(), "runtime division by zero should error");
     let err = result.unwrap_err();
-    assert!(err.contains("division by zero"), "Expected division by zero error, got: {}", err);
+    assert!(
+        err.contains("division by zero"),
+        "Expected division by zero error, got: {}",
+        err
+    );
 }
 
 #[test]
@@ -63,7 +73,11 @@ func main() -> i32 {
     let result = run_source_result(src);
     assert!(result.is_err(), "index out of bounds should error");
     let err = result.unwrap_err();
-    assert!(err.contains("index out of bounds"), "Expected index error, got: {}", err);
+    assert!(
+        err.contains("index out of bounds"),
+        "Expected index error, got: {}",
+        err
+    );
 }
 
 #[test]
@@ -76,7 +90,11 @@ func main() -> i32 {
     let result = run_source_result(src);
     assert!(result.is_err(), "pop from empty list should error");
     let err = result.unwrap_err();
-    assert!(err.contains("pop from empty list"), "Expected pop error, got: {}", err);
+    assert!(
+        err.contains("pop from empty list"),
+        "Expected pop error, got: {}",
+        err
+    );
 }
 
 #[test]
@@ -90,7 +108,11 @@ func main() -> i32 {
     let result = run_source_result(src);
     assert!(result.is_err(), "assert(false) should error");
     let err = result.unwrap_err();
-    assert!(err.contains("assertion failed"), "Expected assertion error, got: {}", err);
+    assert!(
+        err.contains("assertion failed"),
+        "Expected assertion error, got: {}",
+        err
+    );
 }
 
 #[test]
@@ -129,7 +151,10 @@ func main() -> i32 {
 }
 "#;
     let result = check_source(src);
-    assert!(result.is_err(), "return type mismatch should cause type error");
+    assert!(
+        result.is_err(),
+        "return type mismatch should cause type error"
+    );
 }
 
 #[test]
@@ -166,7 +191,10 @@ func main() -> i32 {
 }
 "#;
     let result = run_source_result(src);
-    assert!(result.is_err(), "mutating immutable should error at runtime");
+    assert!(
+        result.is_err(),
+        "mutating immutable should error at runtime"
+    );
 }
 
 #[test]
@@ -178,7 +206,9 @@ func main() -> i32 {
     y
 }
 "#;
-    let tokens = crate::lexer::Lexer::new(src).tokenize().expect("src/tests/v1_2_error_paths.rs:181 unwrap failed");
+    let tokens = crate::lexer::Lexer::new(src)
+        .tokenize()
+        .expect("src/tests/v1_2_error_paths.rs:181 unwrap failed");
     let (file, _errors) = crate::parser::Parser::new(tokens).parse_file_with_recovery();
     // Recovery should produce a partial AST with the function
     assert!(file.items.len() == 1, "should still parse the function");
@@ -201,11 +231,19 @@ func working() -> i32 {
     42
 }
 "#;
-    let tokens = crate::lexer::Lexer::new(src).tokenize().expect("src/tests/v1_2_error_paths.rs:204 unwrap failed");
+    let tokens = crate::lexer::Lexer::new(src)
+        .tokenize()
+        .expect("src/tests/v1_2_error_paths.rs:204 unwrap failed");
     let (file, errors) = crate::parser::Parser::new(tokens).parse_file_with_recovery();
     assert!(!errors.is_empty(), "should have parse errors");
-    assert!(file.items.len() >= 1, "should still parse the working function");
-    assert!(file.items.iter().any(|i| matches!(i, crate::ast::Item::Func(f) if f.name == "working")));
+    assert!(
+        file.items.len() >= 1,
+        "should still parse the working function"
+    );
+    assert!(file
+        .items
+        .iter()
+        .any(|i| matches!(i, crate::ast::Item::Func(f) if f.name == "working")));
 }
 
 #[test]
@@ -217,7 +255,11 @@ func main() -> i32 {
 }
 "#;
     let result = check_source(src);
-    assert!(result.is_ok(), "let x: _ = 42 should type-check: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "let x: _ = 42 should type-check: {:?}",
+        result.err()
+    );
 }
 
 #[test]
@@ -230,7 +272,11 @@ func main() -> i32 {
 }
 "#;
     let result = check_source(src);
-    assert!(result.is_ok(), "lifetime annotation 'a should parse: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "lifetime annotation 'a should parse: {:?}",
+        result.err()
+    );
 }
 
 #[test]
@@ -243,5 +289,9 @@ func main() -> i32 {
 }
 "#;
     let result = check_source(src);
-    assert!(result.is_ok(), "lifetime annotation 'a mut should parse: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "lifetime annotation 'a mut should parse: {:?}",
+        result.err()
+    );
 }

@@ -108,9 +108,13 @@ impl<'a> Checker<'a> {
         for (k, v) in entries {
             let key_ty = self.infer_expr(k, scopes);
             if !crate::core::helpers::is_string(&key_ty) {
-                self.emit_code(crate::diagnostic::codes::E0211, format!(
-                    "map literal key must be a string, found {}", crate::core::helpers::fmt_type(&key_ty)
-                ));
+                self.emit_code(
+                    crate::diagnostic::codes::E0211,
+                    format!(
+                        "map literal key must be a string, found {}",
+                        crate::core::helpers::fmt_type(&key_ty)
+                    ),
+                );
             }
             self.infer_expr(v, scopes);
         }

@@ -40,7 +40,10 @@ func main() -> string {
     msg
 }
 "#;
-    assert_eq!(run_source(src), interp::Value::String("inside bump".to_string()));
+    assert_eq!(
+        run_source(src),
+        interp::Value::String("inside bump".to_string())
+    );
 }
 
 #[test]

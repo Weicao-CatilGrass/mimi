@@ -28,7 +28,11 @@ pub(crate) fn hash_func_body(text: &str, func: &FuncDef) -> u64 {
     let end_line = find_func_end_line(text, func.pos.0);
     let lines: Vec<&str> = text.lines().collect();
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    for line in lines.iter().take(end_line.min(lines.len().saturating_sub(1)) + 1).skip(func.pos.0) {
+    for line in lines
+        .iter()
+        .take(end_line.min(lines.len().saturating_sub(1)) + 1)
+        .skip(func.pos.0)
+    {
         line.hash(&mut hasher);
     }
     hasher.finish()

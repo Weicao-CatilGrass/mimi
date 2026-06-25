@@ -2,7 +2,12 @@ use super::*;
 use crate::diagnostic::Diagnostic;
 
 impl<'a> Checker<'a> {
-    pub(crate) fn check_block(&mut self, block: &Block, ret: &Type, scopes: &mut Vec<HashMap<String, Type>>) {
+    pub(crate) fn check_block(
+        &mut self,
+        block: &Block,
+        ret: &Type,
+        scopes: &mut Vec<HashMap<String, Type>>,
+    ) {
         // Push cap scope and borrow scope for block
         self.cap_vars.push(HashMap::new());
         self.push_borrow_scope();
@@ -10,10 +15,15 @@ impl<'a> Checker<'a> {
         for (i, stmt) in block.iter().enumerate() {
             // Unreachable code detection
             if seen_return {
-                self.emit_code(crate::diagnostic::codes::E0236, "unreachable statement after return".to_string());
+                self.emit_code(
+                    crate::diagnostic::codes::E0236,
+                    "unreachable statement after return".to_string(),
+                );
                 break;
             }
-            if let Stmt::Return(_) = stmt { seen_return = true; }
+            if let Stmt::Return(_) = stmt {
+                seen_return = true;
+            }
             // NLL: Release borrows whose last use was in a previous statement
             if i > 0 {
                 self.release_borrows_at_last_use(block, i);
@@ -81,8 +91,11 @@ impl<'a> Checker<'a> {
                     self.check_expr_parasteps_safe(e, scopes);
                 }
             }
-            Stmt::Block(block) | Stmt::Arena(block) | Stmt::Unsafe(block)
-            | Stmt::Parasteps(block) | Stmt::OnFailure(block) => {
+            Stmt::Block(block)
+            | Stmt::Arena(block)
+            | Stmt::Unsafe(block)
+            | Stmt::Parasteps(block)
+            | Stmt::OnFailure(block) => {
                 for s in block {
                     self.check_stmt_parasteps_safe(s, scopes);
                 }
@@ -101,9 +114,13 @@ impl<'a> Checker<'a> {
             Stmt::Break(Some(e)) => {
                 self.check_expr_parasteps_safe(e, scopes);
             }
-            Stmt::Return(None) | Stmt::Continue | Stmt::Break(None)
+            Stmt::Return(None)
+            | Stmt::Continue
+            | Stmt::Break(None)
             | Stmt::Let { init: None, .. }
-            | Stmt::Desc(..) | Stmt::Rule(..) | Stmt::MmsBlock { .. }
+            | Stmt::Desc(..)
+            | Stmt::Rule(..)
+            | Stmt::MmsBlock { .. }
             | Stmt::Ellipsis => {}
         }
     }
@@ -130,26 +147,44 @@ impl<'a> Checker<'a> {
                 }
             }
             Stmt::If { then_, else_, .. } => {
-                for s in then_ { self.collect_shared_writes_in_stmt(s, scopes, writes); }
+                for s in then_ {
+                    self.collect_shared_writes_in_stmt(s, scopes, writes);
+                }
                 if let Some(else_) = else_ {
-                    for s in else_ { self.collect_shared_writes_in_stmt(s, scopes, writes); }
+                    for s in else_ {
+                        self.collect_shared_writes_in_stmt(s, scopes, writes);
+                    }
                 }
             }
             Stmt::While { body, .. } => {
-                for s in body { self.collect_shared_writes_in_stmt(s, scopes, writes); }
+                for s in body {
+                    self.collect_shared_writes_in_stmt(s, scopes, writes);
+                }
             }
             Stmt::WhileLet { body, .. } => {
-                for s in body { self.collect_shared_writes_in_stmt(s, scopes, writes); }
+                for s in body {
+                    self.collect_shared_writes_in_stmt(s, scopes, writes);
+                }
             }
             Stmt::Loop(body) => {
-                for s in body { self.collect_shared_writes_in_stmt(s, scopes, writes); }
+                for s in body {
+                    self.collect_shared_writes_in_stmt(s, scopes, writes);
+                }
             }
             Stmt::For { body, .. } => {
-                for s in body { self.collect_shared_writes_in_stmt(s, scopes, writes); }
+                for s in body {
+                    self.collect_shared_writes_in_stmt(s, scopes, writes);
+                }
             }
-            Stmt::Block(block) | Stmt::Unsafe(block) | Stmt::Alloc { body: block, .. }
-            | Stmt::Arena(block) | Stmt::Parasteps(block) | Stmt::OnFailure(block) => {
-                for s in block { self.collect_shared_writes_in_stmt(s, scopes, writes); }
+            Stmt::Block(block)
+            | Stmt::Unsafe(block)
+            | Stmt::Alloc { body: block, .. }
+            | Stmt::Arena(block)
+            | Stmt::Parasteps(block)
+            | Stmt::OnFailure(block) => {
+                for s in block {
+                    self.collect_shared_writes_in_stmt(s, scopes, writes);
+                }
             }
             Stmt::Let { init: Some(e), .. } => {
                 self.collect_shared_writes_in_expr(e, scopes, writes);
@@ -167,12 +202,18 @@ impl<'a> Checker<'a> {
                 self.collect_shared_writes_in_expr(expr, scopes, writes);
             }
             Stmt::Math(exprs) => {
-                for e in exprs { self.collect_shared_writes_in_expr(e, scopes, writes); }
+                for e in exprs {
+                    self.collect_shared_writes_in_expr(e, scopes, writes);
+                }
             }
-            Stmt::Continue | Stmt::Break(None) | Stmt::Return(None)
+            Stmt::Continue
+            | Stmt::Break(None)
+            | Stmt::Return(None)
             | Stmt::Let { init: None, .. }
             | Stmt::Expr(..)
-            | Stmt::Desc(..) | Stmt::Rule(..) | Stmt::MmsBlock { .. }
+            | Stmt::Desc(..)
+            | Stmt::Rule(..)
+            | Stmt::MmsBlock { .. }
             | Stmt::Ellipsis => {}
         }
     }
@@ -192,13 +233,19 @@ impl<'a> Checker<'a> {
                 self.collect_shared_writes_in_expr(l, scopes, writes);
                 self.collect_shared_writes_in_expr(r, scopes, writes);
             }
-            Expr::Unary(_, e) | Expr::Spawn(e) | Expr::Await(e) | Expr::Try(e)
-            | Expr::Old(e) | Expr::TypeOf(e) => {
+            Expr::Unary(_, e)
+            | Expr::Spawn(e)
+            | Expr::Await(e)
+            | Expr::Try(e)
+            | Expr::Old(e)
+            | Expr::TypeOf(e) => {
                 self.collect_shared_writes_in_expr(e, scopes, writes);
             }
             Expr::Call(callee, args) => {
                 self.collect_shared_writes_in_expr(callee, scopes, writes);
-                for a in args { self.collect_shared_writes_in_expr(a, scopes, writes); }
+                for a in args {
+                    self.collect_shared_writes_in_expr(a, scopes, writes);
+                }
             }
             Expr::Field(obj, _) | Expr::TupleIndex(obj, _) => {
                 self.collect_shared_writes_in_expr(obj, scopes, writes);
@@ -211,19 +258,29 @@ impl<'a> Checker<'a> {
                 self.collect_shared_writes_in_expr(target, scopes, writes);
             }
             Expr::List(elems) | Expr::Tuple(elems) | Expr::SetLiteral(elems) => {
-                for e in elems { self.collect_shared_writes_in_expr(e, scopes, writes); }
+                for e in elems {
+                    self.collect_shared_writes_in_expr(e, scopes, writes);
+                }
             }
-            Expr::Comprehension { expr, iter, guard, .. } => {
+            Expr::Comprehension {
+                expr, iter, guard, ..
+            } => {
                 self.collect_shared_writes_in_expr(expr, scopes, writes);
                 self.collect_shared_writes_in_expr(iter, scopes, writes);
-                if let Some(g) = guard { self.collect_shared_writes_in_expr(g, scopes, writes); }
+                if let Some(g) = guard {
+                    self.collect_shared_writes_in_expr(g, scopes, writes);
+                }
             }
             Expr::Match(matched, arms) => {
                 self.collect_shared_writes_in_expr(matched, scopes, writes);
-                for arm in arms { self.collect_shared_writes_in_expr(&arm.body, scopes, writes); }
+                for arm in arms {
+                    self.collect_shared_writes_in_expr(&arm.body, scopes, writes);
+                }
             }
             Expr::Record { fields, .. } => {
-                for f in fields { self.collect_shared_writes_in_expr(&f.value, scopes, writes); }
+                for f in fields {
+                    self.collect_shared_writes_in_expr(&f.value, scopes, writes);
+                }
             }
             Expr::MapLiteral { entries } => {
                 for (k, v) in entries {
@@ -235,19 +292,33 @@ impl<'a> Checker<'a> {
                 self.collect_shared_writes_in_expr(e, scopes, writes);
             }
             Expr::Turbofish(_, _, args) => {
-                for a in args { self.collect_shared_writes_in_expr(a, scopes, writes); }
+                for a in args {
+                    self.collect_shared_writes_in_expr(a, scopes, writes);
+                }
             }
-            Expr::Block(block) | Expr::Arena(block) | Expr::Comptime(block)
+            Expr::Block(block)
+            | Expr::Arena(block)
+            | Expr::Comptime(block)
             | Expr::Quote(block) => {
-                for s in block { self.collect_shared_writes_in_stmt(s, scopes, writes); }
+                for s in block {
+                    self.collect_shared_writes_in_stmt(s, scopes, writes);
+                }
             }
             Expr::If { cond, then_, else_ } => {
                 self.collect_shared_writes_in_expr(cond, scopes, writes);
-                for s in then_ { self.collect_shared_writes_in_stmt(s, scopes, writes); }
-                if let Some(eb) = else_ { for s in eb { self.collect_shared_writes_in_stmt(s, scopes, writes); } }
+                for s in then_ {
+                    self.collect_shared_writes_in_stmt(s, scopes, writes);
+                }
+                if let Some(eb) = else_ {
+                    for s in eb {
+                        self.collect_shared_writes_in_stmt(s, scopes, writes);
+                    }
+                }
             }
             Expr::Lambda { body, .. } => {
-                for s in body { self.collect_shared_writes_in_stmt(s, scopes, writes); }
+                for s in body {
+                    self.collect_shared_writes_in_stmt(s, scopes, writes);
+                }
             }
             Expr::QuoteInterpolate(inner) => {
                 self.collect_shared_writes_in_expr(inner, scopes, writes);
@@ -346,46 +417,68 @@ impl<'a> Checker<'a> {
             }
             Expr::If { cond, then_, else_ } => {
                 self.check_expr_parasteps_safe(cond, scopes);
-                for s in then_ { self.check_stmt_parasteps_safe(s, scopes); }
+                for s in then_ {
+                    self.check_stmt_parasteps_safe(s, scopes);
+                }
                 if let Some(eb) = else_ {
-                    for s in eb { self.check_stmt_parasteps_safe(s, scopes); }
+                    for s in eb {
+                        self.check_stmt_parasteps_safe(s, scopes);
+                    }
                 }
             }
             Expr::Block(block) => {
-                for s in block { self.check_stmt_parasteps_safe(s, scopes); }
+                for s in block {
+                    self.check_stmt_parasteps_safe(s, scopes);
+                }
             }
             Expr::Lambda { body, .. } => {
-                for s in body { self.check_stmt_parasteps_safe(s, scopes); }
+                for s in body {
+                    self.check_stmt_parasteps_safe(s, scopes);
+                }
             }
             Expr::Spawn(inner) | Expr::Await(inner) => {
                 self.check_expr_parasteps_safe(inner, scopes);
             }
-            Expr::Comprehension { expr, iter, guard, .. } => {
+            Expr::Comprehension {
+                expr, iter, guard, ..
+            } => {
                 self.check_expr_parasteps_safe(expr, scopes);
                 self.check_expr_parasteps_safe(iter, scopes);
-                if let Some(g) = guard { self.check_expr_parasteps_safe(g, scopes); }
+                if let Some(g) = guard {
+                    self.check_expr_parasteps_safe(g, scopes);
+                }
             }
             Expr::Match(matched, arms) => {
                 self.check_expr_parasteps_safe(matched, scopes);
-                for arm in arms { self.check_expr_parasteps_safe(&arm.body, scopes); }
+                for arm in arms {
+                    self.check_expr_parasteps_safe(&arm.body, scopes);
+                }
             }
             Expr::Record { fields, .. } => {
-                for f in fields { self.check_expr_parasteps_safe(&f.value, scopes); }
+                for f in fields {
+                    self.check_expr_parasteps_safe(&f.value, scopes);
+                }
             }
             Expr::Try(e) | Expr::Old(e) | Expr::TypeOf(e) => {
                 self.check_expr_parasteps_safe(e, scopes);
             }
             Expr::SliceExpr { target, start, end } => {
                 self.check_expr_parasteps_safe(target, scopes);
-                if let Some(s) = start { self.check_expr_parasteps_safe(s, scopes); }
-                if let Some(e) = end { self.check_expr_parasteps_safe(e, scopes); }
+                if let Some(s) = start {
+                    self.check_expr_parasteps_safe(s, scopes);
+                }
+                if let Some(e) = end {
+                    self.check_expr_parasteps_safe(e, scopes);
+                }
             }
             Expr::Range { start, end } => {
                 self.check_expr_parasteps_safe(start, scopes);
                 self.check_expr_parasteps_safe(end, scopes);
             }
             Expr::Arena(block) => {
-                for s in block { self.check_stmt_parasteps_safe(s, scopes); }
+                for s in block {
+                    self.check_stmt_parasteps_safe(s, scopes);
+                }
             }
             Expr::MapLiteral { entries } => {
                 for (k, v) in entries {
@@ -394,16 +487,22 @@ impl<'a> Checker<'a> {
                 }
             }
             Expr::SetLiteral(elems) => {
-                for e in elems { self.check_expr_parasteps_safe(e, scopes); }
+                for e in elems {
+                    self.check_expr_parasteps_safe(e, scopes);
+                }
             }
             Expr::NamedArg(_, e) => {
                 self.check_expr_parasteps_safe(e, scopes);
             }
             Expr::Turbofish(_, _, args) => {
-                for a in args { self.check_expr_parasteps_safe(a, scopes); }
+                for a in args {
+                    self.check_expr_parasteps_safe(a, scopes);
+                }
             }
             Expr::Quote(block) | Expr::Comptime(block) => {
-                for s in block { self.check_stmt_parasteps_safe(s, scopes); }
+                for s in block {
+                    self.check_stmt_parasteps_safe(s, scopes);
+                }
             }
             Expr::QuoteInterpolate(inner) => {
                 self.check_expr_parasteps_safe(inner, scopes);
@@ -419,7 +518,13 @@ impl<'a> Checker<'a> {
         scopes: &mut Vec<HashMap<String, Type>>,
     ) {
         match stmt {
-            Stmt::Let { pat, ty, init, mut_, ref_ } => {
+            Stmt::Let {
+                pat,
+                ty,
+                init,
+                mut_,
+                ref_,
+            } => {
                 // Shadowing detection
                 if let Pattern::Variable(name) = pat {
                     for scope in self.var_scopes.iter().rev() {
@@ -429,7 +534,8 @@ impl<'a> Checker<'a> {
                                     crate::diagnostic::codes::E0403,
                                     format!("variable '{}' shadows an outer variable", name),
                                     Span::single(self.current_line, self.current_col),
-                                ).with_help("rename the inner variable to avoid shadowing")
+                                )
+                                .with_help("rename the inner variable to avoid shadowing"),
                             );
                             break;
                         }
@@ -450,13 +556,25 @@ impl<'a> Checker<'a> {
                             // _ type: infer from init expression
                             init_ty.clone()
                         } else {
-                            if !same_type(&d, &init_ty) && !is_numeric_coercion(&d, &init_ty) && !is_trait_coercion(&d, &init_ty, &self.impls) {
+                            if !same_type(&d, &init_ty)
+                                && !is_numeric_coercion(&d, &init_ty)
+                                && !is_trait_coercion(&d, &init_ty, &self.impls)
+                            {
                                 self.errors.push(
                                     Diagnostic::error_code(
                                         crate::diagnostic::codes::E0209,
-                                        format!("pattern declared as {} but initialized with {}", fmt_type(&d), fmt_type(&init_ty)),
+                                        format!(
+                                            "pattern declared as {} but initialized with {}",
+                                            fmt_type(&d),
+                                            fmt_type(&init_ty)
+                                        ),
                                         Span::single(self.current_line, self.current_col),
-                                    ).with_help(format!("the expression has type '{}', not '{}'", fmt_type(&init_ty), fmt_type(&d)))
+                                    )
+                                    .with_help(format!(
+                                        "the expression has type '{}', not '{}'",
+                                        fmt_type(&init_ty),
+                                        fmt_type(&d)
+                                    )),
                                 );
                             }
                             d
@@ -493,10 +611,13 @@ impl<'a> Checker<'a> {
             }
             Stmt::Return(None) => {
                 if !same_type(ret, &Type::Name("unit".into(), vec![])) {
-                    self.emit_code(crate::diagnostic::codes::E0207, format!(
-                        "expected return value of type {}, found unit",
-                        fmt_type(ret)
-                    ));
+                    self.emit_code(
+                        crate::diagnostic::codes::E0207,
+                        format!(
+                            "expected return value of type {}, found unit",
+                            fmt_type(ret)
+                        ),
+                    );
                 }
             }
             Stmt::Return(Some(e)) => {
@@ -513,12 +634,18 @@ impl<'a> Checker<'a> {
             }
             Stmt::Break(_) => {
                 if self.loop_depth == 0 {
-                    self.emit_code(crate::diagnostic::codes::E0404, "break outside of loop".to_string());
+                    self.emit_code(
+                        crate::diagnostic::codes::E0404,
+                        "break outside of loop".to_string(),
+                    );
                 }
             }
             Stmt::Continue => {
                 if self.loop_depth == 0 {
-                    self.emit_code(crate::diagnostic::codes::E0405, "continue outside of loop".to_string());
+                    self.emit_code(
+                        crate::diagnostic::codes::E0405,
+                        "continue outside of loop".to_string(),
+                    );
                 }
             }
             Stmt::Expr(e) => {
@@ -527,10 +654,10 @@ impl<'a> Checker<'a> {
             Stmt::If { cond, then_, else_ } => {
                 let ct = self.infer_expr(cond, scopes);
                 if !is_bool(&ct) {
-                    self.emit_code(crate::diagnostic::codes::E0205, format!(
-                        "if condition must be bool, found {}",
-                        fmt_type(&ct)
-                    ));
+                    self.emit_code(
+                        crate::diagnostic::codes::E0205,
+                        format!("if condition must be bool, found {}", fmt_type(&ct)),
+                    );
                 }
                 self.check_block(then_, ret, scopes);
                 if let Some(else_) = else_ {
@@ -540,10 +667,10 @@ impl<'a> Checker<'a> {
             Stmt::While { cond, body } => {
                 let ct = self.infer_expr(cond, scopes);
                 if !is_bool(&ct) {
-                    self.emit_code(crate::diagnostic::codes::E0206, format!(
-                        "while condition must be bool, found {}",
-                        fmt_type(&ct)
-                    ));
+                    self.emit_code(
+                        crate::diagnostic::codes::E0206,
+                        format!("while condition must be bool, found {}", fmt_type(&ct)),
+                    );
                 }
                 self.loop_depth += 1;
                 self.check_block(body, ret, scopes);
@@ -563,21 +690,29 @@ impl<'a> Checker<'a> {
                 self.check_block(body, ret, scopes);
                 self.loop_depth -= 1;
             }
-            Stmt::For { var, iterable, body } => {
+            Stmt::For {
+                var,
+                iterable,
+                body,
+            } => {
                 let it = self.infer_expr(iterable, scopes);
                 let elem_ty = match &it {
                     Type::Name(n, args) if n == "List" && args.len() == 1 => args[0].clone(),
                     Type::Name(n, _) if n == "Range" => Type::Name("i32".into(), vec![]),
                     Type::Name(n, _) if n == "string" => Type::Name("string".into(), vec![]),
                     Type::Name(n, args) if n == "Set" && args.len() == 1 => args[0].clone(),
-                    Type::Name(n, _) if n == "Map" || n == "Record" => {
-                        Type::Tuple(vec![Type::Name("string".into(), vec![]), Type::Name("Any".into(), vec![])])
-                    }
+                    Type::Name(n, _) if n == "Map" || n == "Record" => Type::Tuple(vec![
+                        Type::Name("string".into(), vec![]),
+                        Type::Name("Any".into(), vec![]),
+                    ]),
                     _ => {
-                        self.emit_code(crate::diagnostic::codes::E0212, format!(
-                            "for loop requires a List, Range, string, Set, or Map, found {}",
-                            fmt_type(&it)
-                        ));
+                        self.emit_code(
+                            crate::diagnostic::codes::E0212,
+                            format!(
+                                "for loop requires a List, Range, string, Set, or Map, found {}",
+                                fmt_type(&it)
+                            ),
+                        );
                         Type::Name("unknown".into(), vec![])
                     }
                 };
@@ -609,7 +744,10 @@ impl<'a> Checker<'a> {
                 self.check_block(block, ret, scopes);
                 scopes.pop();
             }
-            Stmt::Alloc { kind: AllocKind::Arena, body } => {
+            Stmt::Alloc {
+                kind: AllocKind::Arena,
+                body,
+            } => {
                 self.arena_depth += 1;
                 scopes.push(HashMap::new());
                 self.check_block(body, ret, scopes);
@@ -621,7 +759,12 @@ impl<'a> Checker<'a> {
                 self.check_block(body, ret, scopes);
                 scopes.pop();
             }
-            Stmt::SharedLet { kind, name, ty, init } => {
+            Stmt::SharedLet {
+                kind,
+                name,
+                ty,
+                init,
+            } => {
                 let init_ty = self.infer_expr(init, scopes);
                 let final_ty = match kind {
                     SharedKind::Shared => Type::Shared(Box::new(init_ty.clone())),
@@ -631,35 +774,42 @@ impl<'a> Checker<'a> {
                         match &init_ty {
                             Type::Shared(inner) => Type::Weak(inner.clone()),
                             _ => {
-                            self.emit_code(crate::diagnostic::codes::E0411, format!(
-                                "weak requires a shared value, found {}",
-                                fmt_type(&init_ty)
-                            ));
+                                self.emit_code(
+                                    crate::diagnostic::codes::E0411,
+                                    format!(
+                                        "weak requires a shared value, found {}",
+                                        fmt_type(&init_ty)
+                                    ),
+                                );
                                 Type::Weak(Box::new(Type::Name("unknown".into(), vec![])))
                             }
                         }
                     }
-                    SharedKind::WeakLocal => {
-                        match &init_ty {
-                            Type::LocalShared(inner) => Type::WeakLocal(inner.clone()),
-                            _ => {
-                            self.emit_code(crate::diagnostic::codes::E0411, format!(
-                                "weak_local requires a local_shared value, found {}",
-                                fmt_type(&init_ty)
-                            ));
-                                Type::WeakLocal(Box::new(Type::Name("unknown".into(), vec![])))
-                            }
+                    SharedKind::WeakLocal => match &init_ty {
+                        Type::LocalShared(inner) => Type::WeakLocal(inner.clone()),
+                        _ => {
+                            self.emit_code(
+                                crate::diagnostic::codes::E0411,
+                                format!(
+                                    "weak_local requires a local_shared value, found {}",
+                                    fmt_type(&init_ty)
+                                ),
+                            );
+                            Type::WeakLocal(Box::new(Type::Name("unknown".into(), vec![])))
                         }
-                    }
+                    },
                 };
                 if let Some(declared) = ty {
                     let declared = self.resolve_type(declared);
                     if !same_type(&declared, &final_ty) {
-                        self.emit_code(crate::diagnostic::codes::E0258, format!(
-                            "shared binding declared as {} but inferred as {}",
-                            fmt_type(&declared),
-                            fmt_type(&final_ty)
-                        ));
+                        self.emit_code(
+                            crate::diagnostic::codes::E0258,
+                            format!(
+                                "shared binding declared as {} but inferred as {}",
+                                fmt_type(&declared),
+                                fmt_type(&final_ty)
+                            ),
+                        );
                     }
                 }
                 if let Some(s) = scopes.last_mut() {
@@ -673,11 +823,14 @@ impl<'a> Checker<'a> {
                     self.check_stmt_parasteps_safe(stmt, scopes);
                 }
                 // W005: Detect shared variable written by multiple parallel steps
-                let step_writes: Vec<Vec<String>> = block.iter().map(|stmt| {
-                    let mut writes = Vec::new();
-                    self.collect_shared_writes_in_stmt(stmt, scopes, &mut writes);
-                    writes
-                }).collect();
+                let step_writes: Vec<Vec<String>> = block
+                    .iter()
+                    .map(|stmt| {
+                        let mut writes = Vec::new();
+                        self.collect_shared_writes_in_stmt(stmt, scopes, &mut writes);
+                        writes
+                    })
+                    .collect();
                 for i in 0..step_writes.len() {
                     for j in (i + 1)..step_writes.len() {
                         for var in &step_writes[i] {
@@ -700,16 +853,22 @@ impl<'a> Checker<'a> {
                 match target {
                     Expr::Ident(name) => {
                         // Check mutability
-                        let is_mut = self.mut_vars.iter().rev().any(|scope| {
-                            scope.get(name).copied().unwrap_or(false)
-                        });
+                        let is_mut = self
+                            .mut_vars
+                            .iter()
+                            .rev()
+                            .any(|scope| scope.get(name).copied().unwrap_or(false));
                         if !is_mut {
                             self.errors.push(
                                 Diagnostic::error_code(
                                     crate::diagnostic::codes::E0208,
-                                    format!("cannot assign to immutable variable '{}' (use 'let mut')", name),
+                                    format!(
+                                        "cannot assign to immutable variable '{}' (use 'let mut')",
+                                        name
+                                    ),
                                     Span::single(self.current_line, self.current_col),
-                                ).with_help("use 'let mut' to make the variable mutable")
+                                )
+                                .with_help("use 'let mut' to make the variable mutable"),
                             );
                         }
                         let target_ty = self.lookup_var(name, scopes);
@@ -717,20 +876,34 @@ impl<'a> Checker<'a> {
                             self.errors.push(
                                 Diagnostic::error_code(
                                     crate::diagnostic::codes::E0209,
-                                    format!("cannot assign {} to variable '{}' of type {}", fmt_type(&value_ty), name, fmt_type(&target_ty)),
+                                    format!(
+                                        "cannot assign {} to variable '{}' of type {}",
+                                        fmt_type(&value_ty),
+                                        name,
+                                        fmt_type(&target_ty)
+                                    ),
                                     Span::single(self.current_line, self.current_col),
-                                ).with_help(format!("variable '{}' has type '{}', not '{}'", name, fmt_type(&target_ty), fmt_type(&value_ty)))
+                                )
+                                .with_help(format!(
+                                    "variable '{}' has type '{}', not '{}'",
+                                    name,
+                                    fmt_type(&target_ty),
+                                    fmt_type(&value_ty)
+                                )),
                             );
                         }
                         // E0306: Arena escape — assigning arena-scoped ref to outer-scope variable
                         if self.arena_depth > 0 {
                             if let Expr::Ident(value_name) = value {
-                                let value_in_arena_scope = scopes.last()
+                                let value_in_arena_scope = scopes
+                                    .last()
                                     .and_then(|s| s.get(value_name))
                                     .map(|ty| matches!(ty, Type::Ref(_, _) | Type::RefMut(_, _)))
                                     .unwrap_or(false);
                                 if value_in_arena_scope {
-                                    let target_in_outer = scopes[..scopes.len().saturating_sub(1)].iter().rev()
+                                    let target_in_outer = scopes[..scopes.len().saturating_sub(1)]
+                                        .iter()
+                                        .rev()
                                         .any(|s| s.contains_key(name));
                                     if target_in_outer {
                                         self.emit_code(crate::diagnostic::codes::E0306, format!(
@@ -748,18 +921,24 @@ impl<'a> Checker<'a> {
                         match &inner_ty {
                             Type::RefMut(_, inner_inner) => {
                                 if !same_type(&value_ty, inner_inner) {
-                                    self.emit_code(crate::diagnostic::codes::E0233, format!(
-                                        "cannot assign {} through &mut reference of type {}",
-                                        fmt_type(&value_ty),
-                                        fmt_type(&inner_ty)
-                                    ));
+                                    self.emit_code(
+                                        crate::diagnostic::codes::E0233,
+                                        format!(
+                                            "cannot assign {} through &mut reference of type {}",
+                                            fmt_type(&value_ty),
+                                            fmt_type(&inner_ty)
+                                        ),
+                                    );
                                 }
                             }
                             _ => {
-                                self.emit_code(crate::diagnostic::codes::E0233, format!(
-                                    "cannot assign through non-mutable reference {}",
-                                    fmt_type(&inner_ty)
-                                ));
+                                self.emit_code(
+                                    crate::diagnostic::codes::E0233,
+                                    format!(
+                                        "cannot assign through non-mutable reference {}",
+                                        fmt_type(&inner_ty)
+                                    ),
+                                );
                             }
                         }
                     }
@@ -771,7 +950,8 @@ impl<'a> Checker<'a> {
                                 match &type_def.kind {
                                     TypeDefKind::Record(fields) => {
                                         if !fields.iter().any(|f| f.name == *field) {
-                                            let available: Vec<&str> = fields.iter().map(|f| f.name.as_str()).collect();
+                                            let available: Vec<&str> =
+                                                fields.iter().map(|f| f.name.as_str()).collect();
                                             if available.is_empty() {
                                                 self.emit_code(crate::diagnostic::codes::E0220, format!("field '{}' not found in record '{}' (record has no fields)", field, name));
                                             } else {
@@ -782,7 +962,8 @@ impl<'a> Checker<'a> {
                                     TypeDefKind::Enum(variants)
                                         if !variants.iter().any(|v| v.name == *field) =>
                                     {
-                                        let available: Vec<&str> = variants.iter().map(|v| v.name.as_str()).collect();
+                                        let available: Vec<&str> =
+                                            variants.iter().map(|v| v.name.as_str()).collect();
                                         self.emit_code(crate::diagnostic::codes::E0226, format!("variant '{}' not found in enum '{}' — available: {}", field, name, available.join(", ")));
                                     }
                                     _ => {}
@@ -801,21 +982,35 @@ impl<'a> Checker<'a> {
                                     self.errors.push(
                                         Diagnostic::error_code(
                                             crate::diagnostic::codes::E0209,
-                                            format!("cannot assign {} to list element of type {}", fmt_type(&value_ty), fmt_type(elem_ty)),
+                                            format!(
+                                                "cannot assign {} to list element of type {}",
+                                                fmt_type(&value_ty),
+                                                fmt_type(elem_ty)
+                                            ),
                                             Span::single(self.current_line, self.current_col),
-                                        ).with_help(format!("the list contains elements of type '{}', not '{}'", fmt_type(elem_ty), fmt_type(&value_ty)))
+                                        )
+                                        .with_help(
+                                            format!(
+                                                "the list contains elements of type '{}', not '{}'",
+                                                fmt_type(elem_ty),
+                                                fmt_type(&value_ty)
+                                            ),
+                                        ),
                                     );
                                 }
                             }
                             _ => {
-                                self.emit_code(crate::diagnostic::codes::E0218, format!(
-                                    "cannot index-assign to {}",
-                                    fmt_type(&obj_ty)
-                                ));
+                                self.emit_code(
+                                    crate::diagnostic::codes::E0218,
+                                    format!("cannot index-assign to {}", fmt_type(&obj_ty)),
+                                );
                             }
                         }
                     }
-                    _ => self.emit_code(crate::diagnostic::codes::E0219, "assignment target must be a variable"),
+                    _ => self.emit_code(
+                        crate::diagnostic::codes::E0219,
+                        "assignment target must be a variable",
+                    ),
                 }
             }
             Stmt::Drop(expr) => {
@@ -829,12 +1024,12 @@ impl<'a> Checker<'a> {
                                 self.errors.push(
                                     Diagnostic::error_code(
                                         crate::diagnostic::codes::E0304,
-                                        format!(
-                                            "capability '{}' has already been consumed",
-                                            name
-                                        ),
+                                        format!("capability '{}' has already been consumed", name),
                                         Span::single(self.current_line, self.current_col),
-                                    ).with_help("capabilities are linear - each can only be dropped once")
+                                    )
+                                    .with_help(
+                                        "capabilities are linear - each can only be dropped once",
+                                    ),
                                 );
                             } else {
                                 *consumed = true;
@@ -846,19 +1041,19 @@ impl<'a> Checker<'a> {
             Stmt::Requires(expr, _) => {
                 let ty = self.infer_expr(expr, scopes);
                 if !matches!(&ty, Type::Name(n, _) if n == "bool") {
-                    self.emit_code(crate::diagnostic::codes::E0212, format!(
-                        "requires condition must be bool, found {}",
-                        fmt_type(&ty)
-                    ));
+                    self.emit_code(
+                        crate::diagnostic::codes::E0212,
+                        format!("requires condition must be bool, found {}", fmt_type(&ty)),
+                    );
                 }
             }
             Stmt::Invariant(expr, _) => {
                 let ty = self.infer_expr(expr, scopes);
                 if !matches!(&ty, Type::Name(n, _) if n == "bool") {
-                    self.emit_code(crate::diagnostic::codes::E0212, format!(
-                        "invariant condition must be bool, found {}",
-                        fmt_type(&ty)
-                    ));
+                    self.emit_code(
+                        crate::diagnostic::codes::E0212,
+                        format!("invariant condition must be bool, found {}", fmt_type(&ty)),
+                    );
                 }
             }
             Stmt::Ensures(expr, _) => {
@@ -874,10 +1069,10 @@ impl<'a> Checker<'a> {
                 let ty = self.infer_expr(expr, scopes);
                 scopes.pop();
                 if !matches!(&ty, Type::Name(n, _) if n == "bool") {
-                    self.emit_code(crate::diagnostic::codes::E0212, format!(
-                        "ensures condition must be bool, found {}",
-                        fmt_type(&ty)
-                    ));
+                    self.emit_code(
+                        crate::diagnostic::codes::E0212,
+                        format!("ensures condition must be bool, found {}", fmt_type(&ty)),
+                    );
                 }
             }
             Stmt::Math(exprs) => {

@@ -3,22 +3,26 @@
 
 #[cfg(test)]
 mod ffi_verification_tests {
-    use crate::ast::{Type, ExternFunc, ExternParam};
-    use crate::ffi::contract::{FfiContract, FfiArgContract};
-    use crate::parser::Parser;
+    use crate::ast::{ExternFunc, ExternParam, Type};
+    use crate::ffi::contract::{FfiArgContract, FfiContract};
     use crate::lexer::Lexer;
+    use crate::parser::Parser;
 
     fn parse_source(src: &str) -> Result<crate::ast::File, String> {
         let tokens = Lexer::new(src).tokenize().map_err(|e| e.to_string())?;
-        let file = Parser::new(tokens).parse_file().map_err(|e| e.to_string())?;
+        let file = Parser::new(tokens)
+            .parse_file()
+            .map_err(|e| e.to_string())?;
         Ok(file)
     }
 
     fn check_source(src: &str) -> Result<(), Vec<crate::diagnostic::Diagnostic>> {
-        let file = parse_source(src).map_err(|e| vec![crate::diagnostic::Diagnostic::error(
-            e,
-            crate::span::Span::new(0, 0, 0, 0),
-        )])?;
+        let file = parse_source(src).map_err(|e| {
+            vec![crate::diagnostic::Diagnostic::error(
+                e,
+                crate::span::Span::new(0, 0, 0, 0),
+            )]
+        })?;
         crate::core::check(&file)
     }
 
@@ -33,9 +37,13 @@ mod ffi_verification_tests {
             0
         }
         "#;
-        
+
         let result = check_source(src);
-        assert!(result.is_ok(), "CBuffer type should parse and type-check: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "CBuffer type should parse and type-check: {:?}",
+            result.err()
+        );
     }
 
     #[test]
@@ -47,7 +55,11 @@ mod ffi_verification_tests {
         "#;
         let file = parse_source(src).expect("should parse");
         let result = crate::core::check(&file);
-        assert!(result.is_ok(), "extern C fn type should parse and type-check: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "extern C fn type should parse and type-check: {:?}",
+            result.err()
+        );
     }
 
     #[test]
@@ -61,9 +73,13 @@ mod ffi_verification_tests {
             0
         }
         "#;
-        
+
         let result = check_source(src);
-        assert!(result.is_ok(), "Requires contract should parse and type-check: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "Requires contract should parse and type-check: {:?}",
+            result.err()
+        );
     }
 
     #[test]
@@ -79,9 +95,13 @@ mod ffi_verification_tests {
             0
         }
         "#;
-        
+
         let result = check_source(src);
-        assert!(result.is_ok(), "Passport types should parse and type-check: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "Passport types should parse and type-check: {:?}",
+            result.err()
+        );
     }
 
     #[test]
@@ -95,29 +115,31 @@ mod ffi_verification_tests {
             0
         }
         "#;
-        
+
         let result = check_source(src);
-        assert!(result.is_ok(), "raw_string type should parse and type-check: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "raw_string type should parse and type-check: {:?}",
+            result.err()
+        );
     }
 
     #[test]
     fn test_ffi_contract_generation() {
         let func = ExternFunc {
             name: "test_func".to_string(),
-            params: vec![
-                ExternParam {
-                    name: "x".to_string(),
-                    ty: Type::Name("i32".to_string(), vec![]),
-                    cap_mode: None,
-                },
-            ],
+            params: vec![ExternParam {
+                name: "x".to_string(),
+                ty: Type::Name("i32".to_string(), vec![]),
+                cap_mode: None,
+            }],
             ret: Some(Type::Name("i32".to_string(), vec![])),
             requires: None,
             ensures: None,
             variadic: false,
-                no_panic: false,
+            no_panic: false,
         };
-        
+
         let contract = FfiContract::from_extern(&func);
         assert_eq!(contract.args.len(), 1);
         assert!(matches!(contract.args[0], FfiArgContract::Int));
@@ -127,20 +149,18 @@ mod ffi_verification_tests {
     fn test_cbuffer_contract_generation() {
         let func = ExternFunc {
             name: "process_buffer".to_string(),
-            params: vec![
-                ExternParam {
-                    name: "buf".to_string(),
-                    ty: Type::CBuffer(Box::new(Type::Name("u8".to_string(), vec![]))),
-                    cap_mode: None,
-                },
-            ],
+            params: vec![ExternParam {
+                name: "buf".to_string(),
+                ty: Type::CBuffer(Box::new(Type::Name("u8".to_string(), vec![]))),
+                cap_mode: None,
+            }],
             ret: Some(Type::Name("i32".to_string(), vec![])),
             requires: None,
             ensures: None,
             variadic: false,
-                no_panic: false,
+            no_panic: false,
         };
-        
+
         let contract = FfiContract::from_extern(&func);
         assert_eq!(contract.args.len(), 1);
         assert!(matches!(contract.args[0], FfiArgContract::RawPtr(_)));
@@ -150,23 +170,21 @@ mod ffi_verification_tests {
     fn test_extern_fn_contract_generation() {
         let func = ExternFunc {
             name: "register_callback".to_string(),
-            params: vec![
-                ExternParam {
-                    name: "cb".to_string(),
-                    ty: Type::ExternFunc(
-                        vec![Type::Name("i32".to_string(), vec![])],
-                        Box::new(Type::Name("i32".to_string(), vec![]))
-                    ),
-                    cap_mode: None,
-                },
-            ],
+            params: vec![ExternParam {
+                name: "cb".to_string(),
+                ty: Type::ExternFunc(
+                    vec![Type::Name("i32".to_string(), vec![])],
+                    Box::new(Type::Name("i32".to_string(), vec![])),
+                ),
+                cap_mode: None,
+            }],
             ret: Some(Type::Name("i32".to_string(), vec![])),
             requires: None,
             ensures: None,
             variadic: false,
-                no_panic: false,
+            no_panic: false,
         };
-        
+
         let contract = FfiContract::from_extern(&func);
         assert_eq!(contract.args.len(), 1);
         assert!(

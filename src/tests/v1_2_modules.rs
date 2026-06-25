@@ -11,7 +11,11 @@ func main() -> i32 {
 "#;
     let result = check_source(src);
     // use of non-existent module is accepted by parser; main() returns 42
-    assert!(result.is_ok(), "use statement should not fail type checking: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "use statement should not fail type checking: {:?}",
+        result.err()
+    );
 }
 
 #[test]
@@ -30,10 +34,22 @@ func main() -> i32 {
 }
 "#;
     let file = parse(src);
-    let module = file.items.iter().find_map(|i| {
-        if let crate::ast::Item::Module(m) = i { Some(m) } else { None }
-    }).expect("Math module should be present");
-    assert_eq!(module.imports.len(), 1, "module should have one internal use");
+    let module = file
+        .items
+        .iter()
+        .find_map(|i| {
+            if let crate::ast::Item::Module(m) = i {
+                Some(m)
+            } else {
+                None
+            }
+        })
+        .expect("Math module should be present");
+    assert_eq!(
+        module.imports.len(),
+        1,
+        "module should have one internal use"
+    );
     assert_eq!(module.imports[0].path, vec!["std", "collections"]);
 }
 
@@ -57,5 +73,9 @@ func main() -> i32 {
 }
 "#;
     let result = run_source_result(src);
-    assert!(result.is_ok(), "module with type and method should work: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "module with type and method should work: {:?}",
+        result.err()
+    );
 }

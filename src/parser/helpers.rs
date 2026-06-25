@@ -11,14 +11,23 @@ impl Parser {
         if self.recursion_depth.get() >= MAX {
             let tok = self.peek();
             return Err(ParseError::new(
-                format!("recursion limit exceeded (> {} nested)", MAX), tok.line, tok.col,
+                format!("recursion limit exceeded (> {} nested)", MAX),
+                tok.line,
+                tok.col,
             ));
         }
         Ok(())
     }
 
-    pub(crate) fn inc_depth(&self) { self.recursion_depth.set(self.recursion_depth.get() + 1); }
-    pub(crate) fn dec_depth(&self) { let d = self.recursion_depth.get(); if d > 0 { self.recursion_depth.set(d - 1); } }
+    pub(crate) fn inc_depth(&self) {
+        self.recursion_depth.set(self.recursion_depth.get() + 1);
+    }
+    pub(crate) fn dec_depth(&self) {
+        let d = self.recursion_depth.get();
+        if d > 0 {
+            self.recursion_depth.set(d - 1);
+        }
+    }
 
     /// Skip tokens until we reach a synchronization point.
     /// Returns true if we found a sync point, false if we reached EOF.
@@ -165,13 +174,11 @@ impl Parser {
         if self.pos + 2 >= self.tokens.len() {
             return false;
         }
-        matches!(
-            &self.tokens[self.pos + 2].kind,
-            TokenKind::Arena
-        ) || matches!(
-            &self.tokens[self.pos + 2].kind,
-            TokenKind::Ident(name) if name == "System" || name == "Bump" || name == "Arena"
-        )
+        matches!(&self.tokens[self.pos + 2].kind, TokenKind::Arena)
+            || matches!(
+                &self.tokens[self.pos + 2].kind,
+                TokenKind::Ident(name) if name == "System" || name == "Bump" || name == "Arena"
+            )
     }
 
     pub(crate) fn match_semi(&mut self) {

@@ -3,7 +3,11 @@ use std::fs;
 use std::path::PathBuf;
 
 fn temp_dir(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("mimi_test_manifest_{}_{}", name, std::process::id()));
+    let dir = std::env::temp_dir().join(format!(
+        "mimi_test_manifest_{}_{}",
+        name,
+        std::process::id()
+    ));
     let _ = fs::create_dir_all(&dir);
     dir
 }
@@ -27,12 +31,20 @@ fn manifest_new() {
 fn manifest_save_and_load() {
     let dir = temp_dir("save_load");
     let m = Manifest::new("myproject");
-    m.save(&dir).expect("src/tests/manifest.rs:30 unwrap failed");
+    m.save(&dir)
+        .expect("src/tests/manifest.rs:30 unwrap failed");
 
     let loaded = Manifest::load(&dir).expect("src/tests/manifest.rs:32 unwrap failed");
     assert!(loaded.is_some(), "should find mimi.toml after save");
     let loaded = loaded.expect("src/tests/manifest.rs:34 unwrap failed");
-    assert_eq!(loaded.package.as_ref().expect("src/tests/manifest.rs:35 unwrap failed").name, "myproject");
+    assert_eq!(
+        loaded
+            .package
+            .as_ref()
+            .expect("src/tests/manifest.rs:35 unwrap failed")
+            .name,
+        "myproject"
+    );
     cleanup(&dir);
 }
 
@@ -50,7 +62,10 @@ fn manifest_add_dependency() {
     m.add_dependency("foo", Some("1.0"), None, None, None);
     m.add_dependency("bar", None, Some("./bar"), None, None);
 
-    let deps = m.dependencies.as_ref().expect("src/tests/manifest.rs:53 unwrap failed");
+    let deps = m
+        .dependencies
+        .as_ref()
+        .expect("src/tests/manifest.rs:53 unwrap failed");
     assert_eq!(deps.len(), 2);
     assert_eq!(deps[0].name, "foo");
     assert_eq!(deps[0].version.as_deref(), Some("1.0"));
@@ -64,7 +79,10 @@ fn manifest_add_duplicate_replaces() {
     m.add_dependency("foo", Some("1.0"), None, None, None);
     m.add_dependency("foo", Some("2.0"), None, None, None);
 
-    let deps = m.dependencies.as_ref().expect("src/tests/manifest.rs:67 unwrap failed");
+    let deps = m
+        .dependencies
+        .as_ref()
+        .expect("src/tests/manifest.rs:67 unwrap failed");
     assert_eq!(deps.len(), 1, "duplicate should be replaced");
     assert_eq!(deps[0].version.as_deref(), Some("2.0"));
 }
@@ -78,7 +96,10 @@ fn manifest_remove_dependency() {
     let removed = m.remove_dependency("foo");
     assert!(removed, "should return true when removing existing dep");
 
-    let deps = m.dependencies.as_ref().expect("src/tests/manifest.rs:81 unwrap failed");
+    let deps = m
+        .dependencies
+        .as_ref()
+        .expect("src/tests/manifest.rs:81 unwrap failed");
     assert_eq!(deps.len(), 1);
     assert_eq!(deps[0].name, "bar");
 }
@@ -104,21 +125,30 @@ fn manifest_find_up() {
     fs::create_dir_all(&subdir).expect("src/tests/manifest.rs:104 unwrap failed");
 
     let m = Manifest::new("found");
-    m.save(&dir).expect("src/tests/manifest.rs:107 unwrap failed");
+    m.save(&dir)
+        .expect("src/tests/manifest.rs:107 unwrap failed");
 
     let result = Manifest::find(&subdir);
     assert!(result.is_ok());
     let found = result.expect("src/tests/manifest.rs:111 unwrap failed");
     assert!(found.is_some(), "should find mimi.toml in parent directory");
     let (_found_dir, manifest) = found.expect("src/tests/manifest.rs:113 unwrap failed");
-    assert_eq!(manifest.package.as_ref().expect("src/tests/manifest.rs:114 unwrap failed").name, "found");
+    assert_eq!(
+        manifest
+            .package
+            .as_ref()
+            .expect("src/tests/manifest.rs:114 unwrap failed")
+            .name,
+        "found"
+    );
     cleanup(&dir);
 }
 
 #[test]
 fn manifest_invalid_toml() {
     let dir = temp_dir("invalid_toml");
-    fs::write(dir.join("mimi.toml"), "this is not [valid toml {{{{").expect("src/tests/manifest.rs:121 unwrap failed");
+    fs::write(dir.join("mimi.toml"), "this is not [valid toml {{{{")
+        .expect("src/tests/manifest.rs:121 unwrap failed");
     let result = Manifest::load(&dir);
     assert!(result.is_err(), "invalid TOML should return error");
     cleanup(&dir);
@@ -133,7 +163,11 @@ fn manifest_dependency_serialization() {
     assert!(toml_str.contains("dep1"));
     assert!(toml_str.contains("0.5.0"));
 
-    let deserialized: Manifest = toml::from_str(&toml_str).expect("src/tests/manifest.rs:136 unwrap failed");
-    let deps = deserialized.dependencies.as_ref().expect("src/tests/manifest.rs:137 unwrap failed");
+    let deserialized: Manifest =
+        toml::from_str(&toml_str).expect("src/tests/manifest.rs:136 unwrap failed");
+    let deps = deserialized
+        .dependencies
+        .as_ref()
+        .expect("src/tests/manifest.rs:137 unwrap failed");
     assert_eq!(deps[0].name, "dep1");
 }

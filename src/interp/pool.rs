@@ -17,7 +17,8 @@ impl ThreadPool {
         for _ in 0..size {
             let receiver = Arc::clone(&receiver);
             let worker = thread::spawn(move || loop {
-                let task = receiver.lock()
+                let task = receiver
+                    .lock()
                     .expect("interp pool receiver lock poisoned")
                     .recv();
                 match task {
@@ -28,7 +29,10 @@ impl ThreadPool {
             workers.push(worker);
         }
 
-        ThreadPool { _workers: workers, sender }
+        ThreadPool {
+            _workers: workers,
+            sender,
+        }
     }
 
     pub(crate) fn execute<F: FnOnce() + Send + 'static>(&self, job: F) {

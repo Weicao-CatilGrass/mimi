@@ -99,7 +99,8 @@ impl LspServer {
         status: VerifStatus,
         message: String,
     ) {
-        self.verification_cache.insert(key, (body_hash, status, message));
+        self.verification_cache
+            .insert(key, (body_hash, status, message));
     }
 
     pub(crate) fn load_cache(&mut self) {
@@ -123,13 +124,17 @@ impl LspServer {
                 "Failed" => VerifStatus::Failed,
                 _ => VerifStatus::Unknown,
             };
-            self.verification_cache
-                .insert(key.clone(), (entry.body_hash, status, entry.message.clone()));
+            self.verification_cache.insert(
+                key.clone(),
+                (entry.body_hash, status, entry.message.clone()),
+            );
         }
     }
 
     pub(crate) fn save_cache(&self) {
-        let Some(ref path) = self.cache_path else { return };
+        let Some(ref path) = self.cache_path else {
+            return;
+        };
         let entries: HashMap<String, CacheEntry> = self
             .verification_cache
             .iter()
@@ -178,7 +183,11 @@ impl LspServer {
             if path.extension().map(|e| e != "mimi").unwrap_or(true) {
                 continue;
             }
-            let module_name = path.file_stem().and_then(|s| s.to_str()).unwrap_or("").to_string();
+            let module_name = path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("")
+                .to_string();
             if module_name.is_empty() {
                 continue;
             }
@@ -190,15 +199,20 @@ impl LspServer {
                 Ok(t) => t,
                 Err(_) => continue,
             };
-            let (file, _parse_errors) = crate::parser::Parser::new(tokens).parse_file_with_recovery();
+            let (file, _parse_errors) =
+                crate::parser::Parser::new(tokens).parse_file_with_recovery();
 
             let mut funcs = Vec::new();
             for item in &file.items {
                 if let crate::ast::Item::Func(f) = item {
-                    let params_str: Vec<String> = f.params.iter()
+                    let params_str: Vec<String> = f
+                        .params
+                        .iter()
                         .map(|p| format!("{}: {}", p.name, crate::core::fmt_type(&p.ty)))
                         .collect();
-                    let ret_str = f.ret.as_ref()
+                    let ret_str = f
+                        .ret
+                        .as_ref()
                         .map(crate::core::fmt_type)
                         .unwrap_or_else(|| "unit".to_string());
                     let detail = format!("{}({}) -> {}", f.name, params_str.join(", "), ret_str);
@@ -283,10 +297,7 @@ impl LspServer {
         }
     }
 
-    pub(crate) fn handle_message(
-        &mut self,
-        msg: &serde_json::Value,
-    ) -> Option<serde_json::Value> {
+    pub(crate) fn handle_message(&mut self, msg: &serde_json::Value) -> Option<serde_json::Value> {
         handlers::handle_message(self, msg)
     }
 }

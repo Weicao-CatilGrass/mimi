@@ -13,8 +13,8 @@
 //!
 //! Run: `PROPTEST_CASES=1000 cargo test fuzz::target_differential -- --nocapture --include-ignored`
 
-use proptest::prelude::*;
 use crate::tests::{compile_and_run, run_source};
+use proptest::prelude::*;
 
 /// Wrap a body + result for the interpreter (returns the result as value).
 fn interp_src(body: &str, result: &str) -> String {
@@ -23,19 +23,24 @@ fn interp_src(body: &str, result: &str) -> String {
 
 /// Wrap body + result for the codegen (prints result, returns 0).
 fn codegen_src(body: &str, result: &str) -> String {
-    format!("func main() -> i32 {{\n{}\nprintln({});\n0\n}}", body, result)
+    format!(
+        "func main() -> i32 {{\n{}\nprintln({});\n0\n}}",
+        body, result
+    )
 }
 
 /// Run a body + result expression through both backends and assert equal.
 fn assert_body(body: &str, result: &str) {
     let v = run_source(&interp_src(body, result));
     let interp_str = format!("{}", v);
-    let cg_stdout = compile_and_run(&codegen_src(body, result))
-        .expect("codegen should compile and run");
+    let cg_stdout =
+        compile_and_run(&codegen_src(body, result)).expect("codegen should compile and run");
     let cg_str = cg_stdout.trim();
-    assert_eq!(interp_str, cg_str,
+    assert_eq!(
+        interp_str, cg_str,
         "differential mismatch\nbody:\n{}\nresult: {}\ninterp: {}\ncodegen: {}",
-        body, result, interp_str, cg_str);
+        body, result, interp_str, cg_str
+    );
 }
 
 /// For simple expressions: body is empty, result is the expression itself.
@@ -74,18 +79,20 @@ fn arb_if_expr() -> impl Strategy<Value = String> {
 
 /// Let-binding with shadowing: body is `let x = A; let x = x + B;`, result is `x`.
 fn arb_let_body() -> impl Strategy<Value = (String, String)> {
-    ((0i64..50i64), (0i64..50i64))
-        .prop_map(|(a, b)| {
-            let body = format!("    let x = {};\n    let x = x + {};", a, b);
-            let result = "x".to_string();
-            (body, result)
-        })
+    ((0i64..50i64), (0i64..50i64)).prop_map(|(a, b)| {
+        let body = format!("    let x = {};\n    let x = x + {};", a, b);
+        let result = "x".to_string();
+        (body, result)
+    })
 }
 
 /// Closure: body is `let base = A; let f = fn(x: i32) -> i32 { x + base };`, result is `f(B)`.
 fn arb_closure_body() -> impl Strategy<Value = (String, String)> {
     ((0i64..30i64), (0i64..30i64)).prop_map(|(a, b)| {
-        let body = format!("    let base = {};\n    let f = fn(x: i32) -> i32 {{ x + base }};", a);
+        let body = format!(
+            "    let base = {};\n    let f = fn(x: i32) -> i32 {{ x + base }};",
+            a
+        );
         let result = format!("f({})", b);
         (body, result)
     })

@@ -1,14 +1,16 @@
 use super::*;
 
-mod helpers;
 mod expr;
+mod helpers;
 mod stmt;
 
 impl<'a> Interpreter<'a> {
     pub(crate) fn eval_block(&mut self, block: &Block) -> Result<Option<Value>, InterpError> {
         self.push_compensation_scope();
         let result = self.eval_block_inner(block);
-        self.pop_compensation_scope(result.is_err() || self.early_return.is_some() || self.exited.is_some());
+        self.pop_compensation_scope(
+            result.is_err() || self.early_return.is_some() || self.exited.is_some(),
+        );
         result
     }
 
@@ -64,7 +66,13 @@ impl<'a> Interpreter<'a> {
 
     pub(crate) fn eval_stmt(&mut self, stmt: &Stmt) -> Result<Option<Value>, InterpError> {
         match stmt {
-            Stmt::Let { pat, init, mut_, ref_, ty } => {
+            Stmt::Let {
+                pat,
+                init,
+                mut_,
+                ref_,
+                ty,
+            } => {
                 self.eval_let(pat, init, *mut_, *ref_, ty)?;
             }
             Stmt::Return(e) => return self.eval_return(e),
@@ -95,7 +103,11 @@ impl<'a> Interpreter<'a> {
                     return Ok(Some(v));
                 }
             }
-            Stmt::For { var, iterable, body } => {
+            Stmt::For {
+                var,
+                iterable,
+                body,
+            } => {
                 if let Some(v) = self.eval_for(var, iterable, body)? {
                     return Ok(Some(v));
                 }
@@ -119,7 +131,13 @@ impl<'a> Interpreter<'a> {
             Stmt::Assign { target, value } => {
                 return self.eval_assign(target, value);
             }
-            Stmt::Desc(..) | Stmt::Rule(..) | Stmt::Requires(_, _) | Stmt::Ensures(_, _) | Stmt::Invariant(_, _) | Stmt::Ellipsis | Stmt::MmsBlock { .. } => {}
+            Stmt::Desc(..)
+            | Stmt::Rule(..)
+            | Stmt::Requires(_, _)
+            | Stmt::Ensures(_, _)
+            | Stmt::Invariant(_, _)
+            | Stmt::Ellipsis
+            | Stmt::MmsBlock { .. } => {}
             Stmt::Math(exprs) => {
                 // Math block: evaluate constant expressions at compile time
                 for expr in exprs {
@@ -135,7 +153,9 @@ impl<'a> Interpreter<'a> {
                 self.eval_expr(expr)?;
                 // In a real implementation, this would track capability usage
             }
-            Stmt::SharedLet { kind, name, init, .. } => {
+            Stmt::SharedLet {
+                kind, name, init, ..
+            } => {
                 self.eval_shared_let(kind, name, init)?;
             }
             Stmt::OnFailure(block) => {
@@ -177,9 +197,16 @@ impl<'a> Interpreter<'a> {
             Expr::Tuple(elems) => self.eval_tuple(elems),
             Expr::TupleIndex(obj, idx) => self.eval_tuple_index(obj, *idx),
             Expr::List(elems) => self.eval_list(elems),
-            Expr::Comprehension { expr, var, iter, guard } => self.eval_comprehension(expr, var, iter, guard),
+            Expr::Comprehension {
+                expr,
+                var,
+                iter,
+                guard,
+            } => self.eval_comprehension(expr, var, iter, guard),
             Expr::If { cond, then_, else_ } => self.eval_if_expr(cond, then_, else_),
-            Expr::Arena(block) => self.eval_arena_block(block).map(|v| v.unwrap_or(Value::Unit)),
+            Expr::Arena(block) => self
+                .eval_arena_block(block)
+                .map(|v| v.unwrap_or(Value::Unit)),
             Expr::Block(block) => Ok(self.eval_block(block)?.unwrap_or(Value::Unit)),
             Expr::Match(subject, arms) => self.eval_match(subject, arms),
             Expr::Field(obj, field) => self.eval_field(obj, field),
@@ -191,7 +218,9 @@ impl<'a> Interpreter<'a> {
             Expr::Await(expr) => self.eval_await(expr),
             Expr::QuoteInterpolate(expr) => {
                 let v = self.eval_expr(expr)?;
-                Ok(Value::QuoteAst(Box::new(QuotedAst::Interpolate(Box::new(v)))))
+                Ok(Value::QuoteAst(Box::new(QuotedAst::Interpolate(Box::new(
+                    v,
+                )))))
             }
             Expr::Quote(block) => {
                 // Convert the block to QuotedAst

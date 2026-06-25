@@ -5,9 +5,9 @@
 /// - W002: `$` / `$$` locked fragment with no implementation body
 /// - W003: `...` placeholder residual (in .mimi files)
 /// - W004: Function naming convention (snake_case)
-use crate::ast::{File, Item, FuncDef};
-use crate::diagnostic::Diagnostic;
+use crate::ast::{File, FuncDef, Item};
 use crate::diagnostic::codes::{W002, W003, W004};
+use crate::diagnostic::Diagnostic;
 use crate::span::Span;
 
 pub struct Linter;
@@ -75,14 +75,19 @@ impl Default for Linter {
 
 fn is_snake_case(name: &str) -> bool {
     !name.is_empty()
-        && name.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+        && name
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
         && !name.starts_with('_')
         && !name.ends_with('_')
         && !name.contains("__")
 }
 
 fn is_operator(name: &str) -> bool {
-    matches!(name, "==" | "!=" | "<" | ">" | "<=" | ">=" | "+" | "-" | "*" | "/" | "%" | "!")
+    matches!(
+        name,
+        "==" | "!=" | "<" | ">" | "<=" | ">=" | "+" | "-" | "*" | "/" | "%" | "!"
+    )
 }
 
 #[cfg(test)]
@@ -92,8 +97,12 @@ mod tests {
     use crate::parser::Parser;
 
     fn parse_source(src: &str) -> File {
-        let tokens = Lexer::new(src).tokenize().expect("src/lint.rs:121 unwrap failed");
-        Parser::new(tokens).parse_file().expect("src/lint.rs:122 unwrap failed")
+        let tokens = Lexer::new(src)
+            .tokenize()
+            .expect("src/lint.rs:121 unwrap failed");
+        Parser::new(tokens)
+            .parse_file()
+            .expect("src/lint.rs:122 unwrap failed")
     }
 
     #[test]
@@ -102,7 +111,10 @@ mod tests {
         let file = parse_source(src);
         let linter = Linter::new();
         let result = linter.lint(&file, src);
-        assert!(result.diagnostics.is_empty(), "valid code should have no lints");
+        assert!(
+            result.diagnostics.is_empty(),
+            "valid code should have no lints"
+        );
     }
 
     #[test]
@@ -111,8 +123,13 @@ mod tests {
         let file = parse_source(src);
         let linter = Linter::new();
         let result = linter.lint(&file, src);
-        assert!(result.diagnostics.iter().any(|d| d.code.as_deref() == Some(W004)),
-            "should detect non-snake_case function name");
+        assert!(
+            result
+                .diagnostics
+                .iter()
+                .any(|d| d.code.as_deref() == Some(W004)),
+            "should detect non-snake_case function name"
+        );
     }
 
     #[test]

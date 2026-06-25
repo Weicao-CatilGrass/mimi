@@ -8,7 +8,9 @@ fn compile_to_ir(src: &str) -> String {
     let file = parse(src);
     let context = inkwell::context::Context::create();
     let mut codegen = crate::codegen::CodeGenerator::new(&context, "test");
-    codegen.compile_file(&file).expect("src/tests/codegen_ir.rs:11 unwrap failed");
+    codegen
+        .compile_file(&file)
+        .expect("src/tests/codegen_ir.rs:11 unwrap failed");
     codegen.emit_ir()
 }
 
@@ -23,13 +25,19 @@ fn ir_module_has_moduleid() {
 #[test]
 fn ir_module_has_filename() {
     let ir = compile_to_ir("func main() -> i32 { 42 }");
-    assert!(ir.contains("source_filename"), "IR should have source_filename");
+    assert!(
+        ir.contains("source_filename"),
+        "IR should have source_filename"
+    );
 }
 
 #[test]
 fn ir_i32_returns_i64() {
     let ir = compile_to_ir("func main() -> i32 { 42 }");
-    assert!(ir.contains("define i64 @main()"), "i32 should map to i64 in IR");
+    assert!(
+        ir.contains("define i64 @main()"),
+        "i32 should map to i64 in IR"
+    );
 }
 
 // ===================== Void Functions =====================
@@ -52,7 +60,10 @@ fn ir_void_main() {
 #[test]
 fn ir_i64_add() {
     let ir = compile_to_ir("func main(a: i32, b: i32) -> i32 { a + b }");
-    assert!(ir.contains("add i64"), "i32 promotes to i64, should use add i64");
+    assert!(
+        ir.contains("add i64"),
+        "i32 promotes to i64, should use add i64"
+    );
 }
 
 #[test]
@@ -161,41 +172,48 @@ fn ir_logical_or_uses_or() {
 
 #[test]
 fn ir_if_then_else() {
-    let ir = compile_to_ir(r#"
+    let ir = compile_to_ir(
+        r#"
         func main(x: i32) -> i32 { if x > 0 { 1 } else { 0 } }
-    "#);
+    "#,
+    );
     assert!(ir.contains("then"), "if branch should have then block");
     assert!(ir.contains("else"), "else branch should have else block");
 }
 
 #[test]
 fn ir_if_no_else_block() {
-    let ir = compile_to_ir(r#"
+    let ir = compile_to_ir(
+        r#"
         func main(x: i32) -> i32 {
             let mut r = 0
             if x > 0 { r = 1 }
             r
         }
-    "#);
+    "#,
+    );
     assert!(ir.contains("then"), "if should have then block");
 }
 
 #[test]
 fn ir_while_loop_blocks() {
-    let ir = compile_to_ir(r#"
+    let ir = compile_to_ir(
+        r#"
         func main() -> i32 {
             let mut i = 0
             while i < 10 { i = i + 1 }
             i
         }
-    "#);
+    "#,
+    );
     assert!(ir.contains("loop"), "while should have loop header");
     assert!(ir.contains("loopbody"), "while should have loop body");
 }
 
 #[test]
 fn ir_nested_while_multi_loop() {
-    let ir = compile_to_ir(r#"
+    let ir = compile_to_ir(
+        r#"
         func main() -> i32 {
             let mut sum = 0; let mut i = 0
             while i < 3 {
@@ -205,14 +223,20 @@ fn ir_nested_while_multi_loop() {
             }
             sum
         }
-    "#);
+    "#,
+    );
     let loop_count = ir.matches("loop").count();
-    assert!(loop_count >= 4, "nested while should have >=4 loop blocks, got {}", loop_count);
+    assert!(
+        loop_count >= 4,
+        "nested while should have >=4 loop blocks, got {}",
+        loop_count
+    );
 }
 
 #[test]
 fn ir_while_break_cont() {
-    let ir = compile_to_ir(r#"
+    let ir = compile_to_ir(
+        r#"
         func main() -> i32 {
             let i = 0
             while i < 100 {
@@ -221,7 +245,8 @@ fn ir_while_break_cont() {
             }
             i
         }
-    "#);
+    "#,
+    );
     assert!(ir.contains("loopcont"), "break targets loopcont");
 }
 
@@ -229,10 +254,12 @@ fn ir_while_break_cont() {
 
 #[test]
 fn ir_call_instruction() {
-    let ir = compile_to_ir(r#"
+    let ir = compile_to_ir(
+        r#"
         func inc(x: i32) -> i32 { x + 1 }
         func main() -> i32 { inc(41) }
-    "#);
+    "#,
+    );
     assert!(ir.contains("call i64"), "should have call to i64 function");
     assert!(ir.contains("@inc"), "should call @inc");
     assert!(ir.contains("@main"), "should define @main");
@@ -240,21 +267,29 @@ fn ir_call_instruction() {
 
 #[test]
 fn ir_chained_calls_multi() {
-    let ir = compile_to_ir(r#"
+    let ir = compile_to_ir(
+        r#"
         func inc(x: i32) -> i32 { x + 1 }
         func main() -> i32 { inc(inc(40)) }
-    "#);
+    "#,
+    );
     let call_count = ir.matches("call i64").count();
-    assert!(call_count >= 2, "chained calls should have >=2 call insts, got {}", call_count);
+    assert!(
+        call_count >= 2,
+        "chained calls should have >=2 call insts, got {}",
+        call_count
+    );
 }
 
 #[test]
 fn ir_recursive_call_self() {
-    let ir = compile_to_ir(r#"
+    let ir = compile_to_ir(
+        r#"
         func factorial(n: i32) -> i32 {
             if n <= 1 { 1 } else { n * factorial(n - 1) }
         }
-    "#);
+    "#,
+    );
     assert!(ir.contains("factorial"), "recursive fn should call itself");
 }
 
@@ -324,18 +359,22 @@ fn ir_list_malloc() {
 
 #[test]
 fn ir_list_index_gep() {
-    let ir = compile_to_ir(r#"
+    let ir = compile_to_ir(
+        r#"
         func main() { let xs = [10, 20, 30]; let x = xs[1] }
-    "#);
+    "#,
+    );
     assert!(ir.contains("getelementptr"), "list index uses GEP");
     assert!(ir.contains("elem_val"), "list index loads elem");
 }
 
 #[test]
 fn ir_for_list_blocks() {
-    let ir = compile_to_ir(r#"
+    let ir = compile_to_ir(
+        r#"
         func main() { for x in [1, 2, 3] { println(x) } }
-    "#);
+    "#,
+    );
     assert!(ir.contains("forloop"), "for list needs forloop header");
     assert!(ir.contains("forbody"), "for list needs forbody");
 }
@@ -344,30 +383,41 @@ fn ir_for_list_blocks() {
 
 #[test]
 fn ir_extern_declare() {
-    let ir = compile_to_ir(r#"
+    let ir = compile_to_ir(
+        r#"
         extern "C" { func my_func(x: i32) -> i32; }
         func main() -> i32 { my_func(0) }
-    "#);
+    "#,
+    );
     assert!(ir.contains("declare"), "extern func should have declare");
-    assert!(ir.contains("@__mimi_extern_my_func"), "extern func name should be declared");
+    assert!(
+        ir.contains("@__mimi_extern_my_func"),
+        "extern func name should be declared"
+    );
 }
 
 #[test]
 fn ir_extern_multiple_funcs() {
-    let ir = compile_to_ir(r#"
+    let ir = compile_to_ir(
+        r#"
         extern "C" { func my_add(a: i32, b: i32) -> i32; func my_sub(a: i32, b: i32) -> i32; }
         func main() -> i32 { my_add(1, 2) + my_sub(3, 4) }
-    "#);
-    assert!(ir.contains("@__mimi_extern_my_add") && ir.contains("@__mimi_extern_my_sub"),
-        "multiple extern funcs should be declared");
+    "#,
+    );
+    assert!(
+        ir.contains("@__mimi_extern_my_add") && ir.contains("@__mimi_extern_my_sub"),
+        "multiple extern funcs should be declared"
+    );
 }
 
 #[test]
 fn ir_extern_void_func() {
-    let ir = compile_to_ir(r#"
+    let ir = compile_to_ir(
+        r#"
         extern "C" { func ext_fn(x: i32); }
         func main() -> i32 { 42 }
-    "#);
+    "#,
+    );
     assert!(ir.contains("declare"), "void extern should have declare");
 }
 
@@ -375,19 +425,23 @@ fn ir_extern_void_func() {
 
 #[test]
 fn ir_generic_mangling_i32() {
-    let ir = compile_to_ir(r#"
+    let ir = compile_to_ir(
+        r#"
         func identity<T>(x: T) -> T { x }
         func main() -> i32 { identity::<i32>(42) }
-    "#);
+    "#,
+    );
     assert!(ir.contains("identity$T_i32"), "generic should be mangled");
 }
 
 #[test]
 fn ir_generic_multi_instantiation() {
-    let ir = compile_to_ir(r#"
+    let ir = compile_to_ir(
+        r#"
         func wrap<T>(x: T) -> T { x }
         func main() -> i32 { let a = wrap::<i32>(1); let b = wrap::<i64>(2); a }
-    "#);
+    "#,
+    );
     assert!(ir.contains("wrap$T_i32"), "first instantiation");
     assert!(ir.contains("wrap$T_i64"), "second instantiation");
 }
@@ -405,10 +459,12 @@ fn ir_cap_does_not_crash() {
 
 #[test]
 fn ir_actor_constructor_and_type() {
-    let ir = compile_to_ir(r#"
+    let ir = compile_to_ir(
+        r#"
         actor Counter { count: i32; name: string }
         func main() -> i32 { 42 }
-    "#);
+    "#,
+    );
     assert!(ir.contains("Counter_new"), "actor should have constructor");
     assert!(ir.contains("%Counter"), "actor should have type name");
 }
@@ -423,12 +479,14 @@ fn ir_ret_instruction() {
 
 #[test]
 fn ir_early_return_multi_ret() {
-    let ir = compile_to_ir(r#"
+    let ir = compile_to_ir(
+        r#"
         func main(x: i32) -> i32 {
             if x > 0 { return x }
             0
         }
-    "#);
+    "#,
+    );
     assert!(ir.contains("ret"), "should have ret instructions");
 }
 
@@ -436,23 +494,27 @@ fn ir_early_return_multi_ret() {
 
 #[test]
 fn ir_on_failure_no_exit_skips_body() {
-    let ir = compile_to_ir(r#"
+    let ir = compile_to_ir(
+        r#"
         func main() -> i32 {
             on failure { println(1) }
             42
         }
-    "#);
+    "#,
+    );
     assert!(ir.contains("define"), "function should be defined");
 }
 
 #[test]
 fn ir_on_failure_with_exit_includes_body() {
-    let ir = compile_to_ir(r#"
+    let ir = compile_to_ir(
+        r#"
         func main() -> i32 {
             on failure { println(99) }
             exit(1)
         }
-    "#);
+    "#,
+    );
     assert!(ir.contains("exit"), "exit should be in IR");
     assert!(ir.contains("printf"), "on failure body should compile");
 }
@@ -462,14 +524,18 @@ fn ir_on_failure_with_exit_includes_body() {
 #[test]
 fn ir_string_global_constant() {
     let ir = compile_to_ir(r#"func main() -> i32 { let s = "abc"; 0 }"#);
-    assert!(ir.contains("abc"), "string literal content should appear in IR");
+    assert!(
+        ir.contains("abc"),
+        "string literal content should appear in IR"
+    );
 }
 
 // ===================== Match =====================
 
 #[test]
 fn ir_match_has_merge_block() {
-    let ir = compile_to_ir(r#"
+    let ir = compile_to_ir(
+        r#"
         type Color { Red | Green | Blue }
         func describe(c: Color) -> i32 {
             match c {
@@ -478,7 +544,8 @@ fn ir_match_has_merge_block() {
             }
         }
         func main() -> i32 { 0 }
-    "#);
+    "#,
+    );
     assert!(ir.contains("matchcont"), "match needs merge block");
 }
 
@@ -486,22 +553,28 @@ fn ir_match_has_merge_block() {
 
 #[test]
 fn ir_dyn_trait_type_maps_to_fat_pointer() {
-    let ir = compile_to_ir(r#"
+    let ir = compile_to_ir(
+        r#"
 trait Drawable {
     func draw() -> i32;
 }
 
 func use_dyn(d: dyn Drawable) -> i32 { 0 }
 func main() -> i32 { 0 }
-"#);
+"#,
+    );
     // The fat pointer for dyn Drawable is `{ ptr, ptr }` in opaque-pointer LLVM IR
-    assert!(ir.contains("{ ptr, ptr }") || ir.contains("i8*, i8*") || ir.contains("{ i8*, i8* }"),
-        "dyn Trait should compile to fat pointer, got:\n{}", ir);
+    assert!(
+        ir.contains("{ ptr, ptr }") || ir.contains("i8*, i8*") || ir.contains("{ i8*, i8* }"),
+        "dyn Trait should compile to fat pointer, got:\n{}",
+        ir
+    );
 }
 
 #[test]
 fn ir_vtable_contains_method() {
-    let ir = compile_to_ir(r#"
+    let ir = compile_to_ir(
+        r#"
 trait Drawable {
     func draw() -> i32;
 }
@@ -515,9 +588,16 @@ impl Drawable for Circle {
 }
 
 func main() -> i32 { 0 }
-"#);
-    assert!(ir.contains("Circle__Drawable__draw"),
-        "impl method should be compiled with mangled name, got:\n{}", ir);
-    assert!(ir.contains("Circle_Drawable_vtable"),
-        "vtable global should exist, got:\n{}", ir);
+"#,
+    );
+    assert!(
+        ir.contains("Circle__Drawable__draw"),
+        "impl method should be compiled with mangled name, got:\n{}",
+        ir
+    );
+    assert!(
+        ir.contains("Circle_Drawable_vtable"),
+        "vtable global should exist, got:\n{}",
+        ir
+    );
 }

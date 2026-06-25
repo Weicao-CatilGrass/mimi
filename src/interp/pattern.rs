@@ -1,7 +1,11 @@
 use super::*;
 
 impl<'a> Interpreter<'a> {
-    pub(crate) fn match_pattern(&self, pat: &Pattern, value: &Value) -> Option<Vec<(String, Value)>> {
+    pub(crate) fn match_pattern(
+        &self,
+        pat: &Pattern,
+        value: &Value,
+    ) -> Option<Vec<(String, Value)>> {
         let mut bindings = Vec::new();
         if self.match_pattern_inner(pat, value, &mut bindings) {
             Some(bindings)
@@ -10,7 +14,12 @@ impl<'a> Interpreter<'a> {
         }
     }
 
-    fn match_pattern_inner(&self, pat: &Pattern, value: &Value, bindings: &mut Vec<(String, Value)>) -> bool {
+    fn match_pattern_inner(
+        &self,
+        pat: &Pattern,
+        value: &Value,
+        bindings: &mut Vec<(String, Value)>,
+    ) -> bool {
         match pat {
             Pattern::Wildcard => true,
             Pattern::Variable(name) => {
@@ -61,19 +70,17 @@ impl<'a> Interpreter<'a> {
                     _ => false,
                 }
             }
-            Pattern::Tuple(pats) => {
-                match value {
-                    Value::Tuple(vals) if pats.len() == vals.len() => {
-                        for (p, v) in pats.iter().zip(vals.iter()) {
-                            if !self.match_pattern_inner(p, v, bindings) {
-                                return false;
-                            }
+            Pattern::Tuple(pats) => match value {
+                Value::Tuple(vals) if pats.len() == vals.len() => {
+                    for (p, v) in pats.iter().zip(vals.iter()) {
+                        if !self.match_pattern_inner(p, v, bindings) {
+                            return false;
                         }
-                        true
                     }
-                    _ => false,
+                    true
                 }
-            }
+                _ => false,
+            },
             Pattern::Array(pats) => {
                 let vals = match value {
                     Value::Array(a) => a.as_slice(),

@@ -16,8 +16,14 @@ func main() -> i32 {
     let result = core::check(&file);
     assert!(result.is_err());
     let errors = result.unwrap_err();
-    let has_borrow_error = errors.iter().any(|e| e.message.contains("already mutably borrowed"));
-    assert!(has_borrow_error, "Expected mutable borrow error, got: {:?}", errors);
+    let has_borrow_error = errors
+        .iter()
+        .any(|e| e.message.contains("already mutably borrowed"));
+    assert!(
+        has_borrow_error,
+        "Expected mutable borrow error, got: {:?}",
+        errors
+    );
 }
 
 #[test]
@@ -36,8 +42,14 @@ func main() -> i32 {
     let result = core::check(&file);
     assert!(result.is_err());
     let errors = result.unwrap_err();
-    let has_borrow_error = errors.iter().any(|e| e.message.contains("already immutably borrowed"));
-    assert!(has_borrow_error, "Expected immutable borrow error, got: {:?}", errors);
+    let has_borrow_error = errors
+        .iter()
+        .any(|e| e.message.contains("already immutably borrowed"));
+    assert!(
+        has_borrow_error,
+        "Expected immutable borrow error, got: {:?}",
+        errors
+    );
 }
 
 #[test]
@@ -52,7 +64,10 @@ func main() -> i32 {
 "#;
     let file = parse(src);
     let result = core::check(&file);
-    assert!(result.is_ok(), "Multiple immutable borrows should be allowed");
+    assert!(
+        result.is_ok(),
+        "Multiple immutable borrows should be allowed"
+    );
 }
 
 #[test]
@@ -88,7 +103,11 @@ func main() -> i32 {
 "#;
     let file = parse(src);
     let result = core::check(&file);
-    assert!(result.is_ok(), "NLL should allow reborrow after last use: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "NLL should allow reborrow after last use: {:?}",
+        result.err()
+    );
 }
 
 #[test]
@@ -107,7 +126,11 @@ func main() -> i32 {
 "#;
     let file = parse(src);
     let result = core::check(&file);
-    assert!(result.is_ok(), "NLL should allow &mut after &x last use: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "NLL should allow &mut after &x last use: {:?}",
+        result.err()
+    );
 }
 
 #[test]
@@ -141,7 +164,11 @@ func main() -> i32 {
 "#;
     let file = parse(src);
     let result = core::check(&file);
-    assert!(result.is_ok(), "Unused reference should release borrow: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "Unused reference should release borrow: {:?}",
+        result.err()
+    );
 }
 
 #[test]
@@ -158,7 +185,10 @@ func main() -> i32 {
 "#;
     let file = parse(src);
     let result = core::check(&file);
-    assert!(result.is_err(), "Should reject &mut while &x reference is still used later");
+    assert!(
+        result.is_err(),
+        "Should reject &mut while &x reference is still used later"
+    );
 }
 
 #[test]
@@ -173,7 +203,11 @@ func main() -> i32 {
 "#;
     let file = parse(src);
     let result = core::check(&file);
-    assert!(result.is_ok(), "Borrow used in last statement should be allowed: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "Borrow used in last statement should be allowed: {:?}",
+        result.err()
+    );
 }
 
 #[test]
@@ -256,8 +290,11 @@ fn fmt_type_option_consistent_with_same_type() {
     // Option<T> should be "Option<T>", not "T?"
     let t = crate::ast::Type::Option(Box::new(crate::ast::Type::Name("i32".into(), vec![])));
     let formatted = crate::core::fmt_type(&t);
-    assert_eq!(formatted, "Option<i32>",
-        "Option type must format as `Option<T>`, got: {}", formatted);
+    assert_eq!(
+        formatted, "Option<i32>",
+        "Option type must format as `Option<T>`, got: {}",
+        formatted
+    );
 }
 
 #[test]
@@ -266,8 +303,11 @@ fn fmt_type_option_nested() {
     let inner = crate::ast::Type::Name("i32".into(), vec![]);
     let t = crate::ast::Type::Option(Box::new(crate::ast::Type::Option(Box::new(inner))));
     let formatted = crate::core::fmt_type(&t);
-    assert_eq!(formatted, "Option<Option<i32>>",
-        "Nested Option type must format as `Option<Option<T>>`, got: {}", formatted);
+    assert_eq!(
+        formatted, "Option<Option<i32>>",
+        "Nested Option type must format as `Option<Option<T>>`, got: {}",
+        formatted
+    );
 }
 
 #[test]
@@ -279,8 +319,11 @@ fn fmt_type_result_contains_option() {
         Box::new(crate::ast::Type::Name("string".into(), vec![])),
     );
     let formatted = crate::core::fmt_type(&t);
-    assert_eq!(formatted, "Result<Option<i32>, string>",
-        "Result<Option<i32>> must use canonical Option format, got: {}", formatted);
+    assert_eq!(
+        formatted, "Result<Option<i32>, string>",
+        "Result<Option<i32>> must use canonical Option format, got: {}",
+        formatted
+    );
 }
 
 #[test]
@@ -293,7 +336,11 @@ fn typecheck_numeric_coercion_i32_to_i64_let() {
         }
     "#;
     let result = check_source(src);
-    assert!(result.is_ok(), "i32→i64 coercion in let should be accepted, got: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "i32→i64 coercion in let should be accepted, got: {:?}",
+        result.err()
+    );
 }
 
 #[test]
@@ -305,7 +352,11 @@ fn typecheck_numeric_coercion_i32_to_i64_arg() {
         func main() -> i64 { identity(21) }
     "#;
     let result = check_source(src);
-    assert!(result.is_ok(), "i32→i64 coercion in func arg should be accepted, got: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "i32→i64 coercion in func arg should be accepted, got: {:?}",
+        result.err()
+    );
 }
 
 #[test]
@@ -318,7 +369,11 @@ fn typecheck_numeric_coercion_i32_to_f64() {
         }
     "#;
     let result = check_source(src);
-    assert!(result.is_ok(), "i32→f64 coercion should be accepted, got: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "i32→f64 coercion should be accepted, got: {:?}",
+        result.err()
+    );
 }
 
 #[test]
@@ -332,7 +387,11 @@ fn typecheck_ensures_result_binding() {
         func main() -> i32 { double(5) }
     "#;
     let result = check_source(src);
-    assert!(result.is_ok(), "ensures with `result` should type-check, got: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "ensures with `result` should type-check, got: {:?}",
+        result.err()
+    );
 }
 
 // ─── IDD binary numeric coercion tests ─────────────────────────
@@ -349,7 +408,11 @@ fn typecheck_binary_numeric_coercion_i32_i64_add() {
         }
     "#;
     let result = check_source(src);
-    assert!(result.is_ok(), "i32 + i64 should type-check with widening, got: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "i32 + i64 should type-check with widening, got: {:?}",
+        result.err()
+    );
 }
 
 #[test]
@@ -366,7 +429,11 @@ fn typecheck_binary_numeric_coercion_i32_i64_all_ops() {
         }
     "#;
     let result = check_source(src);
-    assert!(result.is_ok(), "mixed i32/i64 arithmetic should type-check, got: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "mixed i32/i64 arithmetic should type-check, got: {:?}",
+        result.err()
+    );
 }
 
 #[test]
@@ -379,7 +446,11 @@ fn typecheck_binary_numeric_coercion_i32_f64() {
         }
     "#;
     let result = check_source(src);
-    assert!(result.is_ok(), "i32 + f64 should type-check with widening, got: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "i32 + f64 should type-check with widening, got: {:?}",
+        result.err()
+    );
 }
 
 #[test]
@@ -392,7 +463,11 @@ fn typecheck_binary_numeric_coercion_i64_f64() {
         }
     "#;
     let result = check_source(src);
-    assert!(result.is_ok(), "i64 * f64 should type-check with widening, got: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "i64 * f64 should type-check with widening, got: {:?}",
+        result.err()
+    );
 }
 
 #[test]
@@ -405,7 +480,11 @@ fn typecheck_comparison_numeric_coercion_i32_i64() {
         }
     "#;
     let result = check_source(src);
-    assert!(result.is_ok(), "i32 < i64 comparison should type-check, got: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "i32 < i64 comparison should type-check, got: {:?}",
+        result.err()
+    );
 }
 
 #[test]
@@ -430,10 +509,17 @@ func bad_shared(x: shared i32) -> i32 {
 func main() -> i32 { 0 }
 "#;
     let result = check_source(src);
-    assert!(result.is_err(), "expected error for contract on shared param function");
+    assert!(
+        result.is_err(),
+        "expected error for contract on shared param function"
+    );
     let errors = result.unwrap_err();
     let has_shared_contract_error = errors.iter().any(|e| e.message.contains("shared"));
-    assert!(has_shared_contract_error, "expected shared contract error, got: {:?}", errors);
+    assert!(
+        has_shared_contract_error,
+        "expected shared contract error, got: {:?}",
+        errors
+    );
 }
 
 #[test]
@@ -446,7 +532,10 @@ func bad_local(x: local_shared i32) -> i32 {
 func main() -> i32 { 0 }
 "#;
     let result = check_source(src);
-    assert!(result.is_err(), "expected error for contract on local_shared param function");
+    assert!(
+        result.is_err(),
+        "expected error for contract on local_shared param function"
+    );
 }
 
 #[test]
@@ -458,7 +547,11 @@ func ok_shared(x: shared i32) -> i32 {
 func main() -> i32 { 0 }
 "#;
     let result = check_source(src);
-    assert!(result.is_ok(), "expected no error for shared param without contract, got: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "expected no error for shared param without contract, got: {:?}",
+        result
+    );
 }
 
 #[test]
@@ -471,7 +564,11 @@ func ok_normal(x: i32) -> i32 {
 func main() -> i32 { ok_normal(1) }
 "#;
     let result = check_source(src);
-    assert!(result.is_ok(), "expected no error for contract without shared param, got: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "expected no error for contract without shared param, got: {:?}",
+        result
+    );
 }
 
 #[test]
@@ -488,8 +585,14 @@ func main() -> i32 {
 }
 "#;
     let warnings = check_source_warnings(src);
-    let has_w005 = warnings.iter().any(|w| w.code.as_deref() == Some(crate::diagnostic::codes::W005));
-    assert!(has_w005, "expected W005 warning for shared var written by multiple steps, got: {:?}", warnings);
+    let has_w005 = warnings
+        .iter()
+        .any(|w| w.code.as_deref() == Some(crate::diagnostic::codes::W005));
+    assert!(
+        has_w005,
+        "expected W005 warning for shared var written by multiple steps, got: {:?}",
+        warnings
+    );
 }
 
 #[test]
@@ -506,8 +609,14 @@ func main() -> i32 {
 }
 "#;
     let warnings = check_source_warnings(src);
-    let has_w005 = warnings.iter().any(|w| w.code.as_deref() == Some(crate::diagnostic::codes::W005));
-    assert!(has_w005, "expected W005 warning for push on shared list from multiple steps, got: {:?}", warnings);
+    let has_w005 = warnings
+        .iter()
+        .any(|w| w.code.as_deref() == Some(crate::diagnostic::codes::W005));
+    assert!(
+        has_w005,
+        "expected W005 warning for push on shared list from multiple steps, got: {:?}",
+        warnings
+    );
 }
 
 #[test]
@@ -525,8 +634,14 @@ func main() -> i32 {
 }
 "#;
     let warnings = check_source_warnings(src);
-    let has_w005 = warnings.iter().any(|w| w.code.as_deref() == Some(crate::diagnostic::codes::W005));
-    assert!(!has_w005, "expected no W005 for different shared vars, got: {:?}", warnings);
+    let has_w005 = warnings
+        .iter()
+        .any(|w| w.code.as_deref() == Some(crate::diagnostic::codes::W005));
+    assert!(
+        !has_w005,
+        "expected no W005 for different shared vars, got: {:?}",
+        warnings
+    );
 }
 
 #[test]
@@ -542,8 +657,14 @@ func main() -> i32 {
 }
 "#;
     let warnings = check_source_warnings(src);
-    let has_w005 = warnings.iter().any(|w| w.code.as_deref() == Some(crate::diagnostic::codes::W005));
-    assert!(!has_w005, "expected no W005 for single step, got: {:?}", warnings);
+    let has_w005 = warnings
+        .iter()
+        .any(|w| w.code.as_deref() == Some(crate::diagnostic::codes::W005));
+    assert!(
+        !has_w005,
+        "expected no W005 for single step, got: {:?}",
+        warnings
+    );
 }
 
 #[test]
@@ -559,7 +680,10 @@ func main() -> i32 {
 }
 "#;
     let result = check_source(src);
-    assert!(result.is_err(), "expected E0305 for local_shared in parasteps requires");
+    assert!(
+        result.is_err(),
+        "expected E0305 for local_shared in parasteps requires"
+    );
 }
 
 #[test]
@@ -575,7 +699,10 @@ func main() -> i32 {
 }
 "#;
     let result = check_source(src);
-    assert!(result.is_err(), "expected E0305 for local_shared in parasteps ensures");
+    assert!(
+        result.is_err(),
+        "expected E0305 for local_shared in parasteps ensures"
+    );
 }
 
 #[test]
@@ -592,10 +719,17 @@ func main() -> i32 {
 }
 "#;
     let result = check_source(src);
-    assert!(result.is_err(), "expected error for arena escape via ref-to-ref assign");
+    assert!(
+        result.is_err(),
+        "expected error for arena escape via ref-to-ref assign"
+    );
     let errors = result.unwrap_err();
     let has_escape_error = errors.iter().any(|e| e.message.contains("arena"));
-    assert!(has_escape_error, "expected arena escape error, got: {:?}", errors);
+    assert!(
+        has_escape_error,
+        "expected arena escape error, got: {:?}",
+        errors
+    );
 }
 
 #[test]
@@ -610,7 +744,11 @@ func main() -> i32 {
 }
 "#;
     let result = check_source(src);
-    assert!(result.is_ok(), "expected no error for copying value out of arena, got: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "expected no error for copying value out of arena, got: {:?}",
+        result
+    );
 }
 
 #[test]
@@ -627,7 +765,11 @@ func main() -> i32 {
 }
 "#;
     let result = check_source(src);
-    assert!(result.is_ok(), "expected no error for ref use within arena, got: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "expected no error for ref use within arena, got: {:?}",
+        result
+    );
 }
 
 fn warn_no_shared_no_parasteps_write() {
@@ -642,19 +784,28 @@ func main() -> i32 {
 }
 "#;
     let warnings = check_source_warnings(src);
-    let has_w005 = warnings.iter().any(|w| w.code.as_deref() == Some(crate::diagnostic::codes::W005));
-    assert!(!has_w005, "expected no W005 for non-shared vars, got: {:?}", warnings);
+    let has_w005 = warnings
+        .iter()
+        .any(|w| w.code.as_deref() == Some(crate::diagnostic::codes::W005));
+    assert!(
+        !has_w005,
+        "expected no W005 for non-shared vars, got: {:?}",
+        warnings
+    );
 }
 
 // ─── Regex builtin type check tests (L2) ──────────────────────
 
 #[test]
 fn typecheck_regex_match_wrong_args() {
-    check_source(r#"
+    check_source(
+        r#"
 func main() -> bool {
     regex_match("hello")
 }
-"#).expect_err("regex_match with 1 arg should fail typecheck");
+"#,
+    )
+    .expect_err("regex_match with 1 arg should fail typecheck");
 }
 
 #[test]
@@ -670,92 +821,119 @@ func main() -> string {
 
 #[test]
 fn typecheck_regex_replace_wrong_args() {
-    check_source(r#"
+    check_source(
+        r#"
 func main() -> string {
     regex_replace("hello", "pattern")
 }
-"#).expect_err("regex_replace with 2 args should fail typecheck");
+"#,
+    )
+    .expect_err("regex_replace with 2 args should fail typecheck");
 }
 
 // ─── Generic bounds type check tests (L2) ─────────────────────
 
 #[test]
 fn typecheck_generic_bounds_clone_ok() {
-    check_source(r#"
+    check_source(
+        r#"
 func clone_it<T: Clone>(x: T) -> T { x }
 func main() -> i32 {
     let r = clone_it(42);
     r
 }
-"#).expect("i32 should satisfy Clone bound");
+"#,
+    )
+    .expect("i32 should satisfy Clone bound");
 }
 
 #[test]
 fn typecheck_generic_bounds_default_ok() {
-    check_source(r#"
+    check_source(
+        r#"
 func default_it<T: Default>(x: T) -> T { x }
 func main() -> i32 {
     default_it(42)
 }
-"#).expect("i32 should satisfy Default bound");
+"#,
+    )
+    .expect("i32 should satisfy Default bound");
 }
 
 #[test]
 fn typecheck_generic_bounds_copy_ok() {
-    check_source(r#"
+    check_source(
+        r#"
 func copy_it<T: Copy>(x: T) -> T { x }
 func main() -> i32 {
     copy_it(42)
 }
-"#).expect("i32 should satisfy Copy bound");
+"#,
+    )
+    .expect("i32 should satisfy Copy bound");
 }
 
 #[test]
 fn typecheck_generic_bounds_copy_rejected_for_string() {
-    check_source(r#"
+    check_source(
+        r#"
 func copy_it<T: Copy>(x: T) -> T { x }
 func main() -> string {
     copy_it("hello")
 }
-"#).expect_err("string should NOT satisfy Copy bound");
+"#,
+    )
+    .expect_err("string should NOT satisfy Copy bound");
 }
 
 #[test]
 fn typecheck_generic_bounds_eq_ok() {
-    check_source(r#"
+    check_source(
+        r#"
 func eq_it<T: Eq>(x: T) -> T { x }
 func main() -> i32 {
     eq_it(42)
 }
-"#).expect("i32 should satisfy Eq bound");
+"#,
+    )
+    .expect("i32 should satisfy Eq bound");
 }
 
 #[test]
 fn typecheck_generic_bounds_turbofish_ok() {
-    check_source(r#"
+    check_source(
+        r#"
 func clone_it<T: Clone>(x: T) -> T { x }
 func main() -> i32 {
     clone_it::<i32>(42)
 }
-"#).expect("turbofish with i32 should satisfy Clone bound");
+"#,
+    )
+    .expect("turbofish with i32 should satisfy Clone bound");
 }
 
 #[test]
 fn typecheck_generic_bounds_multiple_ok() {
-    check_source(r#"
+    check_source(
+        r#"
 func process<T: Clone + Default>(x: T) -> T { x }
 func main() -> i32 {
     process(42)
 }
-"#).expect("i32 should satisfy Clone+Default bounds");
+"#,
+    )
+    .expect("i32 should satisfy Clone+Default bounds");
 }
 
 #[test]
 fn typecheck_generic_bounds_multi_param_ok() {
-    check_source(r#"
+    check_source(
+        r#"
 func pair<T: Copy, U: Default>(a: T, b: U) -> T { a }
 func main() -> i32 {
     pair(1, 2)
 }
-"#).expect("i32 should satisfy Copy, i32 should satisfy Default");
+"#,
+    )
+    .expect("i32 should satisfy Copy, i32 should satisfy Default");
 }

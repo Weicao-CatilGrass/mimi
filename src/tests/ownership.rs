@@ -128,8 +128,11 @@ func main() -> i32 {
 "#;
     let v = run_source(src);
     // After shared x is dropped, upgrade returns None → match None → 0
-    assert_eq!(v, interp::Value::Int(0),
-        "weak upgrade after shared drop should return None");
+    assert_eq!(
+        v,
+        interp::Value::Int(0),
+        "weak upgrade after shared drop should return None"
+    );
 }
 
 #[test]
@@ -151,8 +154,11 @@ func main() -> i32 {
 }
 "#;
     let v = run_source(src);
-    assert_eq!(v, interp::Value::Int(0),
-        "local_weak upgrade after shared drop should return None");
+    assert_eq!(
+        v,
+        interp::Value::Int(0),
+        "local_weak upgrade after shared drop should return None"
+    );
 }
 
 #[test]
@@ -308,7 +314,11 @@ func main() -> i32 {
     let result = run_source_result(src);
     assert!(result.is_err());
     let err = result.unwrap_err();
-    assert!(err.contains("arena escape"), "Expected arena escape error, got: {}", err);
+    assert!(
+        err.contains("arena escape"),
+        "Expected arena escape error, got: {}",
+        err
+    );
 }
 
 #[test]
@@ -326,7 +336,11 @@ func main() -> i32 {
     let result = run_source_result(src);
     assert!(result.is_err());
     let err = result.unwrap_err();
-    assert!(err.contains("arena escape"), "Expected arena escape error, got: {}", err);
+    assert!(
+        err.contains("arena escape"),
+        "Expected arena escape error, got: {}",
+        err
+    );
 }
 
 #[test]

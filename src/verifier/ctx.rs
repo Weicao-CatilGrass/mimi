@@ -1,8 +1,8 @@
 use crate::ast::{Expr, File};
 use crate::diagnostic::Diagnostic;
 use std::collections::HashMap;
-use z3::ast::{Bool as Z3Bool, Int as Z3Int, Real as Z3Real};
 use z3::ast::String as Z3String;
+use z3::ast::{Bool as Z3Bool, Int as Z3Int, Real as Z3Real};
 use z3::SatResult;
 use z3::Solver;
 
@@ -29,6 +29,7 @@ pub enum VerifStatus {
 pub struct Counterexample {
     pub assignments: Vec<(String, i64)>,
     pub real_assignments: Vec<(String, f64)>,
+    pub string_assignments: Vec<(String, String)>,
     pub violated_ensures: Vec<String>,
     pub violated_indices: Vec<usize>,
 }
@@ -135,6 +136,10 @@ pub struct Verifier {
     /// when encoding body-return expressions. Fixes P0.1 for let-binding calls:
     /// `let y = double(x); y` now correctly resolves `y` to `double(x)`.
     pub(crate) let_subst: HashMap<String, Expr>,
+    /// E1: Tracks the number of push() calls without corresponding pop().
+    /// When check_safe() replaces the solver (Unknown/crash), the fresh solver
+    /// starts at depth 0 — callers must not pop(1) in that case.
+    pub(crate) push_depth: u32,
 }
 
 impl Verifier {
@@ -148,7 +153,13 @@ impl Verifier {
         let mut params = z3::Params::new();
         params.set_u32("timeout", timeout_ms as u32);
         solver.set_params(&params);
-        Ok(Self { solver, timeout_ms, func_defs: HashMap::new(), let_subst: HashMap::new() })
+        Ok(Self {
+            solver,
+            timeout_ms,
+            func_defs: HashMap::new(),
+            let_subst: HashMap::new(),
+            push_depth: 0,
+        })
     }
 
     /// Check satisfiability with timeout and crash protection.
@@ -158,8 +169,7 @@ impl Verifier {
     /// crash. The old solver is dropped and a fresh one is created.
     pub(crate) fn check_safe(&mut self) -> SatResult {
         let result =
-            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.solver.check()))
-                .ok();
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.solver.check())).ok();
         match result {
             Some(SatResult::Sat) => SatResult::Sat,
             Some(SatResult::Unsat) => SatResult::Unsat,
@@ -175,6 +185,7 @@ impl Verifier {
                 let new_solver = Solver::new();
                 new_solver.set_params(&params);
                 let _ = std::mem::replace(&mut self.solver, new_solver);
+                self.push_depth = 0;
                 SatResult::Unknown
             }
         }
@@ -188,6 +199,20 @@ impl Verifier {
         self.solver.set_params(&params);
     }
 
+    /// E1: Push a new solver scope, tracking depth for safe pop after Unknown.
+    pub(crate) fn solver_push(&mut self) {
+        self.solver.push();
+        self.push_depth += 1;
+    }
+
+    /// E1: Pop solver scope, but only if push_depth > 0 (safe after solver replacement).
+    pub(crate) fn solver_pop(&mut self, levels: u32) {
+        if self.push_depth >= levels {
+            self.push_depth -= levels;
+            self.solver.pop(levels);
+        }
+    }
+
     pub fn verify_file(&mut self, file: &File) -> Vec<VerificationResult> {
         let mut results = Vec::new();
         self.verify_items(&file.items, &mut results);
@@ -198,6 +223,10 @@ impl Verifier {
     /// Returns `None` if the solver has no assertions.
     pub fn dump_smt2(&self) -> Option<String> {
         let s = self.solver.to_string();
-        if s.is_empty() { None } else { Some(s) }
+        if s.is_empty() {
+            None
+        } else {
+            Some(s)
+        }
     }
 }

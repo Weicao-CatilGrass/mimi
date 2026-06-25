@@ -1,6 +1,6 @@
 use crate::ast::*;
-use crate::codegen::CallSiteValueExt;
 use crate::codegen::call_try_basic_value;
+use crate::codegen::CallSiteValueExt;
 use crate::error::CompileError;
 
 use inkwell::values::{BasicMetadataValueEnum, BasicValueEnum, IntValue};
@@ -99,25 +99,33 @@ impl<'ctx> CodeGenerator<'ctx> {
                 // Shared variable: the alloca stores a T* pointer to heap memory.
                 // First load the pointer, then load the value from the heap.
                 let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
-                let heap_ptr = self.builder.build_load(ptr_ty, alloca, name)
-                    .map_err(|e| CompileError::LlvmError(format!("shared heap ptr load error: {}", e)))?;
+                let heap_ptr = self.builder.build_load(ptr_ty, alloca, name).map_err(|e| {
+                    CompileError::LlvmError(format!("shared heap ptr load error: {}", e))
+                })?;
                 let heap_pointer = heap_ptr.into_pointer_value();
-                self.builder.build_load(ty, heap_pointer, name)
+                self.builder
+                    .build_load(ty, heap_pointer, name)
                     .map_err(|e| CompileError::LlvmError(format!("shared value load error: {}", e)))
             } else {
-                self.builder.build_load(ty, alloca, name)
+                self.builder
+                    .build_load(ty, alloca, name)
                     .map_err(|e| CompileError::LlvmError(format!("load error: {}", e)))
             }
         } else if self.cap_type_names.contains(name.as_str()) {
             // Cap literal: call mimi_cap_register(name) to get handle
             if let Some(register_fn) = self.module.get_function("mimi_cap_register") {
-                let name_global = self.builder.build_global_string_ptr(
-                    &format!("{}\0", name), &format!("cap_name_{}", name))
+                let name_global = self
+                    .builder
+                    .build_global_string_ptr(&format!("{}\0", name), &format!("cap_name_{}", name))
                     .map_err(|e| CompileError::LlvmError(format!("string global error: {}", e)))?;
                 let name_ptr = name_global.as_pointer_value();
-                let handle = self.builder.build_call(register_fn, &[
-                    BasicMetadataValueEnum::PointerValue(name_ptr),
-                ], &format!("cap_register_{}", name))
+                let handle = self
+                    .builder
+                    .build_call(
+                        register_fn,
+                        &[BasicMetadataValueEnum::PointerValue(name_ptr)],
+                        &format!("cap_register_{}", name),
+                    )
                     .map_err(|e| CompileError::LlvmError(format!("cap_register error: {}", e)))?
                     .try_as_basic_value_opt()
                     .ok_or("mimi_cap_register returned void")?;
@@ -159,7 +167,11 @@ impl<'ctx> CodeGenerator<'ctx> {
     }
 
     #[allow(clippy::only_used_in_recursion)]
-    pub(super) fn infer_object_type(&self, expr: &Expr, vars: &HashMap<String, VarEntry<'ctx>>) -> String {
+    pub(super) fn infer_object_type(
+        &self,
+        expr: &Expr,
+        vars: &HashMap<String, VarEntry<'ctx>>,
+    ) -> String {
         match expr {
             Expr::Ident(name) => {
                 // Look up variable's type name from our tracking map
@@ -206,15 +218,16 @@ impl<'ctx> CodeGenerator<'ctx> {
                     String::new()
                 }
             }
-            Expr::Block(block) => {
-                block.last().and_then(|last| {
+            Expr::Block(block) => block
+                .last()
+                .and_then(|last| {
                     if let Stmt::Expr(e) = last {
                         Some(self.infer_object_type(e, vars))
                     } else {
                         None
                     }
-                }).unwrap_or_default()
-            }
+                })
+                .unwrap_or_default(),
             _ => String::new(),
         }
     }
@@ -223,7 +236,10 @@ impl<'ctx> CodeGenerator<'ctx> {
     /// Mimi strings are represented as either:
     ///   - An i8* raw C string (from string literals)
     ///   - A {i8*, i64} struct (from string variables)
-    pub(super) fn extract_raw_str_ptr(&self, arg: &BasicMetadataValueEnum<'ctx>) -> Result<inkwell::values::PointerValue<'ctx>, CompileError> {
+    pub(super) fn extract_raw_str_ptr(
+        &self,
+        arg: &BasicMetadataValueEnum<'ctx>,
+    ) -> Result<inkwell::values::PointerValue<'ctx>, CompileError> {
         match arg {
             BasicMetadataValueEnum::PointerValue(pv) => {
                 // Could be a raw C string pointer OR a pointer to a Mimi string struct {i8*, i64}.
@@ -232,8 +248,12 @@ impl<'ctx> CodeGenerator<'ctx> {
                 Ok(*pv)
             }
             BasicMetadataValueEnum::StructValue(sv) => {
-                let extracted = self.builder.build_extract_value(*sv, 0, "str_ptr")
-                    .map_err(|e| CompileError::LlvmError(format!("extract str ptr error: {}", e)))?;
+                let extracted = self
+                    .builder
+                    .build_extract_value(*sv, 0, "str_ptr")
+                    .map_err(|e| {
+                        CompileError::LlvmError(format!("extract str ptr error: {}", e))
+                    })?;
                 match extracted {
                     BasicValueEnum::PointerValue(pv) => Ok(pv),
                     _ => Err("string struct field 0 is not a pointer".into()),
@@ -246,7 +266,10 @@ impl<'ctx> CodeGenerator<'ctx> {
     /// Return an error if running in no_std mode for a builtin that depends on libc.
     pub(super) fn require_std(&self, builtin: &str) -> Result<(), CompileError> {
         if self.no_std {
-            Err(CompileError::Generic(format!("[E0750] '{}' requires libc (not available in no_std mode)", builtin)))
+            Err(CompileError::Generic(format!(
+                "[E0750] '{}' requires libc (not available in no_std mode)",
+                builtin
+            )))
         } else {
             Ok(())
         }
@@ -291,15 +314,21 @@ impl<'ctx> CodeGenerator<'ctx> {
         entries: &[(Expr, Expr)],
         vars: &HashMap<String, VarEntry<'ctx>>,
     ) -> Result<BasicValueEnum<'ctx>, CompileError> {
-        let map_new = self.module.get_function("mimi_map_new")
+        let map_new = self
+            .module
+            .get_function("mimi_map_new")
             .ok_or("mimi_map_new not declared")?;
-        let result = self.builder.build_call(map_new, &[], "map_new_call")
+        let result = self
+            .builder
+            .build_call(map_new, &[], "map_new_call")
             .map_err(|e| format!("map_new error: {}", e))?;
         let map_handle = call_try_basic_value(&result)
             .ok_or("mimi_map_new returned void")?
             .into_int_value();
 
-        let map_set = self.module.get_function("mimi_map_set")
+        let map_set = self
+            .module
+            .get_function("mimi_map_set")
             .ok_or("mimi_map_set not declared")?;
 
         for (key, value) in entries {
@@ -308,20 +337,25 @@ impl<'ctx> CodeGenerator<'ctx> {
             // Key must be a string pointer
             let key_ptr = match &key_val {
                 BasicValueEnum::PointerValue(pv) => *pv,
-                BasicValueEnum::StructValue(sv) => {
-                    self.builder.build_extract_value(*sv, 0, "key_str_ptr")
-                        .map_err(|e| CompileError::LlvmError(format!("extract key str ptr: {}", e)))?
-                        .into_pointer_value()
-                }
+                BasicValueEnum::StructValue(sv) => self
+                    .builder
+                    .build_extract_value(*sv, 0, "key_str_ptr")
+                    .map_err(|e| CompileError::LlvmError(format!("extract key str ptr: {}", e)))?
+                    .into_pointer_value(),
                 _ => return Err("map literal key must be a string".into()),
             };
             // Value is cast to i64 (ValueHandle) for storage
             let val_i64 = self.any_value_to_handle(val_val)?;
-            self.builder.build_call(map_set, &[
-                BasicMetadataValueEnum::IntValue(map_handle),
-                BasicMetadataValueEnum::PointerValue(key_ptr),
-                BasicMetadataValueEnum::IntValue(val_i64),
-            ], "map_set_call")
+            self.builder
+                .build_call(
+                    map_set,
+                    &[
+                        BasicMetadataValueEnum::IntValue(map_handle),
+                        BasicMetadataValueEnum::PointerValue(key_ptr),
+                        BasicMetadataValueEnum::IntValue(val_i64),
+                    ],
+                    "map_set_call",
+                )
                 .map_err(|e| format!("map_set error: {}", e))?;
         }
 
@@ -333,24 +367,35 @@ impl<'ctx> CodeGenerator<'ctx> {
         elems: &[Expr],
         vars: &HashMap<String, VarEntry<'ctx>>,
     ) -> Result<BasicValueEnum<'ctx>, CompileError> {
-        let set_new = self.module.get_function("mimi_set_new")
+        let set_new = self
+            .module
+            .get_function("mimi_set_new")
             .ok_or("mimi_set_new not declared")?;
-        let result = self.builder.build_call(set_new, &[], "set_new_call")
+        let result = self
+            .builder
+            .build_call(set_new, &[], "set_new_call")
             .map_err(|e| format!("set_new error: {}", e))?;
         let set_handle = call_try_basic_value(&result)
             .ok_or("mimi_set_new returned void")?
             .into_int_value();
 
-        let set_insert = self.module.get_function("mimi_set_insert")
+        let set_insert = self
+            .module
+            .get_function("mimi_set_insert")
             .ok_or("mimi_set_insert not declared")?;
 
         for elem in elems {
             let val = self.compile_expr(elem, vars)?;
             let val_i64 = self.any_value_to_handle(val)?;
-            self.builder.build_call(set_insert, &[
-                BasicMetadataValueEnum::IntValue(set_handle),
-                BasicMetadataValueEnum::IntValue(val_i64),
-            ], "set_insert_call")
+            self.builder
+                .build_call(
+                    set_insert,
+                    &[
+                        BasicMetadataValueEnum::IntValue(set_handle),
+                        BasicMetadataValueEnum::IntValue(val_i64),
+                    ],
+                    "set_insert_call",
+                )
                 .map_err(|e| format!("set_insert error: {}", e))?;
         }
 
@@ -358,31 +403,36 @@ impl<'ctx> CodeGenerator<'ctx> {
     }
 
     /// Convert any basic value to an i64 ValueHandle for map storage.
-    fn any_value_to_handle(&self, val: BasicValueEnum<'ctx>) -> Result<IntValue<'ctx>, CompileError> {
+    fn any_value_to_handle(
+        &self,
+        val: BasicValueEnum<'ctx>,
+    ) -> Result<IntValue<'ctx>, CompileError> {
         Ok(match val {
             BasicValueEnum::IntValue(iv) => iv,
-            BasicValueEnum::PointerValue(pv) => {
-                self.builder.build_ptr_to_int(pv, self.context.i64_type(), "ptr_to_handle")
-                    .map_err(|e| CompileError::LlvmError(format!("ptr_to_int: {}", e)))?
-            }
+            BasicValueEnum::PointerValue(pv) => self
+                .builder
+                .build_ptr_to_int(pv, self.context.i64_type(), "ptr_to_handle")
+                .map_err(|e| CompileError::LlvmError(format!("ptr_to_int: {}", e)))?,
             BasicValueEnum::StructValue(sv) => {
                 // Extract first field (string struct has ptr at 0)
-                let field = self.builder.build_extract_value(sv, 0, "struct_field")
+                let field = self
+                    .builder
+                    .build_extract_value(sv, 0, "struct_field")
                     .map_err(|e| CompileError::LlvmError(format!("extract: {}", e)))?;
                 match field {
-                    BasicValueEnum::PointerValue(pv) => {
-                        self.builder.build_ptr_to_int(pv, self.context.i64_type(), "struct_ptr_to_handle")
-                            .map_err(|e| CompileError::LlvmError(format!("ptr_to_int: {}", e)))?
-                    }
+                    BasicValueEnum::PointerValue(pv) => self
+                        .builder
+                        .build_ptr_to_int(pv, self.context.i64_type(), "struct_ptr_to_handle")
+                        .map_err(|e| CompileError::LlvmError(format!("ptr_to_int: {}", e)))?,
                     BasicValueEnum::IntValue(iv) => iv,
                     _ => return Err("unsupported struct field type for map value handle".into()),
                 }
             }
-            BasicValueEnum::FloatValue(fv) => {
-                self.builder.build_bit_cast(fv, self.context.i64_type(), "float_to_handle")
-                    .map_err(|e| CompileError::LlvmError(format!("bitcast: {}", e)))?
-                    .into_int_value()
-            }
+            BasicValueEnum::FloatValue(fv) => self
+                .builder
+                .build_bit_cast(fv, self.context.i64_type(), "float_to_handle")
+                .map_err(|e| CompileError::LlvmError(format!("bitcast: {}", e)))?
+                .into_int_value(),
             _ => return Err("unsupported value type for map storage".into()),
         })
     }

@@ -33,7 +33,10 @@ impl<'a> Checker<'a> {
         }
         // Check if it's a type name (actor/record or enum)
         if let Some(tdef) = self.types.get(name) {
-            if matches!(tdef.kind, TypeDefKind::Record(_) | TypeDefKind::Enum(_) | TypeDefKind::Union(_)) {
+            if matches!(
+                tdef.kind,
+                TypeDefKind::Record(_) | TypeDefKind::Enum(_) | TypeDefKind::Union(_)
+            ) {
                 // This is a type name - return it as a type
                 return Type::Name(name.into(), vec![]);
             }
@@ -53,10 +56,14 @@ impl<'a> Checker<'a> {
                     crate::diagnostic::codes::E0400,
                     format!("undefined variable '{}'", name),
                     Span::single(self.current_line, self.current_col),
-                ).with_help(format!("did you mean '{}'?", suggested))
+                )
+                .with_help(format!("did you mean '{}'?", suggested)),
             );
         } else {
-            self.emit_code(crate::diagnostic::codes::E0400, format!("undefined variable '{}'", name));
+            self.emit_code(
+                crate::diagnostic::codes::E0400,
+                format!("undefined variable '{}'", name),
+            );
         }
         Type::Name("unknown".into(), vec![])
     }

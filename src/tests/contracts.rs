@@ -32,7 +32,11 @@ func main() -> i32 {
     let result = run_source_result(src);
     assert!(result.is_err());
     let err = result.unwrap_err();
-    assert!(err.contains("requires condition failed"), "Expected requires error, got: {}", err);
+    assert!(
+        err.contains("requires condition failed"),
+        "Expected requires error, got: {}",
+        err
+    );
 }
 
 #[test]
@@ -66,7 +70,11 @@ func main() -> i32 {
     let result = run_source_result(src);
     assert!(result.is_err());
     let err = result.unwrap_err();
-    assert!(err.contains("ensures condition failed"), "Expected ensures error, got: {}", err);
+    assert!(
+        err.contains("ensures condition failed"),
+        "Expected ensures error, got: {}",
+        err
+    );
 }
 
 #[test]
@@ -133,7 +141,11 @@ func main() -> i32 {
     let result = run_source_result(src);
     assert!(result.is_err());
     let err = result.unwrap_err();
-    assert!(err.contains("ensures condition failed"), "Expected ensures error, got: {}", err);
+    assert!(
+        err.contains("ensures condition failed"),
+        "Expected ensures error, got: {}",
+        err
+    );
 }
 
 #[test]
@@ -180,7 +192,10 @@ func main() -> i32 {
     inc(41)
 }
 "#;
-    assert!(check_source(src).is_ok(), "ensures with `result` should type-check");
+    assert!(
+        check_source(src).is_ok(),
+        "ensures with `result` should type-check"
+    );
     let v = run_source(src);
     assert_eq!(v, interp::Value::Int(42));
 }
@@ -197,7 +212,10 @@ func main() -> i32 {
     add_to(40, 2)
 }
 "#;
-    assert!(check_source(src).is_ok(), "ensures with `result` and `old()` should type-check");
+    assert!(
+        check_source(src).is_ok(),
+        "ensures with `result` and `old()` should type-check"
+    );
     let v = run_source(src);
     assert_eq!(v, interp::Value::Int(42));
 }
@@ -223,7 +241,10 @@ func main() -> i32 {
 }
 
 fn can_link() -> bool {
-    std::process::Command::new("cc").arg("--version").output().is_ok()
+    std::process::Command::new("cc")
+        .arg("--version")
+        .output()
+        .is_ok()
 }
 
 #[test]
@@ -241,7 +262,11 @@ func main() -> i32 {
 }
 "#;
     let result = run_source_result(src);
-    assert!(result.is_ok(), "string ensures via --verify-contracts should pass: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "string ensures via --verify-contracts should pass: {:?}",
+        result
+    );
 }
 
 #[test]
@@ -277,7 +302,11 @@ func main() -> i32 {
 }
 "#;
     let v = run_source_result(src);
-    assert!(v.is_ok(), "string requires with valid input should pass: {:?}", v);
+    assert!(
+        v.is_ok(),
+        "string requires with valid input should pass: {:?}",
+        v
+    );
 }
 
 #[test]
@@ -298,8 +327,12 @@ func main() -> string {
 
 #[test]
 fn codegen_contract_string_requires_nonempty() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_verify_contracts(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_verify_contracts(
+        r#"
 func greet(name: string) -> i32 {
     requires: name != ""
     println(name);
@@ -309,14 +342,20 @@ func greet(name: string) -> i32 {
 func main() -> i32 {
     greet("World")
 }
-"#).expect("string requires should pass under codegen");
+"#,
+    )
+    .expect("string requires should pass under codegen");
     assert_eq!(stdout.trim(), "World");
 }
 
 #[test]
 fn codegen_contract_string_requires_nonempty_fails() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let result = compile_and_verify_contracts(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let result = compile_and_verify_contracts(
+        r#"
 func greet(name: string) -> i32 {
     requires: name != ""
     println(name);
@@ -326,14 +365,18 @@ func greet(name: string) -> i32 {
 func main() -> i32 {
     greet("")
 }
-"#);
+"#,
+    );
     assert!(result.is_err(), "empty string should fail requires");
 }
 
 #[test]
 fn dual_contract_string_requires_nonempty() {
-    if !can_link() { return; }
-    dual_assert_contract_ok(r#"
+    if !can_link() {
+        return;
+    }
+    dual_assert_contract_ok(
+        r#"
 func greet(name: string) -> i32 {
     requires: name != ""
     println(name);
@@ -343,13 +386,17 @@ func greet(name: string) -> i32 {
 func main() -> i32 {
     greet("World")
 }
-"#);
+"#,
+    );
 }
 
 #[test]
 fn dual_contract_string_nonempty_ensures() {
-    if !can_link() { return; }
-    dual_assert_contract_ok(r#"
+    if !can_link() {
+        return;
+    }
+    dual_assert_contract_ok(
+        r#"
 func greet(name: string) -> i32 {
     requires: name != ""
     ensures: result == 0
@@ -360,5 +407,6 @@ func greet(name: string) -> i32 {
 func main() -> i32 {
     greet("World")
 }
-"#);
+"#,
+    );
 }

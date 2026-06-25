@@ -1,7 +1,9 @@
 use crate::ast::*;
 use crate::core::borrow::BorrowState;
 use crate::core::checker::Checker;
-use crate::core::helpers::{fmt_type, is_bool, is_int, is_numeric, is_string, same_type, common_numeric_type};
+use crate::core::helpers::{
+    common_numeric_type, fmt_type, is_bool, is_int, is_numeric, is_string, same_type,
+};
 use crate::diagnostic::Diagnostic;
 use crate::span::Span;
 use std::collections::HashMap;
@@ -64,7 +66,12 @@ impl<'a> Checker<'a> {
                                 ),
                             );
                         }
-                        self.set_borrow(name, BorrowState::BorrowedImm { span: Span::single(self.current_line, self.current_col) });
+                        self.set_borrow(
+                            name,
+                            BorrowState::BorrowedImm {
+                                span: Span::single(self.current_line, self.current_col),
+                            },
+                        );
                     }
                     Expr::Field(obj, field) => {
                         if let Expr::Ident(var) = obj.as_ref() {
@@ -78,7 +85,13 @@ impl<'a> Checker<'a> {
                                     ).with_note("mutable borrow occurs here", span),
                                 );
                             }
-                            self.set_field_borrow(var, field, BorrowState::BorrowedImm { span: Span::single(self.current_line, self.current_col) });
+                            self.set_field_borrow(
+                                var,
+                                field,
+                                BorrowState::BorrowedImm {
+                                    span: Span::single(self.current_line, self.current_col),
+                                },
+                            );
                         }
                     }
                     _ => {}
@@ -122,7 +135,12 @@ impl<'a> Checker<'a> {
                                 ),
                             );
                         }
-                        self.set_borrow(name, BorrowState::BorrowedMut { span: Span::single(self.current_line, self.current_col) });
+                        self.set_borrow(
+                            name,
+                            BorrowState::BorrowedMut {
+                                span: Span::single(self.current_line, self.current_col),
+                            },
+                        );
                     }
                     Expr::Field(obj, field) => {
                         if let Expr::Ident(var) = obj.as_ref() {
@@ -136,7 +154,13 @@ impl<'a> Checker<'a> {
                                     ).with_note("borrow occurs here", span),
                                 );
                             }
-                            self.set_field_borrow(var, field, BorrowState::BorrowedMut { span: Span::single(self.current_line, self.current_col) });
+                            self.set_field_borrow(
+                                var,
+                                field,
+                                BorrowState::BorrowedMut {
+                                    span: Span::single(self.current_line, self.current_col),
+                                },
+                            );
                         }
                     }
                     _ => {}
@@ -226,12 +250,7 @@ impl<'a> Checker<'a> {
                     Type::Name("unknown".into(), vec![])
                 }
             }
-            BinOp::Mod
-            | BinOp::BitAnd
-            | BinOp::BitOr
-            | BinOp::BitXor
-            | BinOp::Shl
-            | BinOp::Shr => {
+            BinOp::Mod | BinOp::BitAnd | BinOp::BitOr | BinOp::BitXor | BinOp::Shl | BinOp::Shr => {
                 if let Some(t) = common_numeric_type(&lt, &rt) {
                     if !is_int(&t) {
                         self.emit_code(
@@ -282,8 +301,8 @@ impl<'a> Checker<'a> {
                 Type::Name("bool".into(), vec![])
             }
             BinOp::Lt | BinOp::Gt | BinOp::Le | BinOp::Ge => {
-                let compatible = common_numeric_type(&lt, &rt).is_some()
-                    || (is_string(&lt) && is_string(&rt));
+                let compatible =
+                    common_numeric_type(&lt, &rt).is_some() || (is_string(&lt) && is_string(&rt));
                 if !compatible {
                     self.emit_code(
                         crate::diagnostic::codes::E0202,

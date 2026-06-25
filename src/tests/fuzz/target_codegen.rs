@@ -23,21 +23,29 @@ proptest::proptest! {
 }
 
 fn can_link() -> bool {
-    std::process::Command::new("cc").arg("--version").output().is_ok()
+    std::process::Command::new("cc")
+        .arg("--version")
+        .output()
+        .is_ok()
 }
 
 /// Codegen edge-case tests (require `cc` for linking).
 #[test]
 fn test_codegen_empty_main() {
-    if !can_link() { return; }
+    if !can_link() {
+        return;
+    }
     let src = "func main() -> i32 { 0 }";
-    let stdout = crate::tests::compile_and_run(src).expect("src/tests/fuzz/target_codegen.rs:30 unwrap failed");
+    let stdout = crate::tests::compile_and_run(src)
+        .expect("src/tests/fuzz/target_codegen.rs:30 unwrap failed");
     assert_eq!(stdout.trim(), "");
 }
 
 #[test]
 fn test_codegen_large_return() {
-    if !can_link() { return; }
+    if !can_link() {
+        return;
+    }
     let src = r#"
         func main() -> i32 {
             let a = 1000000;
@@ -46,13 +54,16 @@ fn test_codegen_large_return() {
             0
         }
     "#;
-    let stdout = crate::tests::compile_and_run(src).expect("src/tests/fuzz/target_codegen.rs:44 unwrap failed");
+    let stdout = crate::tests::compile_and_run(src)
+        .expect("src/tests/fuzz/target_codegen.rs:44 unwrap failed");
     assert_eq!(stdout.trim(), "3000000");
 }
 
 #[test]
 fn test_codegen_string_manip() {
-    if !can_link() { return; }
+    if !can_link() {
+        return;
+    }
     let src = r#"
         func main() -> i32 {
             let s = "hello " + "world";
@@ -60,7 +71,8 @@ fn test_codegen_string_manip() {
             0
         }
     "#;
-    let stdout = crate::tests::compile_and_run(src).expect("src/tests/fuzz/target_codegen.rs:58 unwrap failed");
+    let stdout = crate::tests::compile_and_run(src)
+        .expect("src/tests/fuzz/target_codegen.rs:58 unwrap failed");
     assert_eq!(stdout.trim(), "11");
 }
 
@@ -68,8 +80,12 @@ fn test_codegen_string_manip() {
 #[test]
 fn test_codegen_ir_emission() {
     let src = "func main() -> i32 { 42 }";
-    let tokens = lexer::Lexer::new(src).tokenize().expect("src/tests/fuzz/target_codegen.rs:66 unwrap failed");
-    let file = parser::Parser::new(tokens).parse_file().expect("src/tests/fuzz/target_codegen.rs:67 unwrap failed");
+    let tokens = lexer::Lexer::new(src)
+        .tokenize()
+        .expect("src/tests/fuzz/target_codegen.rs:66 unwrap failed");
+    let file = parser::Parser::new(tokens)
+        .parse_file()
+        .expect("src/tests/fuzz/target_codegen.rs:67 unwrap failed");
     if core::check(&file).is_err() {
         return;
     }
@@ -78,5 +94,8 @@ fn test_codegen_ir_emission() {
     assert!(codegen.compile_file(&file).is_ok());
     let ir_str = codegen.module.print_to_string().to_string();
     assert!(!ir_str.is_empty(), "LLVM IR should not be empty");
-    assert!(ir_str.contains("main"), "LLVM IR should contain main function");
+    assert!(
+        ir_str.contains("main"),
+        "LLVM IR should contain main function"
+    );
 }

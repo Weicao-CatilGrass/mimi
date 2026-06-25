@@ -33,7 +33,11 @@ pub enum CompileError {
     #[error("{0}")]
     WrongArgCount(String),
     #[error("turbofish for '{name}' expects {expected} type args, got {found}")]
-    TurbofishArgCount { name: String, expected: usize, found: usize },
+    TurbofishArgCount {
+        name: String,
+        expected: usize,
+        found: usize,
+    },
 
     // === Capabilities ===
     #[error("capability '{0}' has already been consumed")]
@@ -80,7 +84,11 @@ pub enum CompileError {
     #[error("assertion failed: {0}")]
     AssertionFailed(String),
     #[error("index out of bounds: index {index} is not valid for {kind} of length {len}")]
-    OutOfBounds { index: i64, len: usize, kind: String },
+    OutOfBounds {
+        index: i64,
+        len: usize,
+        kind: String,
+    },
     #[error("division by zero")]
     DivByZero,
     #[error("modulo by zero")]
@@ -101,7 +109,10 @@ pub enum CompileError {
     // === Source location wrapper ===
     /// Wraps another error with a source span when the AST node carries one.
     #[error("{error}")]
-    WithSpan { error: Box<CompileError>, span: Span },
+    WithSpan {
+        error: Box<CompileError>,
+        span: Span,
+    },
 }
 
 impl CompileError {
@@ -147,7 +158,10 @@ impl CompileError {
 
     /// Attach a source span to this error.
     pub fn at(self, span: Span) -> Self {
-        Self::WithSpan { error: Box::new(self), span }
+        Self::WithSpan {
+            error: Box::new(self),
+            span,
+        }
     }
 
     /// Convert to a Diagnostic with error code and message.

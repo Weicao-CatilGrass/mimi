@@ -47,16 +47,15 @@ impl CallbackTable {
     /// Register a callback and return its ID.
     /// The `invoker` is a closure that knows how to call the Mimi closure.
     #[allow(clippy::type_complexity)]
-    pub fn register(
-        &self,
-        invoker: Option<Box<dyn Fn(i64, &[i64]) -> i64 + Send + Sync>>,
-    ) -> i64 {
+    pub fn register(&self, invoker: Option<Box<dyn Fn(i64, &[i64]) -> i64 + Send + Sync>>) -> i64 {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         let handle = Arc::new(CallbackHandle {
             ref_count: Arc::new(AtomicI64::new(1)),
             invoker,
         });
-        let mut handles = self.handles.lock()
+        let mut handles = self
+            .handles
+            .lock()
             .expect("CALLBACK_TABLE handles lock poisoned");
         handles.insert(id, handle);
         id
@@ -64,14 +63,18 @@ impl CallbackTable {
 
     /// Get a callback handle by ID
     pub fn get(&self, id: i64) -> Option<Arc<CallbackHandle>> {
-        let handles = self.handles.lock()
+        let handles = self
+            .handles
+            .lock()
             .expect("CALLBACK_TABLE handles lock poisoned");
         handles.get(&id).cloned()
     }
 
     /// Remove a callback handle
     pub fn remove(&self, id: i64) -> bool {
-        let mut handles = self.handles.lock()
+        let mut handles = self
+            .handles
+            .lock()
             .expect("CALLBACK_TABLE handles lock poisoned");
         handles.remove(&id).is_some()
     }
@@ -175,9 +178,9 @@ mod tests {
     #[test]
     fn test_callback_registration() {
         let table = global_callback_table();
-        let id = table.register(
-            Some(Box::new(|_id: i64, args: &[i64]| -> i64 { args.iter().sum() })),
-        );
+        let id = table.register(Some(Box::new(|_id: i64, args: &[i64]| -> i64 {
+            args.iter().sum()
+        })));
         assert!(id > 0);
         assert!(table.get(id).is_some());
         assert!(table.remove(id));
@@ -187,9 +190,9 @@ mod tests {
     #[test]
     fn test_callback_invocation() {
         let table = global_callback_table();
-        let id = table.register(
-            Some(Box::new(|_id: i64, args: &[i64]| -> i64 { args[0] + args[1] })),
-        );
+        let id = table.register(Some(Box::new(|_id: i64, args: &[i64]| -> i64 {
+            args[0] + args[1]
+        })));
         // SAFETY: callback_trampoline is a safe-to-call extern "C" function; id is a valid registered callback ID and args are simple integers.
         let result = unsafe { callback_trampoline(id, 3, 4, std::ptr::null_mut()) };
         assert_eq!(result, 7);

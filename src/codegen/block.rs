@@ -40,87 +40,147 @@ impl<'ctx> CodeGenerator<'ctx> {
                     val = self.adjust_int_val(val, ret_type)?;
                     let ensures = self.ensures_stmts.clone();
                     for ensures_expr in &ensures {
-                        let fn_name: String = self.current_function()
+                        let fn_name: String = self
+                            .current_function()
                             .map(|f| f.get_name().to_string_lossy().into_owned())
                             .unwrap_or_else(|| "unknown".to_string());
-                        self.compile_contract_assert(ensures_expr, vars, &format!("ensures violation in '{}'", fn_name))?;
+                        self.compile_contract_assert(
+                            ensures_expr,
+                            vars,
+                            &format!("ensures violation in '{}'", fn_name),
+                        )?;
                     }
-                    self.builder.build_return(Some(&val)).map_err(|e| CompileError::LlvmError(format!("return error: {}", e)))?;
+                    self.builder
+                        .build_return(Some(&val))
+                        .map_err(|e| CompileError::LlvmError(format!("return error: {}", e)))?;
                     return Ok(());
                 }
                 Stmt::Return(None) => {
                     let ensures = self.ensures_stmts.clone();
                     for ensures_expr in &ensures {
-                        let fn_name: String = self.current_function()
+                        let fn_name: String = self
+                            .current_function()
                             .map(|f| f.get_name().to_string_lossy().into_owned())
                             .unwrap_or_else(|| "unknown".to_string());
-                        self.compile_contract_assert(ensures_expr, vars, &format!("ensures violation in '{}'", fn_name))?;
+                        self.compile_contract_assert(
+                            ensures_expr,
+                            vars,
+                            &format!("ensures violation in '{}'", fn_name),
+                        )?;
                     }
-                    self.builder.build_return(None).map_err(|e| CompileError::LlvmError(format!("return error: {}", e)))?;
+                    self.builder
+                        .build_return(None)
+                        .map_err(|e| CompileError::LlvmError(format!("return error: {}", e)))?;
                     return Ok(());
                 }
-                Stmt::Let { pat, init: Some(init), ty, .. } => {
+                Stmt::Let {
+                    pat,
+                    init: Some(init),
+                    ty,
+                    ..
+                } => {
                     // dyn Trait let-binding: build fat pointer from concrete value (requires Variable pattern)
                     if let Some(Type::DynTrait(trait_names)) = &ty {
                         let name = match pat {
                             Pattern::Variable(n) => n.clone(),
-                            _ => return Err(CompileError::LlvmError(
-                                "dyn Trait binding requires a simple variable pattern".to_string()
-                            )),
+                            _ => {
+                                return Err(CompileError::LlvmError(
+                                    "dyn Trait binding requires a simple variable pattern"
+                                        .to_string(),
+                                ))
+                            }
                         };
                         let concrete_val = self.compile_expr(init, vars)?;
                         let concrete_type = match init {
                             Expr::Record { ty: Some(tn), .. } => tn.clone(),
-                            Expr::Ident(var_name) => self.var_type_names.get(var_name).cloned().unwrap_or_default(),
+                            Expr::Ident(var_name) => self
+                                .var_type_names
+                                .get(var_name)
+                                .cloned()
+                                .unwrap_or_default(),
                             _ => {
-                                return Err(CompileError::LlvmError(
-                                    format!("cannot infer concrete type for dyn Trait binding '{}'", name)
-                                ));
+                                return Err(CompileError::LlvmError(format!(
+                                    "cannot infer concrete type for dyn Trait binding '{}'",
+                                    name
+                                )));
                             }
                         };
                         if concrete_type.is_empty() {
-                            return Err(CompileError::LlvmError(
-                                format!("cannot infer concrete type for dyn Trait binding '{}'", name)
-                            ));
+                            return Err(CompileError::LlvmError(format!(
+                                "cannot infer concrete type for dyn Trait binding '{}'",
+                                name
+                            )));
                         }
                         let trait_name = &trait_names[0];
-                        let concrete_ty = self.type_llvm.get(&concrete_type)
+                        let concrete_ty = self
+                            .type_llvm
+                            .get(&concrete_type)
                             .cloned()
                             .unwrap_or_else(|| concrete_val.get_type());
-                        let data_alloca = self.builder.build_alloca(concrete_ty, &format!("{}_data", name))
+                        let data_alloca = self
+                            .builder
+                            .build_alloca(concrete_ty, &format!("{}_data", name))
                             .map_err(|e| CompileError::LlvmError(format!("alloca error: {}", e)))?;
-                        self.builder.build_store(data_alloca, concrete_val)
+                        self.builder
+                            .build_store(data_alloca, concrete_val)
                             .map_err(|e| CompileError::LlvmError(format!("store error: {}", e)))?;
                         let i8_ptr = self.context.ptr_type(inkwell::AddressSpace::default());
-                        let data_ptr = self.builder.build_pointer_cast(
-                            data_alloca, i8_ptr, &format!("{}_data_i8", name)
-                        ).map_err(|e| CompileError::LlvmError(format!("pointer cast error: {}", e)))?;
+                        let data_ptr = self
+                            .builder
+                            .build_pointer_cast(data_alloca, i8_ptr, &format!("{}_data_i8", name))
+                            .map_err(|e| {
+                                CompileError::LlvmError(format!("pointer cast error: {}", e))
+                            })?;
                         let vtable_key = format!("{}__{}", concrete_type, trait_name);
-                        let vtable_gv = self.vtable_globals.get(&vtable_key)
-                            .ok_or_else(|| CompileError::LlvmError(
-                                format!("no vtable for {}.{}", concrete_type, trait_name)
-                            ))?;
-                        let vtable_ptr = self.builder.build_pointer_cast(
-                            vtable_gv.as_pointer_value(), i8_ptr,
-                            &format!("{}_vtable_i8", name)
-                        ).map_err(|e| CompileError::LlvmError(format!("pointer cast error: {}", e)))?;
-                        let fat_ty = BasicTypeEnum::StructType(
-                            self.context.struct_type(&[
+                        let vtable_gv = self.vtable_globals.get(&vtable_key).ok_or_else(|| {
+                            CompileError::LlvmError(format!(
+                                "no vtable for {}.{}",
+                                concrete_type, trait_name
+                            ))
+                        })?;
+                        let vtable_ptr = self
+                            .builder
+                            .build_pointer_cast(
+                                vtable_gv.as_pointer_value(),
+                                i8_ptr,
+                                &format!("{}_vtable_i8", name),
+                            )
+                            .map_err(|e| {
+                                CompileError::LlvmError(format!("pointer cast error: {}", e))
+                            })?;
+                        let fat_ty = BasicTypeEnum::StructType(self.context.struct_type(
+                            &[
                                 BasicTypeEnum::PointerType(i8_ptr),
                                 BasicTypeEnum::PointerType(i8_ptr),
-                            ], false)
-                        );
-                        let fat_alloca = self.builder.build_alloca(fat_ty, &name)
+                            ],
+                            false,
+                        ));
+                        let fat_alloca = self
+                            .builder
+                            .build_alloca(fat_ty, &name)
                             .map_err(|e| CompileError::LlvmError(format!("alloca error: {}", e)))?;
-                        let data_gep = self.gep().build_struct_gep(fat_ty, fat_alloca, 0, &format!("{}_data_gep", name))
+                        let data_gep = self
+                            .gep()
+                            .build_struct_gep(fat_ty, fat_alloca, 0, &format!("{}_data_gep", name))
                             .map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?;
-                        self.builder.build_store(data_gep, data_ptr)
+                        self.builder
+                            .build_store(data_gep, data_ptr)
                             .map_err(|e| CompileError::LlvmError(format!("store error: {}", e)))?;
-                        let vtable_gep = self.gep().build_struct_gep(fat_ty, fat_alloca, 1, &format!("{}_vtable_gep", name))
+                        let vtable_gep = self
+                            .gep()
+                            .build_struct_gep(
+                                fat_ty,
+                                fat_alloca,
+                                1,
+                                &format!("{}_vtable_gep", name),
+                            )
                             .map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?;
-                        self.builder.build_store(vtable_gep, vtable_ptr)
+                        self.builder
+                            .build_store(vtable_gep, vtable_ptr)
                             .map_err(|e| CompileError::LlvmError(format!("store error: {}", e)))?;
-                        let ty_ref = ty.as_ref().ok_or_else(|| CompileError::LlvmError(format!("missing type for variable '{}'", name)))?;
+                        let ty_ref = ty.as_ref().ok_or_else(|| {
+                            CompileError::LlvmError(format!("missing type for variable '{}'", name))
+                        })?;
                         let dyn_type_str = crate::core::fmt_type(ty_ref);
                         self.var_type_names.insert(name.clone(), dyn_type_str);
                         vars.insert(name, (fat_alloca, fat_ty));
@@ -164,9 +224,11 @@ impl<'ctx> CodeGenerator<'ctx> {
                         if let Some(Type::Name(tn, _)) = &ty {
                             self.var_type_names.insert(name.clone(), tn.clone());
                         } else if self.expr_is_string(init) {
-                            self.var_type_names.insert(name.clone(), "string".to_string());
+                            self.var_type_names
+                                .insert(name.clone(), "string".to_string());
                         } else if let Expr::Record { ty: Some(_), .. } = init {
-                            self.var_type_names.insert(name.clone(), "string".to_string());
+                            self.var_type_names
+                                .insert(name.clone(), "string".to_string());
                         } else if let Expr::Record { ty: Some(tn), .. } = init {
                             self.var_type_names.insert(name.clone(), tn.clone());
                         } else if matches!(init, Expr::SetLiteral(_)) {
@@ -178,7 +240,10 @@ impl<'ctx> CodeGenerator<'ctx> {
                                     if !obj_type.is_empty() {
                                         self.var_type_names.insert(name.clone(), obj_type);
                                     }
-                                } else if matches!(method_name.as_str(), "map" | "and_then" | "map_err" | "ok_or") {
+                                } else if matches!(
+                                    method_name.as_str(),
+                                    "map" | "and_then" | "map_err" | "ok_or"
+                                ) {
                                     let obj_type = self.infer_object_type(obj, vars);
                                     if obj_type == "Result" || obj_type == "Option" {
                                         self.var_type_names.insert(name.clone(), obj_type);
@@ -187,35 +252,41 @@ impl<'ctx> CodeGenerator<'ctx> {
                             } else if let Expr::Ident(func_name) = callee.as_ref() {
                                 match func_name.as_str() {
                                     "Ok" | "Err" => {
-                                        self.var_type_names.insert(name.clone(), "Result".to_string());
+                                        self.var_type_names
+                                            .insert(name.clone(), "Result".to_string());
                                     }
                                     "Some" | "None" => {
-                                        self.var_type_names.insert(name.clone(), "Option".to_string());
+                                        self.var_type_names
+                                            .insert(name.clone(), "Option".to_string());
                                     }
                                     _ => {
-                                            if let Some(fdef) = self.func_defs.get(func_name) {
-                                                if let Some(ret_ty) = &fdef.ret {
-                                                    match ret_ty {
-                                                        Type::ImplTrait(traits) => {
-                                                            self.var_type_names.insert(
-                                                                name.clone(),
-                                                                format!("impl {}", traits.join(" + ")),
-                                                            );
-                                                        }
-                                                        Type::Name(tn, _) => {
-                                                            self.var_type_names.insert(name.clone(), tn.clone());
-                                                        }
-                #[allow(unreachable_patterns)]
-                _ => {}
+                                        if let Some(fdef) = self.func_defs.get(func_name) {
+                                            if let Some(ret_ty) = &fdef.ret {
+                                                match ret_ty {
+                                                    Type::ImplTrait(traits) => {
+                                                        self.var_type_names.insert(
+                                                            name.clone(),
+                                                            format!("impl {}", traits.join(" + ")),
+                                                        );
                                                     }
-                                                    // For async functions, track the inner result type for await.
-                                                    if fdef.is_async {
-                                                        if let Some(llvm_ret) = self.llvm_type_for(ret_ty) {
-                                                            self.async_var_inner_types.insert(name.clone(), llvm_ret);
-                                                        }
+                                                    Type::Name(tn, _) => {
+                                                        self.var_type_names
+                                                            .insert(name.clone(), tn.clone());
+                                                    }
+                                                    #[allow(unreachable_patterns)]
+                                                    _ => {}
+                                                }
+                                                // For async functions, track the inner result type for await.
+                                                if fdef.is_async {
+                                                    if let Some(llvm_ret) =
+                                                        self.llvm_type_for(ret_ty)
+                                                    {
+                                                        self.async_var_inner_types
+                                                            .insert(name.clone(), llvm_ret);
                                                     }
                                                 }
                                             }
+                                        }
                                     }
                                 }
                             }
@@ -239,39 +310,62 @@ impl<'ctx> CodeGenerator<'ctx> {
                         }
                     }
                 }
-                Stmt::Let { pat, init: None, ty, .. } => {
+                Stmt::Let {
+                    pat,
+                    init: None,
+                    ty,
+                    ..
+                } => {
                     // let x; or let (a, b); — needs type annotation
                     if let Pattern::Variable(name) = pat {
                         let llvm_ty = match ty {
                             Some(decl_ty) => types::mimi_type_to_llvm(self.context, decl_ty)
-                                .ok_or_else(|| CompileError::LlvmError(
-                                    format!("unknown type for 'let {};'", name)
-                                ))?,
-                            None => return Err(CompileError::LlvmError(
-                                format!("'let {};' requires an explicit type annotation", name)
-                            )),
+                                .ok_or_else(|| {
+                                    CompileError::LlvmError(format!(
+                                        "unknown type for 'let {};'",
+                                        name
+                                    ))
+                                })?,
+                            None => {
+                                return Err(CompileError::LlvmError(format!(
+                                    "'let {};' requires an explicit type annotation",
+                                    name
+                                )))
+                            }
                         };
-                        let alloca = self.builder.build_alloca(llvm_ty, name)
+                        let alloca = self
+                            .builder
+                            .build_alloca(llvm_ty, name)
                             .map_err(|e| CompileError::LlvmError(format!("alloca error: {}", e)))?;
                         match llvm_ty {
                             BasicTypeEnum::IntType(ty) => {
-                                self.builder.build_store(alloca, ty.const_int(0, false))
-                                    .map_err(|e| CompileError::LlvmError(format!("store error: {}", e)))?;
+                                self.builder
+                                    .build_store(alloca, ty.const_int(0, false))
+                                    .map_err(|e| {
+                                        CompileError::LlvmError(format!("store error: {}", e))
+                                    })?;
                             }
                             BasicTypeEnum::FloatType(ty) => {
-                                self.builder.build_store(alloca, ty.const_float(0.0))
-                                    .map_err(|e| CompileError::LlvmError(format!("store error: {}", e)))?;
+                                self.builder
+                                    .build_store(alloca, ty.const_float(0.0))
+                                    .map_err(|e| {
+                                        CompileError::LlvmError(format!("store error: {}", e))
+                                    })?;
                             }
                             BasicTypeEnum::PointerType(ty) => {
-                                self.builder.build_store(alloca, ty.const_null())
-                                    .map_err(|e| CompileError::LlvmError(format!("store error: {}", e)))?;
+                                self.builder
+                                    .build_store(alloca, ty.const_null())
+                                    .map_err(|e| {
+                                        CompileError::LlvmError(format!("store error: {}", e))
+                                    })?;
                             }
                             _ => {}
                         }
                         vars.insert(name.clone(), (alloca, llvm_ty));
                     } else {
                         return Err(CompileError::LlvmError(
-                            "'let' with no initializer requires a simple variable pattern".to_string()
+                            "'let' with no initializer requires a simple variable pattern"
+                                .to_string(),
                         ));
                     }
                 }
@@ -283,21 +377,30 @@ impl<'ctx> CodeGenerator<'ctx> {
                     let cond_bool = if let BasicValueEnum::IntValue(iv) = cond_val {
                         iv
                     } else {
-                        let function = self.current_function()
-                            .ok_or_else(|| CompileError::LlvmError("codegen: no current function for if block".to_string()))?;
+                        let function = self.current_function().ok_or_else(|| {
+                            CompileError::LlvmError(
+                                "codegen: no current function for if block".to_string(),
+                            )
+                        })?;
                         let fn_name = function.get_name().to_str().unwrap_or("unknown");
-                        return Err(CompileError::TypeMismatch(
-                            format!("if condition must be bool, got {} in function '{}'", cond_val.get_type(), fn_name)
-                        ));
+                        return Err(CompileError::TypeMismatch(format!(
+                            "if condition must be bool, got {} in function '{}'",
+                            cond_val.get_type(),
+                            fn_name
+                        )));
                     };
 
-                    let function = self.current_function()
-                        .ok_or_else(|| CompileError::LlvmError("codegen: no current function for if block".to_string()))?;
+                    let function = self.current_function().ok_or_else(|| {
+                        CompileError::LlvmError(
+                            "codegen: no current function for if block".to_string(),
+                        )
+                    })?;
                     let then_bb = self.context.append_basic_block(function, "then");
                     let else_bb = self.context.append_basic_block(function, "else");
                     let merge_bb = self.context.append_basic_block(function, "ifcont");
 
-                    self.builder.build_conditional_branch(cond_bool, then_bb, else_bb)
+                    self.builder
+                        .build_conditional_branch(cond_bool, then_bb, else_bb)
                         .map_err(|e| CompileError::LlvmError(format!("branch error: {}", e)))?;
 
                     self.builder.position_at_end(then_bb);
@@ -307,7 +410,8 @@ impl<'ctx> CodeGenerator<'ctx> {
                         vars.entry(k).or_insert(v);
                     }
                     if !self.block_has_terminator() {
-                        self.builder.build_unconditional_branch(merge_bb)
+                        self.builder
+                            .build_unconditional_branch(merge_bb)
                             .map_err(|e| CompileError::LlvmError(format!("branch error: {}", e)))?;
                     }
 
@@ -320,7 +424,8 @@ impl<'ctx> CodeGenerator<'ctx> {
                         }
                     }
                     if !self.block_has_terminator() {
-                        self.builder.build_unconditional_branch(merge_bb)
+                        self.builder
+                            .build_unconditional_branch(merge_bb)
                             .map_err(|e| CompileError::LlvmError(format!("branch error: {}", e)))?;
                     }
 
@@ -328,10 +433,14 @@ impl<'ctx> CodeGenerator<'ctx> {
                 }
                 Stmt::Break(_) => {
                     if let Some(target) = self.loop_break {
-                        self.builder.build_unconditional_branch(target)
+                        self.builder
+                            .build_unconditional_branch(target)
                             .map_err(|e| CompileError::LlvmError(format!("break error: {}", e)))?;
-                        let function = self.current_function()
-                            .ok_or_else(|| CompileError::LlvmError("codegen: no current function for break".to_string()))?;
+                        let function = self.current_function().ok_or_else(|| {
+                            CompileError::LlvmError(
+                                "codegen: no current function for break".to_string(),
+                            )
+                        })?;
                         let unreachable = self.context.append_basic_block(function, "unreachable");
                         self.builder.position_at_end(unreachable);
                     } else {
@@ -340,10 +449,16 @@ impl<'ctx> CodeGenerator<'ctx> {
                 }
                 Stmt::Continue => {
                     if let Some(target) = self.loop_continue {
-                        self.builder.build_unconditional_branch(target)
-                            .map_err(|e| CompileError::LlvmError(format!("continue error: {}", e)))?;
-                        let function = self.current_function()
-                            .ok_or_else(|| CompileError::LlvmError("codegen: no current function for continue".to_string()))?;
+                        self.builder
+                            .build_unconditional_branch(target)
+                            .map_err(|e| {
+                                CompileError::LlvmError(format!("continue error: {}", e))
+                            })?;
+                        let function = self.current_function().ok_or_else(|| {
+                            CompileError::LlvmError(
+                                "codegen: no current function for continue".to_string(),
+                            )
+                        })?;
                         let unreachable = self.context.append_basic_block(function, "unreachable");
                         self.builder.position_at_end(unreachable);
                     } else {
@@ -363,7 +478,12 @@ impl<'ctx> CodeGenerator<'ctx> {
                     // Drop: evaluate expression and discard result (for linear capabilities)
                     self.compile_expr(expr, vars)?;
                 }
-                Stmt::SharedLet { kind, name, ty, init } => {
+                Stmt::SharedLet {
+                    kind,
+                    name,
+                    ty,
+                    init,
+                } => {
                     self.compile_shared_let_stmt(kind, name, ty, init, vars)?;
                 }
                 Stmt::OnFailure(block) => {
@@ -377,14 +497,23 @@ impl<'ctx> CodeGenerator<'ctx> {
                     // Unsafe: execute block (no restrictions in codegen)
                     self.compile_block(block, vars)?;
                 }
-                Stmt::Alloc { kind: AllocKind::Arena, body } => {
+                Stmt::Alloc {
+                    kind: AllocKind::Arena,
+                    body,
+                } => {
                     self.compile_arena_block(body, vars, "alloc(Arena)")?;
                 }
                 Stmt::Alloc { body, .. } => {
                     // Alloc: execute body sequentially (simplified)
                     self.compile_block(body, vars)?;
                 }
-                Stmt::Desc(..) | Stmt::Rule(..) | Stmt::Requires(..) | Stmt::Ensures(..) | Stmt::Invariant(..) | Stmt::Math(_) | Stmt::Ellipsis => {
+                Stmt::Desc(..)
+                | Stmt::Rule(..)
+                | Stmt::Requires(..)
+                | Stmt::Ensures(..)
+                | Stmt::Invariant(..)
+                | Stmt::Math(_)
+                | Stmt::Ellipsis => {
                     // Skip contract-related statements in codegen
                 }
                 Stmt::Block(block) => {
@@ -399,7 +528,11 @@ impl<'ctx> CodeGenerator<'ctx> {
                 Stmt::Loop(body) => {
                     self.compile_loop_stmt(body, vars)?;
                 }
-                Stmt::For { var, iterable, body } => {
+                Stmt::For {
+                    var,
+                    iterable,
+                    body,
+                } => {
                     self.compile_for_stmt(var, iterable, body, vars)?;
                 }
                 _ => {}
@@ -415,35 +548,52 @@ impl<'ctx> CodeGenerator<'ctx> {
     pub(super) fn build_stacksave(&self) -> MimiResult<inkwell::values::PointerValue<'ctx>> {
         let i8_ptr = self.context.ptr_type(inkwell::AddressSpace::default());
         let fn_type = i8_ptr.fn_type(&[], false);
-        let fn_val = self.module.get_function("llvm.stacksave")
-            .unwrap_or_else(|| self.module.add_function(
-                "llvm.stacksave",
-                fn_type,
-                Some(inkwell::module::Linkage::External),
-            ));
-        let call = self.builder.build_call(fn_val, &[], "saved_stack")
+        let fn_val = self
+            .module
+            .get_function("llvm.stacksave")
+            .unwrap_or_else(|| {
+                self.module.add_function(
+                    "llvm.stacksave",
+                    fn_type,
+                    Some(inkwell::module::Linkage::External),
+                )
+            });
+        let call = self
+            .builder
+            .build_call(fn_val, &[], "saved_stack")
             .map_err(|e| CompileError::LlvmError(format!("stacksave: {}", e)))?;
         let val = call_try_basic_value(&call)
             .ok_or_else(|| CompileError::LlvmError("stacksave returned void".to_string()))?;
         match val {
             BasicValueEnum::PointerValue(ptr) => Ok(ptr),
-            _ => Err(CompileError::LlvmError(format!("stacksave didn't return pointer, got {:?}", val))),
+            _ => Err(CompileError::LlvmError(format!(
+                "stacksave didn't return pointer, got {:?}",
+                val
+            ))),
         }
     }
 
     /// Call @llvm.stackrestore(i8*) to restore the stack pointer, freeing arena allocations
-    pub(super) fn build_stackrestore(&self, saved: inkwell::values::PointerValue<'ctx>) -> MimiResult<()> {
+    pub(super) fn build_stackrestore(
+        &self,
+        saved: inkwell::values::PointerValue<'ctx>,
+    ) -> MimiResult<()> {
         let i8_ptr_meta = BasicMetadataTypeEnum::PointerType(
             self.context.ptr_type(inkwell::AddressSpace::default()),
         );
         let fn_type = self.context.void_type().fn_type(&[i8_ptr_meta], false);
-        let fn_val = self.module.get_function("llvm.stackrestore")
-            .unwrap_or_else(|| self.module.add_function(
-                "llvm.stackrestore",
-                fn_type,
-                Some(inkwell::module::Linkage::External),
-            ));
-        self.builder.build_call(fn_val, &[BasicMetadataValueEnum::PointerValue(saved)], "")
+        let fn_val = self
+            .module
+            .get_function("llvm.stackrestore")
+            .unwrap_or_else(|| {
+                self.module.add_function(
+                    "llvm.stackrestore",
+                    fn_type,
+                    Some(inkwell::module::Linkage::External),
+                )
+            });
+        self.builder
+            .build_call(fn_val, &[BasicMetadataValueEnum::PointerValue(saved)], "")
             .map_err(|e| CompileError::LlvmError(format!("stackrestore: {}", e)))?;
         Ok(())
     }
@@ -464,21 +614,28 @@ impl<'ctx> CodeGenerator<'ctx> {
                     let mut val = self.compile_expr(e, vars)?;
                     let ret_type = self.current_fn_ret_type();
                     val = self.adjust_int_val(val, ret_type)?;
-                    self.builder.build_return(Some(&val))
+                    self.builder
+                        .build_return(Some(&val))
                         .map_err(|e| CompileError::LlvmError(format!("return error: {}", e)))?;
                     return Ok(val);
                 }
                 Stmt::Return(None) => {
-                    self.builder.build_return(None)
+                    self.builder
+                        .build_return(None)
                         .map_err(|e| CompileError::LlvmError(format!("return error: {}", e)))?;
                     return Ok(self.context.i64_type().const_int(0, false).into());
                 }
-                Stmt::Let { pat, init: Some(init), .. } => {
+                Stmt::Let {
+                    pat,
+                    init: Some(init),
+                    ..
+                } => {
                     let val = self.compile_expr(init, vars)?;
                     self.compile_pattern_bind(pat, val, vars)?;
                     if let Pattern::Variable(name) = pat {
                         if self.expr_is_string(init) {
-                            self.var_type_names.insert(name.clone(), "string".to_string());
+                            self.var_type_names
+                                .insert(name.clone(), "string".to_string());
                         }
                         if let Expr::Ident(fn_name) = init {
                             if self.module.get_function(fn_name.as_str()).is_some() {
@@ -490,24 +647,36 @@ impl<'ctx> CodeGenerator<'ctx> {
                         }
                     }
                 }
-                Stmt::Assign { target: Expr::Ident(name), value } => {
+                Stmt::Assign {
+                    target: Expr::Ident(name),
+                    value,
+                } => {
                     let val = self.compile_expr(value, vars)?;
                     if let Some(&(alloca, ty)) = vars.get(name) {
                         self.assign_to_var(name, val, alloca, ty)?;
                         last_val = val;
                     }
                 }
-                Stmt::Assign { target: Expr::Field(obj, field_name), value } => {
+                Stmt::Assign {
+                    target: Expr::Field(obj, field_name),
+                    value,
+                } => {
                     let val = self.compile_expr(value, vars)?;
                     self.compile_field_assign(obj, field_name, val, vars)?;
                     last_val = val;
                 }
-                Stmt::Assign { target: Expr::Index(obj, idx), value } => {
+                Stmt::Assign {
+                    target: Expr::Index(obj, idx),
+                    value,
+                } => {
                     let val = self.compile_expr(value, vars)?;
                     self.compile_index_assign(obj, idx, val, vars)?;
                     last_val = val;
                 }
-                Stmt::Assign { target: Expr::Unary(crate::ast::UnOp::Deref, inner), value } => {
+                Stmt::Assign {
+                    target: Expr::Unary(crate::ast::UnOp::Deref, inner),
+                    value,
+                } => {
                     let val = self.compile_expr(value, vars)?;
                     self.compile_deref_assign(inner, val, vars)?;
                     last_val = val;
@@ -517,19 +686,28 @@ impl<'ctx> CodeGenerator<'ctx> {
                     let cond_bool = if let BasicValueEnum::IntValue(iv) = cond_val {
                         iv
                     } else {
-                        let function = self.current_function()
-                            .ok_or_else(|| CompileError::LlvmError("codegen: no current function for if block".to_string()))?;
+                        let function = self.current_function().ok_or_else(|| {
+                            CompileError::LlvmError(
+                                "codegen: no current function for if block".to_string(),
+                            )
+                        })?;
                         let fn_name = function.get_name().to_str().unwrap_or("unknown");
-                        return Err(CompileError::TypeMismatch(
-                            format!("if condition must be bool, got {} in function '{}'", cond_val.get_type(), fn_name)
-                        ));
+                        return Err(CompileError::TypeMismatch(format!(
+                            "if condition must be bool, got {} in function '{}'",
+                            cond_val.get_type(),
+                            fn_name
+                        )));
                     };
-                    let function = self.current_function()
-                        .ok_or_else(|| CompileError::LlvmError("codegen: no current function for if expression".to_string()))?;
+                    let function = self.current_function().ok_or_else(|| {
+                        CompileError::LlvmError(
+                            "codegen: no current function for if expression".to_string(),
+                        )
+                    })?;
                     let then_bb = self.context.append_basic_block(function, "blt_then");
                     let else_bb = self.context.append_basic_block(function, "blt_else");
                     let merge_bb = self.context.append_basic_block(function, "blt_merge");
-                    self.builder.build_conditional_branch(cond_bool, then_bb, else_bb)
+                    self.builder
+                        .build_conditional_branch(cond_bool, then_bb, else_bb)
                         .map_err(|e| CompileError::LlvmError(format!("branch error: {}", e)))?;
                     let (then_val, then_bb_end, then_reaches) = {
                         self.builder.position_at_end(then_bb);
@@ -537,41 +715,61 @@ impl<'ctx> CodeGenerator<'ctx> {
                         let v = self.compile_block_last_val(then_, &mut then_vars)?;
                         let reaches = !self.block_has_terminator();
                         if reaches {
-                            self.builder.build_unconditional_branch(merge_bb)
-                                .map_err(|e| CompileError::LlvmError(format!("branch error: {}", e)))?;
+                            self.builder
+                                .build_unconditional_branch(merge_bb)
+                                .map_err(|e| {
+                                    CompileError::LlvmError(format!("branch error: {}", e))
+                                })?;
                         }
-                        let end = self.builder.get_insert_block()
-                            .ok_or_else(|| CompileError::LlvmError("codegen: no insert block after then branch".to_string()))?;
+                        let end = self.builder.get_insert_block().ok_or_else(|| {
+                            CompileError::LlvmError(
+                                "codegen: no insert block after then branch".to_string(),
+                            )
+                        })?;
                         (v, end, reaches)
                     };
-                    let (else_val, else_bb_end, else_reaches) = {
-                        self.builder.position_at_end(else_bb);
-                        let v;
-                        let end;
-                        let reaches;
-                        if let Some(eb) = else_ {
-                            let mut else_vars = vars.clone();
-                            v = self.compile_block_last_val(eb, &mut else_vars)?;
-                            reaches = !self.block_has_terminator();
-                            if reaches {
-                                self.builder.build_unconditional_branch(merge_bb)
-                                    .map_err(|e| CompileError::LlvmError(format!("branch error: {}", e)))?;
+                    let (else_val, else_bb_end, else_reaches) =
+                        {
+                            self.builder.position_at_end(else_bb);
+                            let v;
+                            let end;
+                            let reaches;
+                            if let Some(eb) = else_ {
+                                let mut else_vars = vars.clone();
+                                v = self.compile_block_last_val(eb, &mut else_vars)?;
+                                reaches = !self.block_has_terminator();
+                                if reaches {
+                                    self.builder.build_unconditional_branch(merge_bb).map_err(
+                                        |e| CompileError::LlvmError(format!("branch error: {}", e)),
+                                    )?;
+                                }
+                                end = self.builder.get_insert_block().ok_or_else(|| {
+                                    CompileError::LlvmError(
+                                        "codegen: no insert block after else branch".to_string(),
+                                    )
+                                })?;
+                            } else {
+                                v = self.context.i64_type().const_int(0, false).into();
+                                self.builder
+                                    .build_unconditional_branch(merge_bb)
+                                    .map_err(|e| {
+                                        CompileError::LlvmError(format!("branch error: {}", e))
+                                    })?;
+                                end = self.builder.get_insert_block().ok_or_else(|| {
+                                    CompileError::LlvmError(
+                                        "codegen: no insert block after else branch".to_string(),
+                                    )
+                                })?;
+                                reaches = true;
                             }
-                            end = self.builder.get_insert_block()
-                                .ok_or_else(|| CompileError::LlvmError("codegen: no insert block after else branch".to_string()))?;
-                        } else {
-                            v = self.context.i64_type().const_int(0, false).into();
-                            self.builder.build_unconditional_branch(merge_bb)
-                                .map_err(|e| CompileError::LlvmError(format!("branch error: {}", e)))?;
-                            end = self.builder.get_insert_block()
-                                .ok_or_else(|| CompileError::LlvmError("codegen: no insert block after else branch".to_string()))?;
-                            reaches = true;
-                        }
-                        (v, end, reaches)
-                    };
+                            (v, end, reaches)
+                        };
                     self.builder.position_at_end(merge_bb);
                     // Create phi only from branches that actually reach the merge block
-                    let mut incoming: Vec<(&dyn inkwell::values::BasicValue, inkwell::basic_block::BasicBlock)> = Vec::new();
+                    let mut incoming: Vec<(
+                        &dyn inkwell::values::BasicValue,
+                        inkwell::basic_block::BasicBlock,
+                    )> = Vec::new();
                     if then_reaches {
                         incoming.push((&then_val, then_bb_end));
                     }
@@ -581,7 +779,9 @@ impl<'ctx> CodeGenerator<'ctx> {
                     if !incoming.is_empty() {
                         // Use the first value's type for the phi; both reaching branches
                         // should agree in well-typed code.
-                        let phi = self.builder.build_phi(then_val.get_type(), "if_lastval")
+                        let phi = self
+                            .builder
+                            .build_phi(then_val.get_type(), "if_lastval")
                             .map_err(|e| CompileError::LlvmError(format!("phi error: {}", e)))?;
                         phi.add_incoming(&incoming);
                         last_val = phi.as_basic_value();
@@ -592,10 +792,14 @@ impl<'ctx> CodeGenerator<'ctx> {
                 }
                 Stmt::Break(_) => {
                     if let Some(target) = self.loop_break {
-                        self.builder.build_unconditional_branch(target)
+                        self.builder
+                            .build_unconditional_branch(target)
                             .map_err(|e| CompileError::LlvmError(format!("break error: {}", e)))?;
-                        let function = self.current_function()
-                            .ok_or_else(|| CompileError::LlvmError("codegen: no current function for break".to_string()))?;
+                        let function = self.current_function().ok_or_else(|| {
+                            CompileError::LlvmError(
+                                "codegen: no current function for break".to_string(),
+                            )
+                        })?;
                         let unreachable = self.context.append_basic_block(function, "unreachable");
                         self.builder.position_at_end(unreachable);
                     } else {
@@ -604,10 +808,16 @@ impl<'ctx> CodeGenerator<'ctx> {
                 }
                 Stmt::Continue => {
                     if let Some(target) = self.loop_continue {
-                        self.builder.build_unconditional_branch(target)
-                            .map_err(|e| CompileError::LlvmError(format!("continue error: {}", e)))?;
-                        let function = self.current_function()
-                            .ok_or_else(|| CompileError::LlvmError("codegen: no current function for continue".to_string()))?;
+                        self.builder
+                            .build_unconditional_branch(target)
+                            .map_err(|e| {
+                                CompileError::LlvmError(format!("continue error: {}", e))
+                            })?;
+                        let function = self.current_function().ok_or_else(|| {
+                            CompileError::LlvmError(
+                                "codegen: no current function for continue".to_string(),
+                            )
+                        })?;
                         let unreachable = self.context.append_basic_block(function, "unreachable");
                         self.builder.position_at_end(unreachable);
                     } else {
@@ -623,7 +833,11 @@ impl<'ctx> CodeGenerator<'ctx> {
                 Stmt::Loop(body) => {
                     self.compile_loop_stmt(body, vars)?;
                 }
-                Stmt::For { var, iterable, body } => {
+                Stmt::For {
+                    var,
+                    iterable,
+                    body,
+                } => {
                     self.compile_for_stmt(var, iterable, body, vars)?;
                 }
                 _ => {}
@@ -631,5 +845,4 @@ impl<'ctx> CodeGenerator<'ctx> {
         }
         Ok(last_val)
     }
-
 }

@@ -1,12 +1,18 @@
 use std::fs;
 use std::path::Path;
 
+use crate::{is_sketch, resolve_path};
 use mimi::ast::Item;
 use mimi::diagnostic::format::{colors_enabled, format_diagnostic, strip_ansi};
 use mimi::{interp, lexer, loader, parser};
-use crate::{is_sketch, resolve_path};
 
-pub(crate) fn test(path: Option<&Path>, allocator: &str, filter: Option<&str>, verbose: bool, strict: bool) -> Result<(), String> {
+pub(crate) fn test(
+    path: Option<&Path>,
+    allocator: &str,
+    filter: Option<&str>,
+    verbose: bool,
+    strict: bool,
+) -> Result<(), String> {
     let path = resolve_path(path)?;
     let source = fs::read_to_string(&path)
         .map_err(|e| format!("failed to read {}: {}", path.display(), e))?;
@@ -18,7 +24,10 @@ pub(crate) fn test(path: Option<&Path>, allocator: &str, filter: Option<&str>, v
 
     // Load imports if any
     let merged_file = if !file.imports.is_empty() {
-        let base_dir = path.parent().unwrap_or_else(|| std::path::Path::new(".")).to_path_buf();
+        let base_dir = path
+            .parent()
+            .unwrap_or_else(|| std::path::Path::new("."))
+            .to_path_buf();
         let mut loader = loader::ModuleLoader::new(base_dir);
         loader.load_main(&path)?;
         loader.merge_all()?
@@ -26,9 +35,17 @@ pub(crate) fn test(path: Option<&Path>, allocator: &str, filter: Option<&str>, v
         file
     };
 
-    let check_result = if strict { mimi::core::check_strict(&merged_file) } else { mimi::core::check(&merged_file) };
+    let check_result = if strict {
+        mimi::core::check_strict(&merged_file)
+    } else {
+        mimi::core::check(&merged_file)
+    };
     if let Err(diagnostics) = check_result {
-        eprintln!("{} has {} type error(s):", path.display(), diagnostics.len());
+        eprintln!(
+            "{} has {} type error(s):",
+            path.display(),
+            diagnostics.len()
+        );
         let use_color = colors_enabled();
         let src = fs::read_to_string(&path).ok();
         let src_ref = src.as_deref();
@@ -44,16 +61,19 @@ pub(crate) fn test(path: Option<&Path>, allocator: &str, filter: Option<&str>, v
     }
 
     // Find test functions (functions starting with "test_")
-    let test_funcs: Vec<String> = merged_file.items.iter().filter_map(|item| {
-        match item {
+    let test_funcs: Vec<String> = merged_file
+        .items
+        .iter()
+        .filter_map(|item| match item {
             Item::Func(f) if f.name.starts_with("test_") => Some(f.name.clone()),
             _ => None,
-        }
-    }).collect();
+        })
+        .collect();
 
     // Apply filter if specified
     let test_funcs: Vec<String> = if let Some(pattern) = filter {
-        test_funcs.into_iter()
+        test_funcs
+            .into_iter()
             .filter(|name| name.contains(pattern))
             .collect()
     } else {
@@ -61,11 +81,11 @@ pub(crate) fn test(path: Option<&Path>, allocator: &str, filter: Option<&str>, v
     };
 
     if test_funcs.is_empty() {
-    if let Some(pattern) = filter {
-        println!("No test functions found matching '{}'.", pattern);
-    } else {
-        println!("No test functions found.");
-    }
+        if let Some(pattern) = filter {
+            println!("No test functions found matching '{}'.", pattern);
+        } else {
+            println!("No test functions found.");
+        }
         return Ok(());
     }
 
@@ -99,7 +119,10 @@ pub(crate) fn test(path: Option<&Path>, allocator: &str, filter: Option<&str>, v
         }
     }
 
-    println!("\n\x1b[1m{}\x1b[0m passed, \x1b[1m{}\x1b[0m failed", passed, failed);
+    println!(
+        "\n\x1b[1m{}\x1b[0m passed, \x1b[1m{}\x1b[0m failed",
+        passed, failed
+    );
     if failed > 0 {
         if verbose {
             println!("\nFailed tests:");

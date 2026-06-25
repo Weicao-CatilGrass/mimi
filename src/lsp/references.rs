@@ -101,9 +101,10 @@ impl LspServer {
         let mut locations = Vec::new();
         if let Some(file) = self.parse_with_recovery(text) {
             // Check if word is a trait name
-            let is_trait = file.items.iter().any(|item| {
-                matches!(item, Item::Trait(t) if t.name == word)
-            });
+            let is_trait = file
+                .items
+                .iter()
+                .any(|item| matches!(item, Item::Trait(t) if t.name == word));
             if !is_trait {
                 return locations; // Not a trait — no implementations to find
             }
@@ -158,9 +159,9 @@ impl LspServer {
                             .lines()
                             .position(|l| l.contains(&format!("func {}", word)));
                         def_col = def_line.and_then(|l| {
-                            lines.get(l).map(|line| {
-                                line.find(&format!("func {}", word)).unwrap_or(0) + 5
-                            })
+                            lines
+                                .get(l)
+                                .map(|line| line.find(&format!("func {}", word)).unwrap_or(0) + 5)
                         });
                         break;
                     }
@@ -169,9 +170,9 @@ impl LspServer {
                             .lines()
                             .position(|l| l.contains(&format!("type {}", word)));
                         def_col = def_line.and_then(|l| {
-                            lines.get(l).map(|line| {
-                                line.find(&format!("type {}", word)).unwrap_or(0) + 5
-                            })
+                            lines
+                                .get(l)
+                                .map(|line| line.find(&format!("type {}", word)).unwrap_or(0) + 5)
                         });
                         break;
                     }
@@ -180,9 +181,9 @@ impl LspServer {
                             .lines()
                             .position(|l| l.contains(&format!("module {}", word)));
                         def_col = def_line.and_then(|l| {
-                            lines.get(l).map(|line| {
-                                line.find(&format!("module {}", word)).unwrap_or(0) + 7
-                            })
+                            lines
+                                .get(l)
+                                .map(|line| line.find(&format!("module {}", word)).unwrap_or(0) + 7)
                         });
                         break;
                     }
@@ -345,7 +346,11 @@ impl LspServer {
                             .map(|p| {
                                 let base = format!("{}: {:?}", p.name, p.ty);
                                 if let Some(ref default_expr) = p.default_value {
-                                    format!("{} = {}", base, crate::lsp::LspServer::format_expr_simple(default_expr))
+                                    format!(
+                                        "{} = {}",
+                                        base,
+                                        crate::lsp::LspServer::format_expr_simple(default_expr)
+                                    )
                                 } else {
                                     base
                                 }
@@ -385,7 +390,11 @@ impl LspServer {
             ("assert", "assert(condition: bool)", vec!["condition: bool"]),
             ("assert_eq", "assert_eq(a, b)", vec!["a", "b"]),
             ("len", "len(collection) -> i64", vec!["collection"]),
-            ("range", "range(start: i64, end: i64) -> list", vec!["start: i64", "end: i64"]),
+            (
+                "range",
+                "range(start: i64, end: i64) -> list",
+                vec!["start: i64", "end: i64"],
+            ),
             ("push", "push(list, item) -> list", vec!["list", "item"]),
             ("pop", "pop(list) -> item", vec!["list"]),
             ("min", "min(a, b) -> a", vec!["a", "b"]),
@@ -441,9 +450,9 @@ impl LspServer {
                             .lines()
                             .position(|l| l.contains(&format!("func {}", word)));
                         def_col = def_line.and_then(|l| {
-                            lines.get(l).map(|line| {
-                                line.find(&format!("func {}", word)).unwrap_or(0) + 5
-                            })
+                            lines
+                                .get(l)
+                                .map(|line| line.find(&format!("func {}", word)).unwrap_or(0) + 5)
                         });
                         break;
                     }
@@ -452,9 +461,9 @@ impl LspServer {
                             .lines()
                             .position(|l| l.contains(&format!("type {}", word)));
                         def_col = def_line.and_then(|l| {
-                            lines.get(l).map(|line| {
-                                line.find(&format!("type {}", word)).unwrap_or(0) + 5
-                            })
+                            lines
+                                .get(l)
+                                .map(|line| line.find(&format!("type {}", word)).unwrap_or(0) + 5)
                         });
                         break;
                     }
@@ -463,9 +472,9 @@ impl LspServer {
                             .lines()
                             .position(|l| l.contains(&format!("module {}", word)));
                         def_col = def_line.and_then(|l| {
-                            lines.get(l).map(|line| {
-                                line.find(&format!("module {}", word)).unwrap_or(0) + 7
-                            })
+                            lines
+                                .get(l)
+                                .map(|line| line.find(&format!("module {}", word)).unwrap_or(0) + 7)
                         });
                         break;
                     }

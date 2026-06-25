@@ -6,9 +6,9 @@
 //! For proper regression detection, add criterion (cargo add criterion --dev)
 //! and create `benches/*.rs` files with `harness = false`.
 
-use std::time::Instant;
-use crate::{core, lexer, parser};
 use crate::interp::Interpreter;
+use crate::{core, lexer, parser};
+use std::time::Instant;
 
 /// Time a closure, print result, return the value.
 fn bench<F, T>(name: &str, iterations: u32, mut f: F) -> T
@@ -32,9 +32,15 @@ where
     let total = start.elapsed();
     let avg_ns = total.as_nanos() as f64 / iterations as f64;
     if avg_ns > 1_000_000.0 {
-        eprintln!("  [{name}] avg ({iterations} iters): {:.1}ms", avg_ns / 1_000_000.0);
+        eprintln!(
+            "  [{name}] avg ({iterations} iters): {:.1}ms",
+            avg_ns / 1_000_000.0
+        );
     } else {
-        eprintln!("  [{name}] avg ({iterations} iters): {:.1}µs", avg_ns / 1_000.0);
+        eprintln!(
+            "  [{name}] avg ({iterations} iters): {:.1}µs",
+            avg_ns / 1_000.0
+        );
     }
     result.expect("src/tests/benchmarks.rs:39 unwrap failed")
 }
@@ -47,8 +53,12 @@ where
 fn bench_parser_simple() {
     let src = "func main() -> i32 { 42 }";
     bench("parse_simple", 1000, || {
-        let tokens = lexer::Lexer::new(src).tokenize().expect("src/tests/benchmarks.rs:50 unwrap failed");
-        parser::Parser::new(tokens).parse_file().expect("src/tests/benchmarks.rs:51 unwrap failed")
+        let tokens = lexer::Lexer::new(src)
+            .tokenize()
+            .expect("src/tests/benchmarks.rs:50 unwrap failed");
+        parser::Parser::new(tokens)
+            .parse_file()
+            .expect("src/tests/benchmarks.rs:51 unwrap failed")
     });
 }
 
@@ -68,18 +78,28 @@ func unwrap(x: Opt) -> i32 {
 func main() -> i32 { unwrap(Some(42)) }
 "#;
     bench("parse_complex", 500, || {
-        let tokens = lexer::Lexer::new(src).tokenize().expect("src/tests/benchmarks.rs:71 unwrap failed");
-        parser::Parser::new(tokens).parse_file().expect("src/tests/benchmarks.rs:72 unwrap failed")
+        let tokens = lexer::Lexer::new(src)
+            .tokenize()
+            .expect("src/tests/benchmarks.rs:71 unwrap failed");
+        parser::Parser::new(tokens)
+            .parse_file()
+            .expect("src/tests/benchmarks.rs:72 unwrap failed")
     });
 }
 
 #[test]
 fn bench_parser_large_module() {
-    let src = (0..100).map(|i| format!("func f_{i}() -> i32 {{ {i} }}\n")).collect::<String>();
+    let src = (0..100)
+        .map(|i| format!("func f_{i}() -> i32 {{ {i} }}\n"))
+        .collect::<String>();
     let src = format!("{src}func main() -> i32 {{ 0 }}");
     bench("parse_100_funcs", 100, || {
-        let tokens = lexer::Lexer::new(&src).tokenize().expect("src/tests/benchmarks.rs:81 unwrap failed");
-        parser::Parser::new(tokens).parse_file().expect("src/tests/benchmarks.rs:82 unwrap failed")
+        let tokens = lexer::Lexer::new(&src)
+            .tokenize()
+            .expect("src/tests/benchmarks.rs:81 unwrap failed");
+        parser::Parser::new(tokens)
+            .parse_file()
+            .expect("src/tests/benchmarks.rs:82 unwrap failed")
     });
 }
 
@@ -87,13 +107,21 @@ fn bench_parser_large_module() {
 fn bench_parser_deep_nesting() {
     let depth = 50;
     let mut src = "func main() -> i32 {\n".to_string();
-    for _ in 0..depth { src.push_str("if true { "); }
+    for _ in 0..depth {
+        src.push_str("if true { ");
+    }
     src.push_str("42");
-    for _ in 0..depth { src.push_str(" } else { 0 }"); }
+    for _ in 0..depth {
+        src.push_str(" } else { 0 }");
+    }
     src.push_str("\n}");
     bench("parse_deep_nesting_50", 100, || {
-        let tokens = lexer::Lexer::new(&src).tokenize().expect("src/tests/benchmarks.rs:95 unwrap failed");
-        parser::Parser::new(tokens).parse_file().expect("src/tests/benchmarks.rs:96 unwrap failed")
+        let tokens = lexer::Lexer::new(&src)
+            .tokenize()
+            .expect("src/tests/benchmarks.rs:95 unwrap failed");
+        parser::Parser::new(tokens)
+            .parse_file()
+            .expect("src/tests/benchmarks.rs:96 unwrap failed")
     });
 }
 
@@ -104,10 +132,14 @@ fn bench_parser_deep_nesting() {
 #[test]
 fn bench_typecheck_simple() {
     let src = "func main() -> i32 { 42 }";
-    let file = parser::Parser::new(lexer::Lexer::new(src).tokenize().expect("src/tests/benchmarks.rs:107 unwrap failed")).parse_file().expect("src/tests/benchmarks.rs:107 unwrap failed");
-    let _ = bench("typecheck_simple", 500, || {
-        core::check(&file)
-    });
+    let file = parser::Parser::new(
+        lexer::Lexer::new(src)
+            .tokenize()
+            .expect("src/tests/benchmarks.rs:107 unwrap failed"),
+    )
+    .parse_file()
+    .expect("src/tests/benchmarks.rs:107 unwrap failed");
+    let _ = bench("typecheck_simple", 500, || core::check(&file));
 }
 
 #[test]
@@ -125,10 +157,14 @@ func unwrap(x: Opt) -> i32 {
 }
 func main() -> i32 { unwrap(Some(42)) }
 "#;
-    let file = parser::Parser::new(lexer::Lexer::new(src).tokenize().expect("src/tests/benchmarks.rs:128 unwrap failed")).parse_file().expect("src/tests/benchmarks.rs:128 unwrap failed");
-    let _ = bench("typecheck_complex", 500, || {
-        core::check(&file)
-    });
+    let file = parser::Parser::new(
+        lexer::Lexer::new(src)
+            .tokenize()
+            .expect("src/tests/benchmarks.rs:128 unwrap failed"),
+    )
+    .parse_file()
+    .expect("src/tests/benchmarks.rs:128 unwrap failed");
+    let _ = bench("typecheck_complex", 500, || core::check(&file));
 }
 
 // ==============================
@@ -137,7 +173,13 @@ func main() -> i32 { unwrap(Some(42)) }
 
 #[test]
 fn bench_interp_simple() {
-    let file = parser::Parser::new(lexer::Lexer::new("func main() -> i32 { 42 }").tokenize().expect("src/tests/benchmarks.rs:140 unwrap failed")).parse_file().expect("src/tests/benchmarks.rs:140 unwrap failed");
+    let file = parser::Parser::new(
+        lexer::Lexer::new("func main() -> i32 { 42 }")
+            .tokenize()
+            .expect("src/tests/benchmarks.rs:140 unwrap failed"),
+    )
+    .parse_file()
+    .expect("src/tests/benchmarks.rs:140 unwrap failed");
     let mut interp = Interpreter::new(&file);
     let _ = bench("interp_simple", 500, || interp.run());
 }
@@ -150,7 +192,13 @@ func fib(n: i32) -> i32 {
 }
         func main() -> i32 { fib(5) }
 "#;
-    let file = parser::Parser::new(lexer::Lexer::new(src).tokenize().expect("src/tests/benchmarks.rs:153 unwrap failed")).parse_file().expect("src/tests/benchmarks.rs:153 unwrap failed");
+    let file = parser::Parser::new(
+        lexer::Lexer::new(src)
+            .tokenize()
+            .expect("src/tests/benchmarks.rs:153 unwrap failed"),
+    )
+    .parse_file()
+    .expect("src/tests/benchmarks.rs:153 unwrap failed");
     let mut interp = Interpreter::new(&file);
     let _ = bench("interp_fib_5", 50, || interp.run());
 }

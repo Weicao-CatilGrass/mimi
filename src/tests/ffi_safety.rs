@@ -10,7 +10,11 @@ fn ffi_lib_path() -> &'static str {
 fn expect_ffi_safety_error(src: &str, expected_substring: &str) {
     let result = run_source_result(src);
 
-    assert!(result.is_err(), "expected FFI safety error, got value: {:?}", result.ok());
+    assert!(
+        result.is_err(),
+        "expected FFI safety error, got value: {:?}",
+        result.ok()
+    );
     let err = result.unwrap_err();
     assert!(
         err.contains("FFI safety"),
@@ -31,7 +35,11 @@ fn expect_symbol_not_found(src: &str) {
     let result = run_source_result(src);
     std::env::remove_var("MIMI_FFI_LIB");
 
-    assert!(result.is_err(), "expected symbol-not-found error, got value: {:?}", result.ok());
+    assert!(
+        result.is_err(),
+        "expected symbol-not-found error, got value: {:?}",
+        result.ok()
+    );
     let err = result.unwrap_err();
     assert!(
         err.contains("failed to find symbol") || err.contains("cannot find"),
@@ -245,7 +253,10 @@ func main() -> i32 {
     0
 }
 "#;
-    assert!(check_source(src).is_ok(), "raw pointer should be allowed in extern signature");
+    assert!(
+        check_source(src).is_ok(),
+        "raw pointer should be allowed in extern signature"
+    );
 }
 
 #[test]
@@ -259,7 +270,10 @@ func main() -> i32 {
     0
 }
 "#;
-    assert!(check_source(src).is_ok(), "raw mutable pointer should be allowed in extern signature");
+    assert!(
+        check_source(src).is_ok(),
+        "raw mutable pointer should be allowed in extern signature"
+    );
 }
 
 #[test]
@@ -273,7 +287,10 @@ func main() -> i32 {
     0
 }
 "#;
-    assert!(check_source(src).is_ok(), "c_shared should be allowed in extern signature");
+    assert!(
+        check_source(src).is_ok(),
+        "c_shared should be allowed in extern signature"
+    );
 }
 
 #[test]
@@ -287,7 +304,10 @@ func main() -> i32 {
     0
 }
 "#;
-    assert!(check_source(src).is_ok(), "c_borrow should be allowed in extern signature");
+    assert!(
+        check_source(src).is_ok(),
+        "c_borrow should be allowed in extern signature"
+    );
 }
 
 #[test]
@@ -301,7 +321,10 @@ func main() -> i32 {
     0
 }
 "#;
-    assert!(check_source(src).is_ok(), "c_borrow_mut should be allowed in extern signature");
+    assert!(
+        check_source(src).is_ok(),
+        "c_borrow_mut should be allowed in extern signature"
+    );
 }
 
 #[test]
@@ -459,7 +482,11 @@ func main() -> i32 {
 }
 "#;
     let result = check_source(src);
-    assert!(result.is_ok(), "unsafe extern should accept shared type, got: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "unsafe extern should accept shared type, got: {:?}",
+        result.err()
+    );
 }
 
 #[test]

@@ -47,16 +47,30 @@ impl LspServer {
                             let g: Vec<&str> = f.generics.iter().map(|g| g.name.as_str()).collect();
                             format!("[{}]", g.join(", "))
                         };
-                        let mut detail = format!("**func** `{}{}({}){}`", word, generics, params.join(", "), ret);
+                        let mut detail = format!(
+                            "**func** `{}{}({}){}`",
+                            word,
+                            generics,
+                            params.join(", "),
+                            ret
+                        );
                         // Collect contracts from body
-                        let contracts: Vec<String> = f.body.iter().filter_map(|s| {
-                            match s {
-                                Stmt::Requires(e, _) => Some(format!("  requires: {}", Self::format_contract_expr(e))),
-                                Stmt::Ensures(e, _) => Some(format!("  ensures: {}", Self::format_contract_expr(e))),
-                                Stmt::Invariant(e, _) => Some(format!("  invariant: {}", Self::format_contract_expr(e))),
+                        let contracts: Vec<String> = f
+                            .body
+                            .iter()
+                            .filter_map(|s| match s {
+                                Stmt::Requires(e, _) => {
+                                    Some(format!("  requires: {}", Self::format_contract_expr(e)))
+                                }
+                                Stmt::Ensures(e, _) => {
+                                    Some(format!("  ensures: {}", Self::format_contract_expr(e)))
+                                }
+                                Stmt::Invariant(e, _) => {
+                                    Some(format!("  invariant: {}", Self::format_contract_expr(e)))
+                                }
                                 _ => None,
-                            }
-                        }).collect();
+                            })
+                            .collect();
                         if !contracts.is_empty() {
                             detail.push_str("\n\nContracts:\n");
                             detail.push_str(&contracts.join("\n"));
@@ -75,7 +89,9 @@ impl LspServer {
                                 if !fields.is_empty() {
                                     let field_strs: Vec<String> = fields
                                         .iter()
-                                        .map(|f| format!("  `{}: {}`", f.name, Self::type_display(&f.ty)))
+                                        .map(|f| {
+                                            format!("  `{}: {}`", f.name, Self::type_display(&f.ty))
+                                        })
                                         .collect();
                                     detail.push_str("\n\nFields:\n");
                                     detail.push_str(&field_strs.join("\n"));
@@ -95,13 +111,18 @@ impl LspServer {
                                 detail.push_str(&format!(" = {}", Self::type_display(inner)));
                             }
                             TypeDefKind::Newtype(inner) => {
-                                detail.push_str(&format!(" (newtype over {})", Self::type_display(inner)));
+                                detail.push_str(&format!(
+                                    " (newtype over {})",
+                                    Self::type_display(inner)
+                                ));
                             }
                             TypeDefKind::Union(fields) => {
                                 if !fields.is_empty() {
                                     let field_strs: Vec<String> = fields
                                         .iter()
-                                        .map(|f| format!("  `{}: {}`", f.name, Self::type_display(&f.ty)))
+                                        .map(|f| {
+                                            format!("  `{}: {}`", f.name, Self::type_display(&f.ty))
+                                        })
                                         .collect();
                                     detail.push_str("\n\nUnion fields:\n");
                                     detail.push_str(&field_strs.join("\n"));
@@ -123,14 +144,19 @@ impl LspServer {
                                 let params: Vec<String> = m
                                     .params
                                     .iter()
-                            .map(|p| {
-                                let base = format!("{}: {}", p.name, Self::type_display(&p.ty));
-                                if let Some(ref default_expr) = p.default_value {
-                                    format!("{} = {}", base, Self::format_expr_simple(default_expr))
-                                } else {
-                                    base
-                                }
-                            })
+                                    .map(|p| {
+                                        let base =
+                                            format!("{}: {}", p.name, Self::type_display(&p.ty));
+                                        if let Some(ref default_expr) = p.default_value {
+                                            format!(
+                                                "{} = {}",
+                                                base,
+                                                Self::format_expr_simple(default_expr)
+                                            )
+                                        } else {
+                                            base
+                                        }
+                                    })
                                     .collect();
                                 let ret = m
                                     .ret
@@ -185,7 +211,8 @@ impl LspServer {
                         }));
                     }
                     Item::Actor(a) if a.name == word => {
-                        let method_names: Vec<&str> = a.methods.iter().map(|m| m.name.as_str()).collect();
+                        let method_names: Vec<&str> =
+                            a.methods.iter().map(|m| m.name.as_str()).collect();
                         return Some(serde_json::json!({
                             "contents": {
                                 "kind": "markdown",
@@ -227,9 +254,18 @@ impl LspServer {
             ("char_code", "fn char_code(s: string, i: i64) -> i64"),
             ("chr", "fn chr(code: i64) -> string"),
             ("str_char_at", "fn str_char_at(s: string, i: i64) -> string"),
-            ("str_substring", "fn str_substring(s: string, start: i64, len: i64) -> string"),
-            ("str_parse_int", "fn str_parse_int(s: string) -> (bool, i64)"),
-            ("str_parse_float", "fn str_parse_float(s: string) -> (bool, f64)"),
+            (
+                "str_substring",
+                "fn str_substring(s: string, start: i64, len: i64) -> string",
+            ),
+            (
+                "str_parse_int",
+                "fn str_parse_int(s: string) -> (bool, i64)",
+            ),
+            (
+                "str_parse_float",
+                "fn str_parse_float(s: string) -> (bool, f64)",
+            ),
             ("keys", "fn keys(record) -> list"),
             ("values", "fn values(record) -> list"),
             ("has_key", "fn has_key(record, key) -> bool"),
@@ -239,7 +275,10 @@ impl LspServer {
             ("flatten", "fn flatten(list) -> list"),
             ("str_split", "fn str_split(s: string, sep: string) -> list"),
             ("str_join", "fn str_join(list, sep: string) -> string"),
-            ("str_replace", "fn str_replace(s: string, from: string, to: string) -> string"),
+            (
+                "str_replace",
+                "fn str_replace(s: string, from: string, to: string) -> string",
+            ),
         ];
 
         for (name, sig) in builtins {
@@ -290,21 +329,53 @@ impl LspServer {
                     BinOp::Or => " || ",
                     _ => " ?? ",
                 };
-                format!("{}{}{}", Self::format_contract_expr(lhs), op_str, Self::format_contract_expr(rhs))
+                format!(
+                    "{}{}{}",
+                    Self::format_contract_expr(lhs),
+                    op_str,
+                    Self::format_contract_expr(rhs)
+                )
             }
             Expr::Unary(UnOp::Not, inner) => format!("!{}", Self::format_contract_expr(inner)),
             Expr::Unary(UnOp::Neg, inner) => format!("-{}", Self::format_contract_expr(inner)),
             Expr::If { cond, then_, else_ } => {
-                let then_expr = then_.iter().filter_map(|s| {
-                    if let Stmt::Expr(e) = s { Some(Self::format_contract_expr(e)) } else { None }
-                }).collect::<Vec<_>>().join("; ");
-                let else_expr = else_.as_ref().and_then(|b| b.iter().filter_map(|s| {
-                    if let Stmt::Expr(e) = s { Some(Self::format_contract_expr(e)) } else { None }
-                }).collect::<Vec<_>>().join("; ").into());
+                let then_expr = then_
+                    .iter()
+                    .filter_map(|s| {
+                        if let Stmt::Expr(e) = s {
+                            Some(Self::format_contract_expr(e))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<Vec<_>>()
+                    .join("; ");
+                let else_expr = else_.as_ref().and_then(|b| {
+                    b.iter()
+                        .filter_map(|s| {
+                            if let Stmt::Expr(e) = s {
+                                Some(Self::format_contract_expr(e))
+                            } else {
+                                None
+                            }
+                        })
+                        .collect::<Vec<_>>()
+                        .join("; ")
+                        .into()
+                });
                 if let Some(else_s) = else_expr {
-                    format!("if {} {{ {} }} else {{ {} }}", Self::format_contract_expr(cond), then_expr, else_s)
+                    format!(
+                        "if {} {{ {} }} else {{ {} }}",
+                        Self::format_contract_expr(cond),
+                        then_expr,
+                        else_s
+                    )
                 } else {
-                    format!("if {} {{ {} }}", Self::format_contract_expr(cond), then_expr)
+                    format!(
+                        "if {} {{ {} }}",
+                        Self::format_contract_expr(cond),
+                        then_expr
+                    )
                 }
             }
             Expr::Call(callee, args) => {
@@ -314,22 +385,43 @@ impl LspServer {
             }
             Expr::Field(obj, name) => format!("{}.{}", Self::format_contract_expr(obj), name),
             Expr::Old(inner) => format!("old({})", Self::format_contract_expr(inner)),
-            Expr::Tuple(items) => format!("({})", items.iter().map(Self::format_contract_expr).collect::<Vec<_>>().join(", ")),
+            Expr::Tuple(items) => format!(
+                "({})",
+                items
+                    .iter()
+                    .map(Self::format_contract_expr)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
             Expr::Block(stmts) => {
-                let tail: Vec<String> = stmts.iter().filter_map(|s| {
-                    match s {
+                let tail: Vec<String> = stmts
+                    .iter()
+                    .filter_map(|s| match s {
                         Stmt::Expr(e) => Some(Self::format_contract_expr(e)),
-                        Stmt::Return(Some(e)) => Some(format!("return {}", Self::format_contract_expr(e))),
+                        Stmt::Return(Some(e)) => {
+                            Some(format!("return {}", Self::format_contract_expr(e)))
+                        }
                         _ => None,
-                    }
-                }).collect();
+                    })
+                    .collect();
                 tail.join("; ")
             }
             Expr::Match(expr, arms) => {
-                let arms_str: Vec<String> = arms.iter().map(|arm| {
-                    format!("{} => {}", Self::format_pat(&arm.pat), Self::format_contract_expr(&arm.body))
-                }).collect();
-                format!("match {} {{ {} }}", Self::format_contract_expr(expr), arms_str.join(", "))
+                let arms_str: Vec<String> = arms
+                    .iter()
+                    .map(|arm| {
+                        format!(
+                            "{} => {}",
+                            Self::format_pat(&arm.pat),
+                            Self::format_contract_expr(&arm.body)
+                        )
+                    })
+                    .collect();
+                format!(
+                    "match {} {{ {} }}",
+                    Self::format_contract_expr(expr),
+                    arms_str.join(", ")
+                )
             }
             _ => "…".to_string(),
         }
@@ -345,10 +437,22 @@ impl LspServer {
                 return format!("{}({})", name, args_str.join(", "));
             }
             Pattern::Tuple(pats) => {
-                return format!("({})", pats.iter().map(Self::format_pat).collect::<Vec<_>>().join(", "));
+                return format!(
+                    "({})",
+                    pats.iter()
+                        .map(Self::format_pat)
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                );
             }
             Pattern::Array(pats) => {
-                return format!("[{}]", pats.iter().map(Self::format_pat).collect::<Vec<_>>().join(", "));
+                return format!(
+                    "[{}]",
+                    pats.iter()
+                        .map(Self::format_pat)
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                );
             }
             Pattern::Slice(pats, rest) => {
                 let mut s: Vec<String> = pats.iter().map(Self::format_pat).collect();
@@ -359,7 +463,8 @@ impl LspServer {
                 }
                 return format!("[{}]", s.join(", "));
             }
-        }.to_string()
+        }
+        .to_string()
     }
 
     /// Format an expression as a short display string for hover hints.
@@ -367,14 +472,27 @@ impl LspServer {
         match expr {
             Expr::Literal(l) => crate::lsp::LspServer::format_lit_simple(l),
             Expr::Ident(name) => name.clone(),
-            Expr::Unary(op, e) => format!("{}{}", Self::format_unop_simple(*op), Self::format_expr_simple(e)),
-            Expr::Binary(op, l, r) => format!("{} {} {}", Self::format_expr_simple(l), Self::format_binop_simple(*op), Self::format_expr_simple(r)),
+            Expr::Unary(op, e) => format!(
+                "{}{}",
+                Self::format_unop_simple(*op),
+                Self::format_expr_simple(e)
+            ),
+            Expr::Binary(op, l, r) => format!(
+                "{} {} {}",
+                Self::format_expr_simple(l),
+                Self::format_binop_simple(*op),
+                Self::format_expr_simple(r)
+            ),
             Expr::Call(callee, args) => {
                 let a: Vec<String> = args.iter().map(Self::format_expr_simple).collect();
                 format!("{}({})", Self::format_expr_simple(callee), a.join(", "))
             }
             Expr::Field(obj, field) => format!("{}.{}", Self::format_expr_simple(obj), field),
-            Expr::Index(obj, idx) => format!("{}[{}]", Self::format_expr_simple(obj), Self::format_expr_simple(idx)),
+            Expr::Index(obj, idx) => format!(
+                "{}[{}]",
+                Self::format_expr_simple(obj),
+                Self::format_expr_simple(idx)
+            ),
             Expr::Tuple(elems) => {
                 let a: Vec<String> = elems.iter().map(Self::format_expr_simple).collect();
                 format!("({})", a.join(", "))
@@ -396,10 +514,13 @@ impl LspServer {
             Lit::Bool(v) => format!("{}", v),
             Lit::String(v) => format!("\"{}\"", v),
             Lit::FString(parts) => {
-                let s: String = parts.iter().map(|p| match p {
-                    crate::ast::FStringPart::Text(t) => t.clone(),
-                    crate::ast::FStringPart::Interp(_) => "{}".to_string(),
-                }).collect();
+                let s: String = parts
+                    .iter()
+                    .map(|p| match p {
+                        crate::ast::FStringPart::Text(t) => t.clone(),
+                        crate::ast::FStringPart::Interp(_) => "{}".to_string(),
+                    })
+                    .collect();
                 format!("f\"{}\"", s)
             }
             Lit::Unit => "()".to_string(),
@@ -479,12 +600,18 @@ impl LspServer {
             Type::CBorrow(inner) => format!("c_borrow {}", Self::type_display(inner)),
             Type::CBorrowMut(inner) => format!("c_borrow_mut {}", Self::type_display(inner)),
             Type::Option(inner) => format!("Option<{}>", Self::type_display(inner)),
-            Type::Result(ok, err) => format!("Result<{}, {}>", Self::type_display(ok), Self::type_display(err)),
+            Type::Result(ok, err) => format!(
+                "Result<{}, {}>",
+                Self::type_display(ok),
+                Self::type_display(err)
+            ),
             Type::Shared(inner) => format!("shared {}", Self::type_display(inner)),
             Type::LocalShared(inner) => format!("local_shared {}", Self::type_display(inner)),
             Type::Weak(inner) => format!("weak {}", Self::type_display(inner)),
             Type::WeakLocal(inner) => format!("weak_local {}", Self::type_display(inner)),
-            Type::Newtype(name, inner) => format!("{} (newtype over {})", name, Self::type_display(inner)),
+            Type::Newtype(name, inner) => {
+                format!("{} (newtype over {})", name, Self::type_display(inner))
+            }
             Type::Array(inner, n) => format!("[{}; {}]", Self::type_display(inner), n),
             Type::Slice(inner) => format!("[{}]", Self::type_display(inner)),
             Type::ImplTrait(ts) => format!("impl {}", ts.join(" + ")),

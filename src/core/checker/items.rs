@@ -10,7 +10,9 @@ impl<'a> Checker<'a> {
     pub(crate) fn collect_decls(&mut self) {
         // Process imports: add module names to use_imports
         for import in &self.file.imports {
-            let module_name = import.alias.as_deref()
+            let module_name = import
+                .alias
+                .as_deref()
                 .or_else(|| import.path.first().map(|s| s.as_str()))
                 .map(|s| s.to_string());
             if let Some(name) = module_name {
@@ -31,12 +33,19 @@ impl<'a> Checker<'a> {
             let mut visited = std::collections::HashSet::new();
             visited.insert(name.clone());
             if self.follows_alias_cycle(name, &visited) {
-                self.emit_code(crate::diagnostic::codes::E0409, format!("type alias cycle detected: '{}' forms a cycle", name));
+                self.emit_code(
+                    crate::diagnostic::codes::E0409,
+                    format!("type alias cycle detected: '{}' forms a cycle", name),
+                );
             }
         }
     }
 
-    pub(crate) fn follows_alias_cycle(&self, name: &str, visited: &std::collections::HashSet<String>) -> bool {
+    pub(crate) fn follows_alias_cycle(
+        &self,
+        name: &str,
+        visited: &std::collections::HashSet<String>,
+    ) -> bool {
         if let Some(Type::Name(target, _)) = self.aliases.get(name) {
             if visited.contains(target) {
                 return true;
@@ -58,10 +67,14 @@ impl<'a> Checker<'a> {
                     format!("{}::{}", self.module_path.join("::"), f.name)
                 };
                 if self.funcs.contains_key(&qualified_name) {
-                    self.emit_code(crate::diagnostic::codes::E0402, format!("duplicate function definition '{}'", qualified_name));
+                    self.emit_code(
+                        crate::diagnostic::codes::E0402,
+                        format!("duplicate function definition '{}'", qualified_name),
+                    );
                     return;
                 }
-                let generic_names: Vec<String> = f.generics.iter().map(|g| g.name.clone()).collect();
+                let generic_names: Vec<String> =
+                    f.generics.iter().map(|g| g.name.clone()).collect();
                 self.generic_scope.extend(generic_names.iter().cloned());
                 let params: Vec<Type> = f.params.iter().map(|p| self.resolve_type(&p.ty)).collect();
                 let mut ret = f
@@ -86,17 +99,30 @@ impl<'a> Checker<'a> {
                 let allow_passport = f.extern_abi.is_some();
                 for (i, p) in f.params.iter().enumerate() {
                     if allow_passport {
-                        self.check_type_well_formed_allow_passport(&params[i], &format!("parameter '{}' of function '{}'", p.name, qualified_name));
+                        self.check_type_well_formed_allow_passport(
+                            &params[i],
+                            &format!("parameter '{}' of function '{}'", p.name, qualified_name),
+                        );
                     } else {
-                        self.check_type_well_formed(&params[i], &format!("parameter '{}' of function '{}'", p.name, qualified_name));
+                        self.check_type_well_formed(
+                            &params[i],
+                            &format!("parameter '{}' of function '{}'", p.name, qualified_name),
+                        );
                     }
                 }
                 if allow_passport {
-                    self.check_type_well_formed_allow_passport(&ret, &format!("return type of function '{}'", qualified_name));
+                    self.check_type_well_formed_allow_passport(
+                        &ret,
+                        &format!("return type of function '{}'", qualified_name),
+                    );
                 } else {
-                    self.check_type_well_formed(&ret, &format!("return type of function '{}'", qualified_name));
+                    self.check_type_well_formed(
+                        &ret,
+                        &format!("return type of function '{}'", qualified_name),
+                    );
                 }
-                self.generic_scope.truncate(self.generic_scope.len() - generic_names.len());
+                self.generic_scope
+                    .truncate(self.generic_scope.len() - generic_names.len());
                 // For async functions, the declared return type is wrapped in Future<T>.
                 // e.g., `async func foo() -> i32` has signature `foo() -> Future<i32>`.
                 let func_sig_ret = if f.is_async {
@@ -104,10 +130,12 @@ impl<'a> Checker<'a> {
                 } else {
                     ret
                 };
-                self.funcs.insert(qualified_name.clone(), (params, func_sig_ret));
+                self.funcs
+                    .insert(qualified_name.clone(), (params, func_sig_ret));
                 // Store generic parameters if present
                 if !f.generics.is_empty() {
-                    self.func_generics.insert(qualified_name.clone(), f.generics.clone());
+                    self.func_generics
+                        .insert(qualified_name.clone(), f.generics.clone());
                 }
                 // Store where clause if present
                 if let Some(where_clause) = &f.where_clause {
@@ -130,21 +158,27 @@ impl<'a> Checker<'a> {
             }
             Item::Type(t) => {
                 if self.types.contains_key(&t.name) {
-                    self.emit_code(crate::diagnostic::codes::E0402, format!("duplicate type definition '{}'", t.name));
+                    self.emit_code(
+                        crate::diagnostic::codes::E0402,
+                        format!("duplicate type definition '{}'", t.name),
+                    );
                     return;
                 }
-                let generic_names: Vec<String> = t.generics.iter().map(|g| g.name.clone()).collect();
+                let generic_names: Vec<String> =
+                    t.generics.iter().map(|g| g.name.clone()).collect();
                 self.generic_scope.extend(generic_names.iter().cloned());
                 // For Record/Union/Enum (structural types), insert into self.types before
                 // checking fields to allow recursive self-references (e.g. type Expr { Call(name: string, args: List<Expr>) }).
                 // Alias and Newtype are checked by check_alias_cycles instead.
-                let allow_recursive = matches!(&t.kind,
+                let allow_recursive = matches!(
+                    &t.kind,
                     TypeDefKind::Record(_) | TypeDefKind::Union(_) | TypeDefKind::Enum(_)
                 );
                 if allow_recursive {
                     self.types.insert(t.name.clone(), t.clone());
                     if !t.generics.is_empty() {
-                        self.type_generics.insert(t.name.clone(), t.generics.clone());
+                        self.type_generics
+                            .insert(t.name.clone(), t.generics.clone());
                     }
                 }
                 match &t.kind {
@@ -169,11 +203,18 @@ impl<'a> Checker<'a> {
                             let ret = self_ty.clone();
                             let params = match &v.payload {
                                 None => vec![],
-                                Some(VariantPayload::Tuple(types)) => types.iter().map(|ty| self.resolve_type(ty)).collect(),
-                                Some(VariantPayload::Record(fields)) => fields.iter().map(|f| self.resolve_type(&f.ty)).collect(),
+                                Some(VariantPayload::Tuple(types)) => {
+                                    types.iter().map(|ty| self.resolve_type(ty)).collect()
+                                }
+                                Some(VariantPayload::Record(fields)) => {
+                                    fields.iter().map(|f| self.resolve_type(&f.ty)).collect()
+                                }
                             };
                             for p in &params {
-                                self.check_type_well_formed(p, &format!("variant '{}' of enum '{}'", v.name, t.name));
+                                self.check_type_well_formed(
+                                    p,
+                                    &format!("variant '{}' of enum '{}'", v.name, t.name),
+                                );
                             }
                             self.funcs.insert(v.name.clone(), (params, ret));
                         }
@@ -181,22 +222,30 @@ impl<'a> Checker<'a> {
                     TypeDefKind::Record(fields) => {
                         for field in fields {
                             let field_ty = self.resolve_type(&field.ty);
-                            self.check_type_well_formed(&field_ty, &format!("field '{}' of record '{}'", field.name, t.name));
+                            self.check_type_well_formed(
+                                &field_ty,
+                                &format!("field '{}' of record '{}'", field.name, t.name),
+                            );
                         }
                     }
                     TypeDefKind::Union(fields) => {
                         for field in fields {
                             let field_ty = self.resolve_type(&field.ty);
-                            self.check_type_well_formed(&field_ty, &format!("field '{}' of union '{}'", field.name, t.name));
+                            self.check_type_well_formed(
+                                &field_ty,
+                                &format!("field '{}' of union '{}'", field.name, t.name),
+                            );
                         }
                     }
                 }
-                self.generic_scope.truncate(self.generic_scope.len() - generic_names.len());
+                self.generic_scope
+                    .truncate(self.generic_scope.len() - generic_names.len());
                 if !allow_recursive {
                     self.types.insert(t.name.clone(), t.clone());
                     // Store generic parameters for type definitions
                     if !t.generics.is_empty() {
-                        self.type_generics.insert(t.name.clone(), t.generics.clone());
+                        self.type_generics
+                            .insert(t.name.clone(), t.generics.clone());
                     }
                 }
             }
@@ -212,10 +261,16 @@ impl<'a> Checker<'a> {
                 let actor_type_def = TypeDef {
                     name: actor.name.clone(),
                     pub_: actor.pub_,
-                    kind: TypeDefKind::Record(actor.fields.iter().map(|f| Field {
-                        name: f.name.clone(),
-                        ty: f.ty.clone(),
-                    }).collect()),
+                    kind: TypeDefKind::Record(
+                        actor
+                            .fields
+                            .iter()
+                            .map(|f| Field {
+                                name: f.name.clone(),
+                                ty: f.ty.clone(),
+                            })
+                            .collect(),
+                    ),
                     generics: Vec::new(),
                     derives: Vec::new(),
                     attributes: Vec::new(),
@@ -225,10 +280,14 @@ impl<'a> Checker<'a> {
                 // Collect actor methods as functions
                 for method in &actor.methods {
                     if self.funcs.contains_key(&method.name) {
-                        self.emit_code(crate::diagnostic::codes::E0402, format!("duplicate function definition '{}'", method.name));
+                        self.emit_code(
+                            crate::diagnostic::codes::E0402,
+                            format!("duplicate function definition '{}'", method.name),
+                        );
                         return;
                     }
-                    let generic_names: Vec<String> = method.generics.iter().map(|g| g.name.clone()).collect();
+                    let generic_names: Vec<String> =
+                        method.generics.iter().map(|g| g.name.clone()).collect();
                     self.generic_scope.extend(generic_names.iter().cloned());
                     // Add implicit self parameter as first param
                     let self_type = Type::Name(actor.name.clone(), vec![]);
@@ -240,41 +299,60 @@ impl<'a> Checker<'a> {
                         .map(|t| self.resolve_type(t))
                         .unwrap_or_else(|| Type::Name("unit".into(), vec![]));
                     for (i, p) in method.params.iter().enumerate() {
-                        self.check_type_well_formed(&params[i + 1], &format!("parameter '{}' of actor method '{}'", p.name, method.name));
+                        self.check_type_well_formed(
+                            &params[i + 1],
+                            &format!("parameter '{}' of actor method '{}'", p.name, method.name),
+                        );
                     }
-                    self.check_type_well_formed(&ret, &format!("return type of actor method '{}'", method.name));
-                    self.generic_scope.truncate(self.generic_scope.len() - generic_names.len());
+                    self.check_type_well_formed(
+                        &ret,
+                        &format!("return type of actor method '{}'", method.name),
+                    );
+                    self.generic_scope
+                        .truncate(self.generic_scope.len() - generic_names.len());
                     self.funcs.insert(method.name.clone(), (params, ret));
                 }
             }
             Item::Cap(c) => {
                 if !self.declared_caps.insert(c.name.clone()) {
-                    self.emit_code(crate::diagnostic::codes::E0402,
-                        format!("duplicate capability declaration '{}'", c.name));
+                    self.emit_code(
+                        crate::diagnostic::codes::E0402,
+                        format!("duplicate capability declaration '{}'", c.name),
+                    );
                 }
             }
             Item::Trait(trait_def) => {
-                let method_names: Vec<String> = trait_def.methods.iter().map(|m| m.name.clone()).collect();
-                self.traits.insert(trait_def.name.clone(), method_names.clone());
-                let generic_names: Vec<String> = trait_def.generics.iter().map(|g| g.name.clone()).collect();
-                self.trait_generics.insert(trait_def.name.clone(), generic_names.clone());
+                let method_names: Vec<String> =
+                    trait_def.methods.iter().map(|m| m.name.clone()).collect();
+                self.traits
+                    .insert(trait_def.name.clone(), method_names.clone());
+                let generic_names: Vec<String> =
+                    trait_def.generics.iter().map(|g| g.name.clone()).collect();
+                self.trait_generics
+                    .insert(trait_def.name.clone(), generic_names.clone());
                 // Push trait generics into scope so method signatures can reference them
                 self.generic_scope.extend(generic_names.iter().cloned());
                 // Store trait method signatures for argument validation
                 for method in &trait_def.methods {
-                    let params: Vec<Type> = method.params.iter().map(|p| self.resolve_type(&p.ty)).collect();
-                    let ret = method.ret.as_ref()
+                    let params: Vec<Type> = method
+                        .params
+                        .iter()
+                        .map(|p| self.resolve_type(&p.ty))
+                        .collect();
+                    let ret = method
+                        .ret
+                        .as_ref()
                         .map(|t| self.resolve_type(t))
                         .unwrap_or_else(|| Type::Name("unit".into(), vec![]));
-                    self.trait_method_sigs.insert(
-                        (trait_def.name.clone(), method.name.clone()),
-                        (params, ret),
-                    );
+                    self.trait_method_sigs
+                        .insert((trait_def.name.clone(), method.name.clone()), (params, ret));
                 }
-                self.generic_scope.truncate(self.generic_scope.len() - generic_names.len());
+                self.generic_scope
+                    .truncate(self.generic_scope.len() - generic_names.len());
             }
             Item::Impl(impl_def) => {
-                let method_names: Vec<String> = impl_def.methods.iter().map(|m| m.name.clone()).collect();
+                let method_names: Vec<String> =
+                    impl_def.methods.iter().map(|m| m.name.clone()).collect();
                 self.impls.insert(
                     (impl_def.trait_name.clone(), impl_def.type_name.clone()),
                     method_names.clone(),
@@ -287,12 +365,18 @@ impl<'a> Checker<'a> {
                         .push((impl_def.trait_name.clone(), method_name.clone()));
                 }
                 // Also register impl methods as functions with self parameter
-                let impl_generic_names: Vec<String> = impl_def.generics.iter().map(|g| g.name.clone()).collect();
-                self.generic_scope.extend(impl_generic_names.iter().cloned());
+                let impl_generic_names: Vec<String> =
+                    impl_def.generics.iter().map(|g| g.name.clone()).collect();
+                self.generic_scope
+                    .extend(impl_generic_names.iter().cloned());
                 for method in &impl_def.methods {
-                    let generic_names: Vec<String> = method.generics.iter().map(|g| g.name.clone()).collect();
+                    let generic_names: Vec<String> =
+                        method.generics.iter().map(|g| g.name.clone()).collect();
                     self.generic_scope.extend(generic_names.iter().cloned());
-                    let mut params = vec![Type::Name(impl_def.type_name.clone(), impl_def.type_args.clone())];
+                    let mut params = vec![Type::Name(
+                        impl_def.type_name.clone(),
+                        impl_def.type_args.clone(),
+                    )];
                     params.extend(method.params.iter().map(|p| self.resolve_type(&p.ty)));
                     let ret = method
                         .ret
@@ -300,14 +384,22 @@ impl<'a> Checker<'a> {
                         .map(|t| self.resolve_type(t))
                         .unwrap_or_else(|| Type::Name("unit".into(), vec![]));
                     for (i, p) in method.params.iter().enumerate() {
-                        self.check_type_well_formed(&params[i + 1], &format!("parameter '{}' of impl method '{}'", p.name, method.name));
+                        self.check_type_well_formed(
+                            &params[i + 1],
+                            &format!("parameter '{}' of impl method '{}'", p.name, method.name),
+                        );
                     }
-                    self.check_type_well_formed(&ret, &format!("return type of impl method '{}'", method.name));
-                    self.generic_scope.truncate(self.generic_scope.len() - generic_names.len());
+                    self.check_type_well_formed(
+                        &ret,
+                        &format!("return type of impl method '{}'", method.name),
+                    );
+                    self.generic_scope
+                        .truncate(self.generic_scope.len() - generic_names.len());
                     let key = format!("{}_{}", impl_def.type_name, method.name);
                     self.funcs.insert(key, (params, ret));
                 }
-                self.generic_scope.truncate(self.generic_scope.len() - impl_generic_names.len());
+                self.generic_scope
+                    .truncate(self.generic_scope.len() - impl_generic_names.len());
             }
             Item::ExternBlock(block) => {
                 // Register extern functions for type checking
@@ -337,8 +429,14 @@ impl<'a> Checker<'a> {
                             ));
                         }
                     }
-                    let params: Vec<Type> = func.params.iter().map(|p| self.resolve_type(&p.ty)).collect();
-                    let ret = func.ret.as_ref()
+                    let params: Vec<Type> = func
+                        .params
+                        .iter()
+                        .map(|p| self.resolve_type(&p.ty))
+                        .collect();
+                    let ret = func
+                        .ret
+                        .as_ref()
                         .map(|t| self.resolve_type(t))
                         .unwrap_or_else(|| Type::Name("unit".into(), vec![]));
                     self.funcs.insert(func.name.clone(), (params, ret));
@@ -362,17 +460,23 @@ impl<'a> Checker<'a> {
                 for field in &actor.fields {
                     let field_ty = self.resolve_type(&field.ty);
                     // Validate field type is well-formed
-                    self.check_type_well_formed(&field_ty, &format!("actor field '{}'", field.name));
+                    self.check_type_well_formed(
+                        &field_ty,
+                        &format!("actor field '{}'", field.name),
+                    );
                     // Check field initialization if present
                     if let Some(init) = &field.init {
                         let init_ty = self.infer_expr(init, &mut vec![HashMap::new()]);
                         if !same_type(&field_ty, &init_ty) {
-                            self.emit_code(crate::diagnostic::codes::E0209, format!(
+                            self.emit_code(
+                                crate::diagnostic::codes::E0209,
+                                format!(
                                 "actor field '{}' initializer type {} does not match field type {}",
                                 field.name,
                                 fmt_type(&init_ty),
                                 fmt_type(&field_ty)
-                            ));
+                            ),
+                            );
                         }
                     }
                 }
@@ -405,30 +509,46 @@ impl<'a> Checker<'a> {
             Item::Type(_) | Item::Cap(_) => {}
             Item::Trait(trait_def) => {
                 // Check that all trait method types are well-formed
-                let generic_names: Vec<String> = trait_def.generics.iter().map(|g| g.name.clone()).collect();
+                let generic_names: Vec<String> =
+                    trait_def.generics.iter().map(|g| g.name.clone()).collect();
                 self.generic_scope.extend(generic_names.iter().cloned());
                 for method in &trait_def.methods {
-                    let method_generic_names: Vec<String> = method.generics.iter().map(|g| g.name.clone()).collect();
-                    self.generic_scope.extend(method_generic_names.iter().cloned());
+                    let method_generic_names: Vec<String> =
+                        method.generics.iter().map(|g| g.name.clone()).collect();
+                    self.generic_scope
+                        .extend(method_generic_names.iter().cloned());
                     for param in &method.params {
                         let resolved = self.resolve_type(&param.ty);
-                        self.check_type_well_formed(&resolved, &format!("trait '{}' method '{}'", trait_def.name, method.name));
+                        self.check_type_well_formed(
+                            &resolved,
+                            &format!("trait '{}' method '{}'", trait_def.name, method.name),
+                        );
                     }
                     if let Some(ret) = &method.ret {
                         let resolved = self.resolve_type(ret);
-                        self.check_type_well_formed(&resolved, &format!("trait '{}' method '{}' return", trait_def.name, method.name));
+                        self.check_type_well_formed(
+                            &resolved,
+                            &format!("trait '{}' method '{}' return", trait_def.name, method.name),
+                        );
                     }
-                    self.generic_scope.truncate(self.generic_scope.len() - method_generic_names.len());
+                    self.generic_scope
+                        .truncate(self.generic_scope.len() - method_generic_names.len());
                 }
-                self.generic_scope.truncate(self.generic_scope.len() - generic_names.len());
+                self.generic_scope
+                    .truncate(self.generic_scope.len() - generic_names.len());
             }
             Item::Impl(impl_def) => {
                 // Check that the trait exists
                 if !self.traits.contains_key(&impl_def.trait_name) {
-                    self.emit_code(crate::diagnostic::codes::E0406, format!("undefined trait '{}'", impl_def.trait_name));
+                    self.emit_code(
+                        crate::diagnostic::codes::E0406,
+                        format!("undefined trait '{}'", impl_def.trait_name),
+                    );
                 }
                 // Check that the type exists
-                if !self.types.contains_key(&impl_def.type_name) && !Self::is_builtin_type(&impl_def.type_name) {
+                if !self.types.contains_key(&impl_def.type_name)
+                    && !Self::is_builtin_type(&impl_def.type_name)
+                {
                     self.errors.push(
                         Diagnostic::error_code(
                             crate::diagnostic::codes::E0407,
@@ -439,23 +559,31 @@ impl<'a> Checker<'a> {
                 }
                 // Check that all required trait methods are implemented
                 if let Some(required_methods) = self.traits.get(&impl_def.trait_name).cloned() {
-                    let implemented: Vec<String> = impl_def.methods.iter().map(|m| m.name.clone()).collect();
+                    let implemented: Vec<String> =
+                        impl_def.methods.iter().map(|m| m.name.clone()).collect();
                     for required in &required_methods {
                         if !implemented.contains(required) {
-                            self.emit_code(crate::diagnostic::codes::E0252, format!(
-                                "missing method '{}' in impl of trait '{}' for '{}'",
-                                required, impl_def.trait_name, impl_def.type_name
-                            ));
+                            self.emit_code(
+                                crate::diagnostic::codes::E0252,
+                                format!(
+                                    "missing method '{}' in impl of trait '{}' for '{}'",
+                                    required, impl_def.trait_name, impl_def.type_name
+                                ),
+                            );
                         }
                     }
                 }
                 // Check impl method bodies with self bound to the implementing type
-                let impl_generic_names: Vec<String> = impl_def.generics.iter().map(|g| g.name.clone()).collect();
-                self.generic_scope.extend(impl_generic_names.iter().cloned());
+                let impl_generic_names: Vec<String> =
+                    impl_def.generics.iter().map(|g| g.name.clone()).collect();
+                self.generic_scope
+                    .extend(impl_generic_names.iter().cloned());
                 for method in &impl_def.methods {
                     self.set_pos(method.pos.0, method.pos.1);
-                    let method_generic_names: Vec<String> = method.generics.iter().map(|g| g.name.clone()).collect();
-                    self.generic_scope.extend(method_generic_names.iter().cloned());
+                    let method_generic_names: Vec<String> =
+                        method.generics.iter().map(|g| g.name.clone()).collect();
+                    self.generic_scope
+                        .extend(method_generic_names.iter().cloned());
                     let ret = method
                         .ret
                         .as_ref()
@@ -463,7 +591,10 @@ impl<'a> Checker<'a> {
                         .unwrap_or_else(|| Type::Name("unit".into(), vec![]));
                     let mut scopes: Vec<HashMap<String, Type>> = vec![HashMap::new()];
                     // Bind self with the implementing type
-                    scopes[0].insert("self".to_string(), Type::Name(impl_def.type_name.clone(), impl_def.type_args.clone()));
+                    scopes[0].insert(
+                        "self".to_string(),
+                        Type::Name(impl_def.type_name.clone(), impl_def.type_args.clone()),
+                    );
                     for p in &method.params {
                         let ty = self.resolve_type(&p.ty);
                         scopes[0].insert(p.name.clone(), ty);
@@ -474,9 +605,11 @@ impl<'a> Checker<'a> {
                     self.check_unconsumed_caps();
                     self.var_scopes.pop();
                     self.cap_vars.pop();
-                    self.generic_scope.truncate(self.generic_scope.len() - method_generic_names.len());
+                    self.generic_scope
+                        .truncate(self.generic_scope.len() - method_generic_names.len());
                 }
-                self.generic_scope.truncate(self.generic_scope.len() - impl_generic_names.len());
+                self.generic_scope
+                    .truncate(self.generic_scope.len() - impl_generic_names.len());
             }
             Item::ExternBlock(_) => {
                 // Extern blocks are collected but not type-checked in v1.1

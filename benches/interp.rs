@@ -21,7 +21,8 @@ func fib(n: i32) -> i32 {
     if n <= 1 { n } else { fib(n - 1) + fib(n - 2) }
 }
 func main() -> i32 { fib(30) }
-"#.to_string();
+"#
+    .to_string();
     c.bench_function("interp/fib_30", |b| {
         b.iter(|| {
             let tokens = lexer::Lexer::new(black_box(&src)).tokenize().unwrap();
@@ -45,7 +46,8 @@ func is_prime(n: i32) -> bool {
     true
 }
 func main() -> bool { is_prime(9973) }
-"#.to_string();
+"#
+    .to_string();
     c.bench_function("interp/prime_check", |b| {
         b.iter(|| {
             let tokens = lexer::Lexer::new(black_box(&src)).tokenize().unwrap();
@@ -65,7 +67,8 @@ func sum(items: List<i32>) -> i32 {
     total
 }
 func main() -> i32 { sum([1,2,3,4,5,6,7,8,9,10]) }
-"#.to_string();
+"#
+    .to_string();
     c.bench_function("interp/list_sum_10", |b| {
         b.iter(|| {
             let tokens = lexer::Lexer::new(black_box(&src)).tokenize().unwrap();
@@ -89,7 +92,8 @@ func area(s: Shape) -> f64 {
 func main() -> f64 {
     area(Circle(5.0)) + area(Rect(3.0, 4.0))
 }
-"#.to_string();
+"#
+    .to_string();
     c.bench_function("interp/match_enum", |b| {
         b.iter(|| {
             let tokens = lexer::Lexer::new(black_box(&src)).tokenize().unwrap();
@@ -109,7 +113,8 @@ func factorial(n: i32) -> i32 {
     if n <= 1 { 1 } else { n * factorial(n - 1) }
 }
 func main() -> i32 { factorial(10) }
-"#.to_string();
+"#
+    .to_string();
     c.bench_function("interp/contract_check", |b| {
         b.iter(|| {
             let tokens = lexer::Lexer::new(black_box(&src)).tokenize().unwrap();
@@ -122,7 +127,8 @@ func main() -> i32 { factorial(10) }
     });
 }
 
-criterion_group!(benches,
+criterion_group!(
+    benches,
     interp_simple,
     interp_fib,
     interp_prime,

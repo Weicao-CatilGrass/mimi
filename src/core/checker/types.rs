@@ -13,7 +13,8 @@ impl<'a> Checker<'a> {
                 if let Some(aliased) = self.aliases.get(name) {
                     if let Some(generics) = self.type_generics.get(name) {
                         if !args.is_empty() && args.len() == generics.len() {
-                            let type_map: HashMap<String, Type> = generics.iter()
+                            let type_map: HashMap<String, Type> = generics
+                                .iter()
                                 .zip(args.iter())
                                 .map(|(g, a)| (g.name.clone(), a.clone()))
                                 .collect();
@@ -44,17 +45,28 @@ impl<'a> Checker<'a> {
                 args.iter().map(|a| self.resolve_type(a)).collect(),
                 Box::new(self.resolve_type(ret)),
             ),
-            Type::Cap(_) | Type::Shared(_) | Type::LocalShared(_) | Type::Weak(_) | Type::WeakLocal(_)
-                | Type::CShared(_) | Type::CBorrow(_) | Type::CBorrowMut(_)
-                | Type::RawPtr(_) | Type::RawPtrMut(_) | Type::RawString | Type::Allocator => ty.clone(),
+            Type::Cap(_)
+            | Type::Shared(_)
+            | Type::LocalShared(_)
+            | Type::Weak(_)
+            | Type::WeakLocal(_)
+            | Type::CShared(_)
+            | Type::CBorrow(_)
+            | Type::CBorrowMut(_)
+            | Type::RawPtr(_)
+            | Type::RawPtrMut(_)
+            | Type::RawString
+            | Type::Allocator => ty.clone(),
             Type::CBuffer(inner) => Type::CBuffer(Box::new(self.resolve_type(inner))),
-            Type::Newtype(name, inner) => Type::Newtype(name.clone(), Box::new(self.resolve_type(inner))),
+            Type::Newtype(name, inner) => {
+                Type::Newtype(name.clone(), Box::new(self.resolve_type(inner)))
+            }
             Type::Array(inner, size) => Type::Array(Box::new(self.resolve_type(inner)), *size),
             Type::Slice(inner) => Type::Slice(Box::new(self.resolve_type(inner))),
             Type::Nothing => Type::Nothing,
             Type::Infer => Type::Infer,
-        Type::ImplTrait(traits) => Type::ImplTrait(traits.clone()),
-        Type::DynTrait(traits) => Type::DynTrait(traits.clone()),
+            Type::ImplTrait(traits) => Type::ImplTrait(traits.clone()),
+            Type::DynTrait(traits) => Type::DynTrait(traits.clone()),
         }
     }
 
@@ -64,15 +76,29 @@ impl<'a> Checker<'a> {
         match ty {
             // Scalars and #[repr(C)] user types (Enum, Record, Union)
             Type::Name(name, _) => {
-                matches!(name.as_str(), "i32" | "i64" | "f64" | "bool" | "string" | "unit")
-                || (self.types.get(name).map(|t| t.attributes.contains(&TypeAttribute::ReprC)).unwrap_or(false)
-                    && matches!(self.types.get(name).map(|t| &t.kind),
-                        Some(TypeDefKind::Enum(_)) | Some(TypeDefKind::Record(_)) | Some(TypeDefKind::Union(_))))
+                matches!(
+                    name.as_str(),
+                    "i32" | "i64" | "f64" | "bool" | "string" | "unit"
+                ) || (self
+                    .types
+                    .get(name)
+                    .map(|t| t.attributes.contains(&TypeAttribute::ReprC))
+                    .unwrap_or(false)
+                    && matches!(
+                        self.types.get(name).map(|t| &t.kind),
+                        Some(TypeDefKind::Enum(_))
+                            | Some(TypeDefKind::Record(_))
+                            | Some(TypeDefKind::Union(_))
+                    ))
             }
             // Capabilities
             Type::Cap(_) => true,
             // Raw pointers and FFI passport types
-            Type::RawPtr(_) | Type::RawPtrMut(_) | Type::CShared(_) | Type::CBorrow(_) | Type::CBorrowMut(_) => true,
+            Type::RawPtr(_)
+            | Type::RawPtrMut(_)
+            | Type::CShared(_)
+            | Type::CBorrow(_)
+            | Type::CBorrowMut(_) => true,
             // Raw string ownership transfer
             Type::RawString => true,
             // C function pointers
@@ -110,9 +136,17 @@ impl<'a> Checker<'a> {
 
     pub(crate) fn builtin_type_names() -> Vec<String> {
         vec![
-            "i32".into(), "i64".into(), "f64".into(), "bool".into(),
-            "string".into(), "unit".into(), "List".into(), "Set".into(), "Future".into(),
-            "Result".into(), "Option".into(),
+            "i32".into(),
+            "i64".into(),
+            "f64".into(),
+            "bool".into(),
+            "string".into(),
+            "unit".into(),
+            "List".into(),
+            "Set".into(),
+            "Future".into(),
+            "Result".into(),
+            "Option".into(),
         ]
     }
 
@@ -125,12 +159,21 @@ impl<'a> Checker<'a> {
         self.check_type_well_formed_inner(ty, context, true);
     }
 
-    pub(crate) fn check_type_well_formed_inner(&mut self, ty: &Type, context: &str, allow_passport: bool) {
+    pub(crate) fn check_type_well_formed_inner(
+        &mut self,
+        ty: &Type,
+        context: &str,
+        allow_passport: bool,
+    ) {
         if !allow_passport && Self::type_contains_passport(ty) {
-            self.emit_code(crate::diagnostic::codes::E0231, format!(
-                "FFI passport type '{}' is not allowed in {}",
-                fmt_type(ty), context
-            ));
+            self.emit_code(
+                crate::diagnostic::codes::E0231,
+                format!(
+                    "FFI passport type '{}' is not allowed in {}",
+                    fmt_type(ty),
+                    context
+                ),
+            );
             return;
         }
         match ty {
@@ -153,18 +196,26 @@ impl<'a> Checker<'a> {
                             crate::diagnostic::codes::E0407,
                             format!("unknown type '{}' in {}", name, context),
                             Span::single(self.current_line, self.current_col),
-                        ).with_help(help)
+                        )
+                        .with_help(help),
                     );
                 }
                 for arg in args {
                     self.check_type_well_formed_inner(arg, context, allow_passport);
                 }
             }
-            Type::Ref(_, inner) | Type::RefMut(_, inner) | Type::Option(inner)
-                | Type::Shared(inner) | Type::LocalShared(inner) | Type::Weak(inner)
-                | Type::WeakLocal(inner)
-                | Type::RawPtr(inner) | Type::RawPtrMut(inner)
-                | Type::CShared(inner) | Type::CBorrow(inner) | Type::CBorrowMut(inner) => {
+            Type::Ref(_, inner)
+            | Type::RefMut(_, inner)
+            | Type::Option(inner)
+            | Type::Shared(inner)
+            | Type::LocalShared(inner)
+            | Type::Weak(inner)
+            | Type::WeakLocal(inner)
+            | Type::RawPtr(inner)
+            | Type::RawPtrMut(inner)
+            | Type::CShared(inner)
+            | Type::CBorrow(inner)
+            | Type::CBorrowMut(inner) => {
                 self.check_type_well_formed_inner(inner, context, allow_passport);
             }
             Type::RawString => { /* no inner type to check */ }
@@ -194,7 +245,10 @@ impl<'a> Checker<'a> {
             }
             Type::Newtype(name, inner) => {
                 if !self.types.contains_key(name) && !self.newtypes.contains_key(name) {
-                    self.emit_code(crate::diagnostic::codes::E0407, format!("unknown newtype '{}' in {}", name, context));
+                    self.emit_code(
+                        crate::diagnostic::codes::E0407,
+                        format!("unknown newtype '{}' in {}", name, context),
+                    );
                 }
                 self.check_type_well_formed_inner(inner, context, allow_passport);
             }
@@ -205,14 +259,23 @@ impl<'a> Checker<'a> {
             Type::ImplTrait(traits) => {
                 for trait_name in traits {
                     if !self.traits.contains_key(trait_name) {
-                        self.emit_code(crate::diagnostic::codes::E0406, format!("unknown trait '{}' in impl Trait in {}", trait_name, context));
+                        self.emit_code(
+                            crate::diagnostic::codes::E0406,
+                            format!(
+                                "unknown trait '{}' in impl Trait in {}",
+                                trait_name, context
+                            ),
+                        );
                     }
                 }
             }
             Type::DynTrait(traits) => {
                 for trait_name in traits {
                     if !self.traits.contains_key(trait_name) {
-                        self.emit_code(crate::diagnostic::codes::E0406, format!("unknown trait '{}' in dyn Trait in {}", trait_name, context));
+                        self.emit_code(
+                            crate::diagnostic::codes::E0406,
+                            format!("unknown trait '{}' in dyn Trait in {}", trait_name, context),
+                        );
                     }
                 }
             }
@@ -223,18 +286,32 @@ impl<'a> Checker<'a> {
     /// FFI boundary passport types.
     pub(crate) fn type_contains_passport(ty: &Type) -> bool {
         match ty {
-            Type::RawPtr(_) | Type::RawPtrMut(_)
-                | Type::CShared(_) | Type::CBorrow(_) | Type::CBorrowMut(_)
-                | Type::RawString => true,
+            Type::RawPtr(_)
+            | Type::RawPtrMut(_)
+            | Type::CShared(_)
+            | Type::CBorrow(_)
+            | Type::CBorrowMut(_)
+            | Type::RawString => true,
             Type::Name(_, args) => args.iter().any(Self::type_contains_passport),
-            Type::Ref(_, inner) | Type::RefMut(_, inner) | Type::Option(inner)
-                | Type::Shared(inner) | Type::LocalShared(inner) | Type::Weak(inner)
-                | Type::WeakLocal(inner)
-                | Type::Array(inner, _) | Type::Slice(inner) => Self::type_contains_passport(inner),
-            Type::Result(ok, err) => Self::type_contains_passport(ok) || Self::type_contains_passport(err),
+            Type::Ref(_, inner)
+            | Type::RefMut(_, inner)
+            | Type::Option(inner)
+            | Type::Shared(inner)
+            | Type::LocalShared(inner)
+            | Type::Weak(inner)
+            | Type::WeakLocal(inner)
+            | Type::Array(inner, _)
+            | Type::Slice(inner) => Self::type_contains_passport(inner),
+            Type::Result(ok, err) => {
+                Self::type_contains_passport(ok) || Self::type_contains_passport(err)
+            }
             Type::Tuple(elems) => elems.iter().any(Self::type_contains_passport),
-            Type::Func(args, ret) => args.iter().any(Self::type_contains_passport) || Self::type_contains_passport(ret),
-            Type::ExternFunc(args, ret) => args.iter().any(Self::type_contains_passport) || Self::type_contains_passport(ret),
+            Type::Func(args, ret) => {
+                args.iter().any(Self::type_contains_passport) || Self::type_contains_passport(ret)
+            }
+            Type::ExternFunc(args, ret) => {
+                args.iter().any(Self::type_contains_passport) || Self::type_contains_passport(ret)
+            }
             Type::CBuffer(inner) => Self::type_contains_passport(inner),
             Type::Newtype(_, inner) => Self::type_contains_passport(inner),
             Type::Cap(_) | Type::Nothing | Type::Allocator | Type::Infer => false,
@@ -251,9 +328,9 @@ impl<'a> Checker<'a> {
         }
         // Check user-defined trait implementations
         match ty {
-            Type::Name(type_name, _) => {
-                self.impls.contains_key(&(trait_name.to_string(), type_name.clone()))
-            }
+            Type::Name(type_name, _) => self
+                .impls
+                .contains_key(&(trait_name.to_string(), type_name.clone())),
             _ => false,
         }
     }
@@ -263,16 +340,21 @@ impl<'a> Checker<'a> {
         match trait_name {
             "Clone" => {
                 // All types in Mimi are cloneable via assignment copy
-                matches!(ty, Type::Name(_, _) | Type::Tuple(_) | Type::Option(_)
-                    | Type::Result(_, _) | Type::Array(_, _) | Type::Slice(_))
+                matches!(
+                    ty,
+                    Type::Name(_, _)
+                        | Type::Tuple(_)
+                        | Type::Option(_)
+                        | Type::Result(_, _)
+                        | Type::Array(_, _)
+                        | Type::Slice(_)
+                )
             }
             "Copy" => {
                 // Only primitive scalar types are Copy
                 self.type_is_primitive_scalar(ty)
             }
-            "Default" => {
-                self.type_has_default(ty)
-            }
+            "Default" => self.type_has_default(ty),
             "Eq" => {
                 // Types with == operator
                 self.type_is_eq_comparable(ty)
@@ -293,7 +375,10 @@ impl<'a> Checker<'a> {
     fn type_has_default(&self, ty: &Type) -> bool {
         match ty {
             Type::Name(name, args) => {
-                if matches!(name.as_str(), "i32" | "i64" | "f64" | "bool" | "string" | "unit") {
+                if matches!(
+                    name.as_str(),
+                    "i32" | "i64" | "f64" | "bool" | "string" | "unit"
+                ) {
                     return true;
                 }
                 // Option types have default (None)
@@ -314,7 +399,10 @@ impl<'a> Checker<'a> {
     /// Check if a type supports equality comparison
     fn type_is_eq_comparable(&self, ty: &Type) -> bool {
         match ty {
-            Type::Name(name, _) => matches!(name.as_str(), "i32" | "i64" | "f64" | "bool" | "string" | "unit"),
+            Type::Name(name, _) => matches!(
+                name.as_str(),
+                "i32" | "i64" | "f64" | "bool" | "string" | "unit"
+            ),
             Type::Tuple(elems) => elems.iter().all(|e| self.type_is_eq_comparable(e)),
             _ => false,
         }

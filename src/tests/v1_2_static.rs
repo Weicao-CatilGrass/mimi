@@ -15,7 +15,10 @@ func main() -> i32 {
 "#;
     // Non-locked functions should pass strict mode
     let result = check_source_strict(src);
-    assert!(result.is_ok(), "non-locked function should pass strict mode");
+    assert!(
+        result.is_ok(),
+        "non-locked function should pass strict mode"
+    );
 }
 
 #[test]
@@ -53,7 +56,12 @@ func main() -> i32 {
     assert!(result.is_err(), "missing return path should be an error");
     let errors = result.unwrap_err();
     let msgs: Vec<String> = errors.iter().map(|e| e.message.clone()).collect();
-    assert!(msgs.iter().any(|m| m.contains("does not return on all paths")), "Expected return path error, got: {:?}", msgs);
+    assert!(
+        msgs.iter()
+            .any(|m| m.contains("does not return on all paths")),
+        "Expected return path error, got: {:?}",
+        msgs
+    );
 }
 
 #[test]
@@ -72,7 +80,11 @@ func main() -> i32 {
 }
 "#;
     let result = check_source(src);
-    assert!(result.is_ok(), "all return paths should pass: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "all return paths should pass: {:?}",
+        result.err()
+    );
 }
 
 #[test]
@@ -88,10 +100,17 @@ func main() -> i32 {
 }
 "#;
     let result = check_source(src);
-    assert!(result.is_err(), "unreachable code after return should be an error");
+    assert!(
+        result.is_err(),
+        "unreachable code after return should be an error"
+    );
     let errors = result.unwrap_err();
     let msgs: Vec<String> = errors.iter().map(|e| e.message.clone()).collect();
-    assert!(msgs.iter().any(|m| m.contains("unreachable statement")), "Expected unreachable error, got: {:?}", msgs);
+    assert!(
+        msgs.iter().any(|m| m.contains("unreachable statement")),
+        "Expected unreachable error, got: {:?}",
+        msgs
+    );
 }
 
 #[test]
@@ -104,10 +123,18 @@ func main() -> i32 {
 }
 "#;
     let result = check_source(src);
-    assert!(result.is_err(), "assigning to immutable variable should be an error");
+    assert!(
+        result.is_err(),
+        "assigning to immutable variable should be an error"
+    );
     let errors = result.unwrap_err();
     let msgs: Vec<String> = errors.iter().map(|e| e.message.clone()).collect();
-    assert!(msgs.iter().any(|m| m.contains("cannot assign to immutable")), "Expected mut error, got: {:?}", msgs);
+    assert!(
+        msgs.iter()
+            .any(|m| m.contains("cannot assign to immutable")),
+        "Expected mut error, got: {:?}",
+        msgs
+    );
 }
 
 #[test]
@@ -120,7 +147,11 @@ func main() -> i32 {
 }
 "#;
     let result = check_source(src);
-    assert!(result.is_ok(), "assigning to mutable variable should pass: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "assigning to mutable variable should pass: {:?}",
+        result.err()
+    );
 }
 
 #[test]
@@ -133,10 +164,17 @@ func main() -> i32 {
 }
 "#;
     let result = check_source(src);
-    assert!(result.is_err(), "variable shadowing should produce an error");
+    assert!(
+        result.is_err(),
+        "variable shadowing should produce an error"
+    );
     let errors = result.unwrap_err();
     let msgs: Vec<String> = errors.iter().map(|e| e.message.clone()).collect();
-    assert!(msgs.iter().any(|m| m.contains("shadows")), "Expected shadowing error, got: {:?}", msgs);
+    assert!(
+        msgs.iter().any(|m| m.contains("shadows")),
+        "Expected shadowing error, got: {:?}",
+        msgs
+    );
 }
 
 #[test]
@@ -148,10 +186,17 @@ func main() -> i32 {
 }
 "#;
     let result = check_source(src);
-    assert!(result.is_err(), "division by zero literal should be an error");
+    assert!(
+        result.is_err(),
+        "division by zero literal should be an error"
+    );
     let errors = result.unwrap_err();
     let msgs: Vec<String> = errors.iter().map(|e| e.message.clone()).collect();
-    assert!(msgs.iter().any(|m| m.contains("division by zero")), "Expected divide-by-zero error, got: {:?}", msgs);
+    assert!(
+        msgs.iter().any(|m| m.contains("division by zero")),
+        "Expected divide-by-zero error, got: {:?}",
+        msgs
+    );
 }
 
 #[test]
@@ -166,7 +211,11 @@ func main() -> i32 {
     assert!(result.is_err(), "modulo by zero literal should be an error");
     let errors = result.unwrap_err();
     let msgs: Vec<String> = errors.iter().map(|e| e.message.clone()).collect();
-    assert!(msgs.iter().any(|m| m.contains("modulo by zero")), "Expected modulo-by-zero error, got: {:?}", msgs);
+    assert!(
+        msgs.iter().any(|m| m.contains("modulo by zero")),
+        "Expected modulo-by-zero error, got: {:?}",
+        msgs
+    );
 }
 
 #[test]
@@ -183,7 +232,11 @@ func main() -> i32 {
     assert!(result.is_err(), "type alias cycle should be an error");
     let errors = result.unwrap_err();
     let msgs: Vec<String> = errors.iter().map(|e| e.message.clone()).collect();
-    assert!(msgs.iter().any(|m| m.contains("type alias cycle")), "Expected alias cycle error, got: {:?}", msgs);
+    assert!(
+        msgs.iter().any(|m| m.contains("type alias cycle")),
+        "Expected alias cycle error, got: {:?}",
+        msgs
+    );
 }
 
 #[test]

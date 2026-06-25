@@ -27,7 +27,9 @@ func main() -> i32 {
     assert!(result.is_err());
     let errors = result.unwrap_err();
     let err_messages: Vec<String> = errors.iter().map(|e| e.message.clone()).collect();
-    assert!(err_messages.iter().any(|m| m.contains("missing method 'print'")));
+    assert!(err_messages
+        .iter()
+        .any(|m| m.contains("missing method 'print'")));
 }
 
 #[test]
@@ -51,7 +53,9 @@ func main() -> i32 {
     assert!(result.is_err());
     let errors = result.unwrap_err();
     let err_messages: Vec<String> = errors.iter().map(|e| e.message.clone()).collect();
-    assert!(err_messages.iter().any(|m| m.contains("undefined trait 'NonexistentTrait'")));
+    assert!(err_messages
+        .iter()
+        .any(|m| m.contains("undefined trait 'NonexistentTrait'")));
 }
 
 #[test]
@@ -106,7 +110,10 @@ func main() -> string {
 }
 "#;
     // Generic function without trait constraint should work
-    assert_eq!(run_source(src), interp::Value::String("printed".to_string()));
+    assert_eq!(
+        run_source(src),
+        interp::Value::String("printed".to_string())
+    );
 }
 
 #[test]
@@ -135,7 +142,9 @@ func main() -> i32 {
     assert!(result.is_err());
     let errors = result.unwrap_err();
     let err_messages: Vec<String> = errors.iter().map(|e| e.message.clone()).collect();
-    assert!(err_messages.iter().any(|m| m.contains("where constraint violated")));
+    assert!(err_messages
+        .iter()
+        .any(|m| m.contains("where constraint violated")));
 }
 
 #[test]
@@ -174,7 +183,8 @@ func main() -> i32 {
 
 #[test]
 fn dyn_trait_coercion_basic() {
-    let v = run_source(r#"
+    let v = run_source(
+        r#"
 trait Drawable {
     func draw() -> i32;
 }
@@ -194,13 +204,15 @@ func main() -> i32 {
     let d: dyn Drawable = c
     d.draw()
 }
-"#);
+"#,
+    );
     assert_eq!(v, interp::Value::Int(20));
 }
 
 #[test]
 fn dyn_trait_dispatch_return() {
-    let v = run_source(r#"
+    let v = run_source(
+        r#"
 trait Greeter {
     func greet() -> string;
 }
@@ -230,13 +242,15 @@ func main() -> string {
     let d: dyn Greeter = e
     d.greet()
 }
-"#);
+"#,
+    );
     assert_eq!(v, interp::Value::String("Hello, World".into()));
 }
 
 #[test]
 fn dyn_trait_multi_impl() {
-    let v = run_source(r#"
+    let v = run_source(
+        r#"
 trait Calculator {
     func compute() -> i32;
 }
@@ -272,6 +286,7 @@ func main() -> i32 {
     let mul = Multiplier { a: 5, b: 6 }
     use_dyn(add) + use_dyn(mul)
 }
-"#);
+"#,
+    );
     assert_eq!(v, interp::Value::Int(3 + 4 + 5 * 6));
 }

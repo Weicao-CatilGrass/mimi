@@ -28,12 +28,10 @@ impl std::fmt::Debug for PollFuture {
                 write!(f, "PollFuture::Deferred({})", func.name)
             }
             PollFuture::Pending(_) => write!(f, "PollFuture::Pending"),
-            PollFuture::Ready(result) => {
-                match result {
-                    Ok(v) => write!(f, "PollFuture::Ready(Ok({:?}))", v),
-                    Err(e) => write!(f, "PollFuture::Ready(Err({}))", e),
-                }
-            }
+            PollFuture::Ready(result) => match result {
+                Ok(v) => write!(f, "PollFuture::Ready(Ok({:?}))", v),
+                Err(e) => write!(f, "PollFuture::Ready(Err({}))", e),
+            },
         }
     }
 }
@@ -51,9 +49,10 @@ pub fn poll_deferred(state: &mut PollFuture) {
             }
         }
         if result.is_ok() {
-            let block_result = interp.eval_block(&func.body).map(|v| v.unwrap_or(Value::Unit));
-            result = interp.early_return.take()
-                .map_or(block_result, Ok);
+            let block_result = interp
+                .eval_block(&func.body)
+                .map(|v| v.unwrap_or(Value::Unit));
+            result = interp.early_return.take().map_or(block_result, Ok);
         }
         interp.pop_scope();
         *state = PollFuture::Ready(result);
@@ -61,15 +60,20 @@ pub fn poll_deferred(state: &mut PollFuture) {
 }
 
 /// Global executor queue for deferred futures.
-fn executor_queue() -> &'static std::sync::Mutex<Vec<std::sync::Arc<std::sync::Mutex<PollFuture>>>> {
+fn executor_queue() -> &'static std::sync::Mutex<Vec<std::sync::Arc<std::sync::Mutex<PollFuture>>>>
+{
     use std::sync::Mutex;
-    static QUEUE: std::sync::OnceLock<Mutex<Vec<std::sync::Arc<Mutex<PollFuture>>>>> = std::sync::OnceLock::new();
+    static QUEUE: std::sync::OnceLock<Mutex<Vec<std::sync::Arc<Mutex<PollFuture>>>>> =
+        std::sync::OnceLock::new();
     QUEUE.get_or_init(|| Mutex::new(Vec::new()))
 }
 
 /// Submit a deferred future to the global executor.
 pub fn executor_submit(future: std::sync::Arc<std::sync::Mutex<PollFuture>>) {
-    executor_queue().lock().expect("executor queue lock").push(future);
+    executor_queue()
+        .lock()
+        .expect("executor queue lock")
+        .push(future);
 }
 
 /// Run the executor: poll all deferred futures until all are completed.
@@ -78,7 +82,9 @@ pub fn executor_run() {
         let entry = {
             let queue = executor_queue();
             let mut guard = queue.lock().expect("executor queue lock");
-            if guard.is_empty() { return; }
+            if guard.is_empty() {
+                return;
+            }
             let mut found = None;
             for i in 0..guard.len() {
                 let fut = &guard[i];
@@ -382,7 +388,8 @@ impl PartialEq for ActorHandle {
     }
 }
 
-static ACTOR_HANDLE_COUNTER: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+static ACTOR_HANDLE_COUNTER: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
 
 // Thread-local flag set when inside an actor's worker thread.
 // Used to detect self-calls and avoid mailbox deadlock.
@@ -403,14 +410,18 @@ impl ActorHandle {
             .name(format!("actor-{}", id))
             .spawn(move || {
                 CURRENT_ACTOR_ID.with(|a| a.set(id));
-                let empty_file = crate::ast::File { imports: vec![], items: vec![] };
+                let empty_file = crate::ast::File {
+                    imports: vec![],
+                    items: vec![],
+                };
                 while let Ok(msg) = mailbox_rx.recv() {
                     let result = {
                         // Read method definition
                         let (func, _actor_name) = {
-                            let actor = worker_inner.read()
-                                .expect("actor worker lock");
-                            let func = actor.methods.iter()
+                            let actor = worker_inner.read().expect("actor worker lock");
+                            let func = actor
+                                .methods
+                                .iter()
                                 .find(|f| f.name == msg.method)
                                 .cloned()
                                 .expect("actor method not found");
@@ -424,19 +435,22 @@ impl ActorHandle {
                             id,
                         });
                         interp.push_scope();
-                        interp.bind("self", self_val)
+                        interp
+                            .bind("self", self_val)
                             .expect("bind self in actor worker");
                         // Bind method parameters
                         let mut args_iter = msg.args.iter();
                         for param in &func.params {
-                            if param.name == "self" { continue; }
-                            let arg = args_iter.next()
-                                .cloned()
-                                .unwrap_or(Value::Unit);
-                            interp.bind(&param.name, arg)
+                            if param.name == "self" {
+                                continue;
+                            }
+                            let arg = args_iter.next().cloned().unwrap_or(Value::Unit);
+                            interp
+                                .bind(&param.name, arg)
                                 .expect("bind param in actor worker");
                         }
-                        let result = interp.eval_block(&func.body)
+                        let result = interp
+                            .eval_block(&func.body)
                             .map(|opt| opt.unwrap_or(Value::Unit));
                         interp.pop_scope();
                         result
@@ -447,7 +461,11 @@ impl ActorHandle {
             })
             .expect("failed to spawn actor worker");
 
-        ActorHandle { inner, mailbox: mailbox_tx, id }
+        ActorHandle {
+            inner,
+            mailbox: mailbox_tx,
+            id,
+        }
     }
 
     /// Returns the current actor's thread-local ID (0 if not in an actor worker).
@@ -502,7 +520,9 @@ impl std::fmt::Display for Value {
             Value::List(vs) => {
                 write!(f, "[")?;
                 for (i, v) in vs.iter().enumerate() {
-                    if i > 0 { write!(f, ", ")?; }
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
                     write!(f, "{}", v)?;
                 }
                 write!(f, "]")
@@ -510,7 +530,9 @@ impl std::fmt::Display for Value {
             Value::Set(vs) => {
                 write!(f, "Set{{")?;
                 for (i, v) in vs.iter().enumerate() {
-                    if i > 0 { write!(f, ", ")?; }
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
                     write!(f, "{}", v)?;
                 }
                 write!(f, "}}")
@@ -518,7 +540,9 @@ impl std::fmt::Display for Value {
             Value::Tuple(vs) => {
                 write!(f, "(")?;
                 for (i, v) in vs.iter().enumerate() {
-                    if i > 0 { write!(f, ", ")?; }
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
                     write!(f, "{}", v)?;
                 }
                 write!(f, ")")
@@ -526,7 +550,9 @@ impl std::fmt::Display for Value {
             Value::Variant(name, vs) => {
                 write!(f, "{}(", name)?;
                 for (i, v) in vs.iter().enumerate() {
-                    if i > 0 { write!(f, ", ")?; }
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
                     write!(f, "{}", v)?;
                 }
                 write!(f, ")")
@@ -539,7 +565,9 @@ impl std::fmt::Display for Value {
                     write!(f, "{} {{ ", name)?;
                     let mut first = true;
                     for (k, v) in fields.iter() {
-                        if !first { write!(f, ", ")?; }
+                        if !first {
+                            write!(f, ", ")?;
+                        }
                         first = false;
                         write!(f, "{}: {}", k, v)?;
                     }
@@ -590,7 +618,9 @@ impl std::fmt::Display for Value {
             Value::Array(vs) => {
                 write!(f, "[")?;
                 for (i, v) in vs.iter().enumerate() {
-                    if i > 0 { write!(f, ", ")?; }
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
                     write!(f, "{}", v)?;
                 }
                 write!(f, "]")
@@ -598,15 +628,27 @@ impl std::fmt::Display for Value {
             Value::Slice { source, start, end } => {
                 write!(f, "[")?;
                 for (i, v) in source[*start..*end].iter().enumerate() {
-                    if i > 0 { write!(f, ", ")?; }
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
                     write!(f, "{}", v)?;
                 }
                 write!(f, "]")
             }
             Value::Range { start, end } => write!(f, "{}..{}", start, end),
             Value::CBuffer(inner) => write!(f, "CBuffer({:p}, {} bytes)", inner.ptr, inner.size),
-            Value::DynTrait { data, concrete_type, trait_names } => {
-                write!(f, "dyn {} {{ data: {}, concrete: {} }}", trait_names.join(" + "), data, concrete_type)
+            Value::DynTrait {
+                data,
+                concrete_type,
+                trait_names,
+            } => {
+                write!(
+                    f,
+                    "dyn {} {{ data: {}, concrete: {} }}",
+                    trait_names.join(" + "),
+                    data,
+                    concrete_type
+                )
             }
         }
     }
@@ -660,7 +702,9 @@ pub(crate) fn contains_arena_ref(v: &Value, arena_id: usize) -> bool {
                 false
             }
         }
-        Value::Closure { captured, .. } => captured.values().any(|v| contains_arena_ref(v, arena_id)),
+        Value::Closure { captured, .. } => {
+            captured.values().any(|v| contains_arena_ref(v, arena_id))
+        }
         Value::Shared(arc) => {
             if let Ok(v) = arc.read() {
                 contains_arena_ref(&v, arena_id)
@@ -676,9 +720,7 @@ pub(crate) fn contains_arena_ref(v: &Value, arena_id: usize) -> bool {
             }
             false
         }
-        Value::LocalShared(inner) => {
-            contains_arena_ref(&inner.0.borrow(), arena_id)
-        }
+        Value::LocalShared(inner) => contains_arena_ref(&inner.0.borrow(), arena_id),
         Value::WeakLocal(inner) => {
             if let Some(rc) = inner.0.upgrade() {
                 contains_arena_ref(&rc.borrow(), arena_id)
@@ -726,33 +768,64 @@ pub(crate) fn values_equal(a: &Value, b: &Value) -> bool {
         (Value::Int(a), Value::Float(b)) | (Value::Float(b), Value::Int(a)) => {
             let a_f = *a as f64;
             let diff = (a_f - b).abs();
-            if diff == 0.0 { return true; }
+            if diff == 0.0 {
+                return true;
+            }
             let scale = a_f.abs().max(b.abs());
             diff <= f64::EPSILON * scale.max(1.0)
         }
         (Value::Float(a), Value::Float(b)) => {
             let diff = (a - b).abs();
-            if diff == 0.0 { return true; }
+            if diff == 0.0 {
+                return true;
+            }
             let scale = a.abs().max(b.abs());
             diff <= f64::EPSILON * scale.max(1.0)
         }
         (Value::Bool(a), Value::Bool(b)) => a == b,
         (Value::String(a), Value::String(b)) => a == b,
         (Value::Unit, Value::Unit) => true,
-        (Value::List(a), Value::List(b)) => a.len() == b.len() && a.iter().zip(b.iter()).all(|(x, y)| values_equal(x, y)),
-        (Value::Set(a), Value::Set(b)) => a.len() == b.len() && a.iter().all(|x| b.iter().any(|y| values_equal(x, y))),
-        (Value::Array(a), Value::Array(b)) => a.len() == b.len() && a.iter().zip(b.iter()).all(|(x, y)| values_equal(x, y)),
-        (Value::Slice { source: a_src, start: a_s, end: a_e }, Value::Slice { source: b_src, start: b_s, end: b_e }) => {
+        (Value::List(a), Value::List(b)) => {
+            a.len() == b.len() && a.iter().zip(b.iter()).all(|(x, y)| values_equal(x, y))
+        }
+        (Value::Set(a), Value::Set(b)) => {
+            a.len() == b.len() && a.iter().all(|x| b.iter().any(|y| values_equal(x, y)))
+        }
+        (Value::Array(a), Value::Array(b)) => {
+            a.len() == b.len() && a.iter().zip(b.iter()).all(|(x, y)| values_equal(x, y))
+        }
+        (
+            Value::Slice {
+                source: a_src,
+                start: a_s,
+                end: a_e,
+            },
+            Value::Slice {
+                source: b_src,
+                start: b_s,
+                end: b_e,
+            },
+        ) => {
             let a_slice = &a_src[*a_s..*a_e];
             let b_slice = &b_src[*b_s..*b_e];
-            a_slice.len() == b_slice.len() && a_slice.iter().zip(b_slice.iter()).all(|(x, y)| values_equal(x, y))
+            a_slice.len() == b_slice.len()
+                && a_slice
+                    .iter()
+                    .zip(b_slice.iter())
+                    .all(|(x, y)| values_equal(x, y))
         }
-        (Value::Tuple(a), Value::Tuple(b)) => a.len() == b.len() && a.iter().zip(b.iter()).all(|(x, y)| values_equal(x, y)),
+        (Value::Tuple(a), Value::Tuple(b)) => {
+            a.len() == b.len() && a.iter().zip(b.iter()).all(|(x, y)| values_equal(x, y))
+        }
         (Value::Variant(an, av), Value::Variant(bn, bv)) => {
-            an == bn && av.len() == bv.len() && av.iter().zip(bv.iter()).all(|(x, y)| values_equal(x, y))
+            an == bn
+                && av.len() == bv.len()
+                && av.iter().zip(bv.iter()).all(|(x, y)| values_equal(x, y))
         }
         (Value::Record(_, a), Value::Record(_, b)) => {
-            a.len() == b.len() && a.iter().all(|(k, v)| b.get(k).map(|bv| values_equal(v, bv)).unwrap_or(false))
+            a.len() == b.len()
+                && a.iter()
+                    .all(|(k, v)| b.get(k).map(|bv| values_equal(v, bv)).unwrap_or(false))
         }
         (Value::Newtype(a), Value::Newtype(b)) => values_equal(a, b),
         (Value::Ref(a), Value::Ref(b)) | (Value::RefMut(a), Value::RefMut(b)) => {
@@ -777,18 +850,37 @@ pub(crate) fn values_equal(a: &Value, b: &Value) -> bool {
             }
         }
         (Value::Shared(a), Value::Shared(b)) => {
-            if let (Ok(va), Ok(vb)) = (a.read(), b.read()) { values_equal(&va, &vb) } else { false }
+            if let (Ok(va), Ok(vb)) = (a.read(), b.read()) {
+                values_equal(&va, &vb)
+            } else {
+                false
+            }
         }
         (Value::LocalShared(a), Value::LocalShared(b)) => {
             values_equal(&a.0.borrow(), &b.0.borrow())
         }
         (Value::Cap(a), Value::Cap(b)) => a == b,
-        (Value::Range { start: as_, end: ae }, Value::Range { start: bs, end: be }) => as_ == bs && ae == be,
+        (
+            Value::Range {
+                start: as_,
+                end: ae,
+            },
+            Value::Range { start: bs, end: be },
+        ) => as_ == bs && ae == be,
         (Value::Type(a), Value::Type(b)) => a == b,
         (Value::Allocator(a), Value::Allocator(b)) => a == b,
-        (Value::DynTrait { data: ad, concrete_type: at, .. }, Value::DynTrait { data: bd, concrete_type: bt, .. }) => {
-            at == bt && values_equal(ad, bd)
-        }
+        (
+            Value::DynTrait {
+                data: ad,
+                concrete_type: at,
+                ..
+            },
+            Value::DynTrait {
+                data: bd,
+                concrete_type: bt,
+                ..
+            },
+        ) => at == bt && values_equal(ad, bd),
         _ => false,
     }
 }
@@ -815,11 +907,23 @@ where
     let ord = match (&a, &b) {
         (Value::Int(a), Value::Int(b)) => a.cmp(b),
         // Mixed numeric comparison: widen the integer side to float.
-        (Value::Int(i), Value::Float(fl)) => (*i as f64).partial_cmp(fl).ok_or_else(|| InterpError::new("cannot compare NaN with float"))?,
-        (Value::Float(fl), Value::Int(i)) => fl.partial_cmp(&(*i as f64)).ok_or_else(|| InterpError::new("cannot compare NaN with float"))?,
-        (Value::Float(a), Value::Float(b)) => a.partial_cmp(b).ok_or_else(|| InterpError::new("cannot compare NaN with float"))?,
+        (Value::Int(i), Value::Float(fl)) => (*i as f64)
+            .partial_cmp(fl)
+            .ok_or_else(|| InterpError::new("cannot compare NaN with float"))?,
+        (Value::Float(fl), Value::Int(i)) => fl
+            .partial_cmp(&(*i as f64))
+            .ok_or_else(|| InterpError::new("cannot compare NaN with float"))?,
+        (Value::Float(a), Value::Float(b)) => a
+            .partial_cmp(b)
+            .ok_or_else(|| InterpError::new("cannot compare NaN with float"))?,
         (Value::String(a), Value::String(b)) => a.cmp(b),
-        _ => return Err(InterpError::new(format!("cannot compare {} with {}", type_name(&a), type_name(&b)))),
+        _ => {
+            return Err(InterpError::new(format!(
+                "cannot compare {} with {}",
+                type_name(&a),
+                type_name(&b)
+            )))
+        }
     };
     Ok(Value::Bool(f(ord)))
 }

@@ -1,4 +1,4 @@
-use crate::ast::{Item, Type, TypeDefKind, Stmt};
+use crate::ast::{Item, Stmt, Type, TypeDefKind};
 use crate::{lexer, parser};
 
 fn type_to_string(ty: &Type) -> String {
@@ -12,11 +12,17 @@ fn type_to_string(ty: &Type) -> String {
             }
         }
         Type::Ref(lifetime, inner) => {
-            let lt = lifetime.as_ref().map(|l| format!("'{} ", l)).unwrap_or_default();
+            let lt = lifetime
+                .as_ref()
+                .map(|l| format!("'{} ", l))
+                .unwrap_or_default();
             format!("&{}{}", lt, type_to_string(inner))
         }
         Type::RefMut(lifetime, inner) => {
-            let lt = lifetime.as_ref().map(|l| format!("'{} ", l)).unwrap_or_default();
+            let lt = lifetime
+                .as_ref()
+                .map(|l| format!("'{} ", l))
+                .unwrap_or_default();
             format!("&{}mut {}", lt, type_to_string(inner))
         }
         Type::Option(inner) => format!("Option<{}>", type_to_string(inner)),
@@ -31,7 +37,11 @@ fn type_to_string(ty: &Type) -> String {
         }
         Type::ExternFunc(args, ret) => {
             let args: Vec<String> = args.iter().map(type_to_string).collect();
-            format!("extern \"C\" fn({}) -> {}", args.join(", "), type_to_string(ret))
+            format!(
+                "extern \"C\" fn({}) -> {}",
+                args.join(", "),
+                type_to_string(ret)
+            )
         }
         Type::CBuffer(inner) => format!("c_buffer<{}>", type_to_string(inner)),
         Type::Cap(name) => format!("cap {}", name),
@@ -66,11 +76,22 @@ pub fn generate_markdown(source: &str) -> Result<String, String> {
     for item in &file.items {
         match item {
             Item::Func(f) => {
-                let params: Vec<String> = f.params.iter()
+                let params: Vec<String> = f
+                    .params
+                    .iter()
                     .map(|p| format!("{}: {}", p.name, type_to_string(&p.ty)))
                     .collect();
-                let ret = f.ret.as_ref().map(|t| format!(" -> {}", type_to_string(t))).unwrap_or_default();
-                out.push_str(&format!("## `func {}({}){}`\n\n", f.name, params.join(", "), ret));
+                let ret = f
+                    .ret
+                    .as_ref()
+                    .map(|t| format!(" -> {}", type_to_string(t)))
+                    .unwrap_or_default();
+                out.push_str(&format!(
+                    "## `func {}({}){}`\n\n",
+                    f.name,
+                    params.join(", "),
+                    ret
+                ));
                 for stmt in &f.body {
                     if let Stmt::Desc(desc, _) = stmt {
                         out.push_str(&format!("{}\n\n", desc));
@@ -85,7 +106,11 @@ pub fn generate_markdown(source: &str) -> Result<String, String> {
                 match &t.kind {
                     TypeDefKind::Record(fields) => {
                         for field in fields {
-                            out.push_str(&format!("- `{}`: {}\n", field.name, type_to_string(&field.ty)));
+                            out.push_str(&format!(
+                                "- `{}`: {}\n",
+                                field.name,
+                                type_to_string(&field.ty)
+                            ));
                         }
                         out.push('\n');
                     }
@@ -93,13 +118,22 @@ pub fn generate_markdown(source: &str) -> Result<String, String> {
                         for v in variants {
                             match &v.payload {
                                 Some(crate::ast::VariantPayload::Tuple(types)) => {
-                                    let inner: Vec<String> = types.iter().map(type_to_string).collect();
-                                    out.push_str(&format!("- `{}({})`\n", v.name, inner.join(", ")));
+                                    let inner: Vec<String> =
+                                        types.iter().map(type_to_string).collect();
+                                    out.push_str(&format!(
+                                        "- `{}({})`\n",
+                                        v.name,
+                                        inner.join(", ")
+                                    ));
                                 }
                                 Some(crate::ast::VariantPayload::Record(fields)) => {
                                     out.push_str(&format!("- `{}`:\n", v.name));
                                     for f in fields {
-                                        out.push_str(&format!("  - `{}`: {}\n", f.name, type_to_string(&f.ty)));
+                                        out.push_str(&format!(
+                                            "  - `{}`: {}\n",
+                                            f.name,
+                                            type_to_string(&f.ty)
+                                        ));
                                     }
                                 }
                                 None => {
@@ -118,7 +152,11 @@ pub fn generate_markdown(source: &str) -> Result<String, String> {
                     TypeDefKind::Union(fields) => {
                         out.push_str("union:\n");
                         for field in fields {
-                            out.push_str(&format!("- `{}`: {}\n", field.name, type_to_string(&field.ty)));
+                            out.push_str(&format!(
+                                "- `{}`: {}\n",
+                                field.name,
+                                type_to_string(&field.ty)
+                            ));
                         }
                         out.push('\n');
                     }
@@ -130,11 +168,22 @@ pub fn generate_markdown(source: &str) -> Result<String, String> {
                     // Render nested items inline
                     match sub_item {
                         Item::Func(f) => {
-                            let params: Vec<String> = f.params.iter()
+                            let params: Vec<String> = f
+                                .params
+                                .iter()
                                 .map(|p| format!("{}: {}", p.name, type_to_string(&p.ty)))
                                 .collect();
-                            let ret = f.ret.as_ref().map(|t| format!(" -> {}", type_to_string(t))).unwrap_or_default();
-                            out.push_str(&format!("### `func {}({}){}`\n\n", f.name, params.join(", "), ret));
+                            let ret = f
+                                .ret
+                                .as_ref()
+                                .map(|t| format!(" -> {}", type_to_string(t)))
+                                .unwrap_or_default();
+                            out.push_str(&format!(
+                                "### `func {}({}){}`\n\n",
+                                f.name,
+                                params.join(", "),
+                                ret
+                            ));
                             for stmt in &f.body {
                                 if let Stmt::Desc(desc, _) = stmt {
                                     out.push_str(&format!("{}\n\n", desc));
@@ -148,7 +197,11 @@ pub fn generate_markdown(source: &str) -> Result<String, String> {
                             out.push_str(&format!("### `type {}`\n\n", t.name));
                             if let TypeDefKind::Record(fields) = &t.kind {
                                 for field in fields {
-                                    out.push_str(&format!("- `{}`: {}\n", field.name, type_to_string(&field.ty)));
+                                    out.push_str(&format!(
+                                        "- `{}`: {}\n",
+                                        field.name,
+                                        type_to_string(&field.ty)
+                                    ));
                                 }
                                 out.push('\n');
                             }
@@ -196,10 +249,12 @@ fn append_fragment_markdown(frag: &mimispec::ast::Fragment, out: &mut String) {
             }
         }
         Fragment::Func { func } => {
-            let params: Vec<String> = func.params.iter()
-                .map(|p| p.name.name.clone())
-                .collect();
-            out.push_str(&format!("## `func {}({})`\n\n", func.name.name, params.join(", ")));
+            let params: Vec<String> = func.params.iter().map(|p| p.name.name.clone()).collect();
+            out.push_str(&format!(
+                "## `func {}({})`\n\n",
+                func.name.name,
+                params.join(", ")
+            ));
             if let Some(d) = &func.desc {
                 out.push_str(&format!("{}\n\n", d.content.value));
             }
@@ -226,9 +281,7 @@ fn append_fragment_markdown(frag: &mimispec::ast::Fragment, out: &mut String) {
             }
             if let TypeBody::Record { fields } = &typedef.body {
                 for f in fields {
-                    let type_str: Vec<String> = f.type_hint.iter()
-                        .map(atom_to_string)
-                        .collect();
+                    let type_str: Vec<String> = f.type_hint.iter().map(atom_to_string).collect();
                     out.push_str(&format!("- `{}`: {}\n", f.name.name, type_str.join(" ")));
                     for r in &f.rules {
                         out.push_str(&format!("  - rule: {}\n", r.desc.content.value));
@@ -259,10 +312,19 @@ fn expr_to_string(expr: &mimispec::ast::Expr) -> String {
             format!("[{}]", inner.join(", "))
         }
         Expr::Compare { left, op, right } => {
-            format!("{} {} {}", expr_to_string(left), compare_op_to_str(*op), expr_to_string(right))
+            format!(
+                "{} {} {}",
+                expr_to_string(left),
+                compare_op_to_str(*op),
+                expr_to_string(right)
+            )
         }
-        Expr::And { left, right, .. } => format!("{} and {}", expr_to_string(left), expr_to_string(right)),
-        Expr::Or { left, right, .. } => format!("{} or {}", expr_to_string(left), expr_to_string(right)),
+        Expr::And { left, right, .. } => {
+            format!("{} and {}", expr_to_string(left), expr_to_string(right))
+        }
+        Expr::Or { left, right, .. } => {
+            format!("{} or {}", expr_to_string(left), expr_to_string(right))
+        }
         Expr::Not { expr: inner, .. } => format!("not {}", expr_to_string(inner)),
         Expr::Placeholder { .. } => "...".into(),
         _ => format!("{:?}", expr),
@@ -290,9 +352,14 @@ fn atom_to_string(atom: &mimispec::ast::Atom) -> String {
         Atom::Number { value } => value.clone(),
         Atom::Symbol { value } => value.clone(),
         Atom::List { items } => {
-            let inner: Vec<String> = items.iter()
+            let inner: Vec<String> = items
+                .iter()
                 .map(|group| {
-                    group.iter().map(atom_to_string).collect::<Vec<_>>().join(", ")
+                    group
+                        .iter()
+                        .map(atom_to_string)
+                        .collect::<Vec<_>>()
+                        .join(", ")
                 })
                 .collect();
             format!("[{}]", inner.join(", "))

@@ -1,5 +1,5 @@
-use std::collections::HashSet;
 use mimi::{lockfile, manifest, pkg_registry, pkg_resolve};
+use std::collections::HashSet;
 
 pub(crate) fn install(_all: bool) -> Result<(), String> {
     let cwd = std::env::current_dir().map_err(|e| format!("cannot get cwd: {}", e))?;
@@ -25,11 +25,9 @@ pub(crate) fn install(_all: bool) -> Result<(), String> {
 
     let reg = pkg_registry::registry_dir()?;
     let deps_dir = dir.join(".mimi").join("deps");
-    std::fs::create_dir_all(&deps_dir)
-        .map_err(|e| format!("failed to create deps dir: {}", e))?;
+    std::fs::create_dir_all(&deps_dir).map_err(|e| format!("failed to create deps dir: {}", e))?;
 
-    let mut lock = lockfile::Lockfile::load(&dir)?
-        .unwrap_or_else(lockfile::Lockfile::new);
+    let mut lock = lockfile::Lockfile::load(&dir)?.unwrap_or_else(lockfile::Lockfile::new);
     let mut visited: HashSet<String> = HashSet::new();
     let mut queue: Vec<manifest::Dependency> = direct_deps;
     let mut installed = 0;
@@ -43,7 +41,12 @@ pub(crate) fn install(_all: bool) -> Result<(), String> {
 
         let resolved = pkg_resolve::resolve_single_dep(&dep, &dst, &reg)?;
         println!("  ✓ {} (v{})", resolved.name, resolved.version);
-        lock.add_package(&resolved.name, &resolved.version, resolved.source.as_deref(), resolved.checksum.as_deref());
+        lock.add_package(
+            &resolved.name,
+            &resolved.version,
+            resolved.source.as_deref(),
+            resolved.checksum.as_deref(),
+        );
         installed += 1;
 
         let sub_deps = pkg_resolve::read_transitive_deps(&dst, &visited);

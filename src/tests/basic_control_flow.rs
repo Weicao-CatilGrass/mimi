@@ -73,7 +73,9 @@ func main() {
 }
 "#;
     let errs = check_source(src).unwrap_err();
-    assert!(errs.iter().any(|d| d.message.contains("if condition must be bool")));
+    assert!(errs
+        .iter()
+        .any(|d| d.message.contains("if condition must be bool")));
 }
 
 #[test]
@@ -393,7 +395,9 @@ func main() -> i32 {
     let result = check_source(src);
     assert!(result.is_err());
     let errors = result.unwrap_err();
-    assert!(errors.iter().any(|e| e.message.contains("break outside of loop")));
+    assert!(errors
+        .iter()
+        .any(|e| e.message.contains("break outside of loop")));
 }
 
 #[test]
@@ -407,7 +411,9 @@ func main() -> i32 {
     let result = check_source(src);
     assert!(result.is_err());
     let errors = result.unwrap_err();
-    assert!(errors.iter().any(|e| e.message.contains("continue outside of loop")));
+    assert!(errors
+        .iter()
+        .any(|e| e.message.contains("continue outside of loop")));
 }
 
 #[test]
@@ -581,7 +587,10 @@ func main() -> string {
     return to_string(arr);
 }
 "#;
-    assert_eq!(run_source(src), interp::Value::String("[1, 2, 3]".to_string()));
+    assert_eq!(
+        run_source(src),
+        interp::Value::String("[1, 2, 3]".to_string())
+    );
 }
 
 #[test]
@@ -716,7 +725,10 @@ func main() -> string {
     return to_string(s);
 }
 "#;
-    assert_eq!(run_source(src), interp::Value::String("[20, 30]".to_string()));
+    assert_eq!(
+        run_source(src),
+        interp::Value::String("[20, 30]".to_string())
+    );
 }
 
 #[test]
@@ -979,4 +991,3 @@ func main() -> i32 {
     let v = run_source(src);
     assert_eq!(v, interp::Value::Int(2));
 }
-

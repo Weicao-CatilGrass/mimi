@@ -451,7 +451,9 @@ impl Errno {
                 let name = unsafe {
                     let c_str = libc::strerror(code);
                     if !c_str.is_null() {
-                        std::ffi::CStr::from_ptr(c_str).to_string_lossy().into_owned()
+                        std::ffi::CStr::from_ptr(c_str)
+                            .to_string_lossy()
+                            .into_owned()
                     } else {
                         format!("Unknown (code {})", code)
                     }
@@ -604,7 +606,10 @@ impl Errno {
 
     /// Returns `true` if this is a POSIX errno variant (not `Generic` or `Unknown`).
     pub fn is_posix_errno(&self) -> bool {
-        !matches!(self, Self::Generic(_) | Self::Unknown(_) | Self::UnknownWithName(_, _))
+        !matches!(
+            self,
+            Self::Generic(_) | Self::Unknown(_) | Self::UnknownWithName(_, _)
+        )
     }
 }
 

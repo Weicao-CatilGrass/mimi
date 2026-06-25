@@ -29,7 +29,10 @@ func main() -> i32 {
     a
 }
 "#;
-    assert!(check_source(src).is_ok(), "simple immutable borrow should pass");
+    assert!(
+        check_source(src).is_ok(),
+        "simple immutable borrow should pass"
+    );
 }
 
 #[test]
@@ -43,7 +46,10 @@ func main() -> i32 {
     a
 }
 "#;
-    assert!(check_source(src).is_ok(), "simple mutable borrow should pass");
+    assert!(
+        check_source(src).is_ok(),
+        "simple mutable borrow should pass"
+    );
 }
 
 #[test]
@@ -60,7 +66,10 @@ func main() -> i32 {
     v + a
 }
 "#;
-    assert!(check_source(src).is_ok(), "sequential imm then mut should pass");
+    assert!(
+        check_source(src).is_ok(),
+        "sequential imm then mut should pass"
+    );
 }
 
 #[test]
@@ -91,7 +100,10 @@ func main() -> i32 {
     a
 }
 "#;
-    assert!(check_source(src).is_ok(), "reborrow &mut T as &T should pass");
+    assert!(
+        check_source(src).is_ok(),
+        "reborrow &mut T as &T should pass"
+    );
 }
 
 #[test]
@@ -106,7 +118,10 @@ func main() -> i32 {
     a
 }
 "#;
-    assert!(check_source(src).is_ok(), "reborrow &mut T as &mut T should pass");
+    assert!(
+        check_source(src).is_ok(),
+        "reborrow &mut T as &mut T should pass"
+    );
 }
 
 #[test]
@@ -124,7 +139,10 @@ func main() -> i32 {
     v + a
 }
 "#;
-    assert!(check_source(src).is_ok(), "NLL: borrow released after last use");
+    assert!(
+        check_source(src).is_ok(),
+        "NLL: borrow released after last use"
+    );
 }
 
 #[test]
@@ -141,7 +159,10 @@ func main() -> i32 {
     a
 }
 "#;
-    assert!(check_source(src).is_ok(), "NLL: &mut allowed after &x last use");
+    assert!(
+        check_source(src).is_ok(),
+        "NLL: &mut allowed after &x last use"
+    );
 }
 
 #[test]
@@ -190,7 +211,10 @@ func main() -> i32 {
     a
 }
 "#;
-    assert!(check_source(src).is_err(), "& then &mut (both used) should be rejected");
+    assert!(
+        check_source(src).is_err(),
+        "& then &mut (both used) should be rejected"
+    );
 }
 
 #[test]
@@ -207,7 +231,10 @@ func main() -> i32 {
     a
 }
 "#;
-    assert!(check_source(src).is_err(), "&mut then & (both used) should be rejected");
+    assert!(
+        check_source(src).is_err(),
+        "&mut then & (both used) should be rejected"
+    );
 }
 
 // ── Known gaps (v1.2+) ──────────────────────────────────────────
@@ -226,7 +253,10 @@ func main() -> i32 {
     0
 }
 "#;
-    assert!(check_source(src).is_ok(), "field-level disjoint borrow should pass");
+    assert!(
+        check_source(src).is_ok(),
+        "field-level disjoint borrow should pass"
+    );
 }
 
 #[test]
@@ -240,7 +270,10 @@ func main() -> i32 {
     *r
 }
 "#;
-    assert!(check_source(src).is_ok(), "function returning reference should pass");
+    assert!(
+        check_source(src).is_ok(),
+        "function returning reference should pass"
+    );
 }
 
 #[test]
@@ -257,7 +290,10 @@ func main() -> i32 {
     *r
 }
 "#;
-    assert!(check_source(src).is_ok(), "fn returning & from &mut should pass");
+    assert!(
+        check_source(src).is_ok(),
+        "fn returning & from &mut should pass"
+    );
 }
 
 #[test]
@@ -275,7 +311,10 @@ func main() -> i32 {
     *r
 }
 "#;
-    assert!(check_source(src).is_ok(), "conditional borrow return should pass");
+    assert!(
+        check_source(src).is_ok(),
+        "conditional borrow return should pass"
+    );
 }
 
 #[test]
@@ -288,7 +327,10 @@ func main() -> i32 {
     f()
 }
 "#;
-    assert!(check_source(src).is_ok(), "closure capturing ref should pass");
+    assert!(
+        check_source(src).is_ok(),
+        "closure capturing ref should pass"
+    );
 }
 
 #[test]
@@ -301,5 +343,51 @@ func main() -> i32 {
     0
 }
 "#;
-    assert!(check_source(src).is_ok(), "self-referential borrow should pass");
+    assert!(
+        check_source(src).is_ok(),
+        "self-referential borrow should pass"
+    );
+}
+
+/// E4: Match guard uses a borrow reference — NLL should not release it
+/// before the guard evaluates.
+#[test]
+fn borrow_match_guard_uses_ref() {
+    let src = r#"
+func check(x: &i32) -> i32 {
+    let val = *x;
+    let result = match val {
+        v if v > 10 => { *x }
+        _ => { 0 }
+    };
+    result
+}
+func main() -> i32 {
+    let a = 42;
+    check(&a)
+}
+"#;
+    assert!(
+        check_source(src).is_ok(),
+        "match guard using borrow ref should pass"
+    );
+}
+
+/// E5: Field-level borrow released at NLL last use.
+#[test]
+fn borrow_field_level_nll_release() {
+    let src = r#"
+type Point { x: i32, y: i32 }
+func main() -> i32 {
+    let p = Point { x: 1, y: 2 };
+    let r = &p.x;
+    let val = *r;
+    let p2 = Point { x: 3, y: 4 };
+    val + p2.x
+}
+"#;
+    assert!(
+        check_source(src).is_ok(),
+        "field borrow should release at last use"
+    );
 }

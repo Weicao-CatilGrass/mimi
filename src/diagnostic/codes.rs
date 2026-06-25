@@ -81,10 +81,10 @@ pub const E0236: &str = "E0236"; // unreachable statement after return
 pub const E0237: &str = "E0237"; // division by zero literal
 pub const E0238: &str = "E0238"; // modulo by zero literal
 pub const E0239: &str = "E0239"; // turbofish type argument count mismatch
-// NOTE: E0240/E0241 are superseded by E0253/E0254 respectively.
-// They are kept for backward compatibility only.
-// - E0253 replaces E0240 (where constraint violated)
-// - E0254 replaces E0241 (effect not available)
+                                 // NOTE: E0240/E0241 are superseded by E0253/E0254 respectively.
+                                 // They are kept for backward compatibility only.
+                                 // - E0253 replaces E0240 (where constraint violated)
+                                 // - E0254 replaces E0241 (effect not available)
 pub const E0240: &str = "E0240"; // where constraint violated (deprecated, use E0253)
 pub const E0241: &str = "E0241"; // effect not available (deprecated, use E0254)
 
@@ -152,7 +152,7 @@ pub const E0742: &str = "E0742"; // value is not callable
 
 /// Codegen error codes (E07xx)
 pub const E0700: &str = "E0700"; // codegen internal error
-// E0701 removed: duplicate of E0722 ("unsupported expression in codegen")
+                                 // E0701 removed: duplicate of E0722 ("unsupported expression in codegen")
 pub const E0702: &str = "E0702"; // unsupported statement in codegen
 pub const E0706: &str = "E0706"; // type not found in codegen
 pub const E0707: &str = "E0707"; // field access on non-record type

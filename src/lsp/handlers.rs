@@ -4,13 +4,10 @@ use std::path::PathBuf;
 use serde_json::Value;
 
 use crate::fmt;
-use crate::lsp::LspServer;
 use crate::lsp::util::percent_decode;
+use crate::lsp::LspServer;
 
-pub(crate) fn handle_message(
-    server: &mut LspServer,
-    msg: &Value,
-) -> Option<Value> {
+pub(crate) fn handle_message(server: &mut LspServer, msg: &Value) -> Option<Value> {
     let method = msg.get("method")?.as_str()?;
     let id = msg.get("id");
 
@@ -119,7 +116,8 @@ pub(crate) fn handle_message(
                 .as_str()?;
             server.cache_put(uri.to_string(), text.to_string());
             let mut diagnostics = server.compute_diagnostics(text);
-            let verif_diags = server.compute_verification_diagnostics(text, server.last_cursor_line, uri);
+            let verif_diags =
+                server.compute_verification_diagnostics(text, server.last_cursor_line, uri);
             diagnostics.extend(verif_diags);
             Some(serde_json::json!({
                 "jsonrpc": "2.0",
@@ -171,9 +169,7 @@ pub(crate) fn handle_message(
                 .map(|pos| {
                     (
                         pos.get("line").and_then(|l| l.as_u64()).unwrap_or(0) as usize,
-                        pos.get("character")
-                            .and_then(|c| c.as_u64())
-                            .unwrap_or(0) as usize,
+                        pos.get("character").and_then(|c| c.as_u64()).unwrap_or(0) as usize,
                     )
                 })
                 .unwrap_or((0, 0));
@@ -505,13 +501,11 @@ pub(crate) fn handle_message(
                 "result": calls
             }))
         }
-        "shutdown" => {
-            Some(serde_json::json!({
-                "jsonrpc": "2.0",
-                "id": id,
-                "result": null
-            }))
-        }
+        "shutdown" => Some(serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "result": null
+        })),
         "exit" => {
             // LSP spec: exit notification means server should terminate.
             // Flush buffers before exiting to ensure log output is written.

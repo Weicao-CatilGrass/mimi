@@ -1,20 +1,20 @@
 #![allow(dead_code)]
 
-mod value;
-mod closure_utils;
-mod ffi;
-mod eval;
-mod call;
+mod actor;
 mod builtins;
+mod call;
+mod closure_utils;
+pub mod error;
+mod eval;
+mod ffi;
 mod ffi_call;
 mod pattern;
-mod quote;
-mod actor;
-pub mod error;
 pub(crate) mod pool;
+mod quote;
+mod value;
 
-pub use value::*;
 pub use error::InterpError;
+pub use value::*;
 
 /// Alias for interpreter results.
 pub type InterpResult<T> = std::result::Result<T, InterpError>;
@@ -101,7 +101,13 @@ impl<'a> Interpreter<'a> {
         let mut failure_variants: HashMap<String, bool> = HashMap::new();
         let mut cap_defs: HashMap<String, Vec<String>> = HashMap::new();
         for item in &file.items {
-            Self::collect_constructors(item, &mut constructors, &mut newtype_constructors, &mut type_variants, &mut failure_variants);
+            Self::collect_constructors(
+                item,
+                &mut constructors,
+                &mut newtype_constructors,
+                &mut type_variants,
+                &mut failure_variants,
+            );
             Self::collect_caps(item, &mut cap_defs);
         }
         // Register built-in Result/Option constructors
@@ -123,7 +129,13 @@ impl<'a> Interpreter<'a> {
         }
         // Build contracts after type_defs are populated so record type names are known
         for item in &file.items {
-            Self::collect_extern_funcs(item, &mut extern_funcs, &mut ffi_contracts, &cap_defs, &type_defs);
+            Self::collect_extern_funcs(
+                item,
+                &mut extern_funcs,
+                &mut ffi_contracts,
+                &cap_defs,
+                &type_defs,
+            );
         }
         // Expand built-in derive macros
         Self::expand_derives(&type_defs, &mut trait_defs, &mut type_impls);
@@ -174,7 +186,9 @@ impl<'a> Interpreter<'a> {
         F: FnOnce(&mut Self) -> Result<T, InterpError>,
     {
         if self.recursion_depth >= Self::MAX_RECURSION_DEPTH {
-            return Err(InterpError::new("recursion limit exceeded (possible infinite recursion)"));
+            return Err(InterpError::new(
+                "recursion limit exceeded (possible infinite recursion)",
+            ));
         }
         self.recursion_depth += 1;
         let result = f(self);
@@ -192,7 +206,11 @@ impl<'a> Interpreter<'a> {
         args: Vec<Value>,
     ) -> Result<Value, InterpError> {
         if params.len() != args.len() {
-            return Err(InterpError::new(format!("closure expects {} arguments, got {}", params.len(), args.len())));
+            return Err(InterpError::new(format!(
+                "closure expects {} arguments, got {}",
+                params.len(),
+                args.len()
+            )));
         }
         self.push_scope();
         for (n, v) in captured {
@@ -244,14 +262,22 @@ impl<'a> Interpreter<'a> {
     fn build_actor_index(items: &[Item], index: &mut HashMap<String, ActorDef>) {
         for item in items {
             match item {
-                Item::Actor(a) => { index.insert(a.name.clone(), a.clone()); }
+                Item::Actor(a) => {
+                    index.insert(a.name.clone(), a.clone());
+                }
                 Item::Module(m) => Self::build_actor_index(&m.items, index),
                 _ => {}
             }
         }
     }
 
-    fn collect_constructors(item: &Item, out: &mut HashMap<String, usize>, newtype_constructors: &mut HashMap<String, bool>, type_variants: &mut HashMap<String, Vec<String>>, failure_variants: &mut HashMap<String, bool>) {
+    fn collect_constructors(
+        item: &Item,
+        out: &mut HashMap<String, usize>,
+        newtype_constructors: &mut HashMap<String, bool>,
+        type_variants: &mut HashMap<String, Vec<String>>,
+        failure_variants: &mut HashMap<String, bool>,
+    ) {
         match item {
             Item::Type(t) => {
                 match &t.kind {
@@ -267,7 +293,11 @@ impl<'a> Interpreter<'a> {
                             variant_names.push(v.name.clone());
                             // Mark failure-like variants
                             let name_lower = v.name.to_lowercase();
-                            if name_lower == "err" || name_lower == "none" || name_lower.ends_with("error") || name_lower.ends_with("fail") {
+                            if name_lower == "err"
+                                || name_lower == "none"
+                                || name_lower.ends_with("error")
+                                || name_lower.ends_with("fail")
+                            {
                                 failure_variants.insert(v.name.clone(), true);
                             }
                         }
@@ -282,7 +312,13 @@ impl<'a> Interpreter<'a> {
             }
             Item::Module(m) => {
                 for inner in &m.items {
-                    Self::collect_constructors(inner, out, newtype_constructors, type_variants, failure_variants);
+                    Self::collect_constructors(
+                        inner,
+                        out,
+                        newtype_constructors,
+                        type_variants,
+                        failure_variants,
+                    );
                 }
             }
             Item::Trait(_) | Item::Impl(_) => {
@@ -300,11 +336,13 @@ impl<'a> Interpreter<'a> {
         type_defs: &HashMap<String, TypeDef>,
     ) {
         let cap_names: std::collections::HashSet<String> = cap_defs.keys().cloned().collect();
-        let record_type_names: std::collections::HashSet<String> = type_defs.iter()
+        let record_type_names: std::collections::HashSet<String> = type_defs
+            .iter()
             .filter(|(_, td)| matches!(td.kind, TypeDefKind::Record(_)))
             .map(|(name, _)| name.clone())
             .collect();
-        let repr_c_record_names: std::collections::HashSet<String> = type_defs.iter()
+        let repr_c_record_names: std::collections::HashSet<String> = type_defs
+            .iter()
             .filter(|(_, td)| td.attributes.contains(&TypeAttribute::ReprC))
             .map(|(name, _)| name.clone())
             .collect();
@@ -318,7 +356,15 @@ impl<'a> Interpreter<'a> {
                         f.no_panic = true;
                     }
                     out.insert(f.name.clone(), f);
-                    contracts.insert(func.name.clone(), FfiContract::from_extern_with_caps_repr(func, &cap_names, &record_type_names, &repr_c_record_names));
+                    contracts.insert(
+                        func.name.clone(),
+                        FfiContract::from_extern_with_caps_repr(
+                            func,
+                            &cap_names,
+                            &record_type_names,
+                            &repr_c_record_names,
+                        ),
+                    );
                 }
             }
             Item::Module(m) => {
@@ -339,10 +385,16 @@ impl<'a> Interpreter<'a> {
                 let actor_type_def = TypeDef {
                     name: actor.name.clone(),
                     pub_: actor.pub_,
-                    kind: TypeDefKind::Record(actor.fields.iter().map(|f| Field {
-                        name: f.name.clone(),
-                        ty: f.ty.clone(),
-                    }).collect()),
+                    kind: TypeDefKind::Record(
+                        actor
+                            .fields
+                            .iter()
+                            .map(|f| Field {
+                                name: f.name.clone(),
+                                ty: f.ty.clone(),
+                            })
+                            .collect(),
+                    ),
                     generics: Vec::new(),
                     derives: Vec::new(),
                     attributes: Vec::new(),
@@ -359,7 +411,11 @@ impl<'a> Interpreter<'a> {
     }
 
     /// Expand built-in derive macros for types
-    fn expand_derives(type_defs: &HashMap<String, TypeDef>, _trait_defs: &mut HashMap<String, TraitDef>, type_impls: &mut HashMap<String, HashMap<String, Vec<FuncDef>>>) {
+    fn expand_derives(
+        type_defs: &HashMap<String, TypeDef>,
+        _trait_defs: &mut HashMap<String, TraitDef>,
+        type_impls: &mut HashMap<String, HashMap<String, Vec<FuncDef>>>,
+    ) {
         for (type_name, type_def) in type_defs {
             for derive_name in &type_def.derives {
                 match derive_name.as_str() {
@@ -443,7 +499,11 @@ impl<'a> Interpreter<'a> {
         }
     }
 
-    fn collect_traits(item: &Item, trait_defs: &mut HashMap<String, TraitDef>, type_impls: &mut HashMap<String, HashMap<String, Vec<FuncDef>>>) {
+    fn collect_traits(
+        item: &Item,
+        trait_defs: &mut HashMap<String, TraitDef>,
+        type_impls: &mut HashMap<String, HashMap<String, Vec<FuncDef>>>,
+    ) {
         match item {
             Item::Trait(trait_def) => {
                 trait_defs.insert(trait_def.name.clone(), trait_def.clone());
@@ -468,7 +528,8 @@ impl<'a> Interpreter<'a> {
             Item::Cap(cap) => {
                 let components = if let Some(ref combined) = cap.combined_with {
                     // Parse "A + B" format
-                    let parts: Vec<String> = combined.split(" + ")
+                    let parts: Vec<String> = combined
+                        .split(" + ")
                         .map(|s| s.trim().to_string())
                         .collect();
                     if parts.len() > 1 {
@@ -533,20 +594,37 @@ impl<'a> Interpreter<'a> {
         match ty {
             Type::Name(name, _) => name.clone(),
             Type::Ref(lt, inner) => {
-                if let Some(l) = lt { format!("&'{} {}", l, self.resolve_type_name(inner)) } else { format!("&{}", self.resolve_type_name(inner)) }
+                if let Some(l) = lt {
+                    format!("&'{} {}", l, self.resolve_type_name(inner))
+                } else {
+                    format!("&{}", self.resolve_type_name(inner))
+                }
             }
             Type::RefMut(lt, inner) => {
-                if let Some(l) = lt { format!("&'{} mut {}", l, self.resolve_type_name(inner)) } else { format!("&mut {}", self.resolve_type_name(inner)) }
+                if let Some(l) = lt {
+                    format!("&'{} mut {}", l, self.resolve_type_name(inner))
+                } else {
+                    format!("&mut {}", self.resolve_type_name(inner))
+                }
             }
             Type::Option(inner) => format!("Option<{}>", self.resolve_type_name(inner)),
-            Type::Result(ok, err) => format!("Result<{}, {}>", self.resolve_type_name(ok), self.resolve_type_name(err)),
+            Type::Result(ok, err) => format!(
+                "Result<{}, {}>",
+                self.resolve_type_name(ok),
+                self.resolve_type_name(err)
+            ),
             Type::Tuple(elems) => {
                 let names: Vec<String> = elems.iter().map(|e| self.resolve_type_name(e)).collect();
                 format!("({})", names.join(", "))
             }
             Type::Func(args, ret) => {
-                let arg_names: Vec<String> = args.iter().map(|a| self.resolve_type_name(a)).collect();
-                format!("({}) -> {}", arg_names.join(", "), self.resolve_type_name(ret))
+                let arg_names: Vec<String> =
+                    args.iter().map(|a| self.resolve_type_name(a)).collect();
+                format!(
+                    "({}) -> {}",
+                    arg_names.join(", "),
+                    self.resolve_type_name(ret)
+                )
             }
             Type::Cap(name) => format!("cap {}", name),
             Type::Shared(inner) => format!("shared {}", self.resolve_type_name(inner)),
@@ -561,8 +639,13 @@ impl<'a> Interpreter<'a> {
             Type::RawString => "raw_string".into(),
             Type::Infer => "_".into(),
             Type::ExternFunc(args, ret) => {
-                let args_str: Vec<String> = args.iter().map(|a| self.resolve_type_name(a)).collect();
-                format!("extern \"C\" fn({}) -> {}", args_str.join(", "), self.resolve_type_name(ret))
+                let args_str: Vec<String> =
+                    args.iter().map(|a| self.resolve_type_name(a)).collect();
+                format!(
+                    "extern \"C\" fn({}) -> {}",
+                    args_str.join(", "),
+                    self.resolve_type_name(ret)
+                )
             }
             Type::Newtype(name, _) => name.clone(),
             Type::Nothing => "nothing".into(),
@@ -584,9 +667,15 @@ impl<'a> Interpreter<'a> {
                     for f in fields {
                         let field_info = vec![
                             (Value::String("name".into()), Value::String(f.name.clone())),
-                            (Value::String("type".into()), Value::String(self.resolve_type_name(&f.ty))),
+                            (
+                                Value::String("type".into()),
+                                Value::String(self.resolve_type_name(&f.ty)),
+                            ),
                         ];
-                        fields_map.insert(f.name.clone(), Value::Tuple(field_info.into_iter().map(|(_, v)| v).collect()));
+                        fields_map.insert(
+                            f.name.clone(),
+                            Value::Tuple(field_info.into_iter().map(|(_, v)| v).collect()),
+                        );
                     }
                 }
                 TypeDefKind::Enum(variants) => {
@@ -608,15 +697,24 @@ impl<'a> Interpreter<'a> {
                     for f in fields {
                         let field_info = vec![
                             (Value::String("name".into()), Value::String(f.name.clone())),
-                            (Value::String("type".into()), Value::String(self.resolve_type_name(&f.ty))),
+                            (
+                                Value::String("type".into()),
+                                Value::String(self.resolve_type_name(&f.ty)),
+                            ),
                         ];
-                        fields_map.insert(f.name.clone(), Value::Tuple(field_info.into_iter().map(|(_, v)| v).collect()));
+                        fields_map.insert(
+                            f.name.clone(),
+                            Value::Tuple(field_info.into_iter().map(|(_, v)| v).collect()),
+                        );
                     }
                 }
             }
             let mut info = HashMap::new();
             info.insert("name".into(), Value::String(type_name.into()));
-            info.insert("fields".into(), Value::List(fields_map.into_values().collect()));
+            info.insert(
+                "fields".into(),
+                Value::List(fields_map.into_values().collect()),
+            );
             Ok(Value::Record(None, info))
         } else {
             Err(InterpError::new(format!("unknown type '{}'", type_name)))
@@ -625,19 +723,23 @@ impl<'a> Interpreter<'a> {
 
     pub fn run(&mut self) -> Result<Value, InterpError> {
         self.eval_comptime_funcs()?;
-        let main = self.find_function("main")
+        let main = self
+            .find_function("main")
             .ok_or_else(|| InterpError::new("no main() function found"))?;
         self.call_func(&main, vec![])
     }
 
     /// Evaluate comptime functions with no arguments at startup
     fn eval_comptime_funcs(&mut self) -> Result<(), InterpError> {
-        let funcs: Vec<FuncDef> = self.file.items.iter().filter_map(|item| {
-            match item {
+        let funcs: Vec<FuncDef> = self
+            .file
+            .items
+            .iter()
+            .filter_map(|item| match item {
                 Item::Func(f) if f.is_comptime && f.params.is_empty() => Some(f.clone()),
                 _ => None,
-            }
-        }).collect();
+            })
+            .collect();
         for func in funcs {
             let result = self.call_func(&func, vec![])?;
             self.comptime_results.insert(func.name.clone(), result);
@@ -647,10 +749,10 @@ impl<'a> Interpreter<'a> {
 
     fn find_function(&self, name: &str) -> Option<FuncDef> {
         // O(1) lookup via pre-built index — try both qualified and unqualified
-        self.func_index.get(name).cloned()
-            .or_else(|| self.func_index.values()
-                .find(|f| f.name == name)
-                .cloned())
+        self.func_index
+            .get(name)
+            .cloned()
+            .or_else(|| self.func_index.values().find(|f| f.name == name).cloned())
     }
 
     /// Build a qualified path from nested Field(Ident(...), ...) expressions
@@ -658,7 +760,8 @@ impl<'a> Interpreter<'a> {
         match obj {
             Expr::Ident(name) => Some(format!("{}::{}", name, field)),
             Expr::Field(inner_obj, inner_field) => {
-                Self::build_qualified_path(inner_obj, inner_field).map(|base| format!("{}::{}", base, field))
+                Self::build_qualified_path(inner_obj, inner_field)
+                    .map(|base| format!("{}::{}", base, field))
             }
             _ => None,
         }
@@ -725,18 +828,37 @@ impl<'a> Interpreter<'a> {
     }
 
     fn bind(&mut self, name: &str, value: Value) -> Result<(), InterpError> {
-        let env = self.env.last_mut().ok_or("internal error: scope stack empty in bind")?;
+        let env = self
+            .env
+            .last_mut()
+            .ok_or("internal error: scope stack empty in bind")?;
         env.insert(name.into(), value);
-        self.moved_vars.last_mut().ok_or("internal error: scope stack empty in bind")?.insert(name.into(), false);
+        self.moved_vars
+            .last_mut()
+            .ok_or("internal error: scope stack empty in bind")?
+            .insert(name.into(), false);
         // Default to immutable unless explicitly marked as mutable
-        self.mut_vars.last_mut().ok_or("internal error: scope stack empty in bind")?.entry(name.into()).or_insert(false);
+        self.mut_vars
+            .last_mut()
+            .ok_or("internal error: scope stack empty in bind")?
+            .entry(name.into())
+            .or_insert(false);
         Ok(())
     }
 
     fn bind_mut(&mut self, name: &str, value: Value) -> Result<(), InterpError> {
-        self.env.last_mut().ok_or("internal error: scope stack empty in bind_mut")?.insert(name.into(), value);
-        self.moved_vars.last_mut().ok_or("internal error: scope stack empty in bind_mut")?.insert(name.into(), false);
-        self.mut_vars.last_mut().ok_or("internal error: scope stack empty in bind_mut")?.insert(name.into(), true);
+        self.env
+            .last_mut()
+            .ok_or("internal error: scope stack empty in bind_mut")?
+            .insert(name.into(), value);
+        self.moved_vars
+            .last_mut()
+            .ok_or("internal error: scope stack empty in bind_mut")?
+            .insert(name.into(), false);
+        self.mut_vars
+            .last_mut()
+            .ok_or("internal error: scope stack empty in bind_mut")?
+            .insert(name.into(), true);
         Ok(())
     }
 
@@ -786,7 +908,10 @@ impl<'a> Interpreter<'a> {
                 for mut_scope in self.mut_vars.iter().rev() {
                     if let Some(&is_mut) = mut_scope.get(name) {
                         if !is_mut {
-                            return Err(InterpError::new(format!("cannot assign to immutable variable '{}'", name)));
+                            return Err(InterpError::new(format!(
+                                "cannot assign to immutable variable '{}'",
+                                name
+                            )));
                         }
                         break;
                     }
@@ -796,7 +921,10 @@ impl<'a> Interpreter<'a> {
                 return Ok(());
             }
         }
-        Err(InterpError::new(format!("undefined variable '{}' in assignment", name)))
+        Err(InterpError::new(format!(
+            "undefined variable '{}' in assignment",
+            name
+        )))
     }
 
     /// Push a new compensation scope level

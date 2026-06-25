@@ -7,24 +7,63 @@ use crate::lexer::token::TokenKind;
 /// in expression context (statement keywords like `if`/`while` have their own
 /// match arms and don't reach this check).
 pub fn is_keyword_kind(kind: &TokenKind) -> bool {
-    matches!(kind,
-        TokenKind::Module | TokenKind::Type | TokenKind::Func | TokenKind::Fn |
-        TokenKind::Actor | TokenKind::Newtype | TokenKind::Let | TokenKind::Mut |
-        TokenKind::Ref | TokenKind::Shared | TokenKind::LocalShared | TokenKind::Weak |
-        TokenKind::WeakLocal | TokenKind::CShared | TokenKind::CBorrow |
-        TokenKind::CBorrowMut | TokenKind::RawString |
-        TokenKind::Arena | TokenKind::Alloc | TokenKind::Cap | TokenKind::Trait | TokenKind::Impl |
-        TokenKind::Dyn | TokenKind::Where | TokenKind::Extern | TokenKind::Unsafe |
-        TokenKind::Use | TokenKind::Pub | TokenKind::In |
-        TokenKind::Drop | TokenKind::Steps | TokenKind::Parasteps | TokenKind::Failure |
-        TokenKind::Requires | TokenKind::Ensures | TokenKind::Math | TokenKind::Desc |
-        TokenKind::Rule | TokenKind::Mms | TokenKind::With | TokenKind::And |
-        TokenKind::Or | TokenKind::Not | TokenKind::Async | TokenKind::Comptime |
-        TokenKind::Spawn | TokenKind::Await | TokenKind::Quote | TokenKind::Old |
-        TokenKind::Nothing |
-        TokenKind::Loop |
-        TokenKind::As |
-        TokenKind::True | TokenKind::False | TokenKind::Unit
+    matches!(
+        kind,
+        TokenKind::Module
+            | TokenKind::Type
+            | TokenKind::Func
+            | TokenKind::Fn
+            | TokenKind::Actor
+            | TokenKind::Newtype
+            | TokenKind::Let
+            | TokenKind::Mut
+            | TokenKind::Ref
+            | TokenKind::Shared
+            | TokenKind::LocalShared
+            | TokenKind::Weak
+            | TokenKind::WeakLocal
+            | TokenKind::CShared
+            | TokenKind::CBorrow
+            | TokenKind::CBorrowMut
+            | TokenKind::RawString
+            | TokenKind::Arena
+            | TokenKind::Alloc
+            | TokenKind::Cap
+            | TokenKind::Trait
+            | TokenKind::Impl
+            | TokenKind::Dyn
+            | TokenKind::Where
+            | TokenKind::Extern
+            | TokenKind::Unsafe
+            | TokenKind::Use
+            | TokenKind::Pub
+            | TokenKind::In
+            | TokenKind::Drop
+            | TokenKind::Steps
+            | TokenKind::Parasteps
+            | TokenKind::Failure
+            | TokenKind::Requires
+            | TokenKind::Ensures
+            | TokenKind::Math
+            | TokenKind::Desc
+            | TokenKind::Rule
+            | TokenKind::Mms
+            | TokenKind::With
+            | TokenKind::And
+            | TokenKind::Or
+            | TokenKind::Not
+            | TokenKind::Async
+            | TokenKind::Comptime
+            | TokenKind::Spawn
+            | TokenKind::Await
+            | TokenKind::Quote
+            | TokenKind::Old
+            | TokenKind::Nothing
+            | TokenKind::Loop
+            | TokenKind::As
+            | TokenKind::True
+            | TokenKind::False
+            | TokenKind::Unit
     )
 }
 

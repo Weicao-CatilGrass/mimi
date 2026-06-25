@@ -407,11 +407,19 @@ impl<'a> super::Lexer<'a> {
                 let current = *self.indent_stack.last().unwrap_or(&0);
                 if spaces > current {
                     self.indent_stack.push(spaces);
-                    tokens.push(Token { kind: TokenKind::Indent, line: self.line, col: spaces });
+                    tokens.push(Token {
+                        kind: TokenKind::Indent,
+                        line: self.line,
+                        col: spaces,
+                    });
                 } else if spaces < current {
                     while *self.indent_stack.last().unwrap_or(&0) > spaces {
                         self.indent_stack.pop();
-                        tokens.push(Token { kind: TokenKind::Dedent, line: self.line, col: spaces });
+                        tokens.push(Token {
+                            kind: TokenKind::Dedent,
+                            line: self.line,
+                            col: spaces,
+                        });
                     }
                     if *self.indent_stack.last().unwrap_or(&0) != spaces {
                         return Err(dedent_mismatch(self.line, self.col));
@@ -427,7 +435,11 @@ impl<'a> super::Lexer<'a> {
         if self.mode == LexerMode::Sketch {
             while self.indent_stack.len() > 1 {
                 self.indent_stack.pop();
-                tokens.push(Token { kind: TokenKind::Dedent, line: self.line, col: self.col });
+                tokens.push(Token {
+                    kind: TokenKind::Dedent,
+                    line: self.line,
+                    col: self.col,
+                });
             }
         }
     }
@@ -453,34 +465,216 @@ impl<'a> super::Lexer<'a> {
                 let name = self.scan_ident(first);
                 Ok(keyword_or_ident(&name))
             }
-            '+' => { self.advance(); if self.peek() == Some('=') { self.advance(); Ok(TokenKind::PlusEq) } else { Ok(TokenKind::Plus) } }
-            '-' => { self.advance(); if self.peek() == Some('>') { self.advance(); Ok(TokenKind::Arrow) } else if self.peek() == Some('=') { self.advance(); Ok(TokenKind::MinusEq) } else { Ok(TokenKind::Minus) } }
-            '*' => { self.advance(); if self.peek() == Some('*') { self.advance(); Ok(TokenKind::Pow) } else if self.peek() == Some('=') { self.advance(); Ok(TokenKind::StarEq) } else { Ok(TokenKind::Star) } }
-            '/' => { self.advance(); if self.peek() == Some('=') { self.advance(); Ok(TokenKind::SlashEq) } else { Ok(TokenKind::Slash) } }
-            '%' => { self.advance(); Ok(TokenKind::Percent) }
-            '=' => { self.advance(); if self.peek() == Some('=') { self.advance(); Ok(TokenKind::EqEq) } else if self.peek() == Some('>') { self.advance(); Ok(TokenKind::FatArrow) } else { Ok(TokenKind::Eq) } }
-            '!' => { self.advance(); if self.peek() == Some('=') { self.advance(); Ok(TokenKind::Ne) } else { Ok(TokenKind::Bang) } }
-            '<' => { self.advance(); if self.peek() == Some('=') { self.advance(); Ok(TokenKind::Le) } else if self.peek() == Some('<') { self.advance(); Ok(TokenKind::Shl) } else { Ok(TokenKind::Lt) } }
-            '>' => { self.advance(); if self.peek() == Some('=') { self.advance(); Ok(TokenKind::Ge) } else if self.peek() == Some('>') { self.advance(); Ok(TokenKind::Shr) } else { Ok(TokenKind::Gt) } }
-            '&' => { self.advance(); if self.peek() == Some('&') { self.advance(); Ok(TokenKind::AndAnd) } else if self.peek() == Some('=') { self.advance(); Ok(TokenKind::BitAndEq) } else { Ok(TokenKind::BitAnd) } }
-            '|' => { self.advance(); if self.peek() == Some('|') { self.advance(); Ok(TokenKind::OrOr) } else if self.peek() == Some('=') { self.advance(); Ok(TokenKind::BitOrEq) } else if self.peek() == Some('>') { self.advance(); Ok(TokenKind::PipeArrow) } else { Ok(TokenKind::BitOr) } }
-            '^' => { self.advance(); if self.peek() == Some('=') { self.advance(); Ok(TokenKind::BitXorEq) } else { Ok(TokenKind::BitXor) } }
-            '~' => { self.advance(); Ok(TokenKind::Tilde) }
-            '$' => { self.advance(); if self.peek() == Some('(') { self.advance(); Ok(TokenKind::DollarParen) } else { Err(unexpected_dollar(line, col)) } }
-            '(' => { self.advance(); Ok(TokenKind::LParen) }
-            ')' => { self.advance(); Ok(TokenKind::RParen) }
-            '{' => { self.advance(); Ok(TokenKind::LBrace) }
-            '}' => { self.advance(); Ok(TokenKind::RBrace) }
-            '[' => { self.advance(); Ok(TokenKind::LBracket) }
-            ']' => { self.advance(); Ok(TokenKind::RBracket) }
-            ':' => { self.advance(); if self.peek() == Some(':') { self.advance(); Ok(TokenKind::ColonColon) } else { Ok(TokenKind::Colon) } }
-            ';' => { self.advance(); Ok(TokenKind::Semi) }
-            ',' => { self.advance(); Ok(TokenKind::Comma) }
-            '.' => { self.advance(); if self.peek() == Some('.') && self.chars.clone().next() == Some('.') { self.advance(); self.advance(); Ok(TokenKind::Ellipsis) } else if self.peek() == Some('.') { self.advance(); Ok(TokenKind::DotDot) } else { Ok(TokenKind::Dot) } }
-            '?' => { self.advance(); Ok(TokenKind::Question) }
-            '@' => { self.advance(); Ok(TokenKind::At) }
-            '#' => { self.advance(); Ok(TokenKind::Hash) }
-            '\'' => { self.advance(); Ok(TokenKind::Tick) }
+            '+' => {
+                self.advance();
+                if self.peek() == Some('=') {
+                    self.advance();
+                    Ok(TokenKind::PlusEq)
+                } else {
+                    Ok(TokenKind::Plus)
+                }
+            }
+            '-' => {
+                self.advance();
+                if self.peek() == Some('>') {
+                    self.advance();
+                    Ok(TokenKind::Arrow)
+                } else if self.peek() == Some('=') {
+                    self.advance();
+                    Ok(TokenKind::MinusEq)
+                } else {
+                    Ok(TokenKind::Minus)
+                }
+            }
+            '*' => {
+                self.advance();
+                if self.peek() == Some('*') {
+                    self.advance();
+                    Ok(TokenKind::Pow)
+                } else if self.peek() == Some('=') {
+                    self.advance();
+                    Ok(TokenKind::StarEq)
+                } else {
+                    Ok(TokenKind::Star)
+                }
+            }
+            '/' => {
+                self.advance();
+                if self.peek() == Some('=') {
+                    self.advance();
+                    Ok(TokenKind::SlashEq)
+                } else {
+                    Ok(TokenKind::Slash)
+                }
+            }
+            '%' => {
+                self.advance();
+                Ok(TokenKind::Percent)
+            }
+            '=' => {
+                self.advance();
+                if self.peek() == Some('=') {
+                    self.advance();
+                    Ok(TokenKind::EqEq)
+                } else if self.peek() == Some('>') {
+                    self.advance();
+                    Ok(TokenKind::FatArrow)
+                } else {
+                    Ok(TokenKind::Eq)
+                }
+            }
+            '!' => {
+                self.advance();
+                if self.peek() == Some('=') {
+                    self.advance();
+                    Ok(TokenKind::Ne)
+                } else {
+                    Ok(TokenKind::Bang)
+                }
+            }
+            '<' => {
+                self.advance();
+                if self.peek() == Some('=') {
+                    self.advance();
+                    Ok(TokenKind::Le)
+                } else if self.peek() == Some('<') {
+                    self.advance();
+                    Ok(TokenKind::Shl)
+                } else {
+                    Ok(TokenKind::Lt)
+                }
+            }
+            '>' => {
+                self.advance();
+                if self.peek() == Some('=') {
+                    self.advance();
+                    Ok(TokenKind::Ge)
+                } else if self.peek() == Some('>') {
+                    self.advance();
+                    Ok(TokenKind::Shr)
+                } else {
+                    Ok(TokenKind::Gt)
+                }
+            }
+            '&' => {
+                self.advance();
+                if self.peek() == Some('&') {
+                    self.advance();
+                    Ok(TokenKind::AndAnd)
+                } else if self.peek() == Some('=') {
+                    self.advance();
+                    Ok(TokenKind::BitAndEq)
+                } else {
+                    Ok(TokenKind::BitAnd)
+                }
+            }
+            '|' => {
+                self.advance();
+                if self.peek() == Some('|') {
+                    self.advance();
+                    Ok(TokenKind::OrOr)
+                } else if self.peek() == Some('=') {
+                    self.advance();
+                    Ok(TokenKind::BitOrEq)
+                } else if self.peek() == Some('>') {
+                    self.advance();
+                    Ok(TokenKind::PipeArrow)
+                } else {
+                    Ok(TokenKind::BitOr)
+                }
+            }
+            '^' => {
+                self.advance();
+                if self.peek() == Some('=') {
+                    self.advance();
+                    Ok(TokenKind::BitXorEq)
+                } else {
+                    Ok(TokenKind::BitXor)
+                }
+            }
+            '~' => {
+                self.advance();
+                Ok(TokenKind::Tilde)
+            }
+            '$' => {
+                self.advance();
+                if self.peek() == Some('(') {
+                    self.advance();
+                    Ok(TokenKind::DollarParen)
+                } else {
+                    Err(unexpected_dollar(line, col))
+                }
+            }
+            '(' => {
+                self.advance();
+                Ok(TokenKind::LParen)
+            }
+            ')' => {
+                self.advance();
+                Ok(TokenKind::RParen)
+            }
+            '{' => {
+                self.advance();
+                Ok(TokenKind::LBrace)
+            }
+            '}' => {
+                self.advance();
+                Ok(TokenKind::RBrace)
+            }
+            '[' => {
+                self.advance();
+                Ok(TokenKind::LBracket)
+            }
+            ']' => {
+                self.advance();
+                Ok(TokenKind::RBracket)
+            }
+            ':' => {
+                self.advance();
+                if self.peek() == Some(':') {
+                    self.advance();
+                    Ok(TokenKind::ColonColon)
+                } else {
+                    Ok(TokenKind::Colon)
+                }
+            }
+            ';' => {
+                self.advance();
+                Ok(TokenKind::Semi)
+            }
+            ',' => {
+                self.advance();
+                Ok(TokenKind::Comma)
+            }
+            '.' => {
+                self.advance();
+                if self.peek() == Some('.') && self.chars.clone().next() == Some('.') {
+                    self.advance();
+                    self.advance();
+                    Ok(TokenKind::Ellipsis)
+                } else if self.peek() == Some('.') {
+                    self.advance();
+                    Ok(TokenKind::DotDot)
+                } else {
+                    Ok(TokenKind::Dot)
+                }
+            }
+            '?' => {
+                self.advance();
+                Ok(TokenKind::Question)
+            }
+            '@' => {
+                self.advance();
+                Ok(TokenKind::At)
+            }
+            '#' => {
+                self.advance();
+                Ok(TokenKind::Hash)
+            }
+            '\'' => {
+                self.advance();
+                Ok(TokenKind::Tick)
+            }
             _ => Err(unexpected_character(c, line, col)),
         }
     }

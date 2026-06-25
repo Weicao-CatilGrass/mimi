@@ -1,6 +1,6 @@
+use crate::{lockfile, manifest, pkg_registry};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
-use crate::{lockfile, manifest, pkg_registry};
 
 pub struct ResolvedDep {
     pub name: String,
@@ -27,7 +27,11 @@ pub fn resolve_single_dep(
     }
 }
 
-fn resolve_git_dep(dep: &manifest::Dependency, git_url: &str, dst: &Path) -> Result<ResolvedDep, String> {
+fn resolve_git_dep(
+    dep: &manifest::Dependency,
+    git_url: &str,
+    dst: &Path,
+) -> Result<ResolvedDep, String> {
     let tag_arg = dep.tag.as_deref().unwrap_or("main");
 
     if dst.exists() {
@@ -36,17 +40,26 @@ fn resolve_git_dep(dep: &manifest::Dependency, git_url: &str, dst: &Path) -> Res
     }
 
     let status = std::process::Command::new("git")
-        .arg("clone").arg("--branch").arg(tag_arg)
-        .arg("--depth").arg("1")
-        .arg(git_url).arg(dst)
+        .arg("clone")
+        .arg("--branch")
+        .arg(tag_arg)
+        .arg("--depth")
+        .arg("1")
+        .arg(git_url)
+        .arg(dst)
         .status()
         .map_err(|e| format!("git clone failed for {}: {}", dep.name, e))?;
     if !status.success() {
-        return Err(format!("git clone failed for {} (url: {}, tag: {})", dep.name, git_url, tag_arg));
+        return Err(format!(
+            "git clone failed for {} (url: {}, tag: {})",
+            dep.name, git_url, tag_arg
+        ));
     }
 
     let resolved_version = if let Ok(output) = std::process::Command::new("git")
-        .arg("rev-parse").arg("--short").arg("HEAD")
+        .arg("rev-parse")
+        .arg("--short")
+        .arg("HEAD")
         .current_dir(dst)
         .output()
     {
@@ -64,10 +77,17 @@ fn resolve_git_dep(dep: &manifest::Dependency, git_url: &str, dst: &Path) -> Res
     })
 }
 
-fn resolve_registry_dep(dep: &manifest::Dependency, dst: &Path, reg: &Path) -> Result<ResolvedDep, String> {
+fn resolve_registry_dep(
+    dep: &manifest::Dependency,
+    dst: &Path,
+    reg: &Path,
+) -> Result<ResolvedDep, String> {
     let pkg_dir = reg.join(&dep.name);
     if !pkg_dir.exists() {
-        return Err(format!("package '{}' not found in local registry (use 'mimi publish' first)", dep.name));
+        return Err(format!(
+            "package '{}' not found in local registry (use 'mimi publish' first)",
+            dep.name
+        ));
     }
 
     let version = dep.version.as_deref().unwrap_or("*");
@@ -83,8 +103,7 @@ fn resolve_registry_dep(dep: &manifest::Dependency, dst: &Path, reg: &Path) -> R
 
     let src = pkg_dir.join(&resolved);
     if dst.exists() {
-        std::fs::remove_dir_all(dst)
-            .map_err(|e| format!("failed to remove old: {}", e))?;
+        std::fs::remove_dir_all(dst).map_err(|e| format!("failed to remove old: {}", e))?;
     }
     pkg_registry::copy_dir_recursive(&src, dst)
         .map_err(|e| format!("failed to copy {}: {}", dep.name, e))?;
@@ -98,14 +117,20 @@ fn resolve_registry_dep(dep: &manifest::Dependency, dst: &Path, reg: &Path) -> R
     })
 }
 
-fn resolve_path_dep(dep: &manifest::Dependency, dst: &Path, source: &str) -> Result<ResolvedDep, String> {
+fn resolve_path_dep(
+    dep: &manifest::Dependency,
+    dst: &Path,
+    source: &str,
+) -> Result<ResolvedDep, String> {
     let src = PathBuf::from(source);
     if !src.exists() {
-        return Err(format!("path dependency '{}' not found at {}", dep.name, source));
+        return Err(format!(
+            "path dependency '{}' not found at {}",
+            dep.name, source
+        ));
     }
     if dst.exists() {
-        std::fs::remove_dir_all(dst)
-            .map_err(|e| format!("failed to remove old: {}", e))?;
+        std::fs::remove_dir_all(dst).map_err(|e| format!("failed to remove old: {}", e))?;
     }
     pkg_registry::copy_dir_recursive(&src, dst)
         .map_err(|e| format!("failed to copy {}: {}", dep.name, e))?;
@@ -127,7 +152,8 @@ pub fn read_transitive_deps(dst: &Path, visited: &HashSet<String>) -> Vec<manife
     }
     if let Ok(Some((_sub_dir, sub_manifest))) = manifest::Manifest::find(dst) {
         if let Some(sub_deps) = &sub_manifest.dependencies {
-            return sub_deps.iter()
+            return sub_deps
+                .iter()
                 .filter(|d| !visited.contains(&d.name))
                 .cloned()
                 .collect();

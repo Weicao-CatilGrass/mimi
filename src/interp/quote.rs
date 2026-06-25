@@ -26,9 +26,7 @@ impl<'a> Interpreter<'a> {
                 };
                 Ok(Some(QuotedAst::Let { name, value }))
             }
-            Stmt::Expr(e) => {
-                Ok(Some(QuotedAst::ExprStmt(Box::new(self.quote_expr(e)?))))
-            }
+            Stmt::Expr(e) => Ok(Some(QuotedAst::ExprStmt(Box::new(self.quote_expr(e)?)))),
             Stmt::Return(e) => {
                 let inner = if let Some(e) = e {
                     Some(Box::new(self.quote_expr(e)?))
@@ -37,13 +35,14 @@ impl<'a> Interpreter<'a> {
                 };
                 Ok(Some(QuotedAst::Return(inner)))
             }
-            Stmt::Block(block) => {
-                Ok(Some(self.quote_block(block)?))
-            }
+            Stmt::Block(block) => Ok(Some(self.quote_block(block)?)),
             Stmt::If { cond, then_, else_ } => {
                 let q_cond = Box::new(self.quote_expr(cond)?);
                 let q_then = Box::new(self.quote_block(then_)?);
-                let q_else = else_.as_ref().map(|e| self.quote_block(e).map(Box::new)).transpose()?;
+                let q_else = else_
+                    .as_ref()
+                    .map(|e| self.quote_block(e).map(Box::new))
+                    .transpose()?;
                 Ok(Some(QuotedAst::If(q_cond, q_then, q_else)))
             }
             Stmt::While { cond, body } => {
@@ -56,7 +55,11 @@ impl<'a> Interpreter<'a> {
                 let q_body = Box::new(self.quote_block(body)?);
                 Ok(Some(QuotedAst::While(q_init, q_body)))
             }
-            Stmt::For { var, iterable, body } => {
+            Stmt::For {
+                var,
+                iterable,
+                body,
+            } => {
                 let q_iter = Box::new(self.quote_expr(iterable)?);
                 let q_body = Box::new(self.quote_block(body)?);
                 Ok(Some(QuotedAst::For(var.clone(), q_iter, q_body)))
@@ -67,45 +70,45 @@ impl<'a> Interpreter<'a> {
                 Ok(Some(QuotedAst::Assign(q_target, q_value)))
             }
             Stmt::Break(e) => {
-                let inner = e.as_ref().map(|e| self.quote_expr(e).map(Box::new)).transpose()?;
+                let inner = e
+                    .as_ref()
+                    .map(|e| self.quote_expr(e).map(Box::new))
+                    .transpose()?;
                 Ok(Some(QuotedAst::Break(inner)))
             }
-            Stmt::Continue => {
-                Ok(Some(QuotedAst::Continue))
-            }
-            Stmt::Arena(block) => {
-                Ok(Some(QuotedAst::Arena(Box::new(self.quote_block(block)?))))
-            }
-            Stmt::Unsafe(block) => {
-                Ok(Some(QuotedAst::Unsafe(Box::new(self.quote_block(block)?))))
-            }
-            Stmt::Drop(expr) => {
-                Ok(Some(QuotedAst::Drop(Box::new(self.quote_expr(expr)?))))
-            }
-            Stmt::SharedLet { kind, name, init, .. } => {
-                Ok(Some(QuotedAst::SharedLet {
-                    kind: *kind,
-                    name: name.clone(),
-                    init: Box::new(self.quote_expr(init)?),
-                }))
-            }
-            Stmt::OnFailure(block) => {
-                Ok(Some(QuotedAst::OnFailure(Box::new(self.quote_block(block)?))))
-            }
-            Stmt::Parasteps(block) => {
-                Ok(Some(QuotedAst::Parasteps(Box::new(self.quote_block(block)?))))
-            }
-            Stmt::Alloc { kind, body } => {
-                Ok(Some(QuotedAst::Alloc {
-                    kind: *kind,
-                    body: Box::new(self.quote_block(body)?),
-                }))
-            }
+            Stmt::Continue => Ok(Some(QuotedAst::Continue)),
+            Stmt::Arena(block) => Ok(Some(QuotedAst::Arena(Box::new(self.quote_block(block)?)))),
+            Stmt::Unsafe(block) => Ok(Some(QuotedAst::Unsafe(Box::new(self.quote_block(block)?)))),
+            Stmt::Drop(expr) => Ok(Some(QuotedAst::Drop(Box::new(self.quote_expr(expr)?)))),
+            Stmt::SharedLet {
+                kind, name, init, ..
+            } => Ok(Some(QuotedAst::SharedLet {
+                kind: *kind,
+                name: name.clone(),
+                init: Box::new(self.quote_expr(init)?),
+            })),
+            Stmt::OnFailure(block) => Ok(Some(QuotedAst::OnFailure(Box::new(
+                self.quote_block(block)?,
+            )))),
+            Stmt::Parasteps(block) => Ok(Some(QuotedAst::Parasteps(Box::new(
+                self.quote_block(block)?,
+            )))),
+            Stmt::Alloc { kind, body } => Ok(Some(QuotedAst::Alloc {
+                kind: *kind,
+                body: Box::new(self.quote_block(body)?),
+            })),
             Stmt::Loop(body) => {
                 let q_body = Box::new(self.quote_block(body)?);
                 Ok(Some(QuotedAst::Loop(q_body)))
             }
-            Stmt::Desc(..) | Stmt::Rule(..) | Stmt::Requires(_, _) | Stmt::Ensures(_, _) | Stmt::Invariant(_, _) | Stmt::Math(_) | Stmt::Ellipsis | Stmt::MmsBlock { .. } => Ok(None),
+            Stmt::Desc(..)
+            | Stmt::Rule(..)
+            | Stmt::Requires(_, _)
+            | Stmt::Ensures(_, _)
+            | Stmt::Invariant(_, _)
+            | Stmt::Math(_)
+            | Stmt::Ellipsis
+            | Stmt::MmsBlock { .. } => Ok(None),
         }
     }
 
@@ -114,23 +117,25 @@ impl<'a> Interpreter<'a> {
         match expr {
             Expr::Literal(l) => Ok(QuotedAst::Literal(l.clone())),
             Expr::Ident(name) => Ok(QuotedAst::Ident(name.clone())),
-            Expr::Binary(op, l, r) => {
-                Ok(QuotedAst::Binary(*op, Box::new(self.quote_expr(l)?), Box::new(self.quote_expr(r)?)))
-            }
-            Expr::Unary(op, e) => {
-                Ok(QuotedAst::Unary(*op, Box::new(self.quote_expr(e)?)))
-            }
+            Expr::Binary(op, l, r) => Ok(QuotedAst::Binary(
+                *op,
+                Box::new(self.quote_expr(l)?),
+                Box::new(self.quote_expr(r)?),
+            )),
+            Expr::Unary(op, e) => Ok(QuotedAst::Unary(*op, Box::new(self.quote_expr(e)?))),
             Expr::Call(callee, args) => {
                 let q_callee = Box::new(self.quote_expr(callee)?);
                 let q_args: Result<Vec<_>, _> = args.iter().map(|a| self.quote_expr(a)).collect();
                 Ok(QuotedAst::Call(q_callee, q_args?))
             }
-            Expr::Field(obj, field) => {
-                Ok(QuotedAst::Field(Box::new(self.quote_expr(obj)?), field.clone()))
-            }
-            Expr::Index(obj, idx) => {
-                Ok(QuotedAst::Index(Box::new(self.quote_expr(obj)?), Box::new(self.quote_expr(idx)?)))
-            }
+            Expr::Field(obj, field) => Ok(QuotedAst::Field(
+                Box::new(self.quote_expr(obj)?),
+                field.clone(),
+            )),
+            Expr::Index(obj, idx) => Ok(QuotedAst::Index(
+                Box::new(self.quote_expr(obj)?),
+                Box::new(self.quote_expr(idx)?),
+            )),
             Expr::Tuple(elems) => {
                 let q_elems: Result<Vec<_>, _> = elems.iter().map(|e| self.quote_expr(e)).collect();
                 Ok(QuotedAst::Tuple(q_elems?))
@@ -139,7 +144,12 @@ impl<'a> Interpreter<'a> {
                 let q_elems: Result<Vec<_>, _> = elems.iter().map(|e| self.quote_expr(e)).collect();
                 Ok(QuotedAst::List(q_elems?))
             }
-            Expr::Comprehension { expr, var, iter, guard } => {
+            Expr::Comprehension {
+                expr,
+                var,
+                iter,
+                guard,
+            } => {
                 // For now, evaluate comprehension at quote time
                 let iter_val = self.eval_expr(iter)?;
                 let items = match iter_val {
@@ -162,7 +172,12 @@ impl<'a> Interpreter<'a> {
                     }
                     self.pop_scope();
                 }
-                Ok(QuotedAst::List(result.into_iter().map(|v| QuotedAst::Interpolate(Box::new(v))).collect()))
+                Ok(QuotedAst::List(
+                    result
+                        .into_iter()
+                        .map(|v| QuotedAst::Interpolate(Box::new(v)))
+                        .collect(),
+                ))
             }
             Expr::Try(e) => Ok(QuotedAst::Try(Box::new(self.quote_expr(e)?))),
             Expr::Spawn(e) => Ok(QuotedAst::Spawn(Box::new(self.quote_expr(e)?))),
@@ -182,32 +197,48 @@ impl<'a> Interpreter<'a> {
                 Ok(quoted)
             }
             Expr::Record { ty, fields } => {
-                let q_fields: Result<Vec<RecordFieldExprQuoted>, InterpError> = fields.iter().map(|f| {
-                    Ok(RecordFieldExprQuoted {
-                        name: f.name.clone(),
-                        value: self.quote_expr(&f.value)?,
+                let q_fields: Result<Vec<RecordFieldExprQuoted>, InterpError> = fields
+                    .iter()
+                    .map(|f| {
+                        Ok(RecordFieldExprQuoted {
+                            name: f.name.clone(),
+                            value: self.quote_expr(&f.value)?,
+                        })
                     })
-                }).collect();
-                Ok(QuotedAst::Record { ty: ty.clone(), fields: q_fields? })
+                    .collect();
+                Ok(QuotedAst::Record {
+                    ty: ty.clone(),
+                    fields: q_fields?,
+                })
             }
             Expr::Match(subject, arms) => {
                 let q_subject = Box::new(self.quote_expr(subject)?);
-                let q_arms: Result<Vec<MatchArmQuoted>, InterpError> = arms.iter().map(|arm| {
-                    Ok(MatchArmQuoted {
-                        pat: arm.pat.clone(),
-                        guard: arm.guard.as_ref().map(|g| self.quote_expr(g)).transpose()?,
-                        body: self.quote_expr(&arm.body)?,
+                let q_arms: Result<Vec<MatchArmQuoted>, InterpError> = arms
+                    .iter()
+                    .map(|arm| {
+                        Ok(MatchArmQuoted {
+                            pat: arm.pat.clone(),
+                            guard: arm.guard.as_ref().map(|g| self.quote_expr(g)).transpose()?,
+                            body: self.quote_expr(&arm.body)?,
+                        })
                     })
-                }).collect();
+                    .collect();
                 Ok(QuotedAst::Match(q_subject, q_arms?))
             }
             Expr::If { cond, then_, else_ } => {
                 let q_cond = Box::new(self.quote_expr(cond)?);
                 let q_then = Box::new(self.quote_block(then_)?);
-                let q_else = else_.as_ref().map(|e| self.quote_block(e).map(Box::new)).transpose()?;
+                let q_else = else_
+                    .as_ref()
+                    .map(|e| self.quote_block(e).map(Box::new))
+                    .transpose()?;
                 Ok(QuotedAst::If(q_cond, q_then, q_else))
             }
-            Expr::Lambda { params: _, ret: _, body } => {
+            Expr::Lambda {
+                params: _,
+                ret: _,
+                body,
+            } => {
                 // Quote the lambda body as a block
                 let quoted_body = self.quote_block(body)?;
                 // Represent lambda as a call to a synthetic function
@@ -220,7 +251,10 @@ impl<'a> Interpreter<'a> {
                 for arg in args {
                     q_args.push(self.quote_expr(arg)?);
                 }
-                Ok(QuotedAst::Call(Box::new(QuotedAst::Ident(name.clone())), q_args))
+                Ok(QuotedAst::Call(
+                    Box::new(QuotedAst::Ident(name.clone())),
+                    q_args,
+                ))
             }
             Expr::Comptime(block) => {
                 // Quote comptime block as a block
@@ -229,7 +263,10 @@ impl<'a> Interpreter<'a> {
             Expr::TypeOf(e) => {
                 // Quote type_of as a function call
                 let q_arg = self.quote_expr(e)?;
-                Ok(QuotedAst::Call(Box::new(QuotedAst::Ident("type_of".into())), vec![q_arg]))
+                Ok(QuotedAst::Call(
+                    Box::new(QuotedAst::Ident("type_of".into())),
+                    vec![q_arg],
+                ))
             }
             Expr::TypeInfo(ty) => {
                 // Evaluate type_info at quote time using the interpreter's type definitions
@@ -240,8 +277,12 @@ impl<'a> Interpreter<'a> {
             Expr::SliceExpr { target, start, end } => {
                 let q_target = self.quote_expr(target)?;
                 let mut args = vec![q_target];
-                if let Some(s) = start { args.push(self.quote_expr(s)?); }
-                if let Some(e) = end { args.push(self.quote_expr(e)?); }
+                if let Some(s) = start {
+                    args.push(self.quote_expr(s)?);
+                }
+                if let Some(e) = end {
+                    args.push(self.quote_expr(e)?);
+                }
                 Ok(QuotedAst::Call(
                     Box::new(QuotedAst::Ident("slice".into())),
                     args,
@@ -279,16 +320,19 @@ impl<'a> Interpreter<'a> {
             }
             Expr::MapLiteral { entries } => {
                 // Evaluate map literal at quote time and interpolate the result
-                let v = self.eval_expr(&Expr::MapLiteral { entries: entries.clone() })?;
+                let v = self.eval_expr(&Expr::MapLiteral {
+                    entries: entries.clone(),
+                })?;
                 Ok(QuotedAst::Interpolate(Box::new(v)))
             }
             Expr::SetLiteral(elems) => {
                 let v = self.eval_expr(&Expr::SetLiteral(elems.clone()))?;
                 Ok(QuotedAst::Interpolate(Box::new(v)))
             }
-            Expr::NamedArg(name, value) => {
-                Ok(QuotedAst::NamedArg(name.clone(), Box::new(self.quote_expr(value)?)))
-            }
+            Expr::NamedArg(name, value) => Ok(QuotedAst::NamedArg(
+                name.clone(),
+                Box::new(self.quote_expr(value)?),
+            )),
         }
     }
 
@@ -313,122 +357,189 @@ impl<'a> Interpreter<'a> {
                         captured: HashMap::new(),
                     })
                 } else {
-                    Err(InterpError::new(format!("undefined variable '{}' in quoted AST", name)))
+                    Err(InterpError::new(format!(
+                        "undefined variable '{}' in quoted AST",
+                        name
+                    )))
                 }
             }
             QuotedAst::Binary(op, l, r) => {
                 let lv = self.eval_quoted_ast(l)?;
                 let rv = self.eval_quoted_ast(r)?;
                 match op {
-                    BinOp::Add => {
-                        match (&lv, &rv) {
-                            (Value::Int(a), Value::Int(b)) => a.checked_add(*b)
-                                .ok_or_else(|| InterpError::integer_overflow(format!("integer overflow in addition: {} + {}", a, b)))
-                                .map(Value::Int),
-                            (Value::Float(a), Value::Float(b)) => {
-                                let r = a + b;
-                                if r.is_nan() { Err(InterpError::float_error(format!("NaN from {} + {}", a, b))) }
-                                else { Ok(Value::Float(r)) }
+                    BinOp::Add => match (&lv, &rv) {
+                        (Value::Int(a), Value::Int(b)) => a
+                            .checked_add(*b)
+                            .ok_or_else(|| {
+                                InterpError::integer_overflow(format!(
+                                    "integer overflow in addition: {} + {}",
+                                    a, b
+                                ))
+                            })
+                            .map(Value::Int),
+                        (Value::Float(a), Value::Float(b)) => {
+                            let r = a + b;
+                            if r.is_nan() {
+                                Err(InterpError::float_error(format!("NaN from {} + {}", a, b)))
+                            } else {
+                                Ok(Value::Float(r))
                             }
-                            (Value::String(a), Value::String(b)) => Ok(Value::String(format!("{}{}", a, b))),
-                            _ => Err(InterpError::new(format!("unsupported + for {} and {}", lv, rv))),
                         }
-                    }
-                    BinOp::Sub => {
-                        match (&lv, &rv) {
-                            (Value::Int(a), Value::Int(b)) => a.checked_sub(*b)
-                                .ok_or_else(|| InterpError::integer_overflow(format!("integer overflow in subtraction: {} - {}", a, b)))
-                                .map(Value::Int),
-                            (Value::Float(a), Value::Float(b)) => {
-                                let r = a - b;
-                                if r.is_nan() { Err(InterpError::float_error(format!("NaN from {} - {}", a, b))) }
-                                else { Ok(Value::Float(r)) }
+                        (Value::String(a), Value::String(b)) => {
+                            Ok(Value::String(format!("{}{}", a, b)))
+                        }
+                        _ => Err(InterpError::new(format!(
+                            "unsupported + for {} and {}",
+                            lv, rv
+                        ))),
+                    },
+                    BinOp::Sub => match (&lv, &rv) {
+                        (Value::Int(a), Value::Int(b)) => a
+                            .checked_sub(*b)
+                            .ok_or_else(|| {
+                                InterpError::integer_overflow(format!(
+                                    "integer overflow in subtraction: {} - {}",
+                                    a, b
+                                ))
+                            })
+                            .map(Value::Int),
+                        (Value::Float(a), Value::Float(b)) => {
+                            let r = a - b;
+                            if r.is_nan() {
+                                Err(InterpError::float_error(format!("NaN from {} - {}", a, b)))
+                            } else {
+                                Ok(Value::Float(r))
                             }
-                            _ => Err(InterpError::new(format!("unsupported - for {} and {}", lv, rv))),
                         }
-                    }
-                    BinOp::Mul => {
-                        match (&lv, &rv) {
-                            (Value::Int(a), Value::Int(b)) => a.checked_mul(*b)
-                                .ok_or_else(|| InterpError::integer_overflow(format!("integer overflow in multiplication: {} * {}", a, b)))
-                                .map(Value::Int),
-                            (Value::Float(a), Value::Float(b)) => {
-                                let r = a * b;
-                                if r.is_nan() { Err(InterpError::float_error(format!("NaN from {} * {}", a, b))) }
-                                else { Ok(Value::Float(r)) }
+                        _ => Err(InterpError::new(format!(
+                            "unsupported - for {} and {}",
+                            lv, rv
+                        ))),
+                    },
+                    BinOp::Mul => match (&lv, &rv) {
+                        (Value::Int(a), Value::Int(b)) => a
+                            .checked_mul(*b)
+                            .ok_or_else(|| {
+                                InterpError::integer_overflow(format!(
+                                    "integer overflow in multiplication: {} * {}",
+                                    a, b
+                                ))
+                            })
+                            .map(Value::Int),
+                        (Value::Float(a), Value::Float(b)) => {
+                            let r = a * b;
+                            if r.is_nan() {
+                                Err(InterpError::float_error(format!("NaN from {} * {}", a, b)))
+                            } else {
+                                Ok(Value::Float(r))
                             }
-                            _ => Err(InterpError::new(format!("unsupported * for {} and {}", lv, rv))),
                         }
-                    }
-                    BinOp::Div => {
-                        match (&lv, &rv) {
-                            (Value::Int(a), Value::Int(b)) => a.checked_div(*b)
-                                .ok_or_else(|| InterpError::integer_overflow(format!("integer overflow or division by zero: {} / {}", a, b)))
-                                .map(Value::Int),
-                            (Value::Float(a), Value::Float(b)) => {
-                                if *b == 0.0 { return Err(InterpError::div_by_zero()); }
-                                let r = a / b;
-                                if r.is_nan() { Err(InterpError::float_error(format!("NaN from {} / {}", a, b))) }
-                                else if r.is_infinite() { Err(InterpError::float_error(format!("infinity from {} / {}", a, b))) }
-                                else { Ok(Value::Float(r)) }
+                        _ => Err(InterpError::new(format!(
+                            "unsupported * for {} and {}",
+                            lv, rv
+                        ))),
+                    },
+                    BinOp::Div => match (&lv, &rv) {
+                        (Value::Int(a), Value::Int(b)) => a
+                            .checked_div(*b)
+                            .ok_or_else(|| {
+                                InterpError::integer_overflow(format!(
+                                    "integer overflow or division by zero: {} / {}",
+                                    a, b
+                                ))
+                            })
+                            .map(Value::Int),
+                        (Value::Float(a), Value::Float(b)) => {
+                            if *b == 0.0 {
+                                return Err(InterpError::div_by_zero());
                             }
-                            _ => Err(InterpError::new(format!("unsupported / for {} and {}", lv, rv))),
+                            let r = a / b;
+                            if r.is_nan() {
+                                Err(InterpError::float_error(format!("NaN from {} / {}", a, b)))
+                            } else if r.is_infinite() {
+                                Err(InterpError::float_error(format!(
+                                    "infinity from {} / {}",
+                                    a, b
+                                )))
+                            } else {
+                                Ok(Value::Float(r))
+                            }
                         }
-                    }
+                        _ => Err(InterpError::new(format!(
+                            "unsupported / for {} and {}",
+                            lv, rv
+                        ))),
+                    },
                     BinOp::EqCmp => Ok(Value::Bool(values_equal(&lv, &rv))),
                     BinOp::NeCmp => Ok(Value::Bool(!values_equal(&lv, &rv))),
-                    BinOp::Lt => {
-                        match (&lv, &rv) {
-                            (Value::Int(a), Value::Int(b)) => Ok(Value::Bool(a < b)),
-                            (Value::Float(a), Value::Float(b)) => {
-                                if a.is_nan() || b.is_nan() {
-                                    Err(InterpError::new(format!("cannot compare NaN with float: {} < {}", a, b)))
-                                } else {
-                                    Ok(Value::Bool(a < b))
-                                }
+                    BinOp::Lt => match (&lv, &rv) {
+                        (Value::Int(a), Value::Int(b)) => Ok(Value::Bool(a < b)),
+                        (Value::Float(a), Value::Float(b)) => {
+                            if a.is_nan() || b.is_nan() {
+                                Err(InterpError::new(format!(
+                                    "cannot compare NaN with float: {} < {}",
+                                    a, b
+                                )))
+                            } else {
+                                Ok(Value::Bool(a < b))
                             }
-                            _ => Err(InterpError::new(format!("unsupported < for {} and {}", lv, rv))),
                         }
-                    }
-                    BinOp::Gt => {
-                        match (&lv, &rv) {
-                            (Value::Int(a), Value::Int(b)) => Ok(Value::Bool(a > b)),
-                            (Value::Float(a), Value::Float(b)) => {
-                                if a.is_nan() || b.is_nan() {
-                                    Err(InterpError::new(format!("cannot compare NaN with float: {} > {}", a, b)))
-                                } else {
-                                    Ok(Value::Bool(a > b))
-                                }
+                        _ => Err(InterpError::new(format!(
+                            "unsupported < for {} and {}",
+                            lv, rv
+                        ))),
+                    },
+                    BinOp::Gt => match (&lv, &rv) {
+                        (Value::Int(a), Value::Int(b)) => Ok(Value::Bool(a > b)),
+                        (Value::Float(a), Value::Float(b)) => {
+                            if a.is_nan() || b.is_nan() {
+                                Err(InterpError::new(format!(
+                                    "cannot compare NaN with float: {} > {}",
+                                    a, b
+                                )))
+                            } else {
+                                Ok(Value::Bool(a > b))
                             }
-                            _ => Err(InterpError::new(format!("unsupported > for {} and {}", lv, rv))),
                         }
-                    }
-                    BinOp::Le => {
-                        match (&lv, &rv) {
-                            (Value::Int(a), Value::Int(b)) => Ok(Value::Bool(a <= b)),
-                            (Value::Float(a), Value::Float(b)) => {
-                                if a.is_nan() || b.is_nan() {
-                                    Err(InterpError::new(format!("cannot compare NaN with float: {} <= {}", a, b)))
-                                } else {
-                                    Ok(Value::Bool(a <= b))
-                                }
+                        _ => Err(InterpError::new(format!(
+                            "unsupported > for {} and {}",
+                            lv, rv
+                        ))),
+                    },
+                    BinOp::Le => match (&lv, &rv) {
+                        (Value::Int(a), Value::Int(b)) => Ok(Value::Bool(a <= b)),
+                        (Value::Float(a), Value::Float(b)) => {
+                            if a.is_nan() || b.is_nan() {
+                                Err(InterpError::new(format!(
+                                    "cannot compare NaN with float: {} <= {}",
+                                    a, b
+                                )))
+                            } else {
+                                Ok(Value::Bool(a <= b))
                             }
-                            _ => Err(InterpError::new(format!("unsupported <= for {} and {}", lv, rv))),
                         }
-                    }
-                    BinOp::Ge => {
-                        match (&lv, &rv) {
-                            (Value::Int(a), Value::Int(b)) => Ok(Value::Bool(a >= b)),
-                            (Value::Float(a), Value::Float(b)) => {
-                                if a.is_nan() || b.is_nan() {
-                                    Err(InterpError::new(format!("cannot compare NaN with float: {} >= {}", a, b)))
-                                } else {
-                                    Ok(Value::Bool(a >= b))
-                                }
+                        _ => Err(InterpError::new(format!(
+                            "unsupported <= for {} and {}",
+                            lv, rv
+                        ))),
+                    },
+                    BinOp::Ge => match (&lv, &rv) {
+                        (Value::Int(a), Value::Int(b)) => Ok(Value::Bool(a >= b)),
+                        (Value::Float(a), Value::Float(b)) => {
+                            if a.is_nan() || b.is_nan() {
+                                Err(InterpError::new(format!(
+                                    "cannot compare NaN with float: {} >= {}",
+                                    a, b
+                                )))
+                            } else {
+                                Ok(Value::Bool(a >= b))
                             }
-                            _ => Err(InterpError::new(format!("unsupported >= for {} and {}", lv, rv))),
                         }
-                    }
+                        _ => Err(InterpError::new(format!(
+                            "unsupported >= for {} and {}",
+                            lv, rv
+                        ))),
+                    },
                     _ => Err(InterpError::new("unsupported binary op in quoted AST")),
                 }
             }
@@ -436,8 +547,14 @@ impl<'a> Interpreter<'a> {
                 let v = self.eval_quoted_ast(e)?;
                 match op {
                     UnOp::Neg => match v {
-                        Value::Int(n) => n.checked_neg()
-                            .ok_or_else(|| InterpError::integer_overflow(format!("integer overflow in negation: -{}", n)))
+                        Value::Int(n) => n
+                            .checked_neg()
+                            .ok_or_else(|| {
+                                InterpError::integer_overflow(format!(
+                                    "integer overflow in negation: -{}",
+                                    n
+                                ))
+                            })
                             .map(Value::Int),
                         Value::Float(n) => Ok(Value::Float(-n)),
                         _ => Err(InterpError::new(format!("unsupported neg for {}", v))),
@@ -493,9 +610,13 @@ impl<'a> Interpreter<'a> {
             }
             QuotedAst::While(cond, body) => {
                 while is_truthy(&self.eval_quoted_ast(cond)?) {
-                    if self.early_return.is_some() { break; }
+                    if self.early_return.is_some() {
+                        break;
+                    }
                     self.eval_quoted_ast(body)?;
-                    if self.early_return.is_some() { break; }
+                    if self.early_return.is_some() {
+                        break;
+                    }
                     match self.loop_action.take() {
                         Some(LoopAction::Break(val)) => {
                             if let Some(v) = val {
@@ -511,9 +632,13 @@ impl<'a> Interpreter<'a> {
             }
             QuotedAst::Loop(body) => {
                 loop {
-                    if self.early_return.is_some() { break; }
+                    if self.early_return.is_some() {
+                        break;
+                    }
                     self.eval_quoted_ast(body)?;
-                    if self.early_return.is_some() { break; }
+                    if self.early_return.is_some() {
+                        break;
+                    }
                     match self.loop_action.take() {
                         Some(LoopAction::Break(val)) => {
                             if let Some(v) = val {
@@ -531,13 +656,19 @@ impl<'a> Interpreter<'a> {
                 let iter = self.eval_quoted_ast(iterable)?;
                 let list = match iter {
                     Value::List(l) => l,
-                    other => return Err(InterpError::new(format!("cannot iterate over {}", other))),
+                    other => {
+                        return Err(InterpError::new(format!("cannot iterate over {}", other)))
+                    }
                 };
                 for item in list {
                     self.bind(var, item)?;
-                    if self.early_return.is_some() { break; }
+                    if self.early_return.is_some() {
+                        break;
+                    }
                     self.eval_quoted_ast(body)?;
-                    if self.early_return.is_some() { break; }
+                    if self.early_return.is_some() {
+                        break;
+                    }
                     match self.loop_action.take() {
                         Some(LoopAction::Break(val)) => {
                             if let Some(v) = val {
@@ -555,7 +686,11 @@ impl<'a> Interpreter<'a> {
                 let v = self.eval_quoted_ast(value)?;
                 match target.as_ref() {
                     QuotedAst::Ident(name) => self.assign(name, v)?,
-                    _ => return Err(InterpError::new("assign target must be an identifier in quoted AST")),
+                    _ => {
+                        return Err(InterpError::new(
+                            "assign target must be an identifier in quoted AST",
+                        ))
+                    }
                 }
                 Ok(Value::Unit)
             }
@@ -565,9 +700,7 @@ impl<'a> Interpreter<'a> {
                 self.pop_scope();
                 result
             }
-            QuotedAst::Unsafe(body) => {
-                self.eval_quoted_ast(body)
-            }
+            QuotedAst::Unsafe(body) => self.eval_quoted_ast(body),
             QuotedAst::Drop(expr) => {
                 self.eval_quoted_ast(expr)?;
                 Ok(Value::Unit)
@@ -580,11 +713,21 @@ impl<'a> Interpreter<'a> {
                     SharedKind::Weak => match v {
                         Value::Shared(arc) => Value::WeakShared(Arc::downgrade(&arc)),
                         Value::LocalShared(rc) => Value::WeakLocal(rc.downgrade()),
-                        _ => return Err(InterpError::new(format!("weak requires a shared or local_shared value, got {}", v))),
+                        _ => {
+                            return Err(InterpError::new(format!(
+                                "weak requires a shared or local_shared value, got {}",
+                                v
+                            )))
+                        }
                     },
                     SharedKind::WeakLocal => match v {
                         Value::LocalShared(rc) => Value::WeakLocal(rc.downgrade()),
-                        _ => return Err(InterpError::new(format!("weak_local requires a local_shared value, got {}", v))),
+                        _ => {
+                            return Err(InterpError::new(format!(
+                                "weak_local requires a local_shared value, got {}",
+                                v
+                            )))
+                        }
                     },
                 };
                 self.bind(name, shared_val)?;
@@ -608,24 +751,34 @@ impl<'a> Interpreter<'a> {
                 result
             }
             QuotedAst::List(elems) => {
-                let vals: Result<Vec<_>, _> = elems.iter().map(|e| self.eval_quoted_ast(e)).collect();
+                let vals: Result<Vec<_>, _> =
+                    elems.iter().map(|e| self.eval_quoted_ast(e)).collect();
                 Ok(Value::List(vals?))
             }
             QuotedAst::Tuple(elems) => {
-                let vals: Result<Vec<_>, _> = elems.iter().map(|e| self.eval_quoted_ast(e)).collect();
+                let vals: Result<Vec<_>, _> =
+                    elems.iter().map(|e| self.eval_quoted_ast(e)).collect();
                 Ok(Value::Tuple(vals?))
             }
             QuotedAst::Call(callee, args) => {
                 let func_val = self.eval_quoted_ast(callee)?;
-                let arg_vals: Result<Vec<_>, _> = args.iter().map(|a| self.eval_quoted_ast(a)).collect();
+                let arg_vals: Result<Vec<_>, _> =
+                    args.iter().map(|a| self.eval_quoted_ast(a)).collect();
                 let arg_vals = arg_vals?;
                 match func_val {
-                    Value::Closure { params, ret: _, body, captured } =>
-                        self.apply_closure_inner(&params, &body, &captured, arg_vals),
+                    Value::Closure {
+                        params,
+                        ret: _,
+                        body,
+                        captured,
+                    } => self.apply_closure_inner(&params, &body, &captured, arg_vals),
                     _ => Err(InterpError::new("cannot call non-closure in quoted AST")),
                 }
             }
-            _ => Err(InterpError::new(format!("unsupported quoted AST node: {:?}", qa))),
+            _ => Err(InterpError::new(format!(
+                "unsupported quoted AST node: {:?}",
+                qa
+            ))),
         }
     }
 }

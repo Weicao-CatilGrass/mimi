@@ -1,19 +1,19 @@
-pub mod types;
-pub mod builtins;
-pub mod gep;
-mod compile;
-mod scope;
-mod registry;
 mod actors;
-mod func;
 mod block;
+pub mod builtins;
+mod compile;
 mod expr;
+mod func;
+pub mod gep;
+mod registry;
+mod scope;
+pub mod types;
 
 use crate::ast::*;
 use crate::error::CompileError;
+use inkwell::builder::Builder;
 use inkwell::context::Context;
 use inkwell::module::Module;
-use inkwell::builder::Builder;
 use inkwell::targets::{CodeModel, InitializationConfig, RelocMode, Target, TargetMachine};
 use inkwell::types::BasicTypeEnum;
 use inkwell::values::{BasicMetadataValueEnum, BasicValueEnum, CallSiteValue, ValueKind};
@@ -31,7 +31,9 @@ pub(crate) fn extract_basic_value<'ctx>(vk: ValueKind<'ctx>) -> Option<BasicValu
 }
 
 /// Try to get a BasicValueEnum from a CallSiteValue.
-pub(crate) fn call_try_basic_value<'ctx>(call: &CallSiteValue<'ctx>) -> Option<BasicValueEnum<'ctx>> {
+pub(crate) fn call_try_basic_value<'ctx>(
+    call: &CallSiteValue<'ctx>,
+) -> Option<BasicValueEnum<'ctx>> {
     extract_basic_value(call.try_as_basic_value())
 }
 
@@ -61,11 +63,14 @@ pub(super) fn extract_list_elem_type(type_name: &str) -> Option<crate::ast::Type
             _ => {}
         }
     }
-    let inner_str = inner_end
-        .and_then(|end| {
-            let s = type_name[inner_start..end].trim();
-            if s.is_empty() { None } else { Some(s) }
-        })?;
+    let inner_str = inner_end.and_then(|end| {
+        let s = type_name[inner_start..end].trim();
+        if s.is_empty() {
+            None
+        } else {
+            Some(s)
+        }
+    })?;
     // Parse the inner type, handling nested generics.
     Some(parse_inner_type(inner_str))
 }
@@ -214,7 +219,56 @@ impl<'ctx> CodeGenerator<'ctx> {
         let module = context.create_module(module_name);
         let builder = context.create_builder();
         builtins::register_runtime(&module, context);
-        Self { context, module, builder, loop_break: None, loop_continue: None, type_defs: HashMap::new(), type_llvm: HashMap::new(), cap_vars: vec![HashMap::new()], cap_type_names: std::collections::HashSet::new(), type_map: HashMap::new(), func_defs: HashMap::new(), var_type_names: HashMap::new(), spawn_counter: 0, strict: false, no_std: false, shared: false, verify_contracts: true, target_triple: None, compensation_blocks: Vec::new(), comp_scope_stack: Vec::new(), shared_release_vars: vec![Vec::new()], weak_release_vars: vec![Vec::new()], shared_var_names: std::collections::HashSet::new(), heap_allocs: std::cell::RefCell::new(vec![Vec::new()]), ensures_stmts: Vec::new(), old_snapshots: HashMap::new(), comptime_func_names: std::collections::HashSet::new(), in_parasteps: false, parasteps_future_ptrs: Vec::new(), trait_defs: HashMap::new(), type_impls: HashMap::new(), vtable_globals: HashMap::new(), vtable_types: HashMap::new(), extern_param_types: HashMap::new(), callback_thunk_counter: 0, callback_thunks: HashMap::new(), pending_spawn_type: None, async_var_inner_types: HashMap::new(), record_type_names: std::collections::HashSet::new(), repr_c_record_names: std::collections::HashSet::new(), tuple_type_stack: Vec::new(), pending_len_is_string: false, fn_ptr_var_names: std::collections::HashSet::new(), extern_func_defs: HashMap::new(), extern_block_abis: HashMap::new(), pending_callback_tls: Vec::new(), list_elem_llvm_types: HashMap::new(), closure_wrappers: HashMap::new() }
+        Self {
+            context,
+            module,
+            builder,
+            loop_break: None,
+            loop_continue: None,
+            type_defs: HashMap::new(),
+            type_llvm: HashMap::new(),
+            cap_vars: vec![HashMap::new()],
+            cap_type_names: std::collections::HashSet::new(),
+            type_map: HashMap::new(),
+            func_defs: HashMap::new(),
+            var_type_names: HashMap::new(),
+            spawn_counter: 0,
+            strict: false,
+            no_std: false,
+            shared: false,
+            verify_contracts: true,
+            target_triple: None,
+            compensation_blocks: Vec::new(),
+            comp_scope_stack: Vec::new(),
+            shared_release_vars: vec![Vec::new()],
+            weak_release_vars: vec![Vec::new()],
+            shared_var_names: std::collections::HashSet::new(),
+            heap_allocs: std::cell::RefCell::new(vec![Vec::new()]),
+            ensures_stmts: Vec::new(),
+            old_snapshots: HashMap::new(),
+            comptime_func_names: std::collections::HashSet::new(),
+            in_parasteps: false,
+            parasteps_future_ptrs: Vec::new(),
+            trait_defs: HashMap::new(),
+            type_impls: HashMap::new(),
+            vtable_globals: HashMap::new(),
+            vtable_types: HashMap::new(),
+            extern_param_types: HashMap::new(),
+            callback_thunk_counter: 0,
+            callback_thunks: HashMap::new(),
+            pending_spawn_type: None,
+            async_var_inner_types: HashMap::new(),
+            record_type_names: std::collections::HashSet::new(),
+            repr_c_record_names: std::collections::HashSet::new(),
+            tuple_type_stack: Vec::new(),
+            pending_len_is_string: false,
+            fn_ptr_var_names: std::collections::HashSet::new(),
+            extern_func_defs: HashMap::new(),
+            extern_block_abis: HashMap::new(),
+            pending_callback_tls: Vec::new(),
+            list_elem_llvm_types: HashMap::new(),
+            closure_wrappers: HashMap::new(),
+        }
     }
 
     pub fn gep(&self) -> gep::CheckedGepBuilder<'_, 'ctx> {
@@ -226,11 +280,19 @@ impl<'ctx> CodeGenerator<'ctx> {
     }
 
     fn block_has_terminator(&self) -> bool {
-        self.builder.get_insert_block().and_then(|b| b.get_terminator()).is_some()
+        self.builder
+            .get_insert_block()
+            .and_then(|b| b.get_terminator())
+            .is_some()
     }
 
-    fn expect_basic_value(&self, call: &inkwell::values::CallSiteValue<'ctx>, name: &str) -> Result<BasicValueEnum<'ctx>, CompileError> {
-        call_try_basic_value(call).ok_or_else(|| CompileError::LlvmError(format!("expected basic value from {}", name)))
+    fn expect_basic_value(
+        &self,
+        call: &inkwell::values::CallSiteValue<'ctx>,
+        name: &str,
+    ) -> Result<BasicValueEnum<'ctx>, CompileError> {
+        call_try_basic_value(call)
+            .ok_or_else(|| CompileError::LlvmError(format!("expected basic value from {}", name)))
     }
 
     fn current_fn_ret_type(&self) -> BasicTypeEnum<'ctx> {
@@ -239,7 +301,11 @@ impl<'ctx> CodeGenerator<'ctx> {
             .unwrap_or(BasicTypeEnum::IntType(self.context.i64_type()))
     }
 
-    fn adjust_int_val(&self, val: BasicValueEnum<'ctx>, target: BasicTypeEnum<'ctx>) -> Result<BasicValueEnum<'ctx>, CompileError> {
+    fn adjust_int_val(
+        &self,
+        val: BasicValueEnum<'ctx>,
+        target: BasicTypeEnum<'ctx>,
+    ) -> Result<BasicValueEnum<'ctx>, CompileError> {
         match (val, target) {
             (BasicValueEnum::IntValue(iv), BasicTypeEnum::IntType(ti)) => {
                 let src_w = iv.get_type().get_bit_width();
@@ -247,11 +313,13 @@ impl<'ctx> CodeGenerator<'ctx> {
                 if src_w == dst_w {
                     Ok(iv.into())
                 } else if src_w < dst_w {
-                    self.builder.build_int_z_extend(iv, ti, "zext")
+                    self.builder
+                        .build_int_z_extend(iv, ti, "zext")
                         .map(|v| v.into())
                         .map_err(|e| CompileError::LlvmError(format!("zext error: {}", e)))
                 } else {
-                    self.builder.build_int_truncate(iv, ti, "trunc")
+                    self.builder
+                        .build_int_truncate(iv, ti, "trunc")
                         .map(|v| v.into())
                         .map_err(|e| CompileError::LlvmError(format!("trunc error: {}", e)))
                 }
@@ -275,13 +343,17 @@ impl<'ctx> CodeGenerator<'ctx> {
         if self.shared_var_names.contains(name) {
             // Shared variable: load the heap pointer, store new value at that location
             let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
-            let heap_ptr = self.builder.build_load(ptr_ty, alloca, &format!("{}_heap_ptr", name))
+            let heap_ptr = self
+                .builder
+                .build_load(ptr_ty, alloca, &format!("{}_heap_ptr", name))
                 .map_err(|e| CompileError::LlvmError(format!("shared heap ptr load error: {}", e)))?
                 .into_pointer_value();
-            self.builder.build_store(heap_ptr, val)
-                .map_err(|e| CompileError::LlvmError(format!("shared assign store error: {}", e)))?;
+            self.builder.build_store(heap_ptr, val).map_err(|e| {
+                CompileError::LlvmError(format!("shared assign store error: {}", e))
+            })?;
         } else {
-            self.builder.build_store(alloca, val)
+            self.builder
+                .build_store(alloca, val)
                 .map_err(|e| CompileError::LlvmError(format!("assign store error: {}", e)))?;
         }
         Ok(())
@@ -313,21 +385,30 @@ impl<'ctx> CodeGenerator<'ctx> {
     /// G10: Pop scope level and emit `free(ptr)` for each registered heap allocation.
     pub(super) fn free_heap_allocs(&mut self) -> Result<(), CompileError> {
         if let Some(scope) = self.heap_allocs.borrow_mut().pop() {
-            let free_fn = self.module.get_function("free")
+            let free_fn = self
+                .module
+                .get_function("free")
                 .ok_or_else(|| CompileError::LlvmError("free not declared".to_string()))?;
             for entry in scope {
                 let ptr = match entry {
                     HeapEntry::Ptr(p) => p,
                     HeapEntry::Slot(gep) => {
                         let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
-                        let loaded = self.builder.build_load(ptr_ty, gep, "heap_slot")
-                            .map_err(|e| CompileError::LlvmError(format!("heap slot load error: {}", e)))?;
+                        let loaded =
+                            self.builder
+                                .build_load(ptr_ty, gep, "heap_slot")
+                                .map_err(|e| {
+                                    CompileError::LlvmError(format!("heap slot load error: {}", e))
+                                })?;
                         loaded.into_pointer_value()
                     }
                 };
-                self.builder.build_call(free_fn, &[
-                    BasicMetadataValueEnum::PointerValue(ptr),
-                ], "free_heap")
+                self.builder
+                    .build_call(
+                        free_fn,
+                        &[BasicMetadataValueEnum::PointerValue(ptr)],
+                        "free_heap",
+                    )
                     .map_err(|e| CompileError::LlvmError(format!("free error: {}", e)))?;
             }
         }
@@ -353,7 +434,8 @@ impl<'ctx> CodeGenerator<'ctx> {
                 let elem_ty = &args[0];
                 if let Some(llvm_elem) = self.llvm_type_for(elem_ty) {
                     if matches!(llvm_elem, BasicTypeEnum::StructType(_)) {
-                        self.list_elem_llvm_types.insert(var_name.to_string(), llvm_elem);
+                        self.list_elem_llvm_types
+                            .insert(var_name.to_string(), llvm_elem);
                     }
                 }
             }
@@ -380,7 +462,8 @@ impl<'ctx> CodeGenerator<'ctx> {
             _ => {}
         }
         Err(CompileError::Generic(format!(
-            "enum variant '{}' not found in any registered enum type definition", name
+            "enum variant '{}' not found in any registered enum type definition",
+            name
         )))
     }
 
@@ -408,9 +491,11 @@ impl<'ctx> CodeGenerator<'ctx> {
             BasicTypeEnum::IntType(t) => (t.get_bit_width() / 8) as u64,
             BasicTypeEnum::FloatType(_) => 8,
             BasicTypeEnum::PointerType(_) => 8,
-            BasicTypeEnum::StructType(t) => {
-                t.get_field_types().iter().map(|f| self.llvm_type_size_bytes(*f)).sum()
-            }
+            BasicTypeEnum::StructType(t) => t
+                .get_field_types()
+                .iter()
+                .map(|f| self.llvm_type_size_bytes(*f))
+                .sum(),
             BasicTypeEnum::ArrayType(t) => {
                 t.len() as u64 * self.llvm_type_size_bytes(t.get_element_type())
             }
@@ -442,7 +527,8 @@ impl<'ctx> CodeGenerator<'ctx> {
             if let Expr::Ident(fname) = callee.as_ref() {
                 if let Some(fdef) = self.func_defs.get(fname) {
                     if let Some(ret_ty) = &fdef.ret {
-                        self.var_type_names.insert(name.clone(), crate::core::fmt_type(ret_ty));
+                        self.var_type_names
+                            .insert(name.clone(), crate::core::fmt_type(ret_ty));
                     }
                 }
             }
@@ -452,29 +538,51 @@ impl<'ctx> CodeGenerator<'ctx> {
             crate::ast::SharedKind::Weak | crate::ast::SharedKind::WeakLocal => {
                 // Weak reference: init must be an existing shared variable.
                 if let Expr::Ident(src_name) = init {
-                    let &(src_alloca, val_ty) = vars.get(src_name)
-                        .ok_or_else(|| CompileError::LlvmError(
-                            format!("weak source '{}' not found", src_name)))?;
+                    let &(src_alloca, val_ty) = vars.get(src_name).ok_or_else(|| {
+                        CompileError::LlvmError(format!("weak source '{}' not found", src_name))
+                    })?;
                     let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
-                    let heap_ptr_typed = self.builder.build_load(
-                        BasicTypeEnum::PointerType(ptr_ty), src_alloca,
-                        &format!("{}_weak_load", name),
-                    ).map_err(|e| CompileError::LlvmError(format!("weak load: {}", e)))?.into_pointer_value();
+                    let heap_ptr_typed = self
+                        .builder
+                        .build_load(
+                            BasicTypeEnum::PointerType(ptr_ty),
+                            src_alloca,
+                            &format!("{}_weak_load", name),
+                        )
+                        .map_err(|e| CompileError::LlvmError(format!("weak load: {}", e)))?
+                        .into_pointer_value();
 
                     // Increment the weak refcount on the heap allocation.
-                    let heap_i8 = self.builder.build_pointer_cast(
-                        heap_ptr_typed, i8_ptr, &format!("{}_weak_i8", name))
-                        .map_err(|e| CompileError::LlvmError(format!("pointer cast error: {}", e)))?;
-                    let weak_retain_fn = self.module.get_function("mimi_rc_weak_retain")
-                        .ok_or_else(|| CompileError::LlvmError("mimi_rc_weak_retain not declared".to_string()))?;
-                    self.builder.build_call(weak_retain_fn, &[
-                        inkwell::values::BasicMetadataValueEnum::PointerValue(heap_i8),
-                    ], &format!("{}_weak_retain", name))
-                        .map_err(|e| CompileError::LlvmError(format!("weak retain error: {}", e)))?;
+                    let heap_i8 = self
+                        .builder
+                        .build_pointer_cast(heap_ptr_typed, i8_ptr, &format!("{}_weak_i8", name))
+                        .map_err(|e| {
+                            CompileError::LlvmError(format!("pointer cast error: {}", e))
+                        })?;
+                    let weak_retain_fn = self
+                        .module
+                        .get_function("mimi_rc_weak_retain")
+                        .ok_or_else(|| {
+                            CompileError::LlvmError("mimi_rc_weak_retain not declared".to_string())
+                        })?;
+                    self.builder
+                        .build_call(
+                            weak_retain_fn,
+                            &[inkwell::values::BasicMetadataValueEnum::PointerValue(
+                                heap_i8,
+                            )],
+                            &format!("{}_weak_retain", name),
+                        )
+                        .map_err(|e| {
+                            CompileError::LlvmError(format!("weak retain error: {}", e))
+                        })?;
 
-                    let new_alloca = self.builder.build_alloca(ptr_ty, name)
+                    let new_alloca = self
+                        .builder
+                        .build_alloca(ptr_ty, name)
                         .map_err(|e| CompileError::LlvmError(format!("alloca: {}", e)))?;
-                    self.builder.build_store(new_alloca, heap_ptr_typed)
+                    self.builder
+                        .build_store(new_alloca, heap_ptr_typed)
                         .map_err(|e| CompileError::LlvmError(format!("store: {}", e)))?;
                     vars.insert(name.clone(), (new_alloca, val_ty));
                     self.shared_var_names.insert(name.clone());
@@ -483,7 +591,8 @@ impl<'ctx> CodeGenerator<'ctx> {
                     return Ok(());
                 }
                 return Err(CompileError::LlvmError(
-                    "weak requires an existing shared variable as initialiser".to_string()));
+                    "weak requires an existing shared variable as initialiser".to_string(),
+                ));
             }
             _ => {}
         }
@@ -493,13 +602,20 @@ impl<'ctx> CodeGenerator<'ctx> {
         // alloca and returns its address), load the value first so we store the
         // actual data on the heap, not a stack pointer.
         let llvm_ty = if let BasicValueEnum::PointerValue(pv) = val {
-            let ty_name = self.var_type_names.get(name.as_str())
-                .or({
-                    if let Expr::Record { ty: Some(tn), .. } = init { Some(tn) } else { None }
-                });
-            let pointee_ty = ty_name.and_then(|tn| self.type_llvm.get(tn)).cloned()
+            let ty_name = self.var_type_names.get(name.as_str()).or({
+                if let Expr::Record { ty: Some(tn), .. } = init {
+                    Some(tn)
+                } else {
+                    None
+                }
+            });
+            let pointee_ty = ty_name
+                .and_then(|tn| self.type_llvm.get(tn))
+                .cloned()
                 .unwrap_or(BasicTypeEnum::IntType(self.context.i64_type()));
-            let loaded = self.builder.build_load(pointee_ty, pv, &format!("{}_val", name))
+            let loaded = self
+                .builder
+                .build_load(pointee_ty, pv, &format!("{}_val", name))
                 .map_err(|e| CompileError::LlvmError(format!("shared load init: {}", e)))?;
             val = loaded;
             loaded.get_type()
@@ -509,36 +625,52 @@ impl<'ctx> CodeGenerator<'ctx> {
 
         let ty_size_bytes = self.llvm_type_size_bytes(llvm_ty);
         let ty_size = self.context.i64_type().const_int(ty_size_bytes, false);
-        let alloc_fn = self.module.get_function("mimi_rc_alloc")
+        let alloc_fn = self
+            .module
+            .get_function("mimi_rc_alloc")
             .ok_or_else(|| CompileError::LlvmError("mimi_rc_alloc not declared".to_string()))?;
-        let heap_raw = self.builder.build_call(alloc_fn, &[
-            inkwell::values::BasicMetadataValueEnum::IntValue(ty_size),
-        ], &format!("{}_rc_alloc", name))
+        let heap_raw = self
+            .builder
+            .build_call(
+                alloc_fn,
+                &[inkwell::values::BasicMetadataValueEnum::IntValue(ty_size)],
+                &format!("{}_rc_alloc", name),
+            )
             .map_err(|e| CompileError::LlvmError(format!("rc_alloc error: {}", e)))?
             .try_as_basic_value_opt()
             .ok_or_else(|| CompileError::LlvmError("mimi_rc_alloc returned void".to_string()))?;
 
         let heap_raw_ptr = heap_raw.into_pointer_value();
-        let heap_ptr = self.builder.build_pointer_cast(
-            heap_raw_ptr,
-            self.context.ptr_type(inkwell::AddressSpace::default()),
-            &format!("{}_heap", name))
+        let heap_ptr = self
+            .builder
+            .build_pointer_cast(
+                heap_raw_ptr,
+                self.context.ptr_type(inkwell::AddressSpace::default()),
+                &format!("{}_heap", name),
+            )
             .map_err(|e| CompileError::LlvmError(format!("pointer cast error: {}", e)))?;
 
-        self.builder.build_store(heap_ptr, val)
+        self.builder
+            .build_store(heap_ptr, val)
             .map_err(|e| CompileError::LlvmError(format!("shared store error: {}", e)))?;
 
-        let alloca = self.builder.build_alloca(
-            self.context.ptr_type(inkwell::AddressSpace::default()), name)
+        let alloca = self
+            .builder
+            .build_alloca(
+                self.context.ptr_type(inkwell::AddressSpace::default()),
+                name,
+            )
             .map_err(|e| CompileError::LlvmError(format!("shared handle alloca error: {}", e)))?;
-        self.builder.build_store(alloca, heap_ptr)
+        self.builder
+            .build_store(alloca, heap_ptr)
             .map_err(|e| CompileError::LlvmError(format!("shared handle store error: {}", e)))?;
 
         vars.insert(name.clone(), (alloca, llvm_ty));
         self.shared_var_names.insert(name.clone());
 
-        let heap_i8 = self.builder.build_pointer_cast(
-            heap_ptr, i8_ptr, &format!("{}_i8", name))
+        let heap_i8 = self
+            .builder
+            .build_pointer_cast(heap_ptr, i8_ptr, &format!("{}_i8", name))
             .map_err(|e| CompileError::LlvmError(format!("pointer cast error: {}", e)))?;
         self.register_shared_var(heap_i8);
 
@@ -554,12 +686,18 @@ impl<'ctx> CodeGenerator<'ctx> {
         vars: &mut HashMap<String, VarEntry<'ctx>>,
         label: &str,
     ) -> Result<(), CompileError> {
-        let function = self.current_function()
+        let function = self
+            .current_function()
             .ok_or_else(|| CompileError::LlvmError("arena outside function".to_string()))?;
-        let arena_body_bb = self.context.append_basic_block(function, &format!("{}_body", label));
-        let arena_cont_bb = self.context.append_basic_block(function, &format!("{}_cont", label));
+        let arena_body_bb = self
+            .context
+            .append_basic_block(function, &format!("{}_body", label));
+        let arena_cont_bb = self
+            .context
+            .append_basic_block(function, &format!("{}_cont", label));
         if !self.block_has_terminator() {
-            self.builder.build_unconditional_branch(arena_body_bb)
+            self.builder
+                .build_unconditional_branch(arena_body_bb)
                 .map_err(|e| CompileError::LlvmError(format!("branch to {}: {}", label, e)))?;
         }
         self.builder.position_at_end(arena_body_bb);
@@ -573,7 +711,8 @@ impl<'ctx> CodeGenerator<'ctx> {
         }
         self.build_stackrestore(saved)?;
         if !self.block_has_terminator() {
-            self.builder.build_unconditional_branch(arena_cont_bb)
+            self.builder
+                .build_unconditional_branch(arena_cont_bb)
                 .map_err(|e| CompileError::LlvmError(format!("branch after {}: {}", label, e)))?;
         }
         self.builder.position_at_end(arena_cont_bb);
@@ -589,32 +728,52 @@ impl<'ctx> CodeGenerator<'ctx> {
         vars: &mut HashMap<String, VarEntry<'ctx>>,
     ) -> Result<(), CompileError> {
         let i8_ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
-        let &(src_alloca, val_ty) = vars.get(src_name)
-            .ok_or_else(|| CompileError::LlvmError(format!("shared source '{}' not found", src_name)))?;
+        let &(src_alloca, val_ty) = vars.get(src_name).ok_or_else(|| {
+            CompileError::LlvmError(format!("shared source '{}' not found", src_name))
+        })?;
         let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
 
         // 1. Load the T* heap pointer from the source's alloca
-        let heap_ptr_typed = self.builder.build_load(
-            BasicTypeEnum::PointerType(ptr_ty), src_alloca,
-            &format!("{}_shared_load", new_name),
-        ).map_err(|e| CompileError::LlvmError(format!("shared load error: {}", e)))?.into_pointer_value();
+        let heap_ptr_typed = self
+            .builder
+            .build_load(
+                BasicTypeEnum::PointerType(ptr_ty),
+                src_alloca,
+                &format!("{}_shared_load", new_name),
+            )
+            .map_err(|e| CompileError::LlvmError(format!("shared load error: {}", e)))?
+            .into_pointer_value();
 
         // 2. Cast to i8* and call mimi_rc_retain
-        let heap_i8 = self.builder.build_pointer_cast(
-            heap_ptr_typed, i8_ptr_ty,
-            &format!("{}_shared_i8", new_name),
-        ).map_err(|e| CompileError::LlvmError(format!("pointer cast error: {}", e)))?;
-        let retain_fn = self.module.get_function("mimi_rc_retain")
+        let heap_i8 = self
+            .builder
+            .build_pointer_cast(
+                heap_ptr_typed,
+                i8_ptr_ty,
+                &format!("{}_shared_i8", new_name),
+            )
+            .map_err(|e| CompileError::LlvmError(format!("pointer cast error: {}", e)))?;
+        let retain_fn = self
+            .module
+            .get_function("mimi_rc_retain")
             .ok_or_else(|| CompileError::LlvmError("mimi_rc_retain not declared".to_string()))?;
-        self.builder.build_call(retain_fn, &[
-            inkwell::values::BasicMetadataValueEnum::PointerValue(heap_i8),
-        ], &format!("{}_retain", new_name))
+        self.builder
+            .build_call(
+                retain_fn,
+                &[inkwell::values::BasicMetadataValueEnum::PointerValue(
+                    heap_i8,
+                )],
+                &format!("{}_retain", new_name),
+            )
             .map_err(|e| CompileError::LlvmError(format!("retain error: {}", e)))?;
 
         // 3. Create a new alloca for the new name and store the heap pointer
-        let new_alloca = self.builder.build_alloca(ptr_ty, new_name)
+        let new_alloca = self
+            .builder
+            .build_alloca(ptr_ty, new_name)
             .map_err(|e| CompileError::LlvmError(format!("alloca error: {}", e)))?;
-        self.builder.build_store(new_alloca, heap_ptr_typed)
+        self.builder
+            .build_store(new_alloca, heap_ptr_typed)
             .map_err(|e| CompileError::LlvmError(format!("store error: {}", e)))?;
 
         // 4. Register the i8* pointer for release on scope exit
@@ -640,10 +799,12 @@ impl<'ctx> CodeGenerator<'ctx> {
             Target::initialize_native(&InitializationConfig::default())
                 .map_err(|e| format!("failed to initialize native target: {}", e))?;
         }
-        let triple_str = self.target_triple.clone()
-            .unwrap_or_else(|| {
-                TargetMachine::get_default_triple().as_str().to_string_lossy().to_string()
-            });
+        let triple_str = self.target_triple.clone().unwrap_or_else(|| {
+            TargetMachine::get_default_triple()
+                .as_str()
+                .to_string_lossy()
+                .to_string()
+        });
         let triple_str_ref = if self.no_std {
             let parts: Vec<&str> = triple_str.split('-').collect();
             if parts.len() >= 3 {
@@ -662,24 +823,48 @@ impl<'ctx> CodeGenerator<'ctx> {
         let (cpu, features) = if self.target_triple.is_some() {
             (String::new(), String::new())
         } else {
-            (TargetMachine::get_host_cpu_name().to_string(),
-             TargetMachine::get_host_cpu_features().to_string())
+            (
+                TargetMachine::get_host_cpu_name().to_string(),
+                TargetMachine::get_host_cpu_features().to_string(),
+            )
         };
-        let reloc_mode = if self.shared { RelocMode::PIC } else { RelocMode::Default };
-        let tm = target.create_target_machine(
-            &triple_ref, &cpu, &features,
-            OptimizationLevel::Aggressive,
-            reloc_mode, CodeModel::Default,
-        ).ok_or_else(|| format!("failed to create target machine for triple '{}'", triple_ref))?;
+        let reloc_mode = if self.shared {
+            RelocMode::PIC
+        } else {
+            RelocMode::Default
+        };
+        let tm = target
+            .create_target_machine(
+                &triple_ref,
+                &cpu,
+                &features,
+                OptimizationLevel::Aggressive,
+                reloc_mode,
+                CodeModel::Default,
+            )
+            .ok_or_else(|| {
+                format!(
+                    "failed to create target machine for triple '{}'",
+                    triple_ref
+                )
+            })?;
 
         // Run LLVM optimization passes before codegen (opt-in via MIMI_OPT env var)
-        if std::env::var("MIMI_OPT").map(|v| v == "1" || v == "true").unwrap_or(false) {
+        if std::env::var("MIMI_OPT")
+            .map(|v| v == "1" || v == "true")
+            .unwrap_or(false)
+        {
             let options = inkwell::passes::PassBuilderOptions::create();
-            self.module.run_passes("default<O2>", &tm, options)
+            self.module
+                .run_passes("default<O2>", &tm, options)
                 .map_err(|e| CompileError::LlvmError(format!("optimization failed: {}", e)))?;
         }
 
-        tm.write_to_file(&self.module, inkwell::targets::FileType::Object, output_path)
-            .map_err(|e| CompileError::Io(format!("failed to write object file: {}", e)))
+        tm.write_to_file(
+            &self.module,
+            inkwell::targets::FileType::Object,
+            output_path,
+        )
+        .map_err(|e| CompileError::Io(format!("failed to write object file: {}", e)))
     }
 }

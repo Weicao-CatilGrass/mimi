@@ -40,6 +40,14 @@ impl<'a> Checker<'a> {
         }
     }
 
+    /// E5: Release a field-level borrow — NLL last-use release.
+    pub(crate) fn release_field_borrow(&mut self, var: &str, field: &str) {
+        if let Some(scope) = self.field_borrows.last_mut() {
+            let key = (var.to_string(), vec![field.to_string()]);
+            scope.insert(key, BorrowState::Unborrowed);
+        }
+    }
+
     // ─── Field-level borrow tracking (path-sensitive) ────────
 
     /// Check if a specific field path on a variable is borrowed.
@@ -79,9 +87,9 @@ impl<'a> Checker<'a> {
     /// Returns true if any field is actively borrowed.
     pub(crate) fn any_field_borrowed(&self, var: &str) -> bool {
         if let Some(scope) = self.field_borrows.last() {
-            scope.iter().any(|((v, _), state)| {
-                v == var && !matches!(state, BorrowState::Unborrowed)
-            })
+            scope
+                .iter()
+                .any(|((v, _), state)| v == var && !matches!(state, BorrowState::Unborrowed))
         } else {
             false
         }
@@ -109,19 +117,44 @@ impl<'a> Checker<'a> {
                 Self::collect_uses_in_expr(idx, uses);
             }
             Expr::Block(block) => {
-                for s in block { Self::collect_uses_in_stmt(s, uses); }
+                for s in block {
+                    Self::collect_uses_in_stmt(s, uses);
+                }
             }
             Expr::If { cond, then_, else_ } => {
                 Self::collect_uses_in_expr(cond, uses);
-                for s in then_ { Self::collect_uses_in_stmt(s, uses); }
-                if let Some(e) = else_ { for s in e { Self::collect_uses_in_stmt(s, uses); } }
+                for s in then_ {
+                    Self::collect_uses_in_stmt(s, uses);
+                }
+                if let Some(e) = else_ {
+                    for s in e {
+                        Self::collect_uses_in_stmt(s, uses);
+                    }
+                }
             }
-            Expr::Tuple(elems) => { for e in elems { Self::collect_uses_in_expr(e, uses); } }
-            Expr::List(elems) => { for e in elems { Self::collect_uses_in_expr(e, uses); } }
-            Expr::Lambda { body, .. } => { for s in body { Self::collect_uses_in_stmt(s, uses); } }
+            Expr::Tuple(elems) => {
+                for e in elems {
+                    Self::collect_uses_in_expr(e, uses);
+                }
+            }
+            Expr::List(elems) => {
+                for e in elems {
+                    Self::collect_uses_in_expr(e, uses);
+                }
+            }
+            Expr::Lambda { body, .. } => {
+                for s in body {
+                    Self::collect_uses_in_stmt(s, uses);
+                }
+            }
             Expr::Match(scrutinee, arms) => {
                 Self::collect_uses_in_expr(scrutinee, uses);
-                for arm in arms { Self::collect_uses_in_expr(&arm.body, uses); }
+                for arm in arms {
+                    if let Some(ref guard) = arm.guard {
+                        Self::collect_uses_in_expr(guard, uses);
+                    }
+                    Self::collect_uses_in_expr(&arm.body, uses);
+                }
             }
             Expr::Try(inner) => Self::collect_uses_in_expr(inner, uses),
             Expr::Spawn(inner) => Self::collect_uses_in_expr(inner, uses),
@@ -132,17 +165,43 @@ impl<'a> Checker<'a> {
             }
             Expr::SliceExpr { target, start, end } => {
                 Self::collect_uses_in_expr(target, uses);
-                if let Some(s) = start { Self::collect_uses_in_expr(s, uses); }
-                if let Some(e) = end { Self::collect_uses_in_expr(e, uses); }
+                if let Some(s) = start {
+                    Self::collect_uses_in_expr(s, uses);
+                }
+                if let Some(e) = end {
+                    Self::collect_uses_in_expr(e, uses);
+                }
             }
-            Expr::Turbofish(_, _, args) => { for a in args { Self::collect_uses_in_expr(a, uses); } }
-            Expr::Arena(block) => { for s in block { Self::collect_uses_in_stmt(s, uses); } }
-            Expr::Literal(_) | Expr::Old(_) | Expr::Comptime(_) | Expr::Quote(_) | Expr::QuoteInterpolate(_) | Expr::TypeInfo(_) | Expr::TypeOf(_) => {}
-            Expr::Record { fields, .. } => { for f in fields { Self::collect_uses_in_expr(&f.value, uses); } }
-            Expr::Comprehension { expr, iter, guard, .. } => {
+            Expr::Turbofish(_, _, args) => {
+                for a in args {
+                    Self::collect_uses_in_expr(a, uses);
+                }
+            }
+            Expr::Arena(block) => {
+                for s in block {
+                    Self::collect_uses_in_stmt(s, uses);
+                }
+            }
+            Expr::Literal(_)
+            | Expr::Old(_)
+            | Expr::Comptime(_)
+            | Expr::Quote(_)
+            | Expr::QuoteInterpolate(_)
+            | Expr::TypeInfo(_)
+            | Expr::TypeOf(_) => {}
+            Expr::Record { fields, .. } => {
+                for f in fields {
+                    Self::collect_uses_in_expr(&f.value, uses);
+                }
+            }
+            Expr::Comprehension {
+                expr, iter, guard, ..
+            } => {
                 Self::collect_uses_in_expr(expr, uses);
                 Self::collect_uses_in_expr(iter, uses);
-                if let Some(g) = guard { Self::collect_uses_in_expr(g, uses); }
+                if let Some(g) = guard {
+                    Self::collect_uses_in_expr(g, uses);
+                }
             }
             Expr::MapLiteral { entries } => {
                 for (k, v) in entries {
@@ -173,33 +232,68 @@ impl<'a> Checker<'a> {
             }
             Stmt::If { cond, then_, else_ } => {
                 Self::collect_uses_in_expr(cond, uses);
-                for s in then_ { Self::collect_uses_in_stmt(s, uses); }
-                if let Some(e) = else_ { for s in e { Self::collect_uses_in_stmt(s, uses); } }
+                for s in then_ {
+                    Self::collect_uses_in_stmt(s, uses);
+                }
+                if let Some(e) = else_ {
+                    for s in e {
+                        Self::collect_uses_in_stmt(s, uses);
+                    }
+                }
             }
             Stmt::While { cond, body } => {
                 Self::collect_uses_in_expr(cond, uses);
-                for s in body { Self::collect_uses_in_stmt(s, uses); }
+                for s in body {
+                    Self::collect_uses_in_stmt(s, uses);
+                }
             }
             Stmt::WhileLet { init, body, .. } => {
                 Self::collect_uses_in_expr(init, uses);
-                for s in body { Self::collect_uses_in_stmt(s, uses); }
+                for s in body {
+                    Self::collect_uses_in_stmt(s, uses);
+                }
             }
             Stmt::For { iterable, body, .. } => {
                 Self::collect_uses_in_expr(iterable, uses);
-                for s in body { Self::collect_uses_in_stmt(s, uses); }
+                for s in body {
+                    Self::collect_uses_in_stmt(s, uses);
+                }
             }
-            Stmt::Block(block) => { for s in block { Self::collect_uses_in_stmt(s, uses); } }
+            Stmt::Block(block) => {
+                for s in block {
+                    Self::collect_uses_in_stmt(s, uses);
+                }
+            }
             Stmt::Break(Some(e)) => Self::collect_uses_in_expr(e, uses),
             Stmt::Break(None) | Stmt::Continue => {}
-            Stmt::Requires(e, _) | Stmt::Ensures(e, _) | Stmt::Invariant(e, _) | Stmt::Drop(e) => Self::collect_uses_in_expr(e, uses),
-            Stmt::SharedLet { init, .. } => Self::collect_uses_in_expr(init, uses),
-            Stmt::Arena(block) | Stmt::OnFailure(block) | Stmt::Parasteps(block) | Stmt::Unsafe(block) => {
-                for s in block { Self::collect_uses_in_stmt(s, uses); }
+            Stmt::Requires(e, _) | Stmt::Ensures(e, _) | Stmt::Invariant(e, _) | Stmt::Drop(e) => {
+                Self::collect_uses_in_expr(e, uses)
             }
-            Stmt::Math(exprs) => { for e in exprs { Self::collect_uses_in_expr(e, uses); } }
-            Stmt::Alloc { body, .. } => { for s in body { Self::collect_uses_in_stmt(s, uses); } }
+            Stmt::SharedLet { init, .. } => Self::collect_uses_in_expr(init, uses),
+            Stmt::Arena(block)
+            | Stmt::OnFailure(block)
+            | Stmt::Parasteps(block)
+            | Stmt::Unsafe(block) => {
+                for s in block {
+                    Self::collect_uses_in_stmt(s, uses);
+                }
+            }
+            Stmt::Math(exprs) => {
+                for e in exprs {
+                    Self::collect_uses_in_expr(e, uses);
+                }
+            }
+            Stmt::Alloc { body, .. } => {
+                for s in body {
+                    Self::collect_uses_in_stmt(s, uses);
+                }
+            }
             Stmt::MmsBlock { .. } | Stmt::Ellipsis | Stmt::Desc(..) | Stmt::Rule(..) => {}
-            Stmt::Loop(body) => { for s in body { Self::collect_uses_in_stmt(s, uses); } }
+            Stmt::Loop(body) => {
+                for s in body {
+                    Self::collect_uses_in_stmt(s, uses);
+                }
+            }
         }
     }
 
@@ -210,7 +304,8 @@ impl<'a> Checker<'a> {
         // Collect currently borrowed variables and their borrow reference names
         let borrows: Vec<(String, String)> = {
             if let Some(scope) = self.borrows.last() {
-                scope.iter()
+                scope
+                    .iter()
                     .filter(|(_, state)| !matches!(state, BorrowState::Unborrowed))
                     .map(|(name, _)| {
                         // Find the borrow reference variable name
@@ -225,7 +320,10 @@ impl<'a> Checker<'a> {
         };
 
         for (borrowed_var, borrow_ref) in &borrows {
-            if matches!(self.lookup_borrow(borrowed_var), Some(BorrowState::Unborrowed) | None) {
+            if matches!(
+                self.lookup_borrow(borrowed_var),
+                Some(BorrowState::Unborrowed) | None
+            ) {
                 continue;
             }
 
@@ -242,13 +340,54 @@ impl<'a> Checker<'a> {
                 self.release_borrow(borrowed_var);
             }
         }
+
+        // E5: Also release field-level borrows at their last use.
+        let field_borrows: Vec<(String, String, String)> = {
+            if let Some(scope) = self.field_borrows.last() {
+                scope
+                    .iter()
+                    .filter(|(_, state)| !matches!(state, BorrowState::Unborrowed))
+                    .map(|((var, path), _)| {
+                        let field = path.last().cloned().unwrap_or_default();
+                        let borrow_ref = self.find_borrow_ref(var, block, current_idx);
+                        (var.clone(), field, borrow_ref)
+                    })
+                    .collect()
+            } else {
+                vec![]
+            }
+        };
+
+        for (borrowed_var, field, borrow_ref) in &field_borrows {
+            if !self.is_field_borrowed(borrowed_var, field, false).is_some() {
+                continue;
+            }
+            let ref_used_after = block[current_idx..].iter().any(|s| {
+                let mut uses = Vec::new();
+                Self::collect_uses_in_stmt(s, &mut uses);
+                uses.contains(borrow_ref)
+            });
+            if !ref_used_after {
+                self.release_field_borrow(borrowed_var, field);
+            }
+        }
     }
 
     /// Find the name of the variable that holds a borrow reference to `borrowed_var`.
     /// Scans earlier statements for `let ref_name = &borrowed_var` patterns.
-    pub(crate) fn find_borrow_ref(&self, borrowed_var: &str, block: &[Stmt], current_idx: usize) -> String {
+    pub(crate) fn find_borrow_ref(
+        &self,
+        borrowed_var: &str,
+        block: &[Stmt],
+        current_idx: usize,
+    ) -> String {
         for stmt in &block[..current_idx] {
-            if let Stmt::Let { pat, init: Some(Expr::Unary(UnOp::Ref, inner)), .. } = stmt {
+            if let Stmt::Let {
+                pat,
+                init: Some(Expr::Unary(UnOp::Ref, inner)),
+                ..
+            } = stmt
+            {
                 if let Expr::Ident(name) = inner.as_ref() {
                     if name == borrowed_var {
                         if let Pattern::Variable(ref_name) = pat {
@@ -257,7 +396,12 @@ impl<'a> Checker<'a> {
                     }
                 }
             }
-            if let Stmt::Let { pat, init: Some(Expr::Unary(UnOp::RefMut, inner)), .. } = stmt {
+            if let Stmt::Let {
+                pat,
+                init: Some(Expr::Unary(UnOp::RefMut, inner)),
+                ..
+            } = stmt
+            {
                 if let Expr::Ident(name) = inner.as_ref() {
                     if name == borrowed_var {
                         if let Pattern::Variable(ref_name) = pat {

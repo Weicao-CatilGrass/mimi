@@ -11,9 +11,12 @@ fn lockfile_create_and_save() {
     lf.add_package("foo", "1.0.0", Some("git+https://example.com"), None);
     lf.add_package("bar", "2.5.0", None, Some("sha256:abc123"));
 
-    lf.save(&dir).expect("src/tests/package_management.rs:14 unwrap failed");
+    lf.save(&dir)
+        .expect("src/tests/package_management.rs:14 unwrap failed");
 
-    let loaded = crate::lockfile::Lockfile::load(&dir).expect("src/tests/package_management.rs:16 unwrap failed").expect("src/tests/package_management.rs:16 unwrap failed");
+    let loaded = crate::lockfile::Lockfile::load(&dir)
+        .expect("src/tests/package_management.rs:16 unwrap failed")
+        .expect("src/tests/package_management.rs:16 unwrap failed");
     assert_eq!(loaded.package.len(), 2);
     assert_eq!(loaded.package[0].name, "foo");
     assert_eq!(loaded.package[0].version, "1.0.0");
@@ -76,7 +79,9 @@ fn manifest_add_dependency() {
     manifest.add_dependency("foo", Some("^1.0"), None, None, None);
     manifest.add_dependency("bar", Some("2.0.0"), Some("./local"), None, None);
 
-    let deps = manifest.dependencies.expect("src/tests/package_management.rs:79 unwrap failed");
+    let deps = manifest
+        .dependencies
+        .expect("src/tests/package_management.rs:79 unwrap failed");
     assert_eq!(deps.len(), 2);
     assert_eq!(deps[0].name, "foo");
     assert_eq!(deps[0].version, Some("^1.0".into()));
@@ -93,7 +98,9 @@ fn manifest_remove_dependency() {
     assert!(manifest.remove_dependency("foo"));
     assert!(!manifest.remove_dependency("foo"));
 
-    let deps = manifest.dependencies.expect("src/tests/package_management.rs:96 unwrap failed");
+    let deps = manifest
+        .dependencies
+        .expect("src/tests/package_management.rs:96 unwrap failed");
     assert_eq!(deps.len(), 1);
     assert_eq!(deps[0].name, "bar");
 }
@@ -104,7 +111,9 @@ fn manifest_replace_dependency() {
     manifest.add_dependency("foo", Some("1.0"), None, None, None);
     manifest.add_dependency("foo", Some("2.0"), None, None, None);
 
-    let deps = manifest.dependencies.expect("src/tests/package_management.rs:107 unwrap failed");
+    let deps = manifest
+        .dependencies
+        .expect("src/tests/package_management.rs:107 unwrap failed");
     assert_eq!(deps.len(), 1);
     assert_eq!(deps[0].version, Some("2.0".into()));
 }
@@ -136,14 +145,22 @@ fn lockfile_resolve_version_empty_available() {
 fn lockfile_resolve_version_caret_no_prerelease() {
     let available = ["1.0.0-alpha", "1.0.0", "1.1.0"];
     let result = crate::lockfile::Lockfile::resolve_version("^1.0", &available);
-    assert_eq!(result, Some("1.1.0".into()), "should pick latest non-prerelease");
+    assert_eq!(
+        result,
+        Some("1.1.0".into()),
+        "should pick latest non-prerelease"
+    );
 }
 
 #[test]
 fn lockfile_resolve_version_tilde_minor() {
     let available = ["1.0.0", "1.0.1", "1.0.2", "1.1.0"];
     let result = crate::lockfile::Lockfile::resolve_version("~1.0", &available);
-    assert_eq!(result, Some("1.0.2".into()), "tilde should prefer highest patch");
+    assert_eq!(
+        result,
+        Some("1.0.2".into()),
+        "tilde should prefer highest patch"
+    );
 }
 
 #[test]
@@ -151,7 +168,8 @@ fn lockfile_save_and_load_nonexistent() {
     let dir = std::env::temp_dir().join("mimi_lockfile_nonexistent");
     std::fs::create_dir_all(&dir).expect("src/tests/package_management.rs:152 unwrap failed");
 
-    let loaded = crate::lockfile::Lockfile::load(&dir).expect("src/tests/package_management.rs:154 unwrap failed");
+    let loaded = crate::lockfile::Lockfile::load(&dir)
+        .expect("src/tests/package_management.rs:154 unwrap failed");
     assert!(loaded.is_none(), "no lockfile should return None");
 
     std::fs::remove_dir_all(&dir).ok();
@@ -177,7 +195,11 @@ fn update_command_basic() {
 
     // Call update — should succeed even with no deps
     let result = super::main_update(&dir);
-    assert!(result.is_ok(), "update should succeed with empty deps: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "update should succeed with empty deps: {:?}",
+        result.err()
+    );
 
     std::fs::remove_dir_all(&dir).ok();
 }
@@ -191,21 +213,21 @@ fn directory_checksum_simple() {
     std::fs::write(dir.join("a.txt"), "hello world").expect("write");
     std::fs::write(dir.join("b.txt"), "42").expect("write");
 
-    let hash = crate::pkg_registry::compute_dir_checksum(&dir)
-        .expect("checksum should succeed");
+    let hash = crate::pkg_registry::compute_dir_checksum(&dir).expect("checksum should succeed");
     assert!(!hash.is_empty(), "checksum should not be empty");
     assert!(hash.len() >= 16, "checksum should be reasonably long");
 
     // Same content should produce same hash
-    let hash2 = crate::pkg_registry::compute_dir_checksum(&dir)
-        .expect("checksum should succeed");
+    let hash2 = crate::pkg_registry::compute_dir_checksum(&dir).expect("checksum should succeed");
     assert_eq!(hash, hash2, "checksums should be deterministic");
 
     // Different content should produce different hash
     std::fs::write(dir.join("a.txt"), "different content").expect("write");
-    let hash3 = crate::pkg_registry::compute_dir_checksum(&dir)
-        .expect("checksum should succeed");
-    assert_ne!(hash, hash3, "different content should produce different hash");
+    let hash3 = crate::pkg_registry::compute_dir_checksum(&dir).expect("checksum should succeed");
+    assert_ne!(
+        hash, hash3,
+        "different content should produce different hash"
+    );
 
     std::fs::remove_dir_all(&dir).ok();
 }
@@ -215,13 +237,17 @@ fn manifest_invalid_dependency_path() {
     let mut manifest = crate::manifest::Manifest::new("test");
     manifest.add_dependency("local-dep", None, Some("/nonexistent/path"), None, None);
 
-    let deps = manifest.dependencies.as_ref().expect("src/tests/package_management.rs:174 unwrap failed");
+    let deps = manifest
+        .dependencies
+        .as_ref()
+        .expect("src/tests/package_management.rs:174 unwrap failed");
     assert_eq!(deps[0].path.as_deref(), Some("/nonexistent/path"));
 }
 
 #[test]
 fn manifest_find_nonexistent() {
-    let result = crate::manifest::Manifest::find(std::path::Path::new("/tmp/nonexistent_path_for_test"));
+    let result =
+        crate::manifest::Manifest::find(std::path::Path::new("/tmp/nonexistent_path_for_test"));
     // Should not panic, may return Err or Ok(None)
     let _ = result;
 }
@@ -250,7 +276,11 @@ fn codegen_multi_file_with_deps() {
     let context = inkwell::context::Context::create();
     let mut codegen = crate::codegen::CodeGenerator::new(&context, "multi");
     let result = codegen.compile_file(&file);
-    assert!(result.is_ok(), "multi-file codegen should succeed: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "multi-file codegen should succeed: {:?}",
+        result.err()
+    );
     let ir = codegen.emit_ir();
     assert!(ir.contains("helper"), "IR should contain helper");
     assert!(ir.contains("main"), "IR should contain main");
@@ -271,7 +301,9 @@ fn codegen_multi_file_build() {
     let file = parse(src);
     let context = inkwell::context::Context::create();
     let mut codegen = crate::codegen::CodeGenerator::new(&context, "test");
-    codegen.compile_file(&file).expect("src/tests/package_management.rs:230 unwrap failed");
+    codegen
+        .compile_file(&file)
+        .expect("src/tests/package_management.rs:230 unwrap failed");
     let ir = codegen.emit_ir();
     assert!(ir.contains("add"), "IR should contain add function");
     assert!(ir.contains("main"), "IR should contain main function");

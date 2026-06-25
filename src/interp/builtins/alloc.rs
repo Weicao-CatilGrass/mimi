@@ -17,7 +17,9 @@ impl<'a> Interpreter<'a> {
     pub(crate) fn builtin_alloc(&mut self, args: Vec<Value>) -> Result<Value, InterpError> {
         // alloc(allocator, value) - allocate a value with the given allocator
         if args.len() != 2 {
-            return Err(InterpError::new("alloc expects 2 arguments (allocator, value)"));
+            return Err(InterpError::new(
+                "alloc expects 2 arguments (allocator, value)",
+            ));
         }
         let alloc_val = &args[0];
         let value = &args[1];
@@ -30,7 +32,9 @@ impl<'a> Interpreter<'a> {
                 AllocatorKind::Arena => {
                     // Arena allocator: allocate in current arena if available
                     if self.arenas.is_empty() {
-                        return Err(InterpError::new("alloc: no arena available (use arena block)"));
+                        return Err(InterpError::new(
+                            "alloc: no arena available (use arena block)",
+                        ));
                     }
                     let arena_id = self.arenas.len() - 1;
                     let idx = self.arenas[arena_id].slots.len();
@@ -40,7 +44,9 @@ impl<'a> Interpreter<'a> {
                 AllocatorKind::Bump => {
                     // Bump allocator: same as arena (monotonic allocation)
                     if self.arenas.is_empty() {
-                        return Err(InterpError::new("alloc: no arena available (use alloc(Bump) block)"));
+                        return Err(InterpError::new(
+                            "alloc: no arena available (use alloc(Bump) block)",
+                        ));
                     }
                     let arena_id = self.arenas.len() - 1;
                     let idx = self.arenas[arena_id].slots.len();
@@ -48,7 +54,9 @@ impl<'a> Interpreter<'a> {
                     Ok(Value::ArenaRef(arena_id, idx))
                 }
             },
-            _ => Err(InterpError::new("alloc first argument must be an Allocator value")),
+            _ => Err(InterpError::new(
+                "alloc first argument must be an Allocator value",
+            )),
         }
     }
 

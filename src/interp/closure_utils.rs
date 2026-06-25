@@ -1,6 +1,9 @@
 use crate::ast::*;
 
-pub(crate) fn collect_free_vars(block: &Block, bound: &std::collections::HashSet<String>) -> std::collections::HashSet<String> {
+pub(crate) fn collect_free_vars(
+    block: &Block,
+    bound: &std::collections::HashSet<String>,
+) -> std::collections::HashSet<String> {
     let mut free = std::collections::HashSet::new();
     let mut local_bound = bound.clone();
     for stmt in block {
@@ -52,7 +55,11 @@ pub(crate) fn collect_stmt_free_vars(
                 collect_stmt_free_vars(s, bound, free, local_bound);
             }
         }
-        Stmt::For { var, iterable, body } => {
+        Stmt::For {
+            var,
+            iterable,
+            body,
+        } => {
             collect_expr_free_vars(iterable, bound, free);
             let mut inner_bound = local_bound.clone();
             inner_bound.insert(var.clone());
@@ -141,7 +148,12 @@ pub(crate) fn collect_expr_free_vars(
             collect_expr_free_vars(expr, bound, free);
         }
         // Newly handled expression types for correct closure capture
-        Expr::Comprehension { expr: ce, iter, guard, .. } => {
+        Expr::Comprehension {
+            expr: ce,
+            iter,
+            guard,
+            ..
+        } => {
             collect_expr_free_vars(ce, bound, free);
             collect_expr_free_vars(iter, bound, free);
             if let Some(g) = guard {
@@ -163,8 +175,12 @@ pub(crate) fn collect_expr_free_vars(
         }
         Expr::SliceExpr { target, start, end } => {
             collect_expr_free_vars(target, bound, free);
-            if let Some(s) = start { collect_expr_free_vars(s, bound, free); }
-            if let Some(e) = end { collect_expr_free_vars(e, bound, free); }
+            if let Some(s) = start {
+                collect_expr_free_vars(s, bound, free);
+            }
+            if let Some(e) = end {
+                collect_expr_free_vars(e, bound, free);
+            }
         }
         Expr::Range { start, end } => {
             collect_expr_free_vars(start, bound, free);
@@ -202,7 +218,9 @@ pub(crate) fn collect_expr_free_vars(
 
 pub(crate) fn collect_pattern_names(pat: &Pattern, names: &mut std::collections::HashSet<String>) {
     match pat {
-        Pattern::Variable(name) => { names.insert(name.clone()); }
+        Pattern::Variable(name) => {
+            names.insert(name.clone());
+        }
         Pattern::Tuple(pats) => {
             for p in pats {
                 collect_pattern_names(p, names);

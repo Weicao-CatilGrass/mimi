@@ -2,7 +2,8 @@ use std::fs;
 use std::path::PathBuf;
 
 fn temp_dir(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("mimi_test_loader_{}_{}", name, std::process::id()));
+    let dir =
+        std::env::temp_dir().join(format!("mimi_test_loader_{}_{}", name, std::process::id()));
     let _ = fs::create_dir_all(&dir);
     dir
 }
@@ -15,15 +16,23 @@ fn cleanup(dir: &PathBuf) {
 fn loader_load_single_file() {
     let dir = temp_dir("single");
     let file_path = dir.join("main.mimi");
-    fs::write(&file_path, r#"
+    fs::write(
+        &file_path,
+        r#"
 func main() -> i32 {
     42
 }
-"#).expect("src/tests/loader.rs:22 unwrap failed");
+"#,
+    )
+    .expect("src/tests/loader.rs:22 unwrap failed");
 
     let mut loader = crate::loader::ModuleLoader::new(dir.clone());
     let result = loader.load_main(&file_path);
-    assert!(result.is_ok(), "loading single file should succeed: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "loading single file should succeed: {:?}",
+        result.err()
+    );
     let loaded = result.expect("src/tests/loader.rs:27 unwrap failed");
     assert_eq!(loaded.file.items.len(), 1);
     cleanup(&dir);
@@ -44,13 +53,21 @@ fn loader_nonexistent_file() {
 fn loader_invalid_syntax() {
     let dir = temp_dir("syntax");
     let file_path = dir.join("bad.mimi");
-    fs::write(&file_path, r#"
+    fs::write(
+        &file_path,
+        r#"
 func $$$ broken
-"#).expect("src/tests/loader.rs:49 unwrap failed");
+"#,
+    )
+    .expect("src/tests/loader.rs:49 unwrap failed");
 
     let mut loader = crate::loader::ModuleLoader::new(dir.clone());
     let result = loader.load_main(&file_path);
-    assert!(result.is_err(), "loading invalid syntax should fail: {:?}", result.ok());
+    assert!(
+        result.is_err(),
+        "loading invalid syntax should fail: {:?}",
+        result.ok()
+    );
     cleanup(&dir);
 }
 
@@ -59,12 +76,20 @@ fn loader_merge_all() {
     let dir = temp_dir("merge");
     let main_path = dir.join("main.mimi");
     let mod_path = dir.join("helper.mimi");
-    fs::write(&main_path, r#"
+    fs::write(
+        &main_path,
+        r#"
 func main() -> i32 { 42 }
-"#).expect("src/tests/loader.rs:64 unwrap failed");
-    fs::write(&mod_path, r#"
+"#,
+    )
+    .expect("src/tests/loader.rs:64 unwrap failed");
+    fs::write(
+        &mod_path,
+        r#"
 func helper() -> i32 { 99 }
-"#).expect("src/tests/loader.rs:67 unwrap failed");
+"#,
+    )
+    .expect("src/tests/loader.rs:67 unwrap failed");
 
     let mut loader = crate::loader::ModuleLoader::new(dir.clone());
     let _ = loader.load_main(&main_path);
@@ -78,15 +103,23 @@ func helper() -> i32 { 99 }
 fn loader_import_resolution_failure() {
     let dir = temp_dir("import_fail");
     let main_path = dir.join("main.mimi");
-    fs::write(&main_path, r#"
+    fs::write(
+        &main_path,
+        r#"
 use nonexistent;
 
 func main() -> i32 { 42 }
-"#).expect("src/tests/loader.rs:85 unwrap failed");
+"#,
+    )
+    .expect("src/tests/loader.rs:85 unwrap failed");
 
     let mut loader = crate::loader::ModuleLoader::new(dir.clone());
     let result = loader.load_main(&main_path);
-    assert!(result.is_err(), "import of nonexistent module should fail: {:?}", result.ok());
+    assert!(
+        result.is_err(),
+        "import of nonexistent module should fail: {:?}",
+        result.ok()
+    );
     cleanup(&dir);
 }
 
@@ -94,14 +127,24 @@ func main() -> i32 { 42 }
 fn loader_get_module() {
     let dir = temp_dir("getmod");
     let file_path = dir.join("mymod.mimi");
-    fs::write(&file_path, r#"
+    fs::write(
+        &file_path,
+        r#"
 func hello() -> i32 { 1 }
-"#).expect("src/tests/loader.rs:99 unwrap failed");
+"#,
+    )
+    .expect("src/tests/loader.rs:99 unwrap failed");
 
     let mut loader = crate::loader::ModuleLoader::new(dir.clone());
     let _ = loader.load_main(&file_path);
-    assert!(loader.get_module("mymod").is_some(), "should find loaded module");
-    assert!(loader.get_module("nope").is_none(), "nonexistent module returns None");
+    assert!(
+        loader.get_module("mymod").is_some(),
+        "should find loaded module"
+    );
+    assert!(
+        loader.get_module("nope").is_none(),
+        "nonexistent module returns None"
+    );
     cleanup(&dir);
 }
 
@@ -121,14 +164,21 @@ fn loader_empty_file() {
 fn loader_file_with_only_comments() {
     let dir = temp_dir("comments");
     let file_path = dir.join("comments.mimi");
-    fs::write(&file_path, r#"
+    fs::write(
+        &file_path,
+        r#"
 // This is a comment
 // Another comment
-"#).expect("src/tests/loader.rs:127 unwrap failed");
+"#,
+    )
+    .expect("src/tests/loader.rs:127 unwrap failed");
 
     let mut loader = crate::loader::ModuleLoader::new(dir.clone());
     let result = loader.load_main(&file_path);
-    assert!(result.is_ok(), "loading file with only comments should succeed");
+    assert!(
+        result.is_ok(),
+        "loading file with only comments should succeed"
+    );
     cleanup(&dir);
 }
 
@@ -137,16 +187,23 @@ fn loader_merge_with_empty() {
     let dir = temp_dir("merge_empty");
     let main_path = dir.join("main.mimi");
     let empty_path = dir.join("empty.mimi");
-    fs::write(&main_path, r#"
+    fs::write(
+        &main_path,
+        r#"
 func main() -> i32 { 42 }
-"#).expect("src/tests/loader.rs:142 unwrap failed");
+"#,
+    )
+    .expect("src/tests/loader.rs:142 unwrap failed");
     fs::write(&empty_path, r#""#).expect("src/tests/loader.rs:143 unwrap failed");
 
     let mut loader = crate::loader::ModuleLoader::new(dir.clone());
     let _ = loader.load_main(&main_path);
     let _ = loader.load_main(&empty_path);
     let merged = loader.merge_all().expect("merge_all should succeed");
-    assert!(merged.items.len() >= 1, "merge should include main function");
+    assert!(
+        merged.items.len() >= 1,
+        "merge should include main function"
+    );
     cleanup(&dir);
 }
 
@@ -155,16 +212,24 @@ fn loader_resolve_import() {
     let dir = temp_dir("resolve");
     let lib_path = dir.join("lib.mimi");
     let main_path = dir.join("main.mimi");
-    fs::write(&lib_path, r#"
+    fs::write(
+        &lib_path,
+        r#"
 pub func helper() -> i32 { 99 }
-"#).expect("src/tests/loader.rs:160 unwrap failed");
-    fs::write(&main_path, r#"
+"#,
+    )
+    .expect("src/tests/loader.rs:160 unwrap failed");
+    fs::write(
+        &main_path,
+        r#"
 use lib;
 
 func main() -> i32 {
     lib::helper()
 }
-"#).expect("src/tests/loader.rs:167 unwrap failed");
+"#,
+    )
+    .expect("src/tests/loader.rs:167 unwrap failed");
 
     let mut loader = crate::loader::ModuleLoader::new(dir.clone());
     let result = loader.load_main(&main_path);
@@ -178,10 +243,14 @@ func main() -> i32 {
 fn loader_duplicate_key_no_panic() {
     let dir = temp_dir("dup");
     let path = dir.join("a.mimi");
-    fs::write(&path, r#"
+    fs::write(
+        &path,
+        r#"
 func f() -> i32 { 1 }
 func f() -> i32 { 2 }
-"#).expect("src/tests/loader.rs:184 unwrap failed");
+"#,
+    )
+    .expect("src/tests/loader.rs:184 unwrap failed");
 
     let mut loader = crate::loader::ModuleLoader::new(dir.clone());
     let result = loader.load_main(&path);
@@ -195,35 +264,55 @@ fn loader_selective_import_resolve() {
     let dir = temp_dir("selective");
     let strings_path = dir.join("strings.mimi");
     let main_path = dir.join("main.mimi");
-    fs::write(&strings_path, r#"
+    fs::write(
+        &strings_path,
+        r#"
 pub func replace_all(s: string, from: string, to: string) -> string {
     s // simplified
 }
 pub func contains(s: string, substr: string) -> bool {
     true
 }
-"#).expect("src/tests/loader.rs: write strings.mimi");
-    fs::write(&main_path, r#"
+"#,
+    )
+    .expect("src/tests/loader.rs: write strings.mimi");
+    fs::write(
+        &main_path,
+        r#"
 use strings::replace_all;
 
 func main() -> i32 {
     42
 }
-"#).expect("src/tests/loader.rs: write main.mimi");
+"#,
+    )
+    .expect("src/tests/loader.rs: write main.mimi");
 
     let mut loader = crate::loader::ModuleLoader::new(dir.clone());
     let result = loader.load_main(&main_path);
-    assert!(result.is_ok(), "selective import should resolve: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "selective import should resolve: {:?}",
+        result.err()
+    );
     let merged = loader.merge_all().expect("merge should succeed");
     // The merged file should contain replace_all (from strings.mimi)
-    let has_replace_all = merged.items.iter().any(|item| {
-        matches!(item, crate::ast::Item::Func(f) if f.name == "replace_all")
-    });
-    assert!(has_replace_all, "selective import should bring replace_all into scope");
+    let has_replace_all = merged
+        .items
+        .iter()
+        .any(|item| matches!(item, crate::ast::Item::Func(f) if f.name == "replace_all"));
+    assert!(
+        has_replace_all,
+        "selective import should bring replace_all into scope"
+    );
     // Also the import path should remain unchanged
-    let has_selective_import = merged.imports.iter().any(|imp| {
-        imp.path == vec!["strings", "replace_all"]
-    });
-    assert!(has_selective_import, "selective import path should be preserved");
+    let has_selective_import = merged
+        .imports
+        .iter()
+        .any(|imp| imp.path == vec!["strings", "replace_all"]);
+    assert!(
+        has_selective_import,
+        "selective import path should be preserved"
+    );
     cleanup(&dir);
 }

@@ -6,9 +6,9 @@
 //!
 //! Run: `cargo test fuzz::target_ffi_contract -- --nocapture --include-ignored`
 
+use crate::{core, interp, lexer, parser};
 use proptest::prelude::*;
 use proptest::strategy::ValueTree;
-use crate::{core, interp, lexer, parser};
 
 /// Generate a simple extern declaration + a call to it.
 /// The extern function takes a single i32 and returns i32.
@@ -26,7 +26,11 @@ fn arb_extern_call() -> impl Strategy<Value = String> {
         Just(""),
     ];
     ((func_name, cond_type), (1i64..100i64)).prop_map(|((name, cond), arg)| {
-        let cond_line = if cond.is_empty() { String::new() } else { format!("\n    {}", cond) };
+        let cond_line = if cond.is_empty() {
+            String::new()
+        } else {
+            format!("\n    {}", cond)
+        };
         format!(
             r#"extern "C" {{
     func {}(x: i32) -> i32 {}{};
@@ -43,21 +47,36 @@ func main() -> i32 {{
 
 /// Run a program through the interpreter's FFI contract verification path.
 fn interp_ffi_verify(src: &str) -> Result<String, String> {
-    let tokens = lexer::Lexer::new(src).tokenize().map_err(|e| e.to_string())?;
-    let file = parser::Parser::new(tokens).parse_file().map_err(|e| e.message.clone())?;
+    let tokens = lexer::Lexer::new(src)
+        .tokenize()
+        .map_err(|e| e.to_string())?;
+    let file = parser::Parser::new(tokens)
+        .parse_file()
+        .map_err(|e| e.message.clone())?;
     let mut interp = interp::Interpreter::new(&file);
     interp.verify_ffi = true;
     interp.verify_contracts = true;
     // Use no_fork because FFI returns pointers incompatible with fork isolation
-    interp.run().map(|v| format!("{}", v)).map_err(|e| e.message().to_string())
+    interp
+        .run()
+        .map(|v| format!("{}", v))
+        .map_err(|e| e.message().to_string())
 }
 
 /// Run the type checker (which also validates contract syntax).
 fn typecheck_ffi(src: &str) -> Result<(), String> {
-    let tokens = lexer::Lexer::new(src).tokenize().map_err(|e| e.to_string())?;
-    let file = parser::Parser::new(tokens).parse_file().map_err(|e| e.message.clone())?;
+    let tokens = lexer::Lexer::new(src)
+        .tokenize()
+        .map_err(|e| e.to_string())?;
+    let file = parser::Parser::new(tokens)
+        .parse_file()
+        .map_err(|e| e.message.clone())?;
     core::check(&file).map_err(|diags| {
-        diags.iter().map(|d| d.message.clone()).collect::<Vec<_>>().join("; ")
+        diags
+            .iter()
+            .map(|d| d.message.clone())
+            .collect::<Vec<_>>()
+            .join("; ")
     })
 }
 
@@ -117,9 +136,12 @@ mod tests {
 
     #[test]
     fn ffi_contract_generator_smoke() {
-        let mut runner = proptest::test_runner::TestRunner::new(proptest::test_runner::Config::default());
+        let mut runner =
+            proptest::test_runner::TestRunner::new(proptest::test_runner::Config::default());
         for _ in 0..20 {
-            let tree = arb_extern_call().new_tree(&mut runner).expect("generator failed");
+            let tree = arb_extern_call()
+                .new_tree(&mut runner)
+                .expect("generator failed");
             let src = tree.current();
             let tokens = lexer::Lexer::new(&src).tokenize();
             assert!(tokens.is_ok(), "Failed to lex: {}", &src);

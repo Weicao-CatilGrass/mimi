@@ -161,7 +161,11 @@ impl Parser {
                 let elif = self.parse_if_expr()?;
                 Some(vec![Stmt::Expr(elif)])
             } else {
-                return Err(ParseError::new("`{` or `if` expected after `else`", self.peek().line, self.peek().col));
+                return Err(ParseError::new(
+                    "`{` or `if` expected after `else`",
+                    self.peek().line,
+                    self.peek().col,
+                ));
             }
         } else {
             None
@@ -190,7 +194,8 @@ impl Parser {
                     i64::from_str_radix(&cleaned[2..], 8)
                         .map_err(|_| ParseError::new("invalid octal integer", line, col))?
                 } else {
-                    cleaned.parse::<i64>()
+                    cleaned
+                        .parse::<i64>()
                         .map_err(|_| ParseError::new("invalid integer", line, col))?
                 };
                 return self.parse_postfix(Expr::Literal(Lit::Int(v)));
@@ -373,18 +378,19 @@ impl Parser {
                 self.advance();
                 let args = self.parse_args()?;
                 self.expect(TokenKind::RParen, "`)`")?;
-                    expr = expr.call(args);
-                } else if self.at(&TokenKind::Dot) {
+                expr = expr.call(args);
+            } else if self.at(&TokenKind::Dot) {
+                self.advance();
+                // Check for numeric tuple index: t.0, t.1, etc.
+                if let TokenKind::Int(s) = &self.peek().kind {
+                    let idx = s.replace('_', "").parse::<usize>().map_err(|_| {
+                        ParseError::new("invalid tuple index", self.peek().line, self.peek().col)
+                    })?;
                     self.advance();
-                    // Check for numeric tuple index: t.0, t.1, etc.
-                    if let TokenKind::Int(s) = &self.peek().kind {
-                        let idx = s.replace('_', "").parse::<usize>()
-                            .map_err(|_| ParseError::new("invalid tuple index", self.peek().line, self.peek().col))?;
-                        self.advance();
-                        expr = expr.tuple_index(idx);
-                    } else {
-                        let field = self.expect_ident()?;
-                        expr = expr.field(field);
+                    expr = expr.tuple_index(idx);
+                } else {
+                    let field = self.expect_ident()?;
+                    expr = expr.field(field);
                 }
             } else if self.at(&TokenKind::LBracket) {
                 expr = self.parse_slice_or_index(expr)?;
@@ -485,7 +491,10 @@ impl Parser {
                 fields.push(RecordFieldExpr { name, value });
             } else {
                 // Shorthand: field_name instead of field_name: field_name
-                fields.push(RecordFieldExpr { name: name.clone(), value: Expr::Ident(name) });
+                fields.push(RecordFieldExpr {
+                    name: name.clone(),
+                    value: Expr::Ident(name),
+                });
             }
             self.skip_newlines();
             if self.at(&TokenKind::Comma) {
@@ -578,8 +587,9 @@ impl Parser {
             } else if self.at(&TokenKind::Dot) {
                 self.advance();
                 if let TokenKind::Int(s) = &self.peek().kind {
-                    let idx = s.replace('_', "").parse::<usize>()
-                        .map_err(|_| ParseError::new("invalid tuple index", self.peek().line, self.peek().col))?;
+                    let idx = s.replace('_', "").parse::<usize>().map_err(|_| {
+                        ParseError::new("invalid tuple index", self.peek().line, self.peek().col)
+                    })?;
                     self.advance();
                     e = e.tuple_index(idx);
                 } else {
@@ -603,7 +613,12 @@ impl Parser {
                 e = self.parse_slice_or_index(e)?;
             } else if self.at(&TokenKind::LBrace) {
                 if let Expr::Ident(ty_name) = &e {
-                    if ty_name.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
+                    if ty_name
+                        .chars()
+                        .next()
+                        .map(|c| c.is_uppercase())
+                        .unwrap_or(false)
+                    {
                         let ty_name = ty_name.clone();
                         self.advance();
                         let fields = self.parse_record_expr_fields()?;
@@ -686,7 +701,11 @@ impl Parser {
         // Try to parse a single expression
         let first_key = match self.parse_expr(0) {
             Ok(key) => key,
-            Err(_) => { self.pos = saved; self.recursion_depth.set(saved_depth); return None; }
+            Err(_) => {
+                self.pos = saved;
+                self.recursion_depth.set(saved_depth);
+                return None;
+            }
         };
         // The colon after the first expression distinguishes map literal from block
         if !self.at(&TokenKind::Colon) {
@@ -697,7 +716,11 @@ impl Parser {
         self.advance(); // consume ':'
         let first_val = match self.parse_expr(0) {
             Ok(val) => val,
-            Err(_) => { self.pos = saved; self.recursion_depth.set(saved_depth); return None; }
+            Err(_) => {
+                self.pos = saved;
+                self.recursion_depth.set(saved_depth);
+                return None;
+            }
         };
         let mut entries = vec![(first_key, first_val)];
         // Parse remaining entries
@@ -711,7 +734,11 @@ impl Parser {
                 }
                 let key = match self.parse_expr(0) {
                     Ok(k) => k,
-                    Err(_) => { self.pos = saved; self.recursion_depth.set(saved_depth); return None; }
+                    Err(_) => {
+                        self.pos = saved;
+                        self.recursion_depth.set(saved_depth);
+                        return None;
+                    }
                 };
                 if !self.at(&TokenKind::Colon) {
                     self.pos = saved;
@@ -721,7 +748,11 @@ impl Parser {
                 self.advance();
                 let val = match self.parse_expr(0) {
                     Ok(v) => v,
-                    Err(_) => { self.pos = saved; self.recursion_depth.set(saved_depth); return None; }
+                    Err(_) => {
+                        self.pos = saved;
+                        self.recursion_depth.set(saved_depth);
+                        return None;
+                    }
                 };
                 entries.push((key, val));
             } else if self.at(&TokenKind::RBrace) {
@@ -750,7 +781,11 @@ impl Parser {
         // Parse first expression
         let first_elem = match self.parse_expr(0) {
             Ok(e) => e,
-            Err(_) => { self.pos = saved; self.recursion_depth.set(saved_depth); return None; }
+            Err(_) => {
+                self.pos = saved;
+                self.recursion_depth.set(saved_depth);
+                return None;
+            }
         };
         // Must have a comma to be a set literal (single expr is block)
         if !self.at(&TokenKind::Comma) {
@@ -768,7 +803,11 @@ impl Parser {
             }
             match self.parse_expr(0) {
                 Ok(e) => elems.push(e),
-                Err(_) => { self.pos = saved; self.recursion_depth.set(saved_depth); return None; }
+                Err(_) => {
+                    self.pos = saved;
+                    self.recursion_depth.set(saved_depth);
+                    return None;
+                }
             }
             self.skip_newlines();
             if self.at(&TokenKind::Comma) {
@@ -813,15 +852,32 @@ impl Parser {
 
 /// Returns true if the token kind starts a statement (and therefore parsing as block).
 fn is_stmt_start_keyword(kind: &TokenKind) -> bool {
-    matches!(kind,
-        TokenKind::Let | TokenKind::If | TokenKind::While | TokenKind::For |
-        TokenKind::Return | TokenKind::Break | TokenKind::Continue |
-        TokenKind::Match | TokenKind::Arena | TokenKind::Unsafe |
-        TokenKind::Spawn | TokenKind::Await | TokenKind::Alloc |
-        TokenKind::Drop | TokenKind::Steps | TokenKind::Parasteps |
-        TokenKind::Failure | TokenKind::Requires | TokenKind::Ensures |
-        TokenKind::Math | TokenKind::Invariant | TokenKind::Desc | TokenKind::Rule |
-        TokenKind::Loop
+    matches!(
+        kind,
+        TokenKind::Let
+            | TokenKind::If
+            | TokenKind::While
+            | TokenKind::For
+            | TokenKind::Return
+            | TokenKind::Break
+            | TokenKind::Continue
+            | TokenKind::Match
+            | TokenKind::Arena
+            | TokenKind::Unsafe
+            | TokenKind::Spawn
+            | TokenKind::Await
+            | TokenKind::Alloc
+            | TokenKind::Drop
+            | TokenKind::Steps
+            | TokenKind::Parasteps
+            | TokenKind::Failure
+            | TokenKind::Requires
+            | TokenKind::Ensures
+            | TokenKind::Math
+            | TokenKind::Invariant
+            | TokenKind::Desc
+            | TokenKind::Rule
+            | TokenKind::Loop
     )
 }
 

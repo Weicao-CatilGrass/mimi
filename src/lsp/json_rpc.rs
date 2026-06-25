@@ -7,7 +7,10 @@ use serde_json::Value;
 use crate::lsp::MAX_CONTENT_LENGTH;
 
 /// Read a single JSON-RPC message from the given reader.
-pub(crate) fn read_message<R: BufRead>(reader: &mut R, header: &mut String) -> io::Result<Option<Value>> {
+pub(crate) fn read_message<R: BufRead>(
+    reader: &mut R,
+    header: &mut String,
+) -> io::Result<Option<Value>> {
     loop {
         header.clear();
         if reader.read_line(header)? == 0 || header.is_empty() {
@@ -30,7 +33,8 @@ pub(crate) fn read_message<R: BufRead>(reader: &mut R, header: &mut String) -> i
 
     let mut body = vec![0u8; len];
     reader.read_exact(&mut body)?;
-    let text = String::from_utf8(body).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+    let text =
+        String::from_utf8(body).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
     serde_json::from_str(&text)
         .map(Some)
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))

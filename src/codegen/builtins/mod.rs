@@ -1,11 +1,11 @@
 pub mod io;
-pub mod string;
-pub mod math;
-pub mod time_env;
 pub mod json;
 pub mod list;
 pub mod map;
+pub mod math;
 pub mod network;
+pub mod string;
+pub mod time_env;
 
 use inkwell::context::Context;
 use inkwell::module::Module;
@@ -18,526 +18,828 @@ pub fn register_runtime<'ctx>(module: &Module<'ctx>, ctx: &'ctx Context) {
     let i64 = ctx.i64_type();
     let void = ctx.void_type();
 
-    module.add_function("printf",
+    module.add_function(
+        "printf",
         i32.fn_type(&[BasicMetadataTypeEnum::PointerType(i8_ptr)], true),
-        Some(inkwell::module::Linkage::External));
+        Some(inkwell::module::Linkage::External),
+    );
 
-    module.add_function("puts",
+    module.add_function(
+        "puts",
         i32.fn_type(&[BasicMetadataTypeEnum::PointerType(i8_ptr)], false),
-        Some(inkwell::module::Linkage::External));
+        Some(inkwell::module::Linkage::External),
+    );
 
-    module.add_function("malloc",
+    module.add_function(
+        "malloc",
         i8_ptr.fn_type(&[BasicMetadataTypeEnum::IntType(i64)], false),
-        Some(inkwell::module::Linkage::External));
+        Some(inkwell::module::Linkage::External),
+    );
 
-    module.add_function("free",
+    module.add_function(
+        "free",
         void.fn_type(&[BasicMetadataTypeEnum::PointerType(i8_ptr)], false),
-        Some(inkwell::module::Linkage::External));
+        Some(inkwell::module::Linkage::External),
+    );
 
-    module.add_function("strlen",
+    module.add_function(
+        "strlen",
         i64.fn_type(&[BasicMetadataTypeEnum::PointerType(i8_ptr)], false),
-        Some(inkwell::module::Linkage::External));
+        Some(inkwell::module::Linkage::External),
+    );
 
-    module.add_function("strcmp",
-        i32.fn_type(&[
-            BasicMetadataTypeEnum::PointerType(i8_ptr),
-            BasicMetadataTypeEnum::PointerType(i8_ptr),
-        ], false),
-        Some(inkwell::module::Linkage::External));
+    module.add_function(
+        "strcmp",
+        i32.fn_type(
+            &[
+                BasicMetadataTypeEnum::PointerType(i8_ptr),
+                BasicMetadataTypeEnum::PointerType(i8_ptr),
+            ],
+            false,
+        ),
+        Some(inkwell::module::Linkage::External),
+    );
 
-    module.add_function("strcpy",
-        i8_ptr.fn_type(&[
-            BasicMetadataTypeEnum::PointerType(i8_ptr),
-            BasicMetadataTypeEnum::PointerType(i8_ptr),
-        ], false),
-        Some(inkwell::module::Linkage::External));
+    module.add_function(
+        "strcpy",
+        i8_ptr.fn_type(
+            &[
+                BasicMetadataTypeEnum::PointerType(i8_ptr),
+                BasicMetadataTypeEnum::PointerType(i8_ptr),
+            ],
+            false,
+        ),
+        Some(inkwell::module::Linkage::External),
+    );
 
-    module.add_function("strcat",
-        i8_ptr.fn_type(&[
-            BasicMetadataTypeEnum::PointerType(i8_ptr),
-            BasicMetadataTypeEnum::PointerType(i8_ptr),
-        ], false),
-        Some(inkwell::module::Linkage::External));
+    module.add_function(
+        "strcat",
+        i8_ptr.fn_type(
+            &[
+                BasicMetadataTypeEnum::PointerType(i8_ptr),
+                BasicMetadataTypeEnum::PointerType(i8_ptr),
+            ],
+            false,
+        ),
+        Some(inkwell::module::Linkage::External),
+    );
 
-    module.add_function("memcpy",
-        i8_ptr.fn_type(&[
-            BasicMetadataTypeEnum::PointerType(i8_ptr),
-            BasicMetadataTypeEnum::PointerType(i8_ptr),
-            BasicMetadataTypeEnum::IntType(i64),
-        ], false),
-        Some(inkwell::module::Linkage::External));
+    module.add_function(
+        "memcpy",
+        i8_ptr.fn_type(
+            &[
+                BasicMetadataTypeEnum::PointerType(i8_ptr),
+                BasicMetadataTypeEnum::PointerType(i8_ptr),
+                BasicMetadataTypeEnum::IntType(i64),
+            ],
+            false,
+        ),
+        Some(inkwell::module::Linkage::External),
+    );
 
-    module.add_function("realloc",
-        i8_ptr.fn_type(&[
-            BasicMetadataTypeEnum::PointerType(i8_ptr),
-            BasicMetadataTypeEnum::IntType(i64),
-        ], false),
-        Some(inkwell::module::Linkage::External));
+    module.add_function(
+        "realloc",
+        i8_ptr.fn_type(
+            &[
+                BasicMetadataTypeEnum::PointerType(i8_ptr),
+                BasicMetadataTypeEnum::IntType(i64),
+            ],
+            false,
+        ),
+        Some(inkwell::module::Linkage::External),
+    );
 
-    module.add_function("fprintf",
-        i32.fn_type(&[
-            BasicMetadataTypeEnum::PointerType(i8_ptr),
-            BasicMetadataTypeEnum::PointerType(i8_ptr),
-        ], true),
-        Some(inkwell::module::Linkage::External));
+    module.add_function(
+        "fprintf",
+        i32.fn_type(
+            &[
+                BasicMetadataTypeEnum::PointerType(i8_ptr),
+                BasicMetadataTypeEnum::PointerType(i8_ptr),
+            ],
+            true,
+        ),
+        Some(inkwell::module::Linkage::External),
+    );
 
-    module.add_function("sprintf",
-        i64.fn_type(&[
-            BasicMetadataTypeEnum::PointerType(i8_ptr),
-            BasicMetadataTypeEnum::PointerType(i8_ptr),
-        ], true),
-        Some(inkwell::module::Linkage::External));
+    module.add_function(
+        "sprintf",
+        i64.fn_type(
+            &[
+                BasicMetadataTypeEnum::PointerType(i8_ptr),
+                BasicMetadataTypeEnum::PointerType(i8_ptr),
+            ],
+            true,
+        ),
+        Some(inkwell::module::Linkage::External),
+    );
 
-    module.add_function("exit",
+    module.add_function(
+        "exit",
         void.fn_type(&[BasicMetadataTypeEnum::IntType(i32)], false),
-        Some(inkwell::module::Linkage::External));
+        Some(inkwell::module::Linkage::External),
+    );
 
     // Future-based spawn/await (replaces old pthread_create/join)
 
     // Map/Record runtime functions
     // MapHandle = i64 (pointer cast)
-    module.add_function("mimi_map_new",
+    module.add_function(
+        "mimi_map_new",
         i64.fn_type(&[], false),
-        Some(inkwell::module::Linkage::External));
-    module.add_function("mimi_map_destroy",
+        Some(inkwell::module::Linkage::External),
+    );
+    module.add_function(
+        "mimi_map_destroy",
         void.fn_type(&[BasicMetadataTypeEnum::IntType(i64)], false),
-        Some(inkwell::module::Linkage::External));
-    module.add_function("mimi_map_size",
+        Some(inkwell::module::Linkage::External),
+    );
+    module.add_function(
+        "mimi_map_size",
         i64.fn_type(&[BasicMetadataTypeEnum::IntType(i64)], false),
-        Some(inkwell::module::Linkage::External));
-    module.add_function("mimi_map_has_key",
-        i32.fn_type(&[
-            BasicMetadataTypeEnum::IntType(i64),
-            BasicMetadataTypeEnum::PointerType(i8_ptr),
-        ], false),
-        Some(inkwell::module::Linkage::External));
-    module.add_function("mimi_map_get",
-        i64.fn_type(&[
-            BasicMetadataTypeEnum::IntType(i64),
-            BasicMetadataTypeEnum::PointerType(i8_ptr),
-        ], false),
-        Some(inkwell::module::Linkage::External));
-    module.add_function("mimi_map_set",
-        void.fn_type(&[
-            BasicMetadataTypeEnum::IntType(i64),
-            BasicMetadataTypeEnum::PointerType(i8_ptr),
-            BasicMetadataTypeEnum::IntType(i64),
-        ], false),
-        Some(inkwell::module::Linkage::External));
-    module.add_function("mimi_map_remove",
-        i32.fn_type(&[
-            BasicMetadataTypeEnum::IntType(i64),
-            BasicMetadataTypeEnum::PointerType(i8_ptr),
-        ], false),
-        Some(inkwell::module::Linkage::External));
-    module.add_function("mimi_map_from_list",
-        i64.fn_type(&[
-            BasicMetadataTypeEnum::PointerType(ctx.ptr_type(AddressSpace::default())),
-            BasicMetadataTypeEnum::PointerType(ctx.ptr_type(AddressSpace::default())),
-            BasicMetadataTypeEnum::IntType(i64),
-        ], false),
-        Some(inkwell::module::Linkage::External));
+        Some(inkwell::module::Linkage::External),
+    );
+    module.add_function(
+        "mimi_map_has_key",
+        i32.fn_type(
+            &[
+                BasicMetadataTypeEnum::IntType(i64),
+                BasicMetadataTypeEnum::PointerType(i8_ptr),
+            ],
+            false,
+        ),
+        Some(inkwell::module::Linkage::External),
+    );
+    module.add_function(
+        "mimi_map_get",
+        i64.fn_type(
+            &[
+                BasicMetadataTypeEnum::IntType(i64),
+                BasicMetadataTypeEnum::PointerType(i8_ptr),
+            ],
+            false,
+        ),
+        Some(inkwell::module::Linkage::External),
+    );
+    module.add_function(
+        "mimi_map_set",
+        void.fn_type(
+            &[
+                BasicMetadataTypeEnum::IntType(i64),
+                BasicMetadataTypeEnum::PointerType(i8_ptr),
+                BasicMetadataTypeEnum::IntType(i64),
+            ],
+            false,
+        ),
+        Some(inkwell::module::Linkage::External),
+    );
+    module.add_function(
+        "mimi_map_remove",
+        i32.fn_type(
+            &[
+                BasicMetadataTypeEnum::IntType(i64),
+                BasicMetadataTypeEnum::PointerType(i8_ptr),
+            ],
+            false,
+        ),
+        Some(inkwell::module::Linkage::External),
+    );
+    module.add_function(
+        "mimi_map_from_list",
+        i64.fn_type(
+            &[
+                BasicMetadataTypeEnum::PointerType(ctx.ptr_type(AddressSpace::default())),
+                BasicMetadataTypeEnum::PointerType(ctx.ptr_type(AddressSpace::default())),
+                BasicMetadataTypeEnum::IntType(i64),
+            ],
+            false,
+        ),
+        Some(inkwell::module::Linkage::External),
+    );
     // mimi_map_keys(handle) → MimiList* (i8*)
-    module.add_function("mimi_map_keys",
+    module.add_function(
+        "mimi_map_keys",
         i8_ptr.fn_type(&[BasicMetadataTypeEnum::IntType(i64)], false),
-        Some(inkwell::module::Linkage::External));
+        Some(inkwell::module::Linkage::External),
+    );
     // mimi_map_values(handle) → MimiList* (i8*)
-    module.add_function("mimi_map_values",
+    module.add_function(
+        "mimi_map_values",
         i8_ptr.fn_type(&[BasicMetadataTypeEnum::IntType(i64)], false),
-        Some(inkwell::module::Linkage::External));
-    module.add_function("mimi_value_type_name",
+        Some(inkwell::module::Linkage::External),
+    );
+    module.add_function(
+        "mimi_value_type_name",
         i8_ptr.fn_type(&[BasicMetadataTypeEnum::IntType(i64)], false),
-        Some(inkwell::module::Linkage::External));
+        Some(inkwell::module::Linkage::External),
+    );
 
     // String runtime functions
     // MimiList* = i8* (opaque pointer to {i64, i8**} struct)
     // str_split(s, delim) → MimiList*
-    module.add_function("mimi_str_split",
-        i8_ptr.fn_type(&[
-            BasicMetadataTypeEnum::PointerType(i8_ptr),
-            BasicMetadataTypeEnum::PointerType(i8_ptr),
-        ], false),
-        Some(inkwell::module::Linkage::External));
+    module.add_function(
+        "mimi_str_split",
+        i8_ptr.fn_type(
+            &[
+                BasicMetadataTypeEnum::PointerType(i8_ptr),
+                BasicMetadataTypeEnum::PointerType(i8_ptr),
+            ],
+            false,
+        ),
+        Some(inkwell::module::Linkage::External),
+    );
     // str_join(list*, sep) → i8* (heap-allocated string)
-    module.add_function("mimi_str_join",
-        i8_ptr.fn_type(&[
-            BasicMetadataTypeEnum::PointerType(i8_ptr),
-            BasicMetadataTypeEnum::PointerType(i8_ptr),
-        ], false),
-        Some(inkwell::module::Linkage::External));
+    module.add_function(
+        "mimi_str_join",
+        i8_ptr.fn_type(
+            &[
+                BasicMetadataTypeEnum::PointerType(i8_ptr),
+                BasicMetadataTypeEnum::PointerType(i8_ptr),
+            ],
+            false,
+        ),
+        Some(inkwell::module::Linkage::External),
+    );
     // mimi_str_concat(a, b) → i8* (heap-allocated string)
-    module.add_function("mimi_str_concat",
-        i8_ptr.fn_type(&[
-            BasicMetadataTypeEnum::PointerType(i8_ptr),
-            BasicMetadataTypeEnum::PointerType(i8_ptr),
-        ], false),
-        Some(inkwell::module::Linkage::External));
+    module.add_function(
+        "mimi_str_concat",
+        i8_ptr.fn_type(
+            &[
+                BasicMetadataTypeEnum::PointerType(i8_ptr),
+                BasicMetadataTypeEnum::PointerType(i8_ptr),
+            ],
+            false,
+        ),
+        Some(inkwell::module::Linkage::External),
+    );
     // str_replace(s, from, to) → i8* (heap-allocated string)
-    module.add_function("mimi_str_replace",
-        i8_ptr.fn_type(&[
-            BasicMetadataTypeEnum::PointerType(i8_ptr),
-            BasicMetadataTypeEnum::PointerType(i8_ptr),
-            BasicMetadataTypeEnum::PointerType(i8_ptr),
-        ], false),
-        Some(inkwell::module::Linkage::External));
+    module.add_function(
+        "mimi_str_replace",
+        i8_ptr.fn_type(
+            &[
+                BasicMetadataTypeEnum::PointerType(i8_ptr),
+                BasicMetadataTypeEnum::PointerType(i8_ptr),
+                BasicMetadataTypeEnum::PointerType(i8_ptr),
+            ],
+            false,
+        ),
+        Some(inkwell::module::Linkage::External),
+    );
 
     // Regex functions
     // mimi_regex_match(text, pattern) -> int (0 or 1)
-    module.add_function("mimi_regex_match",
-        i32.fn_type(&[
-            BasicMetadataTypeEnum::PointerType(i8_ptr),
-            BasicMetadataTypeEnum::PointerType(i8_ptr),
-        ], false),
-        Some(inkwell::module::Linkage::External));
+    module.add_function(
+        "mimi_regex_match",
+        i32.fn_type(
+            &[
+                BasicMetadataTypeEnum::PointerType(i8_ptr),
+                BasicMetadataTypeEnum::PointerType(i8_ptr),
+            ],
+            false,
+        ),
+        Some(inkwell::module::Linkage::External),
+    );
     // mimi_regex_find(text, pattern) -> i8* (malloc'd match, empty on no match)
-    module.add_function("mimi_regex_find",
-        i8_ptr.fn_type(&[
-            BasicMetadataTypeEnum::PointerType(i8_ptr),
-            BasicMetadataTypeEnum::PointerType(i8_ptr),
-        ], false),
-        Some(inkwell::module::Linkage::External));
+    module.add_function(
+        "mimi_regex_find",
+        i8_ptr.fn_type(
+            &[
+                BasicMetadataTypeEnum::PointerType(i8_ptr),
+                BasicMetadataTypeEnum::PointerType(i8_ptr),
+            ],
+            false,
+        ),
+        Some(inkwell::module::Linkage::External),
+    );
     // mimi_regex_replace(text, pattern, replacement) -> i8* (malloc'd result)
-    module.add_function("mimi_regex_replace",
-        i8_ptr.fn_type(&[
-            BasicMetadataTypeEnum::PointerType(i8_ptr),
-            BasicMetadataTypeEnum::PointerType(i8_ptr),
-            BasicMetadataTypeEnum::PointerType(i8_ptr),
-        ], false),
-        Some(inkwell::module::Linkage::External));
+    module.add_function(
+        "mimi_regex_replace",
+        i8_ptr.fn_type(
+            &[
+                BasicMetadataTypeEnum::PointerType(i8_ptr),
+                BasicMetadataTypeEnum::PointerType(i8_ptr),
+                BasicMetadataTypeEnum::PointerType(i8_ptr),
+            ],
+            false,
+        ),
+        Some(inkwell::module::Linkage::External),
+    );
 
     // mimi_try_exit(payload): print error and exit(1) for ? operator
-    module.add_function("mimi_try_exit",
+    module.add_function(
+        "mimi_try_exit",
         void.fn_type(&[BasicMetadataTypeEnum::IntType(i64)], false),
-        Some(inkwell::module::Linkage::External));
+        Some(inkwell::module::Linkage::External),
+    );
 
     // mimi_try_exit_str(str, len): print string error and exit(1) for ? operator
     // Used when the error type is Result<T, string> to display the actual message.
-    module.add_function("mimi_try_exit_str",
-        void.fn_type(&[
-            BasicMetadataTypeEnum::PointerType(i8_ptr),
-            BasicMetadataTypeEnum::IntType(i64),
-        ], false),
-        Some(inkwell::module::Linkage::External));
+    module.add_function(
+        "mimi_try_exit_str",
+        void.fn_type(
+            &[
+                BasicMetadataTypeEnum::PointerType(i8_ptr),
+                BasicMetadataTypeEnum::IntType(i64),
+            ],
+            false,
+        ),
+        Some(inkwell::module::Linkage::External),
+    );
 
     // FFI runtime functions (defined in Rust ffi/runtime.rs)
     // mimi_shared_retain(handle) -> handle
-    module.add_function("mimi_shared_retain",
+    module.add_function(
+        "mimi_shared_retain",
         i64.fn_type(&[BasicMetadataTypeEnum::IntType(i64)], false),
-        Some(inkwell::module::Linkage::External));
+        Some(inkwell::module::Linkage::External),
+    );
     // mimi_shared_release(handle)
-    module.add_function("mimi_shared_release",
+    module.add_function(
+        "mimi_shared_release",
         void.fn_type(&[BasicMetadataTypeEnum::IntType(i64)], false),
-        Some(inkwell::module::Linkage::External));
+        Some(inkwell::module::Linkage::External),
+    );
     // G5: Refcounted heap allocation for shared values (defined in mimi_runtime.c)
     // mimi_rc_alloc(size: i64) -> i8*
-    module.add_function("mimi_rc_alloc",
+    module.add_function(
+        "mimi_rc_alloc",
         i8_ptr.fn_type(&[BasicMetadataTypeEnum::IntType(i64)], false),
-        Some(inkwell::module::Linkage::External));
+        Some(inkwell::module::Linkage::External),
+    );
     // mimi_rc_retain(ptr: i8*)
-    module.add_function("mimi_rc_retain",
+    module.add_function(
+        "mimi_rc_retain",
         void.fn_type(&[BasicMetadataTypeEnum::PointerType(i8_ptr)], false),
-        Some(inkwell::module::Linkage::External));
+        Some(inkwell::module::Linkage::External),
+    );
     // mimi_rc_release(ptr: i8*)
-    module.add_function("mimi_rc_release",
+    module.add_function(
+        "mimi_rc_release",
         void.fn_type(&[BasicMetadataTypeEnum::PointerType(i8_ptr)], false),
-        Some(inkwell::module::Linkage::External));
+        Some(inkwell::module::Linkage::External),
+    );
     // mimi_rc_weak_retain(ptr: i8*)
-    module.add_function("mimi_rc_weak_retain",
+    module.add_function(
+        "mimi_rc_weak_retain",
         void.fn_type(&[BasicMetadataTypeEnum::PointerType(i8_ptr)], false),
-        Some(inkwell::module::Linkage::External));
+        Some(inkwell::module::Linkage::External),
+    );
     // mimi_rc_weak_release(ptr: i8*)
-    module.add_function("mimi_rc_weak_release",
+    module.add_function(
+        "mimi_rc_weak_release",
         void.fn_type(&[BasicMetadataTypeEnum::PointerType(i8_ptr)], false),
-        Some(inkwell::module::Linkage::External));
+        Some(inkwell::module::Linkage::External),
+    );
     // mimi_rc_upgrade(ptr: i8*) -> i8*
-    module.add_function("mimi_rc_upgrade",
+    module.add_function(
+        "mimi_rc_upgrade",
         i8_ptr.fn_type(&[BasicMetadataTypeEnum::PointerType(i8_ptr)], false),
-        Some(inkwell::module::Linkage::External));
+        Some(inkwell::module::Linkage::External),
+    );
     // mimi_cap_check(cap, name) -> bool
-    module.add_function("mimi_cap_check",
-        i32.fn_type(&[
-            BasicMetadataTypeEnum::IntType(i64),
-            BasicMetadataTypeEnum::PointerType(i8_ptr),
-        ], false),
-        Some(inkwell::module::Linkage::External));
+    module.add_function(
+        "mimi_cap_check",
+        i32.fn_type(
+            &[
+                BasicMetadataTypeEnum::IntType(i64),
+                BasicMetadataTypeEnum::PointerType(i8_ptr),
+            ],
+            false,
+        ),
+        Some(inkwell::module::Linkage::External),
+    );
     // mimi_cap_register(name) -> cap_id
-    module.add_function("mimi_cap_register",
-        i64.fn_type(&[
-            BasicMetadataTypeEnum::PointerType(i8_ptr),
-        ], false),
-        Some(inkwell::module::Linkage::External));
+    module.add_function(
+        "mimi_cap_register",
+        i64.fn_type(&[BasicMetadataTypeEnum::PointerType(i8_ptr)], false),
+        Some(inkwell::module::Linkage::External),
+    );
     // mimi_cap_consume(cap, name) -> bool
-    module.add_function("mimi_cap_consume",
-        i32.fn_type(&[
-            BasicMetadataTypeEnum::IntType(i64),
-            BasicMetadataTypeEnum::PointerType(i8_ptr),
-        ], false),
-        Some(inkwell::module::Linkage::External));
+    module.add_function(
+        "mimi_cap_consume",
+        i32.fn_type(
+            &[
+                BasicMetadataTypeEnum::IntType(i64),
+                BasicMetadataTypeEnum::PointerType(i8_ptr),
+            ],
+            false,
+        ),
+        Some(inkwell::module::Linkage::External),
+    );
 
     // F7: Tuple FFI serialization — serialize heterogeneous tuple to JSON string.
     // mimi_tuple_serialize(values: *const i64, count: i64, elem_types: *const i64) -> i8*
-    module.add_function("mimi_tuple_serialize",
-        i8_ptr.fn_type(&[
-            BasicMetadataTypeEnum::PointerType(ctx.ptr_type(AddressSpace::default())),
-            BasicMetadataTypeEnum::IntType(i64),
-            BasicMetadataTypeEnum::PointerType(ctx.ptr_type(AddressSpace::default())),
-        ], false),
-        Some(inkwell::module::Linkage::External));
+    module.add_function(
+        "mimi_tuple_serialize",
+        i8_ptr.fn_type(
+            &[
+                BasicMetadataTypeEnum::PointerType(ctx.ptr_type(AddressSpace::default())),
+                BasicMetadataTypeEnum::IntType(i64),
+                BasicMetadataTypeEnum::PointerType(ctx.ptr_type(AddressSpace::default())),
+            ],
+            false,
+        ),
+        Some(inkwell::module::Linkage::External),
+    );
     // F7: Tuple FFI deserialization — parse JSON array back to i64 values.
     // mimi_tuple_deserialize(json: i8*, count: i64, elem_types: *const i64, out_values: *mut i64) -> i64
-    module.add_function("mimi_tuple_deserialize",
-        i64.fn_type(&[
-            BasicMetadataTypeEnum::PointerType(i8_ptr),
-            BasicMetadataTypeEnum::IntType(i64),
-            BasicMetadataTypeEnum::PointerType(ctx.ptr_type(AddressSpace::default())),
-            BasicMetadataTypeEnum::PointerType(ctx.ptr_type(AddressSpace::default())),
-        ], false),
-        Some(inkwell::module::Linkage::External));
+    module.add_function(
+        "mimi_tuple_deserialize",
+        i64.fn_type(
+            &[
+                BasicMetadataTypeEnum::PointerType(i8_ptr),
+                BasicMetadataTypeEnum::IntType(i64),
+                BasicMetadataTypeEnum::PointerType(ctx.ptr_type(AddressSpace::default())),
+                BasicMetadataTypeEnum::PointerType(ctx.ptr_type(AddressSpace::default())),
+            ],
+            false,
+        ),
+        Some(inkwell::module::Linkage::External),
+    );
 
     // Thread pool for parasteps (replaces raw pthread_create)
     // mimi_pool_submit(fn_ptr: i8*, arg: i8*) -> void
-    module.add_function("mimi_pool_submit",
-        void.fn_type(&[
-            BasicMetadataTypeEnum::PointerType(i8_ptr),  // fn_ptr
-            BasicMetadataTypeEnum::PointerType(i8_ptr),  // arg
-        ], false),
-        Some(inkwell::module::Linkage::External));
+    module.add_function(
+        "mimi_pool_submit",
+        void.fn_type(
+            &[
+                BasicMetadataTypeEnum::PointerType(i8_ptr), // fn_ptr
+                BasicMetadataTypeEnum::PointerType(i8_ptr), // arg
+            ],
+            false,
+        ),
+        Some(inkwell::module::Linkage::External),
+    );
     // mimi_pool_join_all() -> void: wait for all pool tasks to complete
-    module.add_function("mimi_pool_join_all",
+    module.add_function(
+        "mimi_pool_join_all",
         void.fn_type(&[], false),
-        Some(inkwell::module::Linkage::External));
+        Some(inkwell::module::Linkage::External),
+    );
 
     // Time functions
     // mimi_now() -> i64 (unix timestamp in seconds)
-    module.add_function("mimi_now",
+    module.add_function(
+        "mimi_now",
         i64.fn_type(&[], false),
-        Some(inkwell::module::Linkage::External));
+        Some(inkwell::module::Linkage::External),
+    );
     // mimi_now_ms() -> i64 (unix timestamp in milliseconds)
-    module.add_function("mimi_now_ms",
+    module.add_function(
+        "mimi_now_ms",
         i64.fn_type(&[], false),
-        Some(inkwell::module::Linkage::External));
+        Some(inkwell::module::Linkage::External),
+    );
     // mimi_sleep(ms: i64) -> void
-    module.add_function("mimi_sleep",
+    module.add_function(
+        "mimi_sleep",
         void.fn_type(&[BasicMetadataTypeEnum::IntType(i64)], false),
-        Some(inkwell::module::Linkage::External));
+        Some(inkwell::module::Linkage::External),
+    );
 
     // Environment/CLI functions
     // mimi_getenv(name: i8*) -> i8*
-    module.add_function("mimi_getenv",
+    module.add_function(
+        "mimi_getenv",
         i8_ptr.fn_type(&[BasicMetadataTypeEnum::PointerType(i8_ptr)], false),
-        Some(inkwell::module::Linkage::External));
+        Some(inkwell::module::Linkage::External),
+    );
     // mimi_args_init(argc: i64, argv: i8**) -> void
-    module.add_function("mimi_args_init",
-        void.fn_type(&[
-            BasicMetadataTypeEnum::IntType(i64),
-            BasicMetadataTypeEnum::PointerType(i8_ptr),
-        ], false),
-        Some(inkwell::module::Linkage::External));
+    module.add_function(
+        "mimi_args_init",
+        void.fn_type(
+            &[
+                BasicMetadataTypeEnum::IntType(i64),
+                BasicMetadataTypeEnum::PointerType(i8_ptr),
+            ],
+            false,
+        ),
+        Some(inkwell::module::Linkage::External),
+    );
     // mimi_args_count() -> i64
-    module.add_function("mimi_args_count",
+    module.add_function(
+        "mimi_args_count",
         i64.fn_type(&[], false),
-        Some(inkwell::module::Linkage::External));
+        Some(inkwell::module::Linkage::External),
+    );
     // mimi_args_get(i: i64) -> i8*
-    module.add_function("mimi_args_get",
+    module.add_function(
+        "mimi_args_get",
         i8_ptr.fn_type(&[BasicMetadataTypeEnum::IntType(i64)], false),
-        Some(inkwell::module::Linkage::External));
+        Some(inkwell::module::Linkage::External),
+    );
 
     // JSON functions (stubs for codegen)
     // mimi_is_valid_json(json_str: i8*) -> i32 (1 if valid, 0 if not)
-    module.add_function("mimi_is_valid_json",
+    module.add_function(
+        "mimi_is_valid_json",
         i32.fn_type(&[BasicMetadataTypeEnum::PointerType(i8_ptr)], false),
-        Some(inkwell::module::Linkage::External));
+        Some(inkwell::module::Linkage::External),
+    );
     // mimi_from_json(json_str: i8*) -> i8* (heap-allocated validated JSON string, or NULL)
-    module.add_function("mimi_from_json",
+    module.add_function(
+        "mimi_from_json",
         i8_ptr.fn_type(&[BasicMetadataTypeEnum::PointerType(i8_ptr)], false),
-        Some(inkwell::module::Linkage::External));
+        Some(inkwell::module::Linkage::External),
+    );
     // json_get_string(json: i8*, key: i8*) -> i8*
-    module.add_function("json_get_string",
-        i8_ptr.fn_type(&[
-            BasicMetadataTypeEnum::PointerType(i8_ptr),
-            BasicMetadataTypeEnum::PointerType(i8_ptr),
-        ], false),
-        Some(inkwell::module::Linkage::External));
+    module.add_function(
+        "json_get_string",
+        i8_ptr.fn_type(
+            &[
+                BasicMetadataTypeEnum::PointerType(i8_ptr),
+                BasicMetadataTypeEnum::PointerType(i8_ptr),
+            ],
+            false,
+        ),
+        Some(inkwell::module::Linkage::External),
+    );
     // json_get_int(json: i8*, key: i8*) -> i64
-    module.add_function("json_get_int",
-        i64.fn_type(&[
-            BasicMetadataTypeEnum::PointerType(i8_ptr),
-            BasicMetadataTypeEnum::PointerType(i8_ptr),
-        ], false),
-        Some(inkwell::module::Linkage::External));
+    module.add_function(
+        "json_get_int",
+        i64.fn_type(
+            &[
+                BasicMetadataTypeEnum::PointerType(i8_ptr),
+                BasicMetadataTypeEnum::PointerType(i8_ptr),
+            ],
+            false,
+        ),
+        Some(inkwell::module::Linkage::External),
+    );
     // json_get_element(json: i8*, index: i64) -> i8*
-    module.add_function("json_get_element",
-        i8_ptr.fn_type(&[
-            BasicMetadataTypeEnum::PointerType(i8_ptr),
-            BasicMetadataTypeEnum::IntType(i64),
-        ], false),
-        Some(inkwell::module::Linkage::External));
+    module.add_function(
+        "json_get_element",
+        i8_ptr.fn_type(
+            &[
+                BasicMetadataTypeEnum::PointerType(i8_ptr),
+                BasicMetadataTypeEnum::IntType(i64),
+            ],
+            false,
+        ),
+        Some(inkwell::module::Linkage::External),
+    );
     // mimi_json_as_i64(json: i8*) -> i64
-    module.add_function("mimi_json_as_i64",
+    module.add_function(
+        "mimi_json_as_i64",
         i64.fn_type(&[BasicMetadataTypeEnum::PointerType(i8_ptr)], false),
-        Some(inkwell::module::Linkage::External));
+        Some(inkwell::module::Linkage::External),
+    );
     // mimi_json_as_f64(json: i8*) -> f64
-    module.add_function("mimi_json_as_f64",
-        ctx.f64_type().fn_type(&[BasicMetadataTypeEnum::PointerType(i8_ptr)], false),
-        Some(inkwell::module::Linkage::External));
+    module.add_function(
+        "mimi_json_as_f64",
+        ctx.f64_type()
+            .fn_type(&[BasicMetadataTypeEnum::PointerType(i8_ptr)], false),
+        Some(inkwell::module::Linkage::External),
+    );
     // mimi_json_as_bool(json: i8*) -> i64
-    module.add_function("mimi_json_as_bool",
+    module.add_function(
+        "mimi_json_as_bool",
         i64.fn_type(&[BasicMetadataTypeEnum::PointerType(i8_ptr)], false),
-        Some(inkwell::module::Linkage::External));
+        Some(inkwell::module::Linkage::External),
+    );
 
     // ========== Set runtime functions ==========
     // mimi_set_new() -> i64 (handle)
-    module.add_function("mimi_set_new",
+    module.add_function(
+        "mimi_set_new",
         i64.fn_type(&[], false),
-        Some(inkwell::module::Linkage::External));
+        Some(inkwell::module::Linkage::External),
+    );
     // mimi_set_destroy(handle: i64)
-    module.add_function("mimi_set_destroy",
+    module.add_function(
+        "mimi_set_destroy",
         void.fn_type(&[BasicMetadataTypeEnum::IntType(i64)], false),
-        Some(inkwell::module::Linkage::External));
+        Some(inkwell::module::Linkage::External),
+    );
     // mimi_set_insert(handle: i64, value: i64) -> i64 (handle)
-    module.add_function("mimi_set_insert",
-        i64.fn_type(&[
-            BasicMetadataTypeEnum::IntType(i64),
-            BasicMetadataTypeEnum::IntType(i64),
-        ], false),
-        Some(inkwell::module::Linkage::External));
+    module.add_function(
+        "mimi_set_insert",
+        i64.fn_type(
+            &[
+                BasicMetadataTypeEnum::IntType(i64),
+                BasicMetadataTypeEnum::IntType(i64),
+            ],
+            false,
+        ),
+        Some(inkwell::module::Linkage::External),
+    );
     // mimi_set_contains(handle: i64, value: i64) -> i64 (0/1)
-    module.add_function("mimi_set_contains",
-        i64.fn_type(&[
-            BasicMetadataTypeEnum::IntType(i64),
-            BasicMetadataTypeEnum::IntType(i64),
-        ], false),
-        Some(inkwell::module::Linkage::External));
+    module.add_function(
+        "mimi_set_contains",
+        i64.fn_type(
+            &[
+                BasicMetadataTypeEnum::IntType(i64),
+                BasicMetadataTypeEnum::IntType(i64),
+            ],
+            false,
+        ),
+        Some(inkwell::module::Linkage::External),
+    );
     // mimi_set_remove(handle: i64, value: i64) -> i64 (handle)
-    module.add_function("mimi_set_remove",
-        i64.fn_type(&[
-            BasicMetadataTypeEnum::IntType(i64),
-            BasicMetadataTypeEnum::IntType(i64),
-        ], false),
-        Some(inkwell::module::Linkage::External));
+    module.add_function(
+        "mimi_set_remove",
+        i64.fn_type(
+            &[
+                BasicMetadataTypeEnum::IntType(i64),
+                BasicMetadataTypeEnum::IntType(i64),
+            ],
+            false,
+        ),
+        Some(inkwell::module::Linkage::External),
+    );
     // mimi_set_size(handle: i64) -> i64
-    module.add_function("mimi_set_size",
+    module.add_function(
+        "mimi_set_size",
         i64.fn_type(&[BasicMetadataTypeEnum::IntType(i64)], false),
-        Some(inkwell::module::Linkage::External));
+        Some(inkwell::module::Linkage::External),
+    );
     // mimi_set_to_list(handle: i64, out_len: *mut i64) -> *mut i64
-    module.add_function("mimi_set_to_list",
-        i8_ptr.fn_type(&[
-            BasicMetadataTypeEnum::IntType(i64),
-            BasicMetadataTypeEnum::PointerType(i8_ptr),
-        ], false),
-        Some(inkwell::module::Linkage::External));
+    module.add_function(
+        "mimi_set_to_list",
+        i8_ptr.fn_type(
+            &[
+                BasicMetadataTypeEnum::IntType(i64),
+                BasicMetadataTypeEnum::PointerType(i8_ptr),
+            ],
+            false,
+        ),
+        Some(inkwell::module::Linkage::External),
+    );
 
     // ========== Network / Socket functions ==========
     // mimi_socket(domain: i64, type: i64, protocol: i64) -> i64
-    module.add_function("mimi_socket",
-        i64.fn_type(&[
-            BasicMetadataTypeEnum::IntType(i64),
-            BasicMetadataTypeEnum::IntType(i64),
-            BasicMetadataTypeEnum::IntType(i64),
-        ], false),
-        Some(inkwell::module::Linkage::External));
+    module.add_function(
+        "mimi_socket",
+        i64.fn_type(
+            &[
+                BasicMetadataTypeEnum::IntType(i64),
+                BasicMetadataTypeEnum::IntType(i64),
+                BasicMetadataTypeEnum::IntType(i64),
+            ],
+            false,
+        ),
+        Some(inkwell::module::Linkage::External),
+    );
     // mimi_connect(fd: i64, host: i8*, port: i64) -> i64
-    module.add_function("mimi_connect",
-        i64.fn_type(&[
-            BasicMetadataTypeEnum::IntType(i64),
-            BasicMetadataTypeEnum::PointerType(i8_ptr),
-            BasicMetadataTypeEnum::IntType(i64),
-        ], false),
-        Some(inkwell::module::Linkage::External));
+    module.add_function(
+        "mimi_connect",
+        i64.fn_type(
+            &[
+                BasicMetadataTypeEnum::IntType(i64),
+                BasicMetadataTypeEnum::PointerType(i8_ptr),
+                BasicMetadataTypeEnum::IntType(i64),
+            ],
+            false,
+        ),
+        Some(inkwell::module::Linkage::External),
+    );
     // mimi_bind(fd: i64, port: i64) -> i64
-    module.add_function("mimi_bind",
-        i64.fn_type(&[
-            BasicMetadataTypeEnum::IntType(i64),
-            BasicMetadataTypeEnum::IntType(i64),
-        ], false),
-        Some(inkwell::module::Linkage::External));
+    module.add_function(
+        "mimi_bind",
+        i64.fn_type(
+            &[
+                BasicMetadataTypeEnum::IntType(i64),
+                BasicMetadataTypeEnum::IntType(i64),
+            ],
+            false,
+        ),
+        Some(inkwell::module::Linkage::External),
+    );
     // mimi_listen(fd: i64, backlog: i64) -> i64
-    module.add_function("mimi_listen",
-        i64.fn_type(&[
-            BasicMetadataTypeEnum::IntType(i64),
-            BasicMetadataTypeEnum::IntType(i64),
-        ], false),
-        Some(inkwell::module::Linkage::External));
+    module.add_function(
+        "mimi_listen",
+        i64.fn_type(
+            &[
+                BasicMetadataTypeEnum::IntType(i64),
+                BasicMetadataTypeEnum::IntType(i64),
+            ],
+            false,
+        ),
+        Some(inkwell::module::Linkage::External),
+    );
     // mimi_accept(fd: i64) -> i64
-    module.add_function("mimi_accept",
+    module.add_function(
+        "mimi_accept",
         i64.fn_type(&[BasicMetadataTypeEnum::IntType(i64)], false),
-        Some(inkwell::module::Linkage::External));
+        Some(inkwell::module::Linkage::External),
+    );
     // mimi_send(fd: i64, data: i8*, len: i64) -> i64
-    module.add_function("mimi_send",
-        i64.fn_type(&[
-            BasicMetadataTypeEnum::IntType(i64),
-            BasicMetadataTypeEnum::PointerType(i8_ptr),
-            BasicMetadataTypeEnum::IntType(i64),
-        ], false),
-        Some(inkwell::module::Linkage::External));
+    module.add_function(
+        "mimi_send",
+        i64.fn_type(
+            &[
+                BasicMetadataTypeEnum::IntType(i64),
+                BasicMetadataTypeEnum::PointerType(i8_ptr),
+                BasicMetadataTypeEnum::IntType(i64),
+            ],
+            false,
+        ),
+        Some(inkwell::module::Linkage::External),
+    );
     // mimi_recv(fd: i64, buf_size: i64, out_len: i64*) -> i8*
-    module.add_function("mimi_recv",
-        i8_ptr.fn_type(&[
-            BasicMetadataTypeEnum::IntType(i64),
-            BasicMetadataTypeEnum::IntType(i64),
-            BasicMetadataTypeEnum::PointerType(ctx.ptr_type(AddressSpace::default())),
-        ], false),
-        Some(inkwell::module::Linkage::External));
+    module.add_function(
+        "mimi_recv",
+        i8_ptr.fn_type(
+            &[
+                BasicMetadataTypeEnum::IntType(i64),
+                BasicMetadataTypeEnum::IntType(i64),
+                BasicMetadataTypeEnum::PointerType(ctx.ptr_type(AddressSpace::default())),
+            ],
+            false,
+        ),
+        Some(inkwell::module::Linkage::External),
+    );
     // mimi_close(fd: i64) -> i64
-    module.add_function("mimi_close",
+    module.add_function(
+        "mimi_close",
         i64.fn_type(&[BasicMetadataTypeEnum::IntType(i64)], false),
-        Some(inkwell::module::Linkage::External));
+        Some(inkwell::module::Linkage::External),
+    );
     // mimi_http_get(url: i8*) -> i8*
-    module.add_function("mimi_http_get",
+    module.add_function(
+        "mimi_http_get",
         i8_ptr.fn_type(&[BasicMetadataTypeEnum::PointerType(i8_ptr)], false),
-        Some(inkwell::module::Linkage::External));
+        Some(inkwell::module::Linkage::External),
+    );
     // mimi_http_post(url: i8*, body: i8*) -> i8*
-    module.add_function("mimi_http_post",
-        i8_ptr.fn_type(&[
-            BasicMetadataTypeEnum::PointerType(i8_ptr),
-            BasicMetadataTypeEnum::PointerType(i8_ptr),
-        ], false),
-        Some(inkwell::module::Linkage::External));
+    module.add_function(
+        "mimi_http_post",
+        i8_ptr.fn_type(
+            &[
+                BasicMetadataTypeEnum::PointerType(i8_ptr),
+                BasicMetadataTypeEnum::PointerType(i8_ptr),
+            ],
+            false,
+        ),
+        Some(inkwell::module::Linkage::External),
+    );
 
     // ─── MimiFuture + MimiExecutor (poll-based async runtime) ───
     // mimi_future_alloc(result_size: i64) -> i8*
-    module.add_function("mimi_future_alloc",
+    module.add_function(
+        "mimi_future_alloc",
         i8_ptr.fn_type(&[BasicMetadataTypeEnum::IntType(i64)], false),
-        Some(inkwell::module::Linkage::External));
+        Some(inkwell::module::Linkage::External),
+    );
     // mimi_future_free(fut: i8*)
-    module.add_function("mimi_future_free",
+    module.add_function(
+        "mimi_future_free",
         void.fn_type(&[BasicMetadataTypeEnum::PointerType(i8_ptr)], false),
-        Some(inkwell::module::Linkage::External));
+        Some(inkwell::module::Linkage::External),
+    );
     // mimi_future_set_completed(fut: i8*)
-    module.add_function("mimi_future_set_completed",
+    module.add_function(
+        "mimi_future_set_completed",
         void.fn_type(&[BasicMetadataTypeEnum::PointerType(i8_ptr)], false),
-        Some(inkwell::module::Linkage::External));
+        Some(inkwell::module::Linkage::External),
+    );
     // mimi_future_is_completed(fut: i8*) -> i32
-    module.add_function("mimi_future_is_completed",
+    module.add_function(
+        "mimi_future_is_completed",
         i32.fn_type(&[BasicMetadataTypeEnum::PointerType(i8_ptr)], false),
-        Some(inkwell::module::Linkage::External));
+        Some(inkwell::module::Linkage::External),
+    );
     // MimiExecutor
     // mimi_executor_spawn(future: i8*, poll_fn: i8*) -> void
-    module.add_function("mimi_executor_spawn",
-        void.fn_type(&[
-            BasicMetadataTypeEnum::PointerType(i8_ptr),
-            BasicMetadataTypeEnum::PointerType(i8_ptr),
-        ], false),
-        Some(inkwell::module::Linkage::External));
+    module.add_function(
+        "mimi_executor_spawn",
+        void.fn_type(
+            &[
+                BasicMetadataTypeEnum::PointerType(i8_ptr),
+                BasicMetadataTypeEnum::PointerType(i8_ptr),
+            ],
+            false,
+        ),
+        Some(inkwell::module::Linkage::External),
+    );
     // mimi_executor_run() -> void
-    module.add_function("mimi_executor_run",
+    module.add_function(
+        "mimi_executor_run",
         void.fn_type(&[], false),
-        Some(inkwell::module::Linkage::External));
+        Some(inkwell::module::Linkage::External),
+    );
     // mimi_spawn_future(future: i8*, poll_fn: i8*) -> i8*
-    module.add_function("mimi_spawn_future",
-        i8_ptr.fn_type(&[
-            BasicMetadataTypeEnum::PointerType(i8_ptr),
-            BasicMetadataTypeEnum::PointerType(i8_ptr),
-        ], false),
-        Some(inkwell::module::Linkage::External));
+    module.add_function(
+        "mimi_spawn_future",
+        i8_ptr.fn_type(
+            &[
+                BasicMetadataTypeEnum::PointerType(i8_ptr),
+                BasicMetadataTypeEnum::PointerType(i8_ptr),
+            ],
+            false,
+        ),
+        Some(inkwell::module::Linkage::External),
+    );
     // mimi_await_future(future: i8*) -> void
-    module.add_function("mimi_await_future",
+    module.add_function(
+        "mimi_await_future",
         void.fn_type(&[BasicMetadataTypeEnum::PointerType(i8_ptr)], false),
-        Some(inkwell::module::Linkage::External));
+        Some(inkwell::module::Linkage::External),
+    );
 }
 
 pub fn is_builtin(name: &str) -> bool {
-    matches!(name,
+    matches!(
+        name,
         "println" | "print" | "eprintln" | "assert" | "assert_eq" | "assert_ne"
         | "format"
         | "assert_approx_eq" | "range" | "len" | "to_string" | "abs" | "min" | "max"
@@ -567,11 +869,9 @@ pub fn is_builtin(name: &str) -> bool {
     )
 }
 
-
 use super::CodeGenerator;
 use crate::error::{CompileError, MimiResult};
 use inkwell::values::{BasicMetadataValueEnum, BasicValueEnum};
-
 
 impl<'ctx> CodeGenerator<'ctx> {
     pub(super) fn compile_builtin_call(
@@ -580,13 +880,35 @@ impl<'ctx> CodeGenerator<'ctx> {
         args: &[BasicMetadataValueEnum<'ctx>],
     ) -> MimiResult<BasicValueEnum<'ctx>> {
         let libc_builtins: &[&str] = &[
-            "println", "print", "eprintln",
-            "assert", "assert_eq", "assert_ne", "assert_approx_eq",
-            "input", "file_exists", "read_file", "write_file",
-            "to_string", "int_to_string", "float_to_string",
-            "pow", "random", "pi", "sqrt", "floor", "ceil", "round",
-            "now", "timestamp", "now_ms", "timestamp_ms", "sleep",
-            "getenv", "args", "from_int",
+            "println",
+            "print",
+            "eprintln",
+            "assert",
+            "assert_eq",
+            "assert_ne",
+            "assert_approx_eq",
+            "input",
+            "file_exists",
+            "read_file",
+            "write_file",
+            "to_string",
+            "int_to_string",
+            "float_to_string",
+            "pow",
+            "random",
+            "pi",
+            "sqrt",
+            "floor",
+            "ceil",
+            "round",
+            "now",
+            "timestamp",
+            "now_ms",
+            "timestamp_ms",
+            "sleep",
+            "getenv",
+            "args",
+            "from_int",
         ];
         if self.no_std && libc_builtins.contains(&name) {
             self.require_std(name)?;
@@ -594,9 +916,9 @@ impl<'ctx> CodeGenerator<'ctx> {
         match name {
             "println" => self.compile_println(args),
             "print" => self.compile_print(args),
-            "format" => {
-                Err(CompileError::BuiltinError("'format' is a runtime-only function, not available in codegen".to_string()))
-            }
+            "format" => Err(CompileError::BuiltinError(
+                "'format' is a runtime-only function, not available in codegen".to_string(),
+            )),
             "eprintln" => self.compile_eprintln(args),
             "assert" => self.compile_assert(args),
             "assert_eq" => self.compile_assert_eq(args),
@@ -677,9 +999,10 @@ impl<'ctx> CodeGenerator<'ctx> {
             "close_fd" => self.compile_close_fd(args),
             "http_get" => self.compile_http_get(args),
             "http_post" => self.compile_http_post(args),
-            "lexer" | "parse" => {
-                Err(CompileError::BuiltinError(format!("'{}' is a runtime-only function, not available in codegen", name)))
-            }
+            "lexer" | "parse" => Err(CompileError::BuiltinError(format!(
+                "'{}' is a runtime-only function, not available in codegen",
+                name
+            ))),
             "from_int" => self.compile_from_int(args),
             "regex_match" => self.compile_regex_match(args),
             "regex_find" => self.compile_regex_find(args),
@@ -692,21 +1015,31 @@ impl<'ctx> CodeGenerator<'ctx> {
                     Ok(match args[0] {
                         BasicMetadataValueEnum::IntValue(iv) => BasicValueEnum::IntValue(iv),
                         BasicMetadataValueEnum::FloatValue(fv) => BasicValueEnum::FloatValue(fv),
-                        BasicMetadataValueEnum::PointerValue(pv) => BasicValueEnum::PointerValue(pv),
+                        BasicMetadataValueEnum::PointerValue(pv) => {
+                            BasicValueEnum::PointerValue(pv)
+                        }
                         BasicMetadataValueEnum::StructValue(sv) => BasicValueEnum::StructValue(sv),
                         BasicMetadataValueEnum::ArrayValue(av) => BasicValueEnum::ArrayValue(av),
                         BasicMetadataValueEnum::VectorValue(vv) => BasicValueEnum::VectorValue(vv),
-                        BasicMetadataValueEnum::ScalableVectorValue(svv) => BasicValueEnum::ScalableVectorValue(svv),
+                        BasicMetadataValueEnum::ScalableVectorValue(svv) => {
+                            BasicValueEnum::ScalableVectorValue(svv)
+                        }
                         BasicMetadataValueEnum::MetadataValue(_) => {
                             return Err(CompileError::BuiltinError(
-                                "ast_eval: unexpected MetadataValue argument".to_string()))
+                                "ast_eval: unexpected MetadataValue argument".to_string(),
+                            ))
                         }
                     })
                 } else {
-                    Err(CompileError::WrongArgCount("ast_eval expects 1 argument".to_string()))
+                    Err(CompileError::WrongArgCount(
+                        "ast_eval expects 1 argument".to_string(),
+                    ))
                 }
             }
-            _ => Err(CompileError::BuiltinError(format!("builtin '{}' not yet implemented in codegen", name))),
+            _ => Err(CompileError::BuiltinError(format!(
+                "builtin '{}' not yet implemented in codegen",
+                name
+            ))),
         }
     }
 
@@ -717,15 +1050,23 @@ impl<'ctx> CodeGenerator<'ctx> {
         args: &[BasicMetadataValueEnum<'ctx>],
     ) -> MimiResult<BasicValueEnum<'ctx>> {
         if args.is_empty() {
-            return Err(CompileError::WrongArgCount("from_int expects at least 1 argument (int)".to_string()));
+            return Err(CompileError::WrongArgCount(
+                "from_int expects at least 1 argument (int)".to_string(),
+            ));
         }
         let val = match args[0] {
             BasicMetadataValueEnum::IntValue(iv) => iv,
-            _ => return Err(CompileError::TypeMismatch("from_int: first arg must be integer".to_string())),
+            _ => {
+                return Err(CompileError::TypeMismatch(
+                    "from_int: first arg must be integer".to_string(),
+                ))
+            }
         };
         // Truncate i64 to i32 for enum tag
         let i32_ty = self.context.i32_type();
-        let tag = self.builder.build_int_truncate(val, i32_ty, "from_int_trunc")
+        let tag = self
+            .builder
+            .build_int_truncate(val, i32_ty, "from_int_trunc")
             .map_err(|e| CompileError::LlvmError(format!("trunc error: {}", e)))?;
         Ok(tag.into())
     }

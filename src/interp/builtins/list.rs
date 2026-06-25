@@ -27,7 +27,10 @@ impl<'a> Interpreter<'a> {
             Value::List(l) => Ok(Value::Int(l.len() as i64)),
             Value::Array(a) => Ok(Value::Int(a.len() as i64)),
             Value::Slice { start, end, .. } => Ok(Value::Int((end - start) as i64)),
-            other => Err(InterpError::new(format!("len: argument must be a string, list, array, or slice, found {}", super::value::type_name(other)))),
+            other => Err(InterpError::new(format!(
+                "len: argument must be a string, list, array, or slice, found {}",
+                super::value::type_name(other)
+            ))),
         }
     }
 
@@ -41,7 +44,10 @@ impl<'a> Interpreter<'a> {
                 new_list.push(args[1].clone());
                 Ok(Value::List(new_list))
             }
-            other => Err(InterpError::new(format!("push: first argument must be a list, found {}", super::value::type_name(other)))),
+            other => Err(InterpError::new(format!(
+                "push: first argument must be a list, found {}",
+                super::value::type_name(other)
+            ))),
         }
     }
 
@@ -55,29 +61,40 @@ impl<'a> Interpreter<'a> {
                     return Err(InterpError::new("pop from empty list"));
                 }
                 let mut new_list = l.clone();
-                let popped = new_list.pop().ok_or_else(|| InterpError::new("pop from empty list"))?;
+                let popped = new_list
+                    .pop()
+                    .ok_or_else(|| InterpError::new("pop from empty list"))?;
                 Ok(Value::Tuple(vec![popped, Value::List(new_list)]))
             }
-            other => Err(InterpError::new(format!("pop: argument must be a list, found {}", super::value::type_name(other)))),
+            other => Err(InterpError::new(format!(
+                "pop: argument must be a list, found {}",
+                super::value::type_name(other)
+            ))),
         }
     }
 
     pub(crate) fn builtin_contains(&self, args: Vec<Value>) -> Result<Value, InterpError> {
         if args.len() != 2 {
-            return Err(InterpError::new("contains expects 2 arguments (container, elem)"));
+            return Err(InterpError::new(
+                "contains expects 2 arguments (container, elem)",
+            ));
         }
         match &args[0] {
             Value::List(l) => {
                 let found = l.iter().any(|v| values_equal(v, &args[1]));
                 Ok(Value::Bool(found))
             }
-            Value::String(s) => {
-                match &args[1] {
-                    Value::String(sub) => Ok(Value::Bool(s.contains(sub.as_str()))),
-                    other => Err(InterpError::new(format!("contains on string expects a string needle, found {}", super::value::type_name(other)))),
-                }
-            }
-            other => Err(InterpError::new(format!("contains: first argument must be a list or string, found {}", super::value::type_name(other)))),
+            Value::String(s) => match &args[1] {
+                Value::String(sub) => Ok(Value::Bool(s.contains(sub.as_str()))),
+                other => Err(InterpError::new(format!(
+                    "contains on string expects a string needle, found {}",
+                    super::value::type_name(other)
+                ))),
+            },
+            other => Err(InterpError::new(format!(
+                "contains: first argument must be a list or string, found {}",
+                super::value::type_name(other)
+            ))),
         }
     }
 
@@ -88,19 +105,19 @@ impl<'a> Interpreter<'a> {
         match &args[0] {
             Value::List(l) => {
                 let mut sorted = l.clone();
-                sorted.sort_by(|a, b| {
-                    match (a, b) {
-                        (Value::Int(x), Value::Int(y)) => x.cmp(y),
-                        (Value::Float(x), Value::Float(y)) => {
-                            x.partial_cmp(y).unwrap_or_else(|| {
-                                if x.is_nan() && !y.is_nan() { std::cmp::Ordering::Greater }
-                                else if !x.is_nan() && y.is_nan() { std::cmp::Ordering::Less }
-                                else { std::cmp::Ordering::Equal }
-                            })
-                        },
-                        (Value::String(x), Value::String(y)) => x.cmp(y),
-                        _ => std::cmp::Ordering::Equal,
-                    }
+                sorted.sort_by(|a, b| match (a, b) {
+                    (Value::Int(x), Value::Int(y)) => x.cmp(y),
+                    (Value::Float(x), Value::Float(y)) => x.partial_cmp(y).unwrap_or_else(|| {
+                        if x.is_nan() && !y.is_nan() {
+                            std::cmp::Ordering::Greater
+                        } else if !x.is_nan() && y.is_nan() {
+                            std::cmp::Ordering::Less
+                        } else {
+                            std::cmp::Ordering::Equal
+                        }
+                    }),
+                    (Value::String(x), Value::String(y)) => x.cmp(y),
+                    _ => std::cmp::Ordering::Equal,
                 });
                 Ok(Value::List(sorted))
             }
@@ -132,7 +149,9 @@ impl<'a> Interpreter<'a> {
 
     pub(crate) fn builtin_flatten(&self, args: Vec<Value>) -> Result<Value, InterpError> {
         if args.len() != 1 {
-            return Err(InterpError::new("flatten expects 1 argument (list of lists)"));
+            return Err(InterpError::new(
+                "flatten expects 1 argument (list of lists)",
+            ));
         }
         match &args[0] {
             Value::List(l) => {
@@ -171,7 +190,8 @@ impl<'a> Interpreter<'a> {
         }
         match &args[0] {
             Value::List(l) => {
-                let result: Vec<Value> = l.iter()
+                let result: Vec<Value> = l
+                    .iter()
                     .enumerate()
                     .map(|(i, v)| Value::Tuple(vec![Value::Int(i as i64), v.clone()]))
                     .collect();
@@ -193,7 +213,10 @@ impl<'a> Interpreter<'a> {
                 for v in l {
                     match v {
                         Value::Int(n) => total_int += n,
-                        Value::Float(n) => { total_float += n; is_float = true; }
+                        Value::Float(n) => {
+                            total_float += n;
+                            is_float = true;
+                        }
                         _ => return Err(InterpError::new("sum expects a list of numbers")),
                     }
                 }

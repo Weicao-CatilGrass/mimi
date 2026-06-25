@@ -7,9 +7,9 @@ mod helpers;
 
 pub mod ffi;
 
-#[allow(unused_imports)]
-pub use ctx::{Counterexample, VerificationResult, VerifStatus, Verifier};
 pub(crate) use ctx::Z3VarMap;
+#[allow(unused_imports)]
+pub use ctx::{Counterexample, VerifStatus, VerificationResult, Verifier};
 
 use crate::ast::File;
 
@@ -23,6 +23,18 @@ pub fn verify_source(source: &str) -> Result<Vec<VerificationResult>, String> {
         Ok(v) => v,
         Err(_) => return Ok(helpers::mock_verify_file(&file)),
     };
+    Ok(verifier.verify_file(&file))
+}
+
+/// Verify contracts using a caller-provided verifier (for timeout/config tests).
+pub fn verify_source_with(
+    source: &str,
+    verifier: &mut Verifier,
+) -> Result<Vec<VerificationResult>, String> {
+    let tokens = crate::lexer::Lexer::new(source).tokenize()?;
+    let file = crate::parser::Parser::new(tokens)
+        .parse_file()
+        .map_err(|e| e.message)?;
     Ok(verifier.verify_file(&file))
 }
 

@@ -13,7 +13,9 @@ func main() -> i32 {
 }
 "#;
     let errors = check_source(src).unwrap_err();
-    let has_code = errors.iter().any(|e| e.code.as_deref() == Some(crate::diagnostic::codes::E0205));
+    let has_code = errors
+        .iter()
+        .any(|e| e.code.as_deref() == Some(crate::diagnostic::codes::E0205));
     assert!(has_code, "expected E0205, got: {errors:?}");
 }
 
@@ -30,7 +32,9 @@ func main() -> i32 {
 }
 "#;
     let errors = check_source(src).unwrap_err();
-    let has_code = errors.iter().any(|e| e.code.as_deref() == Some(crate::diagnostic::codes::E0206));
+    let has_code = errors
+        .iter()
+        .any(|e| e.code.as_deref() == Some(crate::diagnostic::codes::E0206));
     assert!(has_code, "expected E0206, got: {errors:?}");
 }
 
@@ -44,7 +48,9 @@ func main() -> i32 {
 }
 "#;
     let errors = check_source(src).unwrap_err();
-    let has_code = errors.iter().any(|e| e.code.as_deref() == Some(crate::diagnostic::codes::E0207));
+    let has_code = errors
+        .iter()
+        .any(|e| e.code.as_deref() == Some(crate::diagnostic::codes::E0207));
     assert!(has_code, "expected E0207, got: {errors:?}");
 }
 
@@ -60,7 +66,9 @@ func main() -> i32 {
 }
 "#;
     let errors = check_source(src).unwrap_err();
-    let has_code = errors.iter().any(|e| e.code.as_deref() == Some(crate::diagnostic::codes::E0209));
+    let has_code = errors
+        .iter()
+        .any(|e| e.code.as_deref() == Some(crate::diagnostic::codes::E0209));
     assert!(has_code, "expected E0209, got: {errors:?}");
 }
 
@@ -77,7 +85,9 @@ func main() -> i32 {
 }
 "#;
     let errors = check_source(src).unwrap_err();
-    let has_code = errors.iter().any(|e| e.code.as_deref() == Some(crate::diagnostic::codes::E0212));
+    let has_code = errors
+        .iter()
+        .any(|e| e.code.as_deref() == Some(crate::diagnostic::codes::E0212));
     assert!(has_code, "expected E0212, got: {errors:?}");
 }
 
@@ -93,7 +103,9 @@ func main() -> i32 {
 }
 "#;
     let errors = check_source(src).unwrap_err();
-    let has_code = errors.iter().any(|e| e.code.as_deref() == Some(crate::diagnostic::codes::E0218));
+    let has_code = errors
+        .iter()
+        .any(|e| e.code.as_deref() == Some(crate::diagnostic::codes::E0218));
     assert!(has_code, "expected E0218, got: {errors:?}");
 }
 
@@ -135,7 +147,9 @@ func main() -> i32 {
 "#;
     let result = check_source(src);
     if let Err(errors) = result {
-        let has_code = errors.iter().any(|e| e.code.as_deref() == Some(crate::diagnostic::codes::E0220));
+        let has_code = errors
+            .iter()
+            .any(|e| e.code.as_deref() == Some(crate::diagnostic::codes::E0220));
         assert!(has_code, "expected E0220, got: {errors:?}");
     } else {
         // Record field access with non-existent field may also be caught
@@ -156,7 +170,10 @@ func main() -> i32 {
     0
 }
 "#;
-    assert!(check_source(src).is_err(), "expected error for undefined constructor");
+    assert!(
+        check_source(src).is_err(),
+        "expected error for undefined constructor"
+    );
 }
 
 // ── E0227: variant takes no arguments ────────────────────────────────
@@ -171,7 +188,10 @@ func main() -> i32 {
     0
 }
 "#;
-    assert!(check_source(src).is_err(), "expected error for variant arg mismatch");
+    assert!(
+        check_source(src).is_err(),
+        "expected error for variant arg mismatch"
+    );
 }
 
 // ── E0228: variant argument count mismatch ──────────────────────────
@@ -186,7 +206,10 @@ func main() -> i32 {
     0
 }
 "#;
-    assert!(check_source(src).is_err(), "expected error for variant arg count");
+    assert!(
+        check_source(src).is_err(),
+        "expected error for variant arg count"
+    );
 }
 
 // ── E0231: unknown type ──────────────────────────────────────────────
@@ -201,7 +224,10 @@ func main() -> i32 {
     x
 }
 "#;
-    assert!(check_source(src).is_err(), "expected error for unknown type");
+    assert!(
+        check_source(src).is_err(),
+        "expected error for unknown type"
+    );
 }
 
 // ── E0233: cannot assign through non-mutable reference ──────────────
@@ -217,7 +243,9 @@ func main() -> i32 {
 }
 "#;
     let errors = check_source(src).unwrap_err();
-    let has_code = errors.iter().any(|e| e.code.as_deref() == Some(crate::diagnostic::codes::E0233));
+    let has_code = errors
+        .iter()
+        .any(|e| e.code.as_deref() == Some(crate::diagnostic::codes::E0233));
     assert!(has_code, "expected E0233, got: {errors:?}");
 }
 
@@ -233,7 +261,9 @@ func main() -> i32 {
 }
 "#;
     let errors = check_source(src).unwrap_err();
-    let has_code = errors.iter().any(|e| e.code.as_deref() == Some(crate::diagnostic::codes::E0236));
+    let has_code = errors
+        .iter()
+        .any(|e| e.code.as_deref() == Some(crate::diagnostic::codes::E0236));
     assert!(has_code, "expected E0236, got: {errors:?}");
 }
 
@@ -249,7 +279,9 @@ func main() -> i32 {
 "#;
     let result = check_source(src);
     if let Err(errors) = result {
-        let has_code = errors.iter().any(|e| e.code.as_deref() == Some(crate::diagnostic::codes::E0242));
+        let has_code = errors
+            .iter()
+            .any(|e| e.code.as_deref() == Some(crate::diagnostic::codes::E0242));
         assert!(has_code, "expected E0242, got: {errors:?}");
     }
 }
@@ -268,7 +300,9 @@ func main() -> i32 {
 }
 "#;
     let errors = check_source(src).unwrap_err();
-    let has_code = errors.iter().any(|e| e.code.as_deref() == Some(crate::diagnostic::codes::E0305));
+    let has_code = errors
+        .iter()
+        .any(|e| e.code.as_deref() == Some(crate::diagnostic::codes::E0305));
     assert!(has_code, "expected E0305, got: {errors:?}");
 }
 
@@ -300,7 +334,9 @@ func foo() -> i32 { 2 }
 func main() -> i32 { foo() }
 "#;
     let errors = check_source(src).unwrap_err();
-    let has_code = errors.iter().any(|e| e.code.as_deref() == Some(crate::diagnostic::codes::E0402));
+    let has_code = errors
+        .iter()
+        .any(|e| e.code.as_deref() == Some(crate::diagnostic::codes::E0402));
     assert!(has_code, "expected E0402 (duplicate func), got: {errors:?}");
 }
 
@@ -316,8 +352,13 @@ func main() -> i32 { foo(1, 2) }
 "#;
     let result = check_source(src);
     if let Err(errors) = result {
-        let has_code = errors.iter().any(|e| e.code.as_deref() == Some(crate::diagnostic::codes::E0402));
-        assert!(has_code, "expected E0402 (duplicate param), got: {errors:?}");
+        let has_code = errors
+            .iter()
+            .any(|e| e.code.as_deref() == Some(crate::diagnostic::codes::E0402));
+        assert!(
+            has_code,
+            "expected E0402 (duplicate param), got: {errors:?}"
+        );
     }
 }
 
@@ -332,7 +373,9 @@ func main() -> i32 {
 }
 "#;
     let errors = check_source(src).unwrap_err();
-    let has_code = errors.iter().any(|e| e.code.as_deref() == Some(crate::diagnostic::codes::E0404));
+    let has_code = errors
+        .iter()
+        .any(|e| e.code.as_deref() == Some(crate::diagnostic::codes::E0404));
     assert!(has_code, "expected E0404, got: {errors:?}");
 }
 
@@ -347,7 +390,9 @@ func main() -> i32 {
 }
 "#;
     let errors = check_source(src).unwrap_err();
-    let has_code = errors.iter().any(|e| e.code.as_deref() == Some(crate::diagnostic::codes::E0405));
+    let has_code = errors
+        .iter()
+        .any(|e| e.code.as_deref() == Some(crate::diagnostic::codes::E0405));
     assert!(has_code, "expected E0405, got: {errors:?}");
 }
 
@@ -361,7 +406,9 @@ func main() -> i32 { foo(42) }
 "#;
     let result = check_source(src);
     if let Err(errors) = result {
-        let has_code = errors.iter().any(|e| e.code.as_deref() == Some(crate::diagnostic::codes::E0407));
+        let has_code = errors
+            .iter()
+            .any(|e| e.code.as_deref() == Some(crate::diagnostic::codes::E0407));
         assert!(has_code, "expected E0407, got: {errors:?}");
     }
 }
@@ -376,7 +423,9 @@ type B = A;
 func main() -> i32 { 0 }
 "#;
     let errors = check_source(src).unwrap_err();
-    let has_code = errors.iter().any(|e| e.code.as_deref() == Some(crate::diagnostic::codes::E0409));
+    let has_code = errors
+        .iter()
+        .any(|e| e.code.as_deref() == Some(crate::diagnostic::codes::E0409));
     assert!(has_code, "expected E0409, got: {errors:?}");
 }
 
@@ -393,7 +442,9 @@ func main() -> i32 {
 "#;
     let result = check_source(src);
     if let Err(errors) = result {
-        let has_code = errors.iter().any(|e| e.code.as_deref() == Some(crate::diagnostic::codes::E0411));
+        let has_code = errors
+            .iter()
+            .any(|e| e.code.as_deref() == Some(crate::diagnostic::codes::E0411));
         assert!(has_code, "expected E0411, got: {errors:?}");
     }
 }
@@ -411,14 +462,24 @@ func main() -> i32 { 0 }
 "#;
     let result = check_source_strict(src);
     if let Err(errors) = result {
-        let has_code = errors.iter().any(|e| e.code.as_deref() == Some(crate::diagnostic::codes::E0502));
-        if has_code { return; }
+        let has_code = errors
+            .iter()
+            .any(|e| e.code.as_deref() == Some(crate::diagnostic::codes::E0502));
+        if has_code {
+            return;
+        }
     }
     // Non-strict check may produce a warning
     let warnings = check_source_warnings(src);
-    let has_warn = warnings.iter().any(|w| w.code.as_deref() == Some(crate::diagnostic::codes::E0502));
-    assert!(has_warn, "expected E0502 as warning or error, errors: {:?} warnings: {:?}",
-        check_source(src), warnings);
+    let has_warn = warnings
+        .iter()
+        .any(|w| w.code.as_deref() == Some(crate::diagnostic::codes::E0502));
+    assert!(
+        has_warn,
+        "expected E0502 as warning or error, errors: {:?} warnings: {:?}",
+        check_source(src),
+        warnings
+    );
 }
 
 // ── E0500: contract condition must be bool ──────────────────────────
@@ -440,9 +501,16 @@ func main() -> i32 { foo(42) }
         return; // shouldn't happen, but accept
     }
     let errors = result.unwrap_err();
-    let has_e0212 = errors.iter().any(|e| e.code.as_deref() == Some(crate::diagnostic::codes::E0212));
-    let has_e0500 = errors.iter().any(|e| e.code.as_deref() == Some(crate::diagnostic::codes::E0500));
-    assert!(has_e0212 || has_e0500, "expected E0212 or E0500, got: {errors:?}");
+    let has_e0212 = errors
+        .iter()
+        .any(|e| e.code.as_deref() == Some(crate::diagnostic::codes::E0212));
+    let has_e0500 = errors
+        .iter()
+        .any(|e| e.code.as_deref() == Some(crate::diagnostic::codes::E0500));
+    assert!(
+        has_e0212 || has_e0500,
+        "expected E0212 or E0500, got: {errors:?}"
+    );
 }
 
 // ── W005: shared var written by multiple parasteps ───────────────────
@@ -460,7 +528,9 @@ func main() -> i32 {
 }
 "#;
     let warnings = check_source_warnings(src);
-    let has_w005 = warnings.iter().any(|w| w.code.as_deref() == Some(crate::diagnostic::codes::W005));
+    let has_w005 = warnings
+        .iter()
+        .any(|w| w.code.as_deref() == Some(crate::diagnostic::codes::W005));
     assert!(has_w005, "expected W005 warning, got: {warnings:?}");
 }
 
@@ -483,15 +553,21 @@ func main() -> i32 {
 #[test]
 fn boundary_long_string_literal() {
     let long_str = "A".repeat(10_000);
-    let src = format!(r#"
+    let src = format!(
+        r#"
 func main() -> i32 {{
     let s = "{long_str}";
     println(s);
     0
 }}
-"#);
+"#
+    );
     let result = check_source(&src);
-    assert!(result.is_ok(), "long string literal should pass: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "long string literal should pass: {:?}",
+        result
+    );
 }
 
 // ── Boundary: many parameters ────────────────────────────────────────
@@ -500,10 +576,14 @@ func main() -> i32 {{
 fn boundary_many_parameters_ok() {
     let params: Vec<String> = (0..20).map(|i| format!("p{i}: i32")).collect();
     let args: Vec<String> = (0..20).map(|i| format!("{i}")).collect();
-    let src = format!(r#"
+    let src = format!(
+        r#"
 func add_all({}) -> i32 {{ 0 }}
 func main() -> i32 {{ add_all({}) }}
-"#, params.join(", "), args.join(", "));
+"#,
+        params.join(", "),
+        args.join(", ")
+    );
     let result = check_source(&src);
     assert!(result.is_ok(), "20 params should pass, got: {:?}", result);
 }

@@ -25,9 +25,17 @@ impl<'a> Interpreter<'a> {
     }
 
     pub(crate) fn builtin_pow(&self, args: Vec<Value>) -> Result<Value, InterpError> {
-        if args.len() != 2 { return Err(InterpError::new("pow expects 2 arguments (base, exp)")); }
+        if args.len() != 2 {
+            return Err(InterpError::new("pow expects 2 arguments (base, exp)"));
+        }
         match (&args[0], &args[1]) {
-            (Value::Int(b), Value::Int(e)) => match b.checked_pow(*e as u32) { Some(v) => Ok(Value::Int(v)), None => Err(InterpError::new(format!("integer overflow in pow({}, {})", b, e))) },
+            (Value::Int(b), Value::Int(e)) => match b.checked_pow(*e as u32) {
+                Some(v) => Ok(Value::Int(v)),
+                None => Err(InterpError::new(format!(
+                    "integer overflow in pow({}, {})",
+                    b, e
+                ))),
+            },
             (Value::Float(b), Value::Int(e)) => Ok(Value::Float(b.powf(*e as f64))),
             (Value::Float(b), Value::Float(e)) => Ok(Value::Float(b.powf(*e))),
             _ => Err(InterpError::new("pow expects numbers")),
@@ -35,7 +43,9 @@ impl<'a> Interpreter<'a> {
     }
 
     pub(crate) fn builtin_floor(&self, args: Vec<Value>) -> Result<Value, InterpError> {
-        if args.len() != 1 { return Err(InterpError::new("floor expects 1 argument")); }
+        if args.len() != 1 {
+            return Err(InterpError::new("floor expects 1 argument"));
+        }
         match &args[0] {
             Value::Float(v) => Ok(Value::Float(v.floor())),
             Value::Int(v) => Ok(Value::Int(*v)),
@@ -44,7 +54,9 @@ impl<'a> Interpreter<'a> {
     }
 
     pub(crate) fn builtin_ceil(&self, args: Vec<Value>) -> Result<Value, InterpError> {
-        if args.len() != 1 { return Err(InterpError::new("ceil expects 1 argument")); }
+        if args.len() != 1 {
+            return Err(InterpError::new("ceil expects 1 argument"));
+        }
         match &args[0] {
             Value::Float(v) => Ok(Value::Float(v.ceil())),
             Value::Int(v) => Ok(Value::Int(*v)),
@@ -53,7 +65,9 @@ impl<'a> Interpreter<'a> {
     }
 
     pub(crate) fn builtin_round(&self, args: Vec<Value>) -> Result<Value, InterpError> {
-        if args.len() != 1 { return Err(InterpError::new("round expects 1 argument")); }
+        if args.len() != 1 {
+            return Err(InterpError::new("round expects 1 argument"));
+        }
         match &args[0] {
             Value::Float(v) => Ok(Value::Float(v.round())),
             Value::Int(v) => Ok(Value::Int(*v)),
@@ -88,10 +102,12 @@ impl<'a> Interpreter<'a> {
         use std::hash::{BuildHasher, Hasher};
         let s = RandomState::new();
         let mut hasher = s.build_hasher();
-        hasher.write_u64(std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos() as u64);
+        hasher.write_u64(
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos() as u64,
+        );
         let bits = hasher.finish();
         Ok(Value::Float((bits as f64) / (u64::MAX as f64)))
     }

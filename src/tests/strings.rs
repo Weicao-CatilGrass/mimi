@@ -311,7 +311,10 @@ func main() -> string {
     f"sum = {a + b}"
 }
 "#;
-    assert_eq!(run_source(src), interp::Value::String("sum = 30".to_string()));
+    assert_eq!(
+        run_source(src),
+        interp::Value::String("sum = 30".to_string())
+    );
 }
 
 #[test]
@@ -351,7 +354,10 @@ func main() -> string {
     greet()
 }
 "#;
-    assert_eq!(run_source(src), interp::Value::String("hello world".to_string()));
+    assert_eq!(
+        run_source(src),
+        interp::Value::String("hello world".to_string())
+    );
 }
 
 #[test]
@@ -415,9 +421,7 @@ func main() -> bool {
     regex_match("hello", "[")
 }
 "#;
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        run_source(src)
-    }));
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| run_source(src)));
     assert!(result.is_err(), "invalid regex pattern should panic");
 }
 
@@ -464,5 +468,3 @@ func main() -> string {
     let v = run_source(src);
     assert_eq!(v, interp::Value::String("hello world".to_string()));
 }
-
-

@@ -4,8 +4,8 @@ use crate::diagnostic::Diagnostic;
 use crate::span::Span;
 use std::collections::{HashMap, HashSet};
 use std::time::Instant;
-use z3::ast::{Bool as Z3Bool, Int as Z3Int, Real as Z3Real};
 use z3::ast::String as Z3String;
+use z3::ast::{Bool as Z3Bool, Int as Z3Int, Real as Z3Real};
 use z3::SatResult;
 
 impl super::Verifier {
@@ -24,7 +24,7 @@ impl super::Verifier {
                 if calls.is_empty() {
                     continue;
                 }
-                self.solver.push();
+                self.solver_push();
                 let mut vars = self.setup_ffi_func_vars(func);
                 self.assert_func_requires(func, &mut vars);
 
@@ -32,12 +32,16 @@ impl super::Verifier {
                 for (extern_name, args) in &calls {
                     if let Some(extern_func) = externs.get(extern_name.as_str()) {
                         let result = self.check_extern_call(
-                            &func.name, extern_func, args, &mut vars, caller_span,
+                            &func.name,
+                            extern_func,
+                            args,
+                            &mut vars,
+                            caller_span,
                         );
                         results.push(result);
                     }
                 }
-                self.solver.pop(1);
+                self.solver_pop(1);
             }
         }
         results
@@ -57,14 +61,19 @@ impl super::Verifier {
         }
     }
 
-    fn find_extern_calls_in_func(func: &FuncDef, extern_names: &HashSet<String>) -> Vec<(String, Vec<Expr>)> {
+    fn find_extern_calls_in_func(
+        func: &FuncDef,
+        extern_names: &HashSet<String>,
+    ) -> Vec<(String, Vec<Expr>)> {
         let mut calls = Vec::new();
         Self::find_extern_calls_in_block(&func.body, extern_names, &mut calls);
         calls
     }
 
     fn find_extern_calls_in_block(
-        block: &[Stmt], extern_names: &HashSet<String>, calls: &mut Vec<(String, Vec<Expr>)>,
+        block: &[Stmt],
+        extern_names: &HashSet<String>,
+        calls: &mut Vec<(String, Vec<Expr>)>,
     ) {
         for stmt in block {
             match stmt {
@@ -80,10 +89,16 @@ impl super::Verifier {
                 Stmt::While { body, .. } | Stmt::For { body, .. } | Stmt::Loop(body) => {
                     Self::find_extern_calls_in_block(body, extern_names, calls);
                 }
-                Stmt::Block(inner) | Stmt::Arena(inner) | Stmt::Unsafe(inner) | Stmt::Parasteps(inner) => {
+                Stmt::Block(inner)
+                | Stmt::Arena(inner)
+                | Stmt::Unsafe(inner)
+                | Stmt::Parasteps(inner) => {
                     Self::find_extern_calls_in_block(inner, extern_names, calls);
                 }
-                Stmt::Let { init: Some(init), .. } | Stmt::Assign { value: init, .. } => {
+                Stmt::Let {
+                    init: Some(init), ..
+                }
+                | Stmt::Assign { value: init, .. } => {
                     Self::find_extern_calls_in_expr(init, extern_names, calls);
                 }
                 Stmt::SharedLet { init, .. } => {
@@ -95,7 +110,9 @@ impl super::Verifier {
     }
 
     fn find_extern_calls_in_expr(
-        expr: &Expr, extern_names: &HashSet<String>, calls: &mut Vec<(String, Vec<Expr>)>,
+        expr: &Expr,
+        extern_names: &HashSet<String>,
+        calls: &mut Vec<(String, Vec<Expr>)>,
     ) {
         match expr {
             Expr::Call(callee, args) => {
@@ -150,8 +167,14 @@ impl super::Verifier {
                 vars.insert_real(p.name.as_str(), Z3Real::new_const(p.name.as_str()));
             } else if matches!(&p.ty, Type::Name(n, _) if n == "string") {
                 vars.insert_int(p.name.as_str(), Z3Int::new_const(p.name.as_str()));
-                vars.insert_string_nonempty(p.name.as_str(), Z3Bool::new_const(format!("{}_ne", p.name)));
-                vars.insert_string_len(p.name.as_str(), Z3Int::new_const(format!("{}_len", p.name)));
+                vars.insert_string_nonempty(
+                    p.name.as_str(),
+                    Z3Bool::new_const(format!("{}_ne", p.name)),
+                );
+                vars.insert_string_len(
+                    p.name.as_str(),
+                    Z3Int::new_const(format!("{}_len", p.name)),
+                );
                 vars.insert_string_var(p.name.as_str(), Z3String::new_const(p.name.as_str()));
             } else {
                 vars.insert_int(p.name.as_str(), Z3Int::new_const(p.name.as_str()));
@@ -171,7 +194,11 @@ impl super::Verifier {
     }
 
     fn check_extern_call(
-        &mut self, caller_name: &str, extern_func: &ExternFunc, args: &[Expr], vars: &mut Z3VarMap,
+        &mut self,
+        caller_name: &str,
+        extern_func: &ExternFunc,
+        args: &[Expr],
+        vars: &mut Z3VarMap,
         caller_span: Span,
     ) -> VerificationResult {
         let start = Instant::now();
@@ -207,13 +234,13 @@ impl super::Verifier {
             }
         };
 
-        self.solver.push();
+        self.solver_push();
         self.solver.assert(z3_requires.not());
         let constraint_count = 1;
 
         match self.check_safe() {
             SatResult::Unsat => {
-                self.solver.pop(1);
+                self.solver_pop(1);
                 VerificationResult {
                     func_name,
                     status: VerifStatus::Verified,
@@ -224,7 +251,7 @@ impl super::Verifier {
                 }
             }
             SatResult::Sat => {
-                self.solver.pop(1);
+                self.solver_pop(1);
                 let diag = Diagnostic::error(
                     format!(
                         "call to extern '{}' may violate precondition: {:?}",
@@ -246,7 +273,7 @@ impl super::Verifier {
                 }
             }
             SatResult::Unknown => {
-                self.solver.pop(1);
+                self.solver_pop(1);
                 VerificationResult {
                     func_name,
                     status: VerifStatus::Unknown,
@@ -276,50 +303,57 @@ fn substitute_args(expr: &Expr, params: &[ExternParam], args: &[Expr]) -> Expr {
             }
             Expr::Ident(name.clone())
         }
-        Expr::Binary(op, lhs, rhs) => {
-            Expr::Binary(
-                *op,
-                Box::new(substitute_args(lhs, params, args)),
-                Box::new(substitute_args(rhs, params, args)),
-            )
-        }
-        Expr::Unary(op, inner) => {
-            Expr::Unary(*op, Box::new(substitute_args(inner, params, args)))
-        }
-        Expr::Call(callee, callee_args) => {
-            Expr::Call(
-                Box::new(substitute_args(callee, params, args)),
-                callee_args.iter().map(|a| substitute_args(a, params, args)).collect(),
-            )
-        }
+        Expr::Binary(op, lhs, rhs) => Expr::Binary(
+            *op,
+            Box::new(substitute_args(lhs, params, args)),
+            Box::new(substitute_args(rhs, params, args)),
+        ),
+        Expr::Unary(op, inner) => Expr::Unary(*op, Box::new(substitute_args(inner, params, args))),
+        Expr::Call(callee, callee_args) => Expr::Call(
+            Box::new(substitute_args(callee, params, args)),
+            callee_args
+                .iter()
+                .map(|a| substitute_args(a, params, args))
+                .collect(),
+        ),
         Expr::Field(inner, name) => {
             Expr::Field(Box::new(substitute_args(inner, params, args)), name.clone())
         }
-        Expr::Index(target, index) => {
-            Expr::Index(
-                Box::new(substitute_args(target, params, args)),
-                Box::new(substitute_args(index, params, args)),
-            )
-        }
-        Expr::If { cond, then_, else_ } => {
-            Expr::If {
-                cond: Box::new(substitute_args(cond, params, args)),
-                then_: then_.iter().map(|s| substitute_args_in_stmt(s, params, args)).collect(),
-                else_: else_.as_ref().map(|b| b.iter().map(|s| substitute_args_in_stmt(s, params, args)).collect()),
-            }
-        }
-        Expr::Old(inner) => {
-            Expr::Old(Box::new(substitute_args(inner, params, args)))
-        }
-        Expr::Tuple(items) => {
-            Expr::Tuple(items.iter().map(|i| substitute_args(i, params, args)).collect())
-        }
-        Expr::List(items) => {
-            Expr::List(items.iter().map(|i| substitute_args(i, params, args)).collect())
-        }
-        Expr::Block(block) => {
-            Expr::Block(block.iter().map(|s| substitute_args_in_stmt(s, params, args)).collect())
-        }
+        Expr::Index(target, index) => Expr::Index(
+            Box::new(substitute_args(target, params, args)),
+            Box::new(substitute_args(index, params, args)),
+        ),
+        Expr::If { cond, then_, else_ } => Expr::If {
+            cond: Box::new(substitute_args(cond, params, args)),
+            then_: then_
+                .iter()
+                .map(|s| substitute_args_in_stmt(s, params, args))
+                .collect(),
+            else_: else_.as_ref().map(|b| {
+                b.iter()
+                    .map(|s| substitute_args_in_stmt(s, params, args))
+                    .collect()
+            }),
+        },
+        Expr::Old(inner) => Expr::Old(Box::new(substitute_args(inner, params, args))),
+        Expr::Tuple(items) => Expr::Tuple(
+            items
+                .iter()
+                .map(|i| substitute_args(i, params, args))
+                .collect(),
+        ),
+        Expr::List(items) => Expr::List(
+            items
+                .iter()
+                .map(|i| substitute_args(i, params, args))
+                .collect(),
+        ),
+        Expr::Block(block) => Expr::Block(
+            block
+                .iter()
+                .map(|s| substitute_args_in_stmt(s, params, args))
+                .collect(),
+        ),
         Expr::Literal(_) => expr.clone(),
         _ => expr.clone(),
     }
@@ -329,28 +363,35 @@ fn substitute_args_in_stmt(stmt: &Stmt, params: &[ExternParam], args: &[Expr]) -
     match stmt {
         Stmt::Expr(e) => Stmt::Expr(substitute_args(e, params, args)),
         Stmt::Return(e) => Stmt::Return(e.as_ref().map(|e| substitute_args(e, params, args))),
-        Stmt::Let { pat, ty, init, mut_, ref_ } => {
-            Stmt::Let {
-                pat: pat.clone(),
-                ty: ty.clone(),
-                init: init.as_ref().map(|e| substitute_args(e, params, args)),
-                mut_: *mut_,
-                ref_: *ref_,
-            }
-        }
-        Stmt::If { cond, then_, else_ } => {
-            Stmt::If {
-                cond: substitute_args(cond, params, args),
-                then_: then_.iter().map(|s| substitute_args_in_stmt(s, params, args)).collect(),
-                else_: else_.as_ref().map(|b| b.iter().map(|s| substitute_args_in_stmt(s, params, args)).collect()),
-            }
-        }
-        Stmt::Assign { target, value } => {
-            Stmt::Assign {
-                target: substitute_args(target, params, args),
-                value: substitute_args(value, params, args),
-            }
-        }
+        Stmt::Let {
+            pat,
+            ty,
+            init,
+            mut_,
+            ref_,
+        } => Stmt::Let {
+            pat: pat.clone(),
+            ty: ty.clone(),
+            init: init.as_ref().map(|e| substitute_args(e, params, args)),
+            mut_: *mut_,
+            ref_: *ref_,
+        },
+        Stmt::If { cond, then_, else_ } => Stmt::If {
+            cond: substitute_args(cond, params, args),
+            then_: then_
+                .iter()
+                .map(|s| substitute_args_in_stmt(s, params, args))
+                .collect(),
+            else_: else_.as_ref().map(|b| {
+                b.iter()
+                    .map(|s| substitute_args_in_stmt(s, params, args))
+                    .collect()
+            }),
+        },
+        Stmt::Assign { target, value } => Stmt::Assign {
+            target: substitute_args(target, params, args),
+            value: substitute_args(value, params, args),
+        },
         _ => stmt.clone(),
     }
 }

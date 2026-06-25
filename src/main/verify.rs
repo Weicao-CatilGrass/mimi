@@ -1,10 +1,10 @@
 use std::fs;
 use std::path::Path;
 
-use mimi::diagnostic::format::{colors_enabled, format_diagnostic, strip_ansi};
-use mimi::{lexer, loader, parser};
-use mimi::verifier::{VerifStatus, Verifier};
 use crate::resolve_path;
+use mimi::diagnostic::format::{colors_enabled, format_diagnostic, strip_ansi};
+use mimi::verifier::{VerifStatus, Verifier};
+use mimi::{lexer, loader, parser};
 
 pub(crate) fn verify(path: Option<&Path>, show_stats: bool, dump_z3: bool) -> Result<(), String> {
     let path = resolve_path(path)?;
@@ -14,7 +14,10 @@ pub(crate) fn verify(path: Option<&Path>, show_stats: bool, dump_z3: bool) -> Re
     let file = parser::Parser::new(tokens).parse_file()?;
 
     let merged_file = if !file.imports.is_empty() {
-        let base_dir = path.parent().unwrap_or_else(|| std::path::Path::new(".")).to_path_buf();
+        let base_dir = path
+            .parent()
+            .unwrap_or_else(|| std::path::Path::new("."))
+            .to_path_buf();
         let mut loader = loader::ModuleLoader::new(base_dir);
         loader.load_main(&path)?;
         loader.merge_all()?
@@ -55,7 +58,10 @@ pub(crate) fn verify(path: Option<&Path>, show_stats: bool, dump_z3: bool) -> Re
 
         // Show per-function stats table if --stats is set
         if show_stats {
-            println!("{:30} {:>10} {:>12} {:>8}", "Function", "Status", "Constraints", "Time");
+            println!(
+                "{:30} {:>10} {:>12} {:>8}",
+                "Function", "Status", "Constraints", "Time"
+            );
             println!("{}", "-".repeat(64));
         }
 
@@ -79,7 +85,10 @@ pub(crate) fn verify(path: Option<&Path>, show_stats: bool, dump_z3: bool) -> Re
                     VerifStatus::Failed => "✗ fail",
                     VerifStatus::Unknown => "? unknown",
                 };
-                println!("{:30} {:>10} {:>12} {:>8}", r.func_name, status_str, r.constraint_count, time_str);
+                println!(
+                    "{:30} {:>10} {:>12} {:>8}",
+                    r.func_name, status_str, r.constraint_count, time_str
+                );
             }
 
             if let Some(diag) = &r.diagnostic {
@@ -95,7 +104,10 @@ pub(crate) fn verify(path: Option<&Path>, show_stats: bool, dump_z3: bool) -> Re
                 } else {
                     format!(" ({}µs)", r.duration_us)
                 };
-                println!("  {} {}: {} [{} constraints]{}", icon, r.func_name, r.message, r.constraint_count, time_str);
+                println!(
+                    "  {} {}: {} [{} constraints]{}",
+                    icon, r.func_name, r.message, r.constraint_count, time_str
+                );
             }
 
             if r.status == VerifStatus::Failed {
@@ -103,17 +115,35 @@ pub(crate) fn verify(path: Option<&Path>, show_stats: bool, dump_z3: bool) -> Re
             }
         }
 
-        let verified = results.iter().filter(|r| r.status == VerifStatus::Verified).count();
+        let verified = results
+            .iter()
+            .filter(|r| r.status == VerifStatus::Verified)
+            .count();
         let total_time_ms = total_duration_us as f64 / 1000.0;
-        println!("\n{}/{} verified in {:.1}ms ({} total constraints)",
-            verified, results.len(), total_time_ms, total_constraints);
+        println!(
+            "\n{}/{} verified in {:.1}ms ({} total constraints)",
+            verified,
+            results.len(),
+            total_time_ms,
+            total_constraints
+        );
 
         if show_stats && !results.is_empty() {
-            let max_constraints = results.iter().map(|r| r.constraint_count).max().unwrap_or(0);
-            let min_constraints = results.iter().map(|r| r.constraint_count).min().unwrap_or(0);
+            let max_constraints = results
+                .iter()
+                .map(|r| r.constraint_count)
+                .max()
+                .unwrap_or(0);
+            let min_constraints = results
+                .iter()
+                .map(|r| r.constraint_count)
+                .min()
+                .unwrap_or(0);
             let avg_time = total_duration_us as f64 / results.len() as f64;
-            println!("  (constraint range: {}-{}, avg time: {:.1}µs)",
-                min_constraints, max_constraints, avg_time);
+            println!(
+                "  (constraint range: {}-{}, avg time: {:.1}µs)",
+                min_constraints, max_constraints, avg_time
+            );
         }
 
         if !all_passed {

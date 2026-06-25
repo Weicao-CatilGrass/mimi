@@ -22,7 +22,11 @@ func main() -> i32 {
 }
 "#;
     let result = check_source(src);
-    assert!(result.is_ok(), "empty enum type should be valid: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "empty enum type should be valid: {:?}",
+        result.err()
+    );
 }
 
 #[test]
@@ -42,7 +46,10 @@ func main() -> string {
     "你好，世界！🚀"
 }
 "#;
-    assert_eq!(run_source(src), interp::Value::String("你好，世界！🚀".to_string()));
+    assert_eq!(
+        run_source(src),
+        interp::Value::String("你好，世界！🚀".to_string())
+    );
 }
 
 #[test]

@@ -48,8 +48,13 @@ fn lsp_did_open_publishes_diagnostics() {
     assert!(response.is_some());
     let resp = response.expect("src/tests/lsp.rs:49 unwrap failed");
     assert_eq!(resp["method"], "textDocument/publishDiagnostics");
-    let diagnostics = resp["params"]["diagnostics"].as_array().expect("src/tests/lsp.rs:51 unwrap failed");
-    assert!(diagnostics.is_empty(), "valid code should have no diagnostics");
+    let diagnostics = resp["params"]["diagnostics"]
+        .as_array()
+        .expect("src/tests/lsp.rs:51 unwrap failed");
+    assert!(
+        diagnostics.is_empty(),
+        "valid code should have no diagnostics"
+    );
 }
 
 #[test]
@@ -68,8 +73,13 @@ fn lsp_did_open_parse_error() {
     let response = server.handle_message(&msg);
     assert!(response.is_some());
     let resp = response.expect("src/tests/lsp.rs:70 unwrap failed");
-    let diagnostics = resp["params"]["diagnostics"].as_array().expect("src/tests/lsp.rs:71 unwrap failed");
-    assert!(!diagnostics.is_empty(), "syntax error should produce diagnostics");
+    let diagnostics = resp["params"]["diagnostics"]
+        .as_array()
+        .expect("src/tests/lsp.rs:71 unwrap failed");
+    assert!(
+        !diagnostics.is_empty(),
+        "syntax error should produce diagnostics"
+    );
 }
 
 #[test]
@@ -102,8 +112,13 @@ fn lsp_did_change() {
     let response = server.handle_message(&change_msg);
     assert!(response.is_some(), "didChange should produce diagnostics");
     let resp = response.expect("src/tests/lsp.rs:104 unwrap failed");
-    let diagnostics = resp["params"]["diagnostics"].as_array().expect("src/tests/lsp.rs:105 unwrap failed");
-    assert!(diagnostics.is_empty(), "changed valid code should have no diagnostics");
+    let diagnostics = resp["params"]["diagnostics"]
+        .as_array()
+        .expect("src/tests/lsp.rs:105 unwrap failed");
+    assert!(
+        diagnostics.is_empty(),
+        "changed valid code should have no diagnostics"
+    );
 }
 
 #[test]
@@ -134,8 +149,13 @@ fn lsp_completion() {
     let response = server.handle_message(&msg);
     assert!(response.is_some());
     let resp = response.expect("src/tests/lsp.rs:136 unwrap failed");
-    let items = resp["result"]["items"].as_array().expect("src/tests/lsp.rs:137 unwrap failed");
-    assert!(items.len() > 10, "should have keywords + functions + builtins");
+    let items = resp["result"]["items"]
+        .as_array()
+        .expect("src/tests/lsp.rs:137 unwrap failed");
+    assert!(
+        items.len() > 10,
+        "should have keywords + functions + builtins"
+    );
     let labels: Vec<&str> = items.iter().filter_map(|i| i["label"].as_str()).collect();
     assert!(labels.contains(&"func"));
     assert!(labels.contains(&"hello"));
@@ -153,7 +173,10 @@ fn lsp_shutdown() {
     });
     let response = server.handle_message(&msg);
     assert!(response.is_some());
-    assert_eq!(response.expect("src/tests/lsp.rs:156 unwrap failed")["id"], 3);
+    assert_eq!(
+        response.expect("src/tests/lsp.rs:156 unwrap failed")["id"],
+        3
+    );
 }
 
 #[test]
@@ -172,8 +195,13 @@ fn lsp_diagnostics_type_error() {
     let response = server.handle_message(&msg);
     assert!(response.is_some());
     let resp = response.expect("src/tests/lsp.rs:174 unwrap failed");
-    let diagnostics = resp["params"]["diagnostics"].as_array().expect("src/tests/lsp.rs:175 unwrap failed");
-    assert!(!diagnostics.is_empty(), "type error should produce diagnostics");
+    let diagnostics = resp["params"]["diagnostics"]
+        .as_array()
+        .expect("src/tests/lsp.rs:175 unwrap failed");
+    assert!(
+        !diagnostics.is_empty(),
+        "type error should produce diagnostics"
+    );
     assert_eq!(diagnostics[0]["severity"], 1, "should be error severity");
 }
 
@@ -214,7 +242,10 @@ fn lsp_completion_no_file() {
         }
     });
     let response = server.handle_message(&msg);
-    assert!(response.is_none(), "completion on unknown file should return None");
+    assert!(
+        response.is_none(),
+        "completion on unknown file should return None"
+    );
 }
 
 #[test]
@@ -229,7 +260,10 @@ fn lsp_folding_range_nested() {
     let server = LspServer::new();
     let text = "func f() {\n    if true {\n        1\n    }\n}";
     let ranges = server.compute_folding_ranges(text);
-    assert!(ranges.len() >= 2, "should have folding ranges for nested braces");
+    assert!(
+        ranges.len() >= 2,
+        "should have folding ranges for nested braces"
+    );
 }
 
 #[test]

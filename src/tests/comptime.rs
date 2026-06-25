@@ -305,7 +305,11 @@ func main() -> i32 {
     let result = run_source_result(src);
     assert!(result.is_err());
     let err = result.unwrap_err();
-    assert!(err.contains("ensures"), "error should mention ensures: {}", err);
+    assert!(
+        err.contains("ensures"),
+        "error should mention ensures: {}",
+        err
+    );
 }
 
 #[test]

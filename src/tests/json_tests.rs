@@ -16,65 +16,85 @@ fn json_value(code: &str) -> interp::Value {
 // from_json: valid inputs
 #[test]
 fn json_from_json_valid_object() {
-    assert_eq!(json_value(r#"from_json("{\"a\":1}")"#),
-               interp::Value::String("{\"a\":1}".into()));
+    assert_eq!(
+        json_value(r#"from_json("{\"a\":1}")"#),
+        interp::Value::String("{\"a\":1}".into())
+    );
 }
 
 #[test]
 fn json_from_json_valid_array() {
-    assert_eq!(json_value(r#"from_json("[1, 2, 3]")"#),
-               interp::Value::String("[1, 2, 3]".into()));
+    assert_eq!(
+        json_value(r#"from_json("[1, 2, 3]")"#),
+        interp::Value::String("[1, 2, 3]".into())
+    );
 }
 
 #[test]
 fn json_from_json_valid_string() {
-    assert_eq!(json_value(r#"from_json("\"hello\"")"#),
-               interp::Value::String("\"hello\"".into()));
+    assert_eq!(
+        json_value(r#"from_json("\"hello\"")"#),
+        interp::Value::String("\"hello\"".into())
+    );
 }
 
 #[test]
 fn json_from_json_valid_number() {
-    assert_eq!(json_value(r#"from_json("42")"#),
-               interp::Value::String("42".into()));
+    assert_eq!(
+        json_value(r#"from_json("42")"#),
+        interp::Value::String("42".into())
+    );
 }
 
 #[test]
 fn json_from_json_valid_bool() {
-    assert_eq!(json_value(r#"from_json("true")"#),
-               interp::Value::String("true".into()));
+    assert_eq!(
+        json_value(r#"from_json("true")"#),
+        interp::Value::String("true".into())
+    );
 }
 
 #[test]
 fn json_from_json_valid_null() {
-    assert_eq!(json_value(r#"from_json("null")"#),
-               interp::Value::String("null".into()));
+    assert_eq!(
+        json_value(r#"from_json("null")"#),
+        interp::Value::String("null".into())
+    );
 }
 
 // from_json: nested structures
 #[test]
 fn json_from_json_nested_object() {
-    assert_eq!(json_value(r#"from_json("{\"a\":{\"b\":{\"c\":1}}}")"#),
-               interp::Value::String("{\"a\":{\"b\":{\"c\":1}}}".into()));
+    assert_eq!(
+        json_value(r#"from_json("{\"a\":{\"b\":{\"c\":1}}}")"#),
+        interp::Value::String("{\"a\":{\"b\":{\"c\":1}}}".into())
+    );
 }
 
 #[test]
 fn json_from_json_nested_array() {
-    assert_eq!(json_value(r#"from_json("[[1,2],[3,4]]")"#),
-               interp::Value::String("[[1,2],[3,4]]".into()));
+    assert_eq!(
+        json_value(r#"from_json("[[1,2],[3,4]]")"#),
+        interp::Value::String("[[1,2],[3,4]]".into())
+    );
 }
 
 // from_json: unicode
 #[test]
 fn json_from_json_unicode() {
-    assert_eq!(json_value(r#"from_json("\"\\u0041\"")"#),
-               interp::Value::String("\"\\u0041\"".into()));
+    assert_eq!(
+        json_value(r#"from_json("\"\\u0041\"")"#),
+        interp::Value::String("\"\\u0041\"".into())
+    );
 }
 
 // from_json: whitespace handling
 #[test]
 fn json_from_json_whitespace() {
-    assert_eq!(json_value(r#"from_json("{  \"a\" : 1  }")"#),
-               interp::Value::String("{  \"a\" : 1  }".into()));
+    assert_eq!(
+        json_value(r#"from_json("{  \"a\" : 1  }")"#),
+        interp::Value::String("{  \"a\" : 1  }".into())
+    );
 }
 
 // from_json: invalid inputs → error
@@ -101,14 +121,20 @@ fn json_from_json_invalid_empty_string() {
 // json_get_string: extract string field
 #[test]
 fn json_get_string_exists() {
-    let v = run_source(r#"func main() -> string { json_get_string("{\"name\":\"Alice\"}", "name") }"#);
+    let v =
+        run_source(r#"func main() -> string { json_get_string("{\"name\":\"Alice\"}", "name") }"#);
     assert_eq!(v, interp::Value::String("Alice".into()));
 }
 
 #[test]
 fn json_get_string_missing_key() {
-    let result = run_source_result(r#"func main() -> string { json_get_string("{\"a\":1}", "nonexistent") }"#);
-    assert!(result.is_err(), "json_get_string with missing key should error");
+    let result = run_source_result(
+        r#"func main() -> string { json_get_string("{\"a\":1}", "nonexistent") }"#,
+    );
+    assert!(
+        result.is_err(),
+        "json_get_string with missing key should error"
+    );
 }
 
 #[test]
@@ -127,8 +153,12 @@ fn json_get_int_field() {
 
 #[test]
 fn json_get_int_missing_key() {
-    let result = run_source_result(r#"func main() -> i64 { json_get_int("{\"a\":1}", "nonexistent") }"#);
-    assert!(result.is_err(), "json_get_int with missing key should error");
+    let result =
+        run_source_result(r#"func main() -> i64 { json_get_int("{\"a\":1}", "nonexistent") }"#);
+    assert!(
+        result.is_err(),
+        "json_get_int with missing key should error"
+    );
 }
 
 // json_get_element: extract from array
@@ -147,13 +177,17 @@ fn json_get_element_middle() {
 #[test]
 fn json_get_element_out_of_bounds() {
     let result = run_source_result(r#"func main() -> string { json_get_element("[10, 20]", 99) }"#);
-    assert!(result.is_err(), "json_get_element out of bounds should error");
+    assert!(
+        result.is_err(),
+        "json_get_element out of bounds should error"
+    );
 }
 
 // json_get_element: nested objects in arrays
 #[test]
 fn json_get_element_object_in_array() {
-    let v = run_source(r#"func main() -> string { json_get_element("[{\"x\":1}, {\"x\":2}]", 0) }"#);
+    let v =
+        run_source(r#"func main() -> string { json_get_element("[{\"x\":1}, {\"x\":2}]", 0) }"#);
     assert_eq!(v, interp::Value::String("{\"x\":1}".into()));
 }
 
@@ -179,13 +213,17 @@ fn json_to_json_string() {
 // stdlib-style wrappers (without module import)
 #[test]
 fn json_get_bool_true() {
-    let v = run_source(r#"func main() -> bool { json_get_string("{\"active\":\"true\"}", "active") == "true" }"#);
+    let v = run_source(
+        r#"func main() -> bool { json_get_string("{\"active\":\"true\"}", "active") == "true" }"#,
+    );
     assert_eq!(v, interp::Value::Bool(true));
 }
 
 #[test]
 fn json_get_bool_false() {
-    let v = run_source(r#"func main() -> bool { json_get_string("{\"active\":\"false\"}", "active") == "true" }"#);
+    let v = run_source(
+        r#"func main() -> bool { json_get_string("{\"active\":\"false\"}", "active") == "true" }"#,
+    );
     assert_eq!(v, interp::Value::Bool(false));
 }
 
@@ -209,7 +247,10 @@ func main() -> str {
 }
 "#;
     let result = run_source_result(src);
-    assert!(result.is_err(), "json_get_string with missing key should error");
+    assert!(
+        result.is_err(),
+        "json_get_string with missing key should error"
+    );
 }
 
 #[test]
@@ -220,8 +261,12 @@ fn json_has_key_present() {
 
 #[test]
 fn json_has_key_missing() {
-    let result = run_source_result(r#"func main() -> bool { json_get_string("{\"x\":\"y\"}", "z") != "" }"#);
-    assert!(result.is_err(), "json_get_string with missing key should error");
+    let result =
+        run_source_result(r#"func main() -> bool { json_get_string("{\"x\":\"y\"}", "z") != "" }"#);
+    assert!(
+        result.is_err(),
+        "json_get_string with missing key should error"
+    );
 }
 
 // ===== is_valid_json =====
@@ -321,60 +366,70 @@ fn json_from_json_typed_f64() {
 
 #[test]
 fn json_from_json_typed_list_i32() {
-    let v = run_source(r#"
+    let v = run_source(
+        r#"
         func main() -> i32 {
             let nums = from_json::<List<i32>>("[1, 2, 3]");
             nums[0] + nums[1] + nums[2]
         }
-    "#);
+    "#,
+    );
     assert_eq!(v, interp::Value::Int(6));
 }
 
 #[test]
 fn json_from_json_typed_record() {
-    let v = run_source(r#"
+    let v = run_source(
+        r#"
         type Point { x: i32, y: i32 }
         func main() -> i32 {
             let p = from_json::<Point>("{\"x\": 10, \"y\": 20}");
             p.x + p.y
         }
-    "#);
+    "#,
+    );
     assert_eq!(v, interp::Value::Int(30));
 }
 
 #[test]
 fn json_from_json_typed_option_some() {
-    let v = run_source(r#"
+    let v = run_source(
+        r#"
         func main() -> i32 {
             let x = from_json::<Option<i32>>("42");
             x.unwrap()
         }
-    "#);
+    "#,
+    );
     assert_eq!(v, interp::Value::Int(42));
 }
 
 #[test]
 fn json_from_json_typed_option_none() {
-    let v = run_source(r#"
+    let v = run_source(
+        r#"
         func main() -> string {
             let x = from_json::<Option<i32>>("null");
             // None gives unit, check type
             type_name(x)
         }
-    "#);
+    "#,
+    );
     assert_eq!(v, interp::Value::String("unit".into()));
 }
 
 #[test]
 fn json_from_json_typed_nested_record() {
-    let v = run_source(r#"
+    let v = run_source(
+        r#"
         type Address { city: string, zip: i32 }
         type Person { name: string, addr: Address }
         func main() -> string {
             let p = from_json::<Person>("{\"name\": \"Alice\", \"addr\": {\"city\": \"NYC\", \"zip\": 10001}}");
             p.name + " lives in " + p.addr.city
         }
-    "#);
+    "#,
+    );
     assert_eq!(v, interp::Value::String("Alice lives in NYC".into()));
 }
 
@@ -382,23 +437,27 @@ fn json_from_json_typed_nested_record() {
 
 #[test]
 fn json_from_json_typed_empty_list() {
-    let v = run_source(r#"
+    let v = run_source(
+        r#"
         func main() -> i32 {
             let nums = from_json::<List<i32>>("[]");
             nums.len()
         }
-    "#);
+    "#,
+    );
     assert_eq!(v, interp::Value::Int(0));
 }
 
 #[test]
 fn json_from_json_typed_list_string() {
-    let v = run_source(r#"
+    let v = run_source(
+        r#"
         func main() -> string {
             let items = from_json::<List<string>>("[\"a\", \"b\", \"c\"]");
             items[0] + items[1] + items[2]
         }
-    "#);
+    "#,
+    );
     assert_eq!(v, interp::Value::String("abc".into()));
 }
 
@@ -422,31 +481,36 @@ fn json_from_json_typed_i32_negative() {
 
 #[test]
 fn json_from_json_typed_record_with_list() {
-    let v = run_source(r#"
+    let v = run_source(
+        r#"
         type Team { name: string, members: List<string> }
         func main() -> string {
             let t = from_json::<Team>("{\"name\": \"dev\", \"members\": [\"A\", \"B\"]}");
             t.name + ": " + t.members[0] + ", " + t.members[1]
         }
-    "#);
+    "#,
+    );
     assert_eq!(v, interp::Value::String("dev: A, B".into()));
 }
 
 #[test]
 fn json_from_json_typed_enum_unit_variant() {
-    let v = run_source(r#"
+    let v = run_source(
+        r#"
         type Color { Red, Green, Blue }
         func main() -> string {
             let c = from_json::<Color>("\"Red\"");
             type_name(c)
         }
-    "#);
+    "#,
+    );
     assert_eq!(v, interp::Value::String("Red".into()));
 }
 
 #[test]
 fn json_from_json_typed_enum_with_payload() {
-    let v = run_source(r#"
+    let v = run_source(
+        r#"
         type Shape { Circle(f64), Rect(f64, f64) }
         func main() -> f64 {
             let s = from_json::<Shape>("{\"Circle\": 2.5}");
@@ -454,7 +518,8 @@ fn json_from_json_typed_enum_with_payload() {
             // Just verify it deserializes without error
             1.0
         }
-    "#);
+    "#,
+    );
     assert_eq!(v, interp::Value::Float(1.0));
 }
 
@@ -463,7 +528,11 @@ fn json_from_json_typed_invalid_json_error() {
     let result = run_source_result(r#"func main() -> i32 { from_json::<i32>("not json") }"#);
     assert!(result.is_err());
     let err = result.unwrap_err();
-    assert!(err.contains("JSON parse error") || err.contains("from_json"), "error: {}", err);
+    assert!(
+        err.contains("JSON parse error") || err.contains("from_json"),
+        "error: {}",
+        err
+    );
 }
 
 #[test]

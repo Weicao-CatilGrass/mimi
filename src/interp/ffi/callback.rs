@@ -37,7 +37,8 @@ use std::sync::Mutex;
 /// them from any thread. Entries persist until explicitly deregistered via
 /// `mimi_callback_deregister`.
 #[allow(clippy::type_complexity)]
-static CALLBACK_GLOBAL_STORE: std::sync::OnceLock<Mutex<HashMap<i64, (Value, bool, Vec<bool>)>>> = std::sync::OnceLock::new();
+static CALLBACK_GLOBAL_STORE: std::sync::OnceLock<Mutex<HashMap<i64, (Value, bool, Vec<bool>)>>> =
+    std::sync::OnceLock::new();
 
 #[allow(clippy::type_complexity)]
 fn global_callback_store() -> &'static Mutex<HashMap<i64, (Value, bool, Vec<bool>)>> {
@@ -103,7 +104,9 @@ unsafe fn callback_trampoline_inner(
     let (closure, ret_is_float, arg_free_mask) = match entry {
         Some(e) => e,
         None => {
-            let entry = global_callback_store().lock().ok()
+            let entry = global_callback_store()
+                .lock()
+                .ok()
                 .and_then(|store| store.get(&callback_id).cloned());
             match entry {
                 Some(e) => e,
@@ -120,7 +123,10 @@ unsafe fn callback_trampoline_inner(
     let mut mimi_args: Vec<Value> = Vec::with_capacity(nargs);
     for i in 0..nargs {
         let arg_ptr = *args.add(i);
-        if arg_ptr.is_null() { mimi_args.push(Value::Int(0)); continue; }
+        if arg_ptr.is_null() {
+            mimi_args.push(Value::Int(0));
+            continue;
+        }
         // For V1, treat all args as i64. Float is handled via to_bits.
         let val = *(arg_ptr as *const i64);
         mimi_args.push(Value::Int(val));
@@ -160,11 +166,16 @@ unsafe fn callback_trampoline_inner(
                     Value::Bool(b) => b as i64,
                     Value::Float(f) => f.to_bits() as i64,
                     Value::Unit => 0,
-                    _ => { *result = i64::MIN; return; }
+                    _ => {
+                        *result = i64::MIN;
+                        return;
+                    }
                 };
             }
         }
-        Err(_) => { *result = i64::MIN; }
+        Err(_) => {
+            *result = i64::MIN;
+        }
     }
 
     // F6: Free C-allocated string pointers that Mimi takes ownership of.
@@ -172,7 +183,9 @@ unsafe fn callback_trampoline_inner(
         if should_free && i < nargs {
             let arg_ptr = *args.add(i);
             if !arg_ptr.is_null() {
-                unsafe { libc::free(arg_ptr as *mut libc::c_void); }
+                unsafe {
+                    libc::free(arg_ptr as *mut libc::c_void);
+                }
             }
         }
     }
@@ -182,11 +195,24 @@ impl<'a> Interpreter<'a> {
     /// F8: Apply a Mimi closure value to arguments from within a C callback context.
     /// Mirrors `apply_closure` in call.rs but designed for &self usage from a
     /// C trampoline via raw pointer.
-    pub(crate) fn apply_closure_ffi(&mut self, closure: &Value, args: Vec<Value>) -> Result<Value, Errno> {
+    pub(crate) fn apply_closure_ffi(
+        &mut self,
+        closure: &Value,
+        args: Vec<Value>,
+    ) -> Result<Value, Errno> {
         match closure {
-            Value::Closure { params, body, captured, .. } =>
-                self.apply_closure_inner(params, body, captured, args).map_err(|e| Errno::from(e.to_string())),
-            _ => Err(Errno::Generic(format!("expected a closure, found {}", closure))),
+            Value::Closure {
+                params,
+                body,
+                captured,
+                ..
+            } => self
+                .apply_closure_inner(params, body, captured, args)
+                .map_err(|e| Errno::from(e.to_string())),
+            _ => Err(Errno::Generic(format!(
+                "expected a closure, found {}",
+                closure
+            ))),
         }
     }
 
@@ -296,5 +322,4 @@ impl<'a> Interpreter<'a> {
             ))),
         }
     }
-
 }

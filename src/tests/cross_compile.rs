@@ -21,7 +21,11 @@ fn cross_compile_windows_target_llvm_object() {
     let obj_path = tmp_dir.join("test.o");
 
     let result = codegen.compile_to_object(&obj_path);
-    assert!(result.is_ok(), "compile_to_object with Windows target should succeed: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "compile_to_object with Windows target should succeed: {:?}",
+        result
+    );
 
     assert!(obj_path.exists(), "object file should exist");
     let _ = std::fs::remove_dir_all(&tmp_dir);
@@ -44,7 +48,11 @@ fn cross_compile_aarch64_linux_object() {
     let obj_path = tmp_dir.join("test.o");
 
     let result = codegen.compile_to_object(&obj_path);
-    assert!(result.is_ok(), "compile_to_object with aarch64 target should succeed: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "compile_to_object with aarch64 target should succeed: {:?}",
+        result
+    );
 
     assert!(obj_path.exists(), "object file should exist");
     let _ = std::fs::remove_dir_all(&tmp_dir);
@@ -68,7 +76,11 @@ fn cross_compile_no_std_windows() {
     let obj_path = tmp_dir.join("test.o");
 
     let result = codegen.compile_to_object(&obj_path);
-    assert!(result.is_ok(), "compile_to_object with no_std + Windows target should succeed: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "compile_to_object with no_std + Windows target should succeed: {:?}",
+        result
+    );
 
     assert!(obj_path.exists(), "object file should exist");
     let _ = std::fs::remove_dir_all(&tmp_dir);

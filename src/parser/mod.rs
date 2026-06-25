@@ -6,11 +6,11 @@ use crate::lexer::{Token, TokenKind};
 use crate::span::Span;
 
 mod helpers;
-mod top_level;
-mod pattern;
-mod parse_type;
 mod parse_expr;
 mod parse_stmt;
+mod parse_type;
+mod pattern;
+mod top_level;
 
 #[derive(Debug, Clone)]
 pub struct ParseError {
@@ -32,7 +32,9 @@ impl ParseError {
 
     /// Convert to the new Diagnostic type.
     pub fn to_diagnostic(&self) -> Diagnostic {
-        let span = self.span.unwrap_or_else(|| Span::single(self.line, self.col));
+        let span = self
+            .span
+            .unwrap_or_else(|| Span::single(self.line, self.col));
         Diagnostic::error(&self.message, span)
     }
 }
@@ -87,13 +89,25 @@ impl Parser {
     }
 
     fn with_mode(tokens: Vec<Token>, mode: ParseMode) -> Self {
-        Self { tokens, pos: 0, mode, recovery_mode: false, recursion_depth: std::cell::Cell::new(0) }
+        Self {
+            tokens,
+            pos: 0,
+            mode,
+            recovery_mode: false,
+            recursion_depth: std::cell::Cell::new(0),
+        }
     }
 
     /// Create a parser in recovery mode: statement-level errors are caught and skipped.
     #[allow(dead_code)]
     pub fn new_with_recovery(tokens: Vec<Token>) -> Self {
-        Self { tokens, pos: 0, mode: ParseMode::Production, recovery_mode: true, recursion_depth: std::cell::Cell::new(0) }
+        Self {
+            tokens,
+            pos: 0,
+            mode: ParseMode::Production,
+            recovery_mode: true,
+            recursion_depth: std::cell::Cell::new(0),
+        }
     }
 
     pub fn parse_file(mut self) -> Result<File, ParseError> {
@@ -129,10 +143,17 @@ impl Parser {
                     errors.push(e);
                     // Skip to next top-level sync point
                     self.recover_to_sync(&[
-                        TokenKind::Func, TokenKind::Type, TokenKind::Module,
-                        TokenKind::Actor, TokenKind::Cap, TokenKind::Trait,
-                        TokenKind::Impl, TokenKind::Extern, TokenKind::Use,
-                        TokenKind::RBrace, TokenKind::Eof,
+                        TokenKind::Func,
+                        TokenKind::Type,
+                        TokenKind::Module,
+                        TokenKind::Actor,
+                        TokenKind::Cap,
+                        TokenKind::Trait,
+                        TokenKind::Impl,
+                        TokenKind::Extern,
+                        TokenKind::Use,
+                        TokenKind::RBrace,
+                        TokenKind::Eof,
                     ]);
                     // If still at Use and recover didn't advance, force-advance
                     // to avoid infinite loop on malformed import.
@@ -157,10 +178,17 @@ impl Parser {
                     errors.push(e);
                     // Skip to next top-level sync point
                     self.recover_to_sync(&[
-                        TokenKind::Func, TokenKind::Type, TokenKind::Module,
-                        TokenKind::Actor, TokenKind::Cap, TokenKind::Trait,
-                        TokenKind::Impl, TokenKind::Extern, TokenKind::Use,
-                        TokenKind::RBrace, TokenKind::Eof,
+                        TokenKind::Func,
+                        TokenKind::Type,
+                        TokenKind::Module,
+                        TokenKind::Actor,
+                        TokenKind::Cap,
+                        TokenKind::Trait,
+                        TokenKind::Impl,
+                        TokenKind::Extern,
+                        TokenKind::Use,
+                        TokenKind::RBrace,
+                        TokenKind::Eof,
                     ]);
                     // Ensure progress: if recover_to_sync didn't advance
                     // (e.g. sync token was a structural token not consumed

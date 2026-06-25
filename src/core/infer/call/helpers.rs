@@ -182,10 +182,7 @@ impl<'a> Checker<'a> {
             }
             "split" => {
                 if args.len() != 1 {
-                    self.emit_code(
-                        crate::diagnostic::codes::E0242,
-                        "split expects 1 argument",
-                    );
+                    self.emit_code(crate::diagnostic::codes::E0242, "split expects 1 argument");
                 } else {
                     let t = self.infer_expr(&args[0], scopes);
                     if !same_type(&t, &Type::Name("string".into(), vec![])) {
@@ -218,10 +215,7 @@ impl<'a> Checker<'a> {
             }
             "repeat" => {
                 if args.len() != 1 {
-                    self.emit_code(
-                        crate::diagnostic::codes::E0242,
-                        "repeat expects 1 argument",
-                    );
+                    self.emit_code(crate::diagnostic::codes::E0242, "repeat expects 1 argument");
                 } else {
                     let t = self.infer_expr(&args[0], scopes);
                     if !is_int(&t) {
@@ -346,9 +340,7 @@ impl<'a> Checker<'a> {
                 }
                 Type::Name("Set".into(), vec![(*inner).clone()])
             }
-            "to_list" => {
-                Type::Name("List".into(), vec![(*inner).clone()])
-            }
+            "to_list" => Type::Name("List".into(), vec![(*inner).clone()]),
             _ => {
                 self.emit_code(
                     crate::diagnostic::codes::E0242,

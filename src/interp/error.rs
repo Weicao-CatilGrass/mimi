@@ -1,7 +1,7 @@
-use std::fmt;
-use crate::diagnostic::Diagnostic;
 use crate::diagnostic::codes;
+use crate::diagnostic::Diagnostic;
 use crate::span::Span;
+use std::fmt;
 
 /// Context data shared by all InterpError variants.
 #[derive(Debug, Clone)]
@@ -437,12 +437,18 @@ mod tests {
     #[test]
     fn test_specific_variant_codes() {
         assert_eq!(InterpError::div_by_zero().code(), codes::E0801);
-        assert_eq!(InterpError::integer_overflow("overflow").code(), codes::E0802);
+        assert_eq!(
+            InterpError::integer_overflow("overflow").code(),
+            codes::E0802
+        );
         assert_eq!(InterpError::index_out_of_bounds("oob").code(), codes::E0803);
         assert_eq!(InterpError::wrong_arg_count("args").code(), codes::E0804);
         assert_eq!(InterpError::lock_error("lock").code(), codes::E0806);
         assert_eq!(InterpError::arena_escape("escape").code(), codes::E0807);
-        assert_eq!(InterpError::contract_violation("violation").code(), codes::E0808);
+        assert_eq!(
+            InterpError::contract_violation("violation").code(),
+            codes::E0808
+        );
         assert_eq!(InterpError::io_error("io").code(), codes::E0810);
         assert_eq!(InterpError::type_mismatch("t").code(), codes::E0812);
         assert_eq!(InterpError::float_error("f").code(), codes::E0813);

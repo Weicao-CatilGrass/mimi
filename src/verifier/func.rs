@@ -2,15 +2,15 @@ use crate::ast::*;
 use crate::contracts;
 use crate::diagnostic::Diagnostic;
 use crate::span::Span;
-use crate::verifier::ctx::{Counterexample, VerificationResult, VerifStatus, Z3VarMap};
+use crate::verifier::ctx::{Counterexample, VerifStatus, VerificationResult, Z3VarMap};
 use crate::verifier::helpers::{
     collect_idents_in_stmt, extract_body_return, format_expr, parse_contract_expr,
 };
 use std::collections::HashMap;
 use std::str::FromStr;
 use std::time::Instant;
-use z3::ast::{Bool as Z3Bool, Int as Z3Int, Real as Z3Real};
 use z3::ast::String as Z3String;
+use z3::ast::{Bool as Z3Bool, Int as Z3Int, Real as Z3Real};
 use z3::SatResult;
 
 impl crate::verifier::Verifier {
@@ -120,9 +120,16 @@ impl crate::verifier::Verifier {
             SatResult::Unknown => {
                 let elapsed = start.elapsed();
                 let msg = if elapsed.as_millis() >= self.timeout_ms as u128 {
-                    format!("extern precondition check timed out after {}ms for '{}'", elapsed.as_millis(), func.name)
+                    format!(
+                        "extern precondition check timed out after {}ms for '{}'",
+                        elapsed.as_millis(),
+                        func.name
+                    )
                 } else {
-                    format!("extern precondition satisfiability unknown for '{}' ({:.1?})", func.name, elapsed)
+                    format!(
+                        "extern precondition satisfiability unknown for '{}' ({:.1?})",
+                        func.name, elapsed
+                    )
                 };
                 VerificationResult {
                     func_name: format!("extern {}", func.name),
@@ -132,15 +139,16 @@ impl crate::verifier::Verifier {
                     duration_us: elapsed.as_micros() as u64,
                     constraint_count,
                 }
-            },
+            }
             SatResult::Sat => {
                 if let Some(ens) = ensures_expr {
-                    self.solver.push();
-                    if let Some(z3_not_ens) = self.expr_to_z3_bool(ens, &mut vars).map(|b| b.not()) {
+                    self.solver_push();
+                    if let Some(z3_not_ens) = self.expr_to_z3_bool(ens, &mut vars).map(|b| b.not())
+                    {
                         self.solver.assert(&z3_not_ens);
                         match self.check_safe() {
                             SatResult::Unsat => {
-                                self.solver.pop(1);
+                                self.solver_pop(1);
                                 VerificationResult {
                                     func_name: format!("extern {}", func.name),
                                     status: VerifStatus::Verified,
@@ -152,10 +160,10 @@ impl crate::verifier::Verifier {
                                 }
                             }
                             SatResult::Sat | SatResult::Unknown => {
-                                self.solver.pop(1);
+                                self.solver_pop(1);
                                 VerificationResult {
-                                    func_name: format!("extern {}", func.name),
-                                    status: VerifStatus::Verified,
+                                func_name: format!("extern {}", func.name),
+                                status: VerifStatus::Verified,
                                     message:
                                         "extern contracts are consistent (preconditions do not statically guarantee postconditions; runtime verification required)"
                                             .into(),
@@ -166,7 +174,7 @@ impl crate::verifier::Verifier {
                             }
                         }
                     } else {
-                        self.solver.pop(1);
+                        self.solver_pop(1);
                         VerificationResult {
                             func_name: format!("extern {}", func.name),
                             status: VerifStatus::Unknown,
@@ -295,10 +303,7 @@ impl crate::verifier::Verifier {
                     p.name.as_str(),
                     Z3Int::new_const(format!("{}_len", p.name)),
                 );
-                vars.insert_string_var(
-                    p.name.as_str(),
-                    Z3String::new_const(p.name.as_str()),
-                );
+                vars.insert_string_var(p.name.as_str(), Z3String::new_const(p.name.as_str()));
             } else {
                 vars.insert_int(p.name.as_str(), Z3Int::new_const(p.name.as_str()));
             }
@@ -323,14 +328,8 @@ impl crate::verifier::Verifier {
                     old_name,
                     Z3Bool::new_const(format!("{}_ne", old_name)),
                 );
-                vars.insert_string_len(
-                    old_name,
-                    Z3Int::new_const(format!("{}_len", old_name)),
-                );
-                vars.insert_string_var(
-                    old_name,
-                    Z3String::new_const(old_name),
-                );
+                vars.insert_string_len(old_name, Z3Int::new_const(format!("{}_len", old_name)));
+                vars.insert_string_var(old_name, Z3String::new_const(old_name));
             } else {
                 vars.insert_int(old_name, Z3Int::new_const(old_name));
             }
@@ -396,7 +395,10 @@ impl crate::verifier::Verifier {
             if let Some(z3_bool) = self.expr_to_z3_bool(math, &mut vars) {
                 self.solver.assert(z3_bool);
             } else {
-                parse_errors.push(format!("could not encode math constraint: {}", format_expr(math)));
+                parse_errors.push(format!(
+                    "could not encode math constraint: {}",
+                    format_expr(math)
+                ));
             }
         }
 
@@ -433,14 +435,18 @@ impl crate::verifier::Verifier {
                         self.solver.assert(r.eq(&body_z3));
                     }
                 } else {
-                    parse_errors.push("could not encode return expression — result may be unconstrained".into());
+                    parse_errors.push(
+                        "could not encode return expression — result may be unconstrained".into(),
+                    );
                 }
             } else if let Some(body_z3) = self.expr_to_z3_int(return_expr, &mut vars) {
                 if let Some(i) = vars.get_int("result") {
                     self.solver.assert(i.eq(&body_z3));
                 }
             } else {
-                parse_errors.push("could not encode return expression — result may be unconstrained".into());
+                parse_errors.push(
+                    "could not encode return expression — result may be unconstrained".into(),
+                );
             }
         } else if func.ret.is_some() {
             // No return expression found but function has a return type:
@@ -479,38 +485,40 @@ impl crate::verifier::Verifier {
             + num_real_params // old_* equality constraints (real)
             + if body_return.is_some() { 1 } else { 0 };
 
-        let annotate_parse_errors = |diag: Option<Diagnostic>, errs: &[String]| -> Option<Diagnostic> {
-            if !errs.is_empty() {
-                let mut d = diag.unwrap_or_else(|| {
-                    Diagnostic::error(
-                        format!("contract errors in '{}'", func.name),
+        let annotate_parse_errors =
+            |diag: Option<Diagnostic>, errs: &[String]| -> Option<Diagnostic> {
+                if !errs.is_empty() {
+                    let mut d = diag.unwrap_or_else(|| {
+                        Diagnostic::error(
+                            format!("contract errors in '{}'", func.name),
+                            Span::single(func.pos.0, func.pos.1),
+                        )
+                    });
+                    d = d.with_note(
+                        format!("contract errors: {}", errs.join("; ")),
                         Span::single(func.pos.0, func.pos.1),
-                    )
-                });
-                d = d.with_note(
-                    format!("contract errors: {}", errs.join("; ")),
-                    Span::single(func.pos.0, func.pos.1),
-                );
-                Some(d)
-            } else {
-                diag
-            }
-        };
+                    );
+                    Some(d)
+                } else {
+                    diag
+                }
+            };
 
         match self.check_safe() {
             SatResult::Sat => {
                 if !ensures_exprs.is_empty() {
-                    self.solver.push();
+                    self.solver_push();
                     for ens in &ensures_exprs {
                         if let Some(z3_bool) = self.expr_to_z3_bool(ens, &mut vars) {
                             self.solver.assert(z3_bool.not());
                         } else {
-                            parse_errors.push(format!("could not encode ensures: {}", format_expr(ens)));
+                            parse_errors
+                                .push(format!("could not encode ensures: {}", format_expr(ens)));
                         }
                     }
                     match self.check_safe() {
                         SatResult::Unsat => {
-                            self.solver.pop(1);
+                            self.solver_pop(1);
                             VerificationResult {
                                 func_name: func.name.clone(),
                                 status: VerifStatus::Verified,
@@ -524,7 +532,7 @@ impl crate::verifier::Verifier {
                             let model = self.solver.get_model();
                             let counterexample =
                                 self.extract_counterexample(&model, &vars, &ensures_exprs);
-                            self.solver.pop(1);
+                            self.solver_pop(1);
                             let diagnostic = self.build_failure_narrative(
                                 func,
                                 &counterexample,
@@ -543,7 +551,7 @@ impl crate::verifier::Verifier {
                             }
                         }
                         SatResult::Unknown => {
-                            self.solver.pop(1);
+                            self.solver_pop(1);
                             let elapsed = start.elapsed();
                             let msg = if elapsed.as_millis() >= self.timeout_ms as u128 {
                                 format!("verification timed out after {}ms for '{}' — try simplifying postconditions or reducing constraint count ({})",
@@ -598,8 +606,10 @@ impl crate::verifier::Verifier {
                     format!("precondition check timed out after {}ms for '{}' — try simplifying requires or reducing constraint count ({})",
                         elapsed.as_millis(), func.name, constraint_count)
                 } else {
-                    format!("precondition satisfiability unknown for '{}' ({} constraints, {:.1?})",
-                        func.name, constraint_count, elapsed)
+                    format!(
+                        "precondition satisfiability unknown for '{}' ({} constraints, {:.1?})",
+                        func.name, constraint_count, elapsed
+                    )
                 };
                 VerificationResult {
                     func_name: func.name.clone(),
@@ -609,7 +619,7 @@ impl crate::verifier::Verifier {
                     duration_us: elapsed.as_micros() as u64,
                     constraint_count,
                 }
-            },
+            }
         }
     }
 
@@ -621,10 +631,11 @@ impl crate::verifier::Verifier {
     ) -> Counterexample {
         let mut assignments = Vec::new();
         let mut real_assignments = Vec::new();
+        let mut string_assignments = Vec::new();
 
         if let Some(model) = model {
             for (name, z3_var) in &vars.int_vars {
-                if name == "result" || name.starts_with("old_") {
+                if name == "result" || name.starts_with("old_") || name.starts_with('_') {
                     continue;
                 }
                 if let Some(val) = model.eval(z3_var, true) {
@@ -659,6 +670,17 @@ impl crate::verifier::Verifier {
                     }
                 }
             }
+            // V5: Collect string variable values for counterexample display.
+            for (name, z3_var) in &vars.string_vars {
+                if name.starts_with("old_") {
+                    continue;
+                }
+                if let Some(val) = model.eval(z3_var, true) {
+                    if let Some(s) = val.as_string() {
+                        string_assignments.push((name.clone(), s));
+                    }
+                }
+            }
         }
 
         let mut violated_indices = Vec::new();
@@ -686,6 +708,7 @@ impl crate::verifier::Verifier {
         Counterexample {
             assignments,
             real_assignments,
+            string_assignments,
             violated_ensures: violated,
             violated_indices,
         }
@@ -697,13 +720,17 @@ impl crate::verifier::Verifier {
         match expr {
             Expr::Literal(Lit::String(s)) => Some(s.clone()),
             Expr::Ident(name) => vars.get_string_var(name).and_then(|z3_var| {
-                model.eval(z3_var, true).and_then(|v| v.as_string().map(|s| s.to_string()))
+                model
+                    .eval(z3_var, true)
+                    .and_then(|v| v.as_string().map(|s| s.to_string()))
             }),
             Expr::Old(inner) => {
                 if let Expr::Ident(name) = inner.as_ref() {
                     let old_name = format!("old_{}", name);
                     vars.get_string_var(&old_name).and_then(|z3_var| {
-                        model.eval(z3_var, true).and_then(|v| v.as_string().map(|s| s.to_string()))
+                        model
+                            .eval(z3_var, true)
+                            .and_then(|v| v.as_string().map(|s| s.to_string()))
                     })
                 } else {
                     None
@@ -716,15 +743,14 @@ impl crate::verifier::Verifier {
     fn resolve_to_i64(expr: &Expr, model: &z3::Model, vars: &Z3VarMap) -> Option<i64> {
         match expr {
             Expr::Literal(Lit::Int(n)) => Some(*n),
-            Expr::Ident(name) => vars.get_int(name).and_then(|z3_var| {
-                model.eval(z3_var, true).and_then(|v| v.as_i64())
-            }),
+            Expr::Ident(name) => vars
+                .get_int(name)
+                .and_then(|z3_var| model.eval(z3_var, true).and_then(|v| v.as_i64())),
             Expr::Old(inner) => {
                 if let Expr::Ident(name) = inner.as_ref() {
                     let old_name = format!("old_{}", name);
-                    vars.get_int(&old_name).and_then(|z3_var| {
-                        model.eval(z3_var, true).and_then(|v| v.as_i64())
-                    })
+                    vars.get_int(&old_name)
+                        .and_then(|z3_var| model.eval(z3_var, true).and_then(|v| v.as_i64()))
                 } else {
                     None
                 }
@@ -798,9 +824,7 @@ impl crate::verifier::Verifier {
                     _ => None,
                 }
             }
-            Expr::Unary(UnOp::Neg, inner) => {
-                Self::resolve_to_f64(inner, model, vars).map(|v| -v)
-            }
+            Expr::Unary(UnOp::Neg, inner) => Self::resolve_to_f64(inner, model, vars).map(|v| -v),
             Expr::Spawn(inner) => Self::resolve_to_f64(inner, model, vars),
             Expr::Await(inner) => Self::resolve_to_f64(inner, model, vars),
             _ => None,
@@ -979,10 +1003,16 @@ impl crate::verifier::Verifier {
         let func_name = &func.name;
 
         // Build function signature string for the header
-        let param_strs: Vec<String> = func.params.iter()
+        let param_strs: Vec<String> = func
+            .params
+            .iter()
             .map(|p| format!("{}: {}", p.name, crate::core::fmt_type(&p.ty)))
             .collect();
-        let ret_str = func.ret.as_ref().map(crate::core::fmt_type).unwrap_or_default();
+        let ret_str = func
+            .ret
+            .as_ref()
+            .map(crate::core::fmt_type)
+            .unwrap_or_default();
 
         let input_assignments: Vec<&(String, i64)> = counterexample
             .assignments
@@ -1004,7 +1034,11 @@ impl crate::verifier::Verifier {
             "verification failed for '{}' ({} -> {}): postcondition not satisfied",
             func_name,
             param_strs.join(", "),
-            if ret_str.is_empty() { "void".into() } else { ret_str },
+            if ret_str.is_empty() {
+                "void".into()
+            } else {
+                ret_str
+            },
         );
 
         // Show counterexample values as a block
@@ -1015,6 +1049,11 @@ impl crate::verifier::Verifier {
         for (name, val) in &counterexample.real_assignments {
             if name != "result" {
                 counter_lines.push(format!("    {} = {:.6}", name, val));
+            }
+        }
+        for (name, val) in &counterexample.string_assignments {
+            if name != "result" {
+                counter_lines.push(format!("    {} = \"{}\"", name, val));
             }
         }
         if !counter_lines.is_empty() {
@@ -1032,7 +1071,10 @@ impl crate::verifier::Verifier {
         // Show violated postconditions
         for &idx in counterexample.violated_indices.iter() {
             if let Some(ens) = ensures_exprs.get(idx) {
-                message.push_str(&format!("\nensures {} is false for this input", format_expr(ens)));
+                message.push_str(&format!(
+                    "\nensures {} is false for this input",
+                    format_expr(ens)
+                ));
             }
         }
 
@@ -1076,11 +1118,7 @@ impl crate::verifier::Verifier {
         diag
     }
 
-    fn generate_fix_hint(
-        &self,
-        func: &FuncDef,
-        counterexample: &Counterexample,
-    ) -> Option<String> {
+    fn generate_fix_hint(&self, func: &FuncDef, counterexample: &Counterexample) -> Option<String> {
         let param_names: Vec<String> = func.params.iter().map(|p| p.name.clone()).collect();
         let result_val = counterexample
             .assignments
@@ -1152,15 +1190,26 @@ impl crate::verifier::Verifier {
                         // Clone callee data to avoid borrow conflict with
                         // self.expr_to_z3_bool (which needs &mut self).
                         let callee_params = callee_func.params.clone();
-                        let callee_ensures: Vec<Expr> = callee_func.body.iter()
-                            .filter_map(|s| if let Stmt::Ensures(e, _) = s { Some(e.clone()) } else { None })
+                        let callee_ensures: Vec<Expr> = callee_func
+                            .body
+                            .iter()
+                            .filter_map(|s| {
+                                if let Stmt::Ensures(e, _) = s {
+                                    Some(e.clone())
+                                } else {
+                                    None
+                                }
+                            })
                             .collect();
                         // Drop the immutable borrow on self
                         let _ = callee_func;
                         // Now assert each ensures as a Z3 constraint
                         for ens_expr in &callee_ensures {
                             let substituted = self.substitute_call(
-                                ens_expr, &callee_params, call_args, &call_key,
+                                ens_expr,
+                                &callee_params,
+                                call_args,
+                                &call_key,
                             );
                             if let Some(z3_bool) = self.expr_to_z3_bool(&substituted, vars) {
                                 self.solver.assert(z3_bool);
@@ -1234,7 +1283,10 @@ impl crate::verifier::Verifier {
             Stmt::Expr(e) | Stmt::Return(Some(e)) => {
                 self.assert_callee_ensures_in_expr(e, vars);
             }
-            Stmt::Let { init: Some(init), .. } | Stmt::Assign { value: init, .. } => {
+            Stmt::Let {
+                init: Some(init), ..
+            }
+            | Stmt::Assign { value: init, .. } => {
                 self.assert_callee_ensures_in_expr(init, vars);
             }
             Stmt::SharedLet { init, .. } => {
@@ -1247,17 +1299,19 @@ impl crate::verifier::Verifier {
                     self.assert_callee_ensures_in_block(else_block, vars);
                 }
             }
-            Stmt::While { cond, body, .. } | Stmt::For { iterable: cond, body, .. } => {
+            Stmt::While { cond, body, .. }
+            | Stmt::For {
+                iterable: cond,
+                body,
+                ..
+            } => {
                 self.assert_callee_ensures_in_expr(cond, vars);
                 self.assert_callee_ensures_in_block(body, vars);
             }
             Stmt::Loop(body) => {
                 self.assert_callee_ensures_in_block(body, vars);
             }
-            Stmt::Block(body)
-            | Stmt::Arena(body)
-            | Stmt::Unsafe(body)
-            | Stmt::Parasteps(body) => {
+            Stmt::Block(body) | Stmt::Arena(body) | Stmt::Unsafe(body) | Stmt::Parasteps(body) => {
                 self.assert_callee_ensures_in_block(body, vars);
             }
             Stmt::Alloc { body, .. } => {
@@ -1279,7 +1333,11 @@ impl crate::verifier::Verifier {
     fn build_let_subst_in_block(stmts: &[Stmt], subst: &mut HashMap<String, Expr>) {
         for stmt in stmts {
             match stmt {
-                Stmt::Let { pat: Pattern::Variable(name), init: Some(init), .. } => {
+                Stmt::Let {
+                    pat: Pattern::Variable(name),
+                    init: Some(init),
+                    ..
+                } => {
                     let init_expr: &Expr = init;
                     subst.insert(name.clone(), init_expr.clone());
                 }
@@ -1287,7 +1345,9 @@ impl crate::verifier::Verifier {
                 Stmt::Block(body)
                 | Stmt::Arena(body)
                 | Stmt::Unsafe(body)
-                | Stmt::Parasteps(body) => {
+                | Stmt::Parasteps(body)
+                | Stmt::OnFailure(body)
+                | Stmt::Loop(body) => {
                     Self::build_let_subst_in_block(body, subst);
                 }
                 Stmt::If { then_, else_, .. } => {
@@ -1296,8 +1356,58 @@ impl crate::verifier::Verifier {
                         Self::build_let_subst_in_block(else_block, subst);
                     }
                 }
+                Stmt::While { body, .. } | Stmt::WhileLet { body, .. } | Stmt::For { body, .. } => {
+                    Self::build_let_subst_in_block(body, subst);
+                }
+                Stmt::Expr(e) => {
+                    Self::build_let_subst_in_expr(e, subst);
+                }
+                Stmt::Assign { target, value } => {
+                    Self::build_let_subst_in_expr(target, subst);
+                    Self::build_let_subst_in_expr(value, subst);
+                }
+                Stmt::Return(Some(e)) | Stmt::Break(Some(e)) => {
+                    Self::build_let_subst_in_expr(e, subst);
+                }
+                Stmt::SharedLet { init, .. } => {
+                    Self::build_let_subst_in_expr(init, subst);
+                }
+                Stmt::Alloc { body, .. } => {
+                    Self::build_let_subst_in_block(body, subst);
+                }
                 _ => {}
             }
+        }
+    }
+
+    fn build_let_subst_in_expr(expr: &Expr, subst: &mut HashMap<String, Expr>) {
+        match expr {
+            Expr::Binary(_, lhs, rhs) => {
+                Self::build_let_subst_in_expr(lhs, subst);
+                Self::build_let_subst_in_expr(rhs, subst);
+            }
+            Expr::Unary(_, inner) => Self::build_let_subst_in_expr(inner, subst),
+            Expr::If { cond, then_, else_ } => {
+                Self::build_let_subst_in_expr(cond, subst);
+                Self::build_let_subst_in_block(then_, subst);
+                if let Some(e) = else_ {
+                    Self::build_let_subst_in_block(e, subst);
+                }
+            }
+            Expr::Block(stmts) => Self::build_let_subst_in_block(stmts, subst),
+            Expr::Match(inner, arms) => {
+                Self::build_let_subst_in_expr(inner, subst);
+                for arm in arms {
+                    Self::build_let_subst_in_expr(&arm.body, subst);
+                }
+            }
+            Expr::Call(callee, args) => {
+                Self::build_let_subst_in_expr(callee, subst);
+                for a in args {
+                    Self::build_let_subst_in_expr(a, subst);
+                }
+            }
+            _ => {}
         }
     }
 
@@ -1311,68 +1421,79 @@ impl crate::verifier::Verifier {
                     expr.clone()
                 }
             }
-            Expr::Binary(op, lhs, rhs) => {
-                Expr::Binary(*op,
-                    Box::new(Self::expand_lets_in_expr(lhs, subst)),
-                    Box::new(Self::expand_lets_in_expr(rhs, subst)),
-                )
-            }
+            Expr::Binary(op, lhs, rhs) => Expr::Binary(
+                *op,
+                Box::new(Self::expand_lets_in_expr(lhs, subst)),
+                Box::new(Self::expand_lets_in_expr(rhs, subst)),
+            ),
             Expr::Unary(op, inner) => {
                 Expr::Unary(*op, Box::new(Self::expand_lets_in_expr(inner, subst)))
             }
-            Expr::Call(callee, args) => {
-                Expr::Call(
-                    Box::new(Self::expand_lets_in_expr(callee, subst)),
-                    args.iter().map(|a| Self::expand_lets_in_expr(a, subst)).collect(),
-                )
-            }
-            Expr::Field(obj, name) => {
-                Expr::Field(Box::new(Self::expand_lets_in_expr(obj, subst)), name.clone())
-            }
-            Expr::Old(inner) => {
-                Expr::Old(Box::new(Self::expand_lets_in_expr(inner, subst)))
-            }
-            Expr::Block(block) => {
-                Expr::Block(block.iter().map(|s| Self::expand_lets_in_stmt(s, subst)).collect())
-            }
-            Expr::If { cond, then_, else_ } => {
-                Expr::If {
-                    cond: Box::new(Self::expand_lets_in_expr(cond, subst)),
-                    then_: then_.iter().map(|s| Self::expand_lets_in_stmt(s, subst)).collect(),
-                    else_: else_.as_ref().map(|b| b.iter().map(|s| Self::expand_lets_in_stmt(s, subst)).collect()),
-                }
-            }
-            Expr::Match(scrutinee, arms) => {
-                Expr::Match(
-                    Box::new(Self::expand_lets_in_expr(scrutinee, subst)),
-                    arms.iter().map(|arm| crate::ast::MatchArm {
+            Expr::Call(callee, args) => Expr::Call(
+                Box::new(Self::expand_lets_in_expr(callee, subst)),
+                args.iter()
+                    .map(|a| Self::expand_lets_in_expr(a, subst))
+                    .collect(),
+            ),
+            Expr::Field(obj, name) => Expr::Field(
+                Box::new(Self::expand_lets_in_expr(obj, subst)),
+                name.clone(),
+            ),
+            Expr::Old(inner) => Expr::Old(Box::new(Self::expand_lets_in_expr(inner, subst))),
+            Expr::Block(block) => Expr::Block(
+                block
+                    .iter()
+                    .map(|s| Self::expand_lets_in_stmt(s, subst))
+                    .collect(),
+            ),
+            Expr::If { cond, then_, else_ } => Expr::If {
+                cond: Box::new(Self::expand_lets_in_expr(cond, subst)),
+                then_: then_
+                    .iter()
+                    .map(|s| Self::expand_lets_in_stmt(s, subst))
+                    .collect(),
+                else_: else_.as_ref().map(|b| {
+                    b.iter()
+                        .map(|s| Self::expand_lets_in_stmt(s, subst))
+                        .collect()
+                }),
+            },
+            Expr::Match(scrutinee, arms) => Expr::Match(
+                Box::new(Self::expand_lets_in_expr(scrutinee, subst)),
+                arms.iter()
+                    .map(|arm| crate::ast::MatchArm {
                         pat: arm.pat.clone(),
-                        guard: arm.guard.as_ref().map(|g| Self::expand_lets_in_expr(g, subst)),
+                        guard: arm
+                            .guard
+                            .as_ref()
+                            .map(|g| Self::expand_lets_in_expr(g, subst)),
                         body: Self::expand_lets_in_expr(&arm.body, subst),
-                    }).collect(),
-                )
-            }
-            Expr::Spawn(inner) => {
-                Expr::Spawn(Box::new(Self::expand_lets_in_expr(inner, subst)))
-            }
-            Expr::Await(inner) => {
-                Expr::Await(Box::new(Self::expand_lets_in_expr(inner, subst)))
-            }
-            Expr::Lambda { params, ret, body } => {
-                Expr::Lambda {
-                    params: params.clone(),
-                    ret: ret.clone(),
-                    body: body.iter().map(|s| Self::expand_lets_in_stmt(s, subst)).collect(),
-                }
-            }
-            Expr::Comprehension { expr, var, iter, guard } => {
-                Expr::Comprehension {
-                    expr: Box::new(Self::expand_lets_in_expr(expr, subst)),
-                    var: var.clone(),
-                    iter: Box::new(Self::expand_lets_in_expr(iter, subst)),
-                    guard: guard.as_ref().map(|g| Box::new(Self::expand_lets_in_expr(g, subst))),
-                }
-            }
+                    })
+                    .collect(),
+            ),
+            Expr::Spawn(inner) => Expr::Spawn(Box::new(Self::expand_lets_in_expr(inner, subst))),
+            Expr::Await(inner) => Expr::Await(Box::new(Self::expand_lets_in_expr(inner, subst))),
+            Expr::Lambda { params, ret, body } => Expr::Lambda {
+                params: params.clone(),
+                ret: ret.clone(),
+                body: body
+                    .iter()
+                    .map(|s| Self::expand_lets_in_stmt(s, subst))
+                    .collect(),
+            },
+            Expr::Comprehension {
+                expr,
+                var,
+                iter,
+                guard,
+            } => Expr::Comprehension {
+                expr: Box::new(Self::expand_lets_in_expr(expr, subst)),
+                var: var.clone(),
+                iter: Box::new(Self::expand_lets_in_expr(iter, subst)),
+                guard: guard
+                    .as_ref()
+                    .map(|g| Box::new(Self::expand_lets_in_expr(g, subst))),
+            },
             _ => expr.clone(),
         }
     }
@@ -1380,7 +1501,9 @@ impl crate::verifier::Verifier {
     fn expand_lets_in_stmt(stmt: &Stmt, subst: &HashMap<String, Expr>) -> Stmt {
         match stmt {
             Stmt::Expr(e) => Stmt::Expr(Self::expand_lets_in_expr(e, subst)),
-            Stmt::Return(e) => Stmt::Return(e.as_ref().map(|e| Self::expand_lets_in_expr(e, subst))),
+            Stmt::Return(e) => {
+                Stmt::Return(e.as_ref().map(|e| Self::expand_lets_in_expr(e, subst)))
+            }
             _ => stmt.clone(),
         }
     }
@@ -1398,9 +1521,7 @@ impl crate::verifier::Verifier {
         // Ident that matches the Z3 variable naming from call_var_key.
         // For param names, replace with the actual call argument expressions.
         match ensures {
-            Expr::Ident(name) if name == "result" => {
-                Expr::Ident(call_key.to_string())
-            }
+            Expr::Ident(name) if name == "result" => Expr::Ident(call_key.to_string()),
             Expr::Ident(name) => {
                 if let Some(idx) = params.iter().position(|p| p.name == *name) {
                     if idx < call_args.len() {
@@ -1409,21 +1530,22 @@ impl crate::verifier::Verifier {
                 }
                 ensures.clone()
             }
-            Expr::Binary(op, lhs, rhs) => {
-                Expr::Binary(*op,
-                    Box::new(self.substitute_call(lhs, params, call_args, call_key)),
-                    Box::new(self.substitute_call(rhs, params, call_args, call_key)),
-                )
-            }
-            Expr::Unary(op, inner) => {
-                Expr::Unary(*op, Box::new(self.substitute_call(inner, params, call_args, call_key)))
-            }
-            Expr::Field(obj, name) => {
-                Expr::Field(Box::new(self.substitute_call(obj, params, call_args, call_key)), name.clone())
-            }
-            Expr::Old(inner) => {
-                Expr::Old(Box::new(self.substitute_call(inner, params, call_args, call_key)))
-            }
+            Expr::Binary(op, lhs, rhs) => Expr::Binary(
+                *op,
+                Box::new(self.substitute_call(lhs, params, call_args, call_key)),
+                Box::new(self.substitute_call(rhs, params, call_args, call_key)),
+            ),
+            Expr::Unary(op, inner) => Expr::Unary(
+                *op,
+                Box::new(self.substitute_call(inner, params, call_args, call_key)),
+            ),
+            Expr::Field(obj, name) => Expr::Field(
+                Box::new(self.substitute_call(obj, params, call_args, call_key)),
+                name.clone(),
+            ),
+            Expr::Old(inner) => Expr::Old(Box::new(
+                self.substitute_call(inner, params, call_args, call_key),
+            )),
             Expr::Literal(l) => Expr::Literal(l.clone()),
             _ => ensures.clone(),
         }

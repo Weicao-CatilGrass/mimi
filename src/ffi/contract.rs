@@ -10,7 +10,7 @@
 
 use std::collections::HashSet;
 
-use crate::ast::{CapMode, ExternFunc, Expr, Type};
+use crate::ast::{CapMode, Expr, ExternFunc, Type};
 
 /// Contract for one extern function.
 #[derive(Debug, Clone)]
@@ -111,37 +111,147 @@ pub enum FfiRetContract {
 /// negative values / -1, triggering automatic errno capture after the C call.
 /// Used by both `FfiContract` and the Python binding generator.
 pub const ERRNO_CHECK_FUNC_NAMES: &[&str] = &[
-    "errno", "strerror", "perror",
-    "open", "openat", "creat", "fopen", "fdopen",
-    "read", "write", "pread", "pwrite", "readv", "writev",
-    "socket", "connect", "bind", "listen", "accept", "accept4",
-    "send", "recv", "sendto", "recvfrom", "sendmsg", "recvmsg",
-    "close", "shutdown", "dup", "dup2", "dup3",
-    "fcntl", "ioctl", "poll", "select", "epoll_create", "epoll_ctl", "epoll_wait",
-    "fork", "execve", "wait", "waitpid", "waitid",
-    "kill", "raise", "signal", "sigaction", "sigprocmask",
-    "pipe", "pipe2", "mkfifo", "socketpair",
-    "getaddrinfo", "freeaddrinfo", "getnameinfo",
-    "gethostbyname", "gethostbyaddr",
-    "dlopen", "dlsym", "dlerror", "dlclose",
-    "mmap", "munmap", "mprotect", "msync",
-    "opendir", "readdir", "closedir",
-    "stat", "fstat", "lstat", "access", "chmod", "chown",
-    "link", "unlink", "rename", "symlink", "mkdir", "rmdir",
-    "mount", "umount", "chdir", "fchdir", "getcwd",
-    "setjmp", "longjmp", "sigsetjmp", "siglongjmp",
-    "time", "ctime", "localtime", "gmtime",
-    "strtol", "strtoll", "strtoul", "strtoull", "atoi", "atol",
-    "malloc", "calloc", "realloc", "posix_memalign",
-    "pthread_create", "pthread_join", "pthread_mutex_lock", "pthread_mutex_unlock",
-    "sem_init", "sem_wait", "sem_post", "sem_destroy",
-    "mq_open", "mq_send", "mq_receive", "mq_close", "mq_unlink",
-    "clock_gettime", "clock_settime", "timer_create", "timer_settime",
-    "getenv", "setenv", "unsetenv", "putenv",
-    "system", "popen", "pclose", "execl", "execle", "execlp", "execv", "execvp",
-    "realpath", "canonicalize_file_name",
-    "tempnam", "tmpfile", "mkstemp", "mkdtemp",
-    "getopt", "getopt_long", "getopt_long_only",
+    "errno",
+    "strerror",
+    "perror",
+    "open",
+    "openat",
+    "creat",
+    "fopen",
+    "fdopen",
+    "read",
+    "write",
+    "pread",
+    "pwrite",
+    "readv",
+    "writev",
+    "socket",
+    "connect",
+    "bind",
+    "listen",
+    "accept",
+    "accept4",
+    "send",
+    "recv",
+    "sendto",
+    "recvfrom",
+    "sendmsg",
+    "recvmsg",
+    "close",
+    "shutdown",
+    "dup",
+    "dup2",
+    "dup3",
+    "fcntl",
+    "ioctl",
+    "poll",
+    "select",
+    "epoll_create",
+    "epoll_ctl",
+    "epoll_wait",
+    "fork",
+    "execve",
+    "wait",
+    "waitpid",
+    "waitid",
+    "kill",
+    "raise",
+    "signal",
+    "sigaction",
+    "sigprocmask",
+    "pipe",
+    "pipe2",
+    "mkfifo",
+    "socketpair",
+    "getaddrinfo",
+    "freeaddrinfo",
+    "getnameinfo",
+    "gethostbyname",
+    "gethostbyaddr",
+    "dlopen",
+    "dlsym",
+    "dlerror",
+    "dlclose",
+    "mmap",
+    "munmap",
+    "mprotect",
+    "msync",
+    "opendir",
+    "readdir",
+    "closedir",
+    "stat",
+    "fstat",
+    "lstat",
+    "access",
+    "chmod",
+    "chown",
+    "link",
+    "unlink",
+    "rename",
+    "symlink",
+    "mkdir",
+    "rmdir",
+    "mount",
+    "umount",
+    "chdir",
+    "fchdir",
+    "getcwd",
+    "setjmp",
+    "longjmp",
+    "sigsetjmp",
+    "siglongjmp",
+    "time",
+    "ctime",
+    "localtime",
+    "gmtime",
+    "strtol",
+    "strtoll",
+    "strtoul",
+    "strtoull",
+    "atoi",
+    "atol",
+    "malloc",
+    "calloc",
+    "realloc",
+    "posix_memalign",
+    "pthread_create",
+    "pthread_join",
+    "pthread_mutex_lock",
+    "pthread_mutex_unlock",
+    "sem_init",
+    "sem_wait",
+    "sem_post",
+    "sem_destroy",
+    "mq_open",
+    "mq_send",
+    "mq_receive",
+    "mq_close",
+    "mq_unlink",
+    "clock_gettime",
+    "clock_settime",
+    "timer_create",
+    "timer_settime",
+    "getenv",
+    "setenv",
+    "unsetenv",
+    "putenv",
+    "system",
+    "popen",
+    "pclose",
+    "execl",
+    "execle",
+    "execlp",
+    "execv",
+    "execvp",
+    "realpath",
+    "canonicalize_file_name",
+    "tempnam",
+    "tmpfile",
+    "mkstemp",
+    "mkdtemp",
+    "getopt",
+    "getopt_long",
+    "getopt_long_only",
 ];
 
 impl FfiContract {
@@ -157,7 +267,11 @@ impl FfiContract {
     /// Build a contract from an extern function declaration, with knowledge of
     /// which type names refer to declared capabilities, which refer to records,
     /// and which records have #[repr(C)].
-    pub fn from_extern_with_caps(func: &ExternFunc, cap_names: &HashSet<String>, record_type_names: &HashSet<String>) -> Self {
+    pub fn from_extern_with_caps(
+        func: &ExternFunc,
+        cap_names: &HashSet<String>,
+        record_type_names: &HashSet<String>,
+    ) -> Self {
         Self::from_extern_with_caps_repr(func, cap_names, record_type_names, &HashSet::new())
     }
 
@@ -178,14 +292,26 @@ impl FfiContract {
                 if let Some(mode) = p.cap_mode {
                     FfiArgContract::Cap(mode)
                 } else {
-                    FfiArgContract::from_type_with_caps(&p.ty, cap_names, record_type_names, repr_c_record_names)
+                    FfiArgContract::from_type_with_caps(
+                        &p.ty,
+                        cap_names,
+                        record_type_names,
+                        repr_c_record_names,
+                    )
                 }
             })
             .collect();
         let ret = func
             .ret
             .as_ref()
-            .map(|ty| FfiRetContract::from_type_with_caps(ty, cap_names, record_type_names, repr_c_record_names))
+            .map(|ty| {
+                FfiRetContract::from_type_with_caps(
+                    ty,
+                    cap_names,
+                    record_type_names,
+                    repr_c_record_names,
+                )
+            })
             .unwrap_or(FfiRetContract::Unit);
 
         // Auto-enable errno checking if return type is Result-like
@@ -214,7 +340,12 @@ impl FfiContract {
 }
 
 impl FfiArgContract {
-    fn from_type_with_caps(ty: &Type, cap_names: &HashSet<String>, record_type_names: &HashSet<String>, repr_c_record_names: &HashSet<String>) -> Self {
+    fn from_type_with_caps(
+        ty: &Type,
+        cap_names: &HashSet<String>,
+        record_type_names: &HashSet<String>,
+        repr_c_record_names: &HashSet<String>,
+    ) -> Self {
         match ty {
             Type::Name(name, _) => {
                 if cap_names.contains(name.as_str()) {
@@ -248,7 +379,10 @@ impl FfiArgContract {
             Type::CBorrowMut(inner) => FfiArgContract::CBorrowMut(inner.clone()),
             Type::RawString => FfiArgContract::StringTransfer,
             Type::ExternFunc(param_types, ret_type) | Type::Func(param_types, ret_type) => {
-                FfiArgContract::Callback { param_types: param_types.clone(), ret_type: ret_type.clone() }
+                FfiArgContract::Callback {
+                    param_types: param_types.clone(),
+                    ret_type: ret_type.clone(),
+                }
             }
             Type::CBuffer(inner) => FfiArgContract::RawPtr(inner.clone()),
             Type::Tuple(_) => FfiArgContract::Json,
@@ -258,7 +392,12 @@ impl FfiArgContract {
 }
 
 impl FfiRetContract {
-    fn from_type_with_caps(ty: &Type, _cap_names: &HashSet<String>, record_type_names: &HashSet<String>, repr_c_record_names: &HashSet<String>) -> Self {
+    fn from_type_with_caps(
+        ty: &Type,
+        _cap_names: &HashSet<String>,
+        record_type_names: &HashSet<String>,
+        repr_c_record_names: &HashSet<String>,
+    ) -> Self {
         match ty {
             Type::Name(name, _) => match name.as_str() {
                 "i32" | "i64" | "bool" => FfiRetContract::Int,

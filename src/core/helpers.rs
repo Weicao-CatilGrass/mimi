@@ -19,13 +19,17 @@ fn edit_distance(a: &str, b: &str) -> usize {
 
     for i in 1..=a_len {
         for j in 1..=b_len {
-            let cost = if a_chars[i - 1] == b_chars[j - 1] { 0 } else { 1 };
+            let cost = if a_chars[i - 1] == b_chars[j - 1] {
+                0
+            } else {
+                1
+            };
             matrix[i][j] = std::cmp::min(
                 std::cmp::min(
-                    matrix[i - 1][j] + 1,      // deletion
-                    matrix[i][j - 1] + 1,      // insertion
+                    matrix[i - 1][j] + 1, // deletion
+                    matrix[i][j - 1] + 1, // insertion
                 ),
-                matrix[i - 1][j - 1] + cost,  // substitution
+                matrix[i - 1][j - 1] + cost, // substitution
             );
         }
     }
@@ -35,7 +39,11 @@ fn edit_distance(a: &str, b: &str) -> usize {
 
 /// Find the closest matching name from a list of candidates.
 /// Returns the best match if its edit distance is <= max_distance.
-pub(crate) fn suggest_name(name: &str, candidates: &[String], max_distance: usize) -> Option<String> {
+pub(crate) fn suggest_name(
+    name: &str,
+    candidates: &[String],
+    max_distance: usize,
+) -> Option<String> {
     let mut best: Option<(String, usize)> = None;
     for candidate in candidates {
         let dist = edit_distance(name, candidate);
@@ -64,15 +72,22 @@ pub fn is_type_param(name: &str, generics: &[GenericParam]) -> bool {
 fn occurs_check(name: &str, ty: &Type, _generics: &[GenericParam]) -> bool {
     match ty {
         Type::Name(n, args) => {
-            if n == name { return true; }
+            if n == name {
+                return true;
+            }
             args.iter().any(|a| occurs_check(name, a, _generics))
         }
         Type::Ref(_, inner) => occurs_check(name, inner, _generics),
         Type::RefMut(_, inner) => occurs_check(name, inner, _generics),
         Type::Option(inner) => occurs_check(name, inner, _generics),
-        Type::Result(ok, err) => occurs_check(name, ok, _generics) || occurs_check(name, err, _generics),
+        Type::Result(ok, err) => {
+            occurs_check(name, ok, _generics) || occurs_check(name, err, _generics)
+        }
         Type::Tuple(elems) => elems.iter().any(|e| occurs_check(name, e, _generics)),
-        Type::Func(args, ret) => args.iter().any(|a| occurs_check(name, a, _generics)) || occurs_check(name, ret, _generics),
+        Type::Func(args, ret) => {
+            args.iter().any(|a| occurs_check(name, a, _generics))
+                || occurs_check(name, ret, _generics)
+        }
         Type::Shared(inner) => occurs_check(name, inner, _generics),
         Type::LocalShared(inner) => occurs_check(name, inner, _generics),
         Type::Weak(inner) => occurs_check(name, inner, _generics),
@@ -83,19 +98,31 @@ fn occurs_check(name: &str, ty: &Type, _generics: &[GenericParam]) -> bool {
         Type::CBorrow(inner) => occurs_check(name, inner, _generics),
         Type::CBorrowMut(inner) => occurs_check(name, inner, _generics),
         Type::Newtype(_, inner) => occurs_check(name, inner, _generics),
-        Type::ExternFunc(args, ret) => args.iter().any(|a| occurs_check(name, a, _generics)) || occurs_check(name, ret, _generics),
+        Type::ExternFunc(args, ret) => {
+            args.iter().any(|a| occurs_check(name, a, _generics))
+                || occurs_check(name, ret, _generics)
+        }
         Type::CBuffer(inner) => occurs_check(name, inner, _generics),
         Type::Array(inner, _) => occurs_check(name, inner, _generics),
         Type::Slice(inner) => occurs_check(name, inner, _generics),
-        Type::Cap(_) | Type::Nothing | Type::RawString | Type::Allocator | Type::Infer
-        | Type::ImplTrait(_) | Type::DynTrait(_) => false,
+        Type::Cap(_)
+        | Type::Nothing
+        | Type::RawString
+        | Type::Allocator
+        | Type::Infer
+        | Type::ImplTrait(_)
+        | Type::DynTrait(_) => false,
     }
 }
 
 /// Substitute type parameters in a type.
 /// If substitution would cause infinite recursion (self-referential type),
 /// returns the original type unchanged to let downstream checks catch the mismatch.
-pub fn subst_type_params(ty: &Type, generics: &[GenericParam], type_map: &HashMap<String, Type>) -> Type {
+pub fn subst_type_params(
+    ty: &Type,
+    generics: &[GenericParam],
+    type_map: &HashMap<String, Type>,
+) -> Type {
     match ty {
         Type::Name(name, args) => {
             if is_type_param(name, generics) {
@@ -111,46 +138,82 @@ pub fn subst_type_params(ty: &Type, generics: &[GenericParam], type_map: &HashMa
                     ty.clone()
                 }
             } else {
-                let new_args: Vec<Type> = args.iter()
+                let new_args: Vec<Type> = args
+                    .iter()
                     .map(|a| subst_type_params(a, generics, type_map))
                     .collect();
                 Type::Name(name.clone(), new_args)
             }
         }
-        Type::Ref(lt, inner) => Type::Ref(lt.clone(), Box::new(subst_type_params(inner, generics, type_map))),
-        Type::RefMut(lt, inner) => Type::RefMut(lt.clone(), Box::new(subst_type_params(inner, generics, type_map))),
+        Type::Ref(lt, inner) => Type::Ref(
+            lt.clone(),
+            Box::new(subst_type_params(inner, generics, type_map)),
+        ),
+        Type::RefMut(lt, inner) => Type::RefMut(
+            lt.clone(),
+            Box::new(subst_type_params(inner, generics, type_map)),
+        ),
         Type::Option(inner) => Type::Option(Box::new(subst_type_params(inner, generics, type_map))),
         Type::Result(ok, err) => Type::Result(
             Box::new(subst_type_params(ok, generics, type_map)),
             Box::new(subst_type_params(err, generics, type_map)),
         ),
         Type::Tuple(elems) => Type::Tuple(
-            elems.iter().map(|e| subst_type_params(e, generics, type_map)).collect(),
+            elems
+                .iter()
+                .map(|e| subst_type_params(e, generics, type_map))
+                .collect(),
         ),
         Type::Func(args, ret) => Type::Func(
-            args.iter().map(|a| subst_type_params(a, generics, type_map)).collect(),
+            args.iter()
+                .map(|a| subst_type_params(a, generics, type_map))
+                .collect(),
             Box::new(subst_type_params(ret, generics, type_map)),
         ),
         Type::Shared(inner) => Type::Shared(Box::new(subst_type_params(inner, generics, type_map))),
-        Type::LocalShared(inner) => Type::LocalShared(Box::new(subst_type_params(inner, generics, type_map))),
+        Type::LocalShared(inner) => {
+            Type::LocalShared(Box::new(subst_type_params(inner, generics, type_map)))
+        }
         Type::Weak(inner) => Type::Weak(Box::new(subst_type_params(inner, generics, type_map))),
-        Type::WeakLocal(inner) => Type::WeakLocal(Box::new(subst_type_params(inner, generics, type_map))),
+        Type::WeakLocal(inner) => {
+            Type::WeakLocal(Box::new(subst_type_params(inner, generics, type_map)))
+        }
         Type::RawPtr(inner) => Type::RawPtr(Box::new(subst_type_params(inner, generics, type_map))),
-        Type::RawPtrMut(inner) => Type::RawPtrMut(Box::new(subst_type_params(inner, generics, type_map))),
-        Type::CShared(inner) => Type::CShared(Box::new(subst_type_params(inner, generics, type_map))),
-        Type::CBorrow(inner) => Type::CBorrow(Box::new(subst_type_params(inner, generics, type_map))),
-        Type::CBorrowMut(inner) => Type::CBorrowMut(Box::new(subst_type_params(inner, generics, type_map))),
-        Type::Newtype(name, inner) => Type::Newtype(name.clone(), Box::new(subst_type_params(inner, generics, type_map))),
-        Type::Cap(_) | Type::Nothing | Type::RawString | Type::Allocator | Type::Infer => ty.clone(),
+        Type::RawPtrMut(inner) => {
+            Type::RawPtrMut(Box::new(subst_type_params(inner, generics, type_map)))
+        }
+        Type::CShared(inner) => {
+            Type::CShared(Box::new(subst_type_params(inner, generics, type_map)))
+        }
+        Type::CBorrow(inner) => {
+            Type::CBorrow(Box::new(subst_type_params(inner, generics, type_map)))
+        }
+        Type::CBorrowMut(inner) => {
+            Type::CBorrowMut(Box::new(subst_type_params(inner, generics, type_map)))
+        }
+        Type::Newtype(name, inner) => Type::Newtype(
+            name.clone(),
+            Box::new(subst_type_params(inner, generics, type_map)),
+        ),
+        Type::Cap(_) | Type::Nothing | Type::RawString | Type::Allocator | Type::Infer => {
+            ty.clone()
+        }
         Type::ExternFunc(args, ret) => Type::ExternFunc(
-            args.iter().map(|a| subst_type_params(a, generics, type_map)).collect(),
+            args.iter()
+                .map(|a| subst_type_params(a, generics, type_map))
+                .collect(),
             Box::new(subst_type_params(ret, generics, type_map)),
         ),
-        Type::CBuffer(inner) => Type::CBuffer(Box::new(subst_type_params(inner, generics, type_map))),
-        Type::Array(inner, size) => Type::Array(Box::new(subst_type_params(inner, generics, type_map)), *size),
+        Type::CBuffer(inner) => {
+            Type::CBuffer(Box::new(subst_type_params(inner, generics, type_map)))
+        }
+        Type::Array(inner, size) => Type::Array(
+            Box::new(subst_type_params(inner, generics, type_map)),
+            *size,
+        ),
         Type::Slice(inner) => Type::Slice(Box::new(subst_type_params(inner, generics, type_map))),
         Type::ImplTrait(traits) => Type::ImplTrait(traits.clone()),
-            Type::DynTrait(traits) => Type::DynTrait(traits.clone()),
+        Type::DynTrait(traits) => Type::DynTrait(traits.clone()),
     }
 }
 
@@ -164,13 +227,19 @@ pub(crate) fn same_type(a: &Type, b: &Type) -> bool {
     // Only treat 'unknown' as matching if BOTH sides are unknown.
     // Single-sided unknown would mask cascade errors — let the
     // real type propagate so subsequent checks detect mismatches.
-    if matches!(a, Type::Name(n, _) if n == "unknown") && matches!(b, Type::Name(n, _) if n == "unknown") {
+    if matches!(a, Type::Name(n, _) if n == "unknown")
+        && matches!(b, Type::Name(n, _) if n == "unknown")
+    {
         return true;
     }
     // Normalize Type::Name("Result", [T, E]) <-> Type::Result(T, E) and Type::Name("Option", [T]) <-> Type::Option(T)
     // Compare args directly without cloning to allocate new enum variants.
     match (a, b) {
-        (Type::Name(na, aa), Type::Name(nb, ab)) => na == nb && aa.len() == ab.len() && aa.iter().zip(ab.iter()).all(|(x, y)| same_type(x, y)),
+        (Type::Name(na, aa), Type::Name(nb, ab)) => {
+            na == nb
+                && aa.len() == ab.len()
+                && aa.iter().zip(ab.iter()).all(|(x, y)| same_type(x, y))
+        }
         (Type::Name(n, args), Type::Result(ok, err)) if n == "Result" && args.len() == 2 => {
             same_type(&args[0], ok) && same_type(&args[1], err)
         }
@@ -187,10 +256,15 @@ pub(crate) fn same_type(a: &Type, b: &Type) -> bool {
         (Type::RefMut(_, a), Type::RefMut(_, b)) => same_type(a, b),
         (Type::Option(a), Type::Option(b)) => same_type(a, b),
         (Type::Result(a1, a2), Type::Result(b1, b2)) => same_type(a1, b1) && same_type(a2, b2),
-        (Type::Tuple(a), Type::Tuple(b)) => a.len() == b.len() && a.iter().zip(b.iter()).all(|(x, y)| same_type(x, y)),
+        (Type::Tuple(a), Type::Tuple(b)) => {
+            a.len() == b.len() && a.iter().zip(b.iter()).all(|(x, y)| same_type(x, y))
+        }
         (Type::Func(a_args, a_ret), Type::Func(b_args, b_ret)) => {
             a_args.len() == b_args.len()
-                && a_args.iter().zip(b_args.iter()).all(|(x, y)| same_type(x, y))
+                && a_args
+                    .iter()
+                    .zip(b_args.iter())
+                    .all(|(x, y)| same_type(x, y))
                 && same_type(a_ret, b_ret)
         }
         (Type::Cap(a), Type::Cap(b)) => a == b,
@@ -216,7 +290,10 @@ pub(crate) fn same_type(a: &Type, b: &Type) -> bool {
         (Type::RawString, Type::RawString) => true,
         (Type::ExternFunc(a_args, a_ret), Type::ExternFunc(b_args, b_ret)) => {
             a_args.len() == b_args.len()
-                && a_args.iter().zip(b_args.iter()).all(|(x, y)| same_type(x, y))
+                && a_args
+                    .iter()
+                    .zip(b_args.iter())
+                    .all(|(x, y)| same_type(x, y))
                 && same_type(a_ret, b_ret)
         }
         (Type::CBuffer(a), Type::CBuffer(b)) => same_type(a, b),
@@ -243,13 +320,15 @@ pub(crate) fn is_numeric_coercion(declared: &Type, init_ty: &Type) -> bool {
     }
 }
 
-pub(crate) fn is_trait_coercion(declared: &Type, init_ty: &Type, impls: &HashMap<(String, String), Vec<String>>) -> bool {
+pub(crate) fn is_trait_coercion(
+    declared: &Type,
+    init_ty: &Type,
+    impls: &HashMap<(String, String), Vec<String>>,
+) -> bool {
     match (declared, init_ty) {
-        (Type::DynTrait(trait_names), Type::Name(ty_name, _)) => {
-            trait_names.iter().all(|trait_name| {
-                impls.contains_key(&(trait_name.clone(), ty_name.clone()))
-            })
-        }
+        (Type::DynTrait(trait_names), Type::Name(ty_name, _)) => trait_names
+            .iter()
+            .all(|trait_name| impls.contains_key(&(trait_name.clone(), ty_name.clone()))),
         _ => false,
     }
 }
@@ -295,16 +374,31 @@ pub(crate) fn is_string(t: &Type) -> bool {
 pub fn fmt_type(t: &Type) -> String {
     match t {
         Type::Name(n, args) if args.is_empty() => n.clone(),
-        Type::Name(n, args) => format!("{}<{}>", n, args.iter().map(fmt_type).collect::<Vec<_>>().join(", ")),
+        Type::Name(n, args) => format!(
+            "{}<{}>",
+            n,
+            args.iter().map(fmt_type).collect::<Vec<_>>().join(", ")
+        ),
         Type::Ref(lt, inner) => {
-            if let Some(l) = lt { format!("&'{} {}", l, fmt_type(inner)) } else { format!("&{}", fmt_type(inner)) }
+            if let Some(l) = lt {
+                format!("&'{} {}", l, fmt_type(inner))
+            } else {
+                format!("&{}", fmt_type(inner))
+            }
         }
         Type::RefMut(lt, inner) => {
-            if let Some(l) = lt { format!("&'{} mut {}", l, fmt_type(inner)) } else { format!("&mut {}", fmt_type(inner)) }
+            if let Some(l) = lt {
+                format!("&'{} mut {}", l, fmt_type(inner))
+            } else {
+                format!("&mut {}", fmt_type(inner))
+            }
         }
         Type::Option(inner) => format!("Option<{}>", fmt_type(inner)),
         Type::Result(ok, err) => format!("Result<{}, {}>", fmt_type(ok), fmt_type(err)),
-        Type::Tuple(elems) => format!("({})", elems.iter().map(fmt_type).collect::<Vec<_>>().join(", ")),
+        Type::Tuple(elems) => format!(
+            "({})",
+            elems.iter().map(fmt_type).collect::<Vec<_>>().join(", ")
+        ),
         Type::Func(args, ret) => format!(
             "fn({}) -> {}",
             args.iter().map(fmt_type).collect::<Vec<_>>().join(", "),
@@ -331,7 +425,11 @@ pub fn fmt_type(t: &Type) -> String {
         Type::Infer => "_".to_string(),
         Type::ExternFunc(args, ret) => {
             let args_str: Vec<String> = args.iter().map(fmt_type).collect();
-            format!("extern \"C\" fn({}) -> {}", args_str.join(", "), fmt_type(ret))
+            format!(
+                "extern \"C\" fn({}) -> {}",
+                args_str.join(", "),
+                fmt_type(ret)
+            )
         }
         Type::CBuffer(inner) => format!("CBuffer<{}>", fmt_type(inner)),
     }
@@ -382,11 +480,17 @@ pub(crate) fn collect_lifetimes(ty: &Type) -> Vec<String> {
 pub(crate) fn type_contains_elided_lifetime(ty: &Type) -> bool {
     match ty {
         Type::Ref(None, _) | Type::RefMut(None, _) => true,
-        Type::Ref(Some(_), inner) | Type::RefMut(Some(_), inner) => type_contains_elided_lifetime(inner),
+        Type::Ref(Some(_), inner) | Type::RefMut(Some(_), inner) => {
+            type_contains_elided_lifetime(inner)
+        }
         Type::Option(inner) => type_contains_elided_lifetime(inner),
-        Type::Result(ok, err) => type_contains_elided_lifetime(ok) || type_contains_elided_lifetime(err),
+        Type::Result(ok, err) => {
+            type_contains_elided_lifetime(ok) || type_contains_elided_lifetime(err)
+        }
         Type::Tuple(elems) => elems.iter().any(type_contains_elided_lifetime),
-        Type::Func(args, ret) => args.iter().any(type_contains_elided_lifetime) || type_contains_elided_lifetime(ret),
+        Type::Func(args, ret) => {
+            args.iter().any(type_contains_elided_lifetime) || type_contains_elided_lifetime(ret)
+        }
         Type::Name(_, args) => args.iter().any(type_contains_elided_lifetime),
         _ => false,
     }
@@ -395,10 +499,18 @@ pub(crate) fn type_contains_elided_lifetime(ty: &Type) -> bool {
 /// Apply lifetime elision: replace all `Ref(None, _)` with `Ref(Some(lt), _)` in a type.
 pub(crate) fn elide_lifetime(ty: &Type, lt: &str) -> Type {
     match ty {
-        Type::Ref(None, inner) => Type::Ref(Some(lt.to_string()), Box::new(elide_lifetime(inner, lt))),
-        Type::Ref(Some(name), inner) => Type::Ref(Some(name.clone()), Box::new(elide_lifetime(inner, lt))),
-        Type::RefMut(None, inner) => Type::RefMut(Some(lt.to_string()), Box::new(elide_lifetime(inner, lt))),
-        Type::RefMut(Some(name), inner) => Type::RefMut(Some(name.clone()), Box::new(elide_lifetime(inner, lt))),
+        Type::Ref(None, inner) => {
+            Type::Ref(Some(lt.to_string()), Box::new(elide_lifetime(inner, lt)))
+        }
+        Type::Ref(Some(name), inner) => {
+            Type::Ref(Some(name.clone()), Box::new(elide_lifetime(inner, lt)))
+        }
+        Type::RefMut(None, inner) => {
+            Type::RefMut(Some(lt.to_string()), Box::new(elide_lifetime(inner, lt)))
+        }
+        Type::RefMut(Some(name), inner) => {
+            Type::RefMut(Some(name.clone()), Box::new(elide_lifetime(inner, lt)))
+        }
         Type::Option(inner) => Type::Option(Box::new(elide_lifetime(inner, lt))),
         Type::Result(ok, err) => Type::Result(
             Box::new(elide_lifetime(ok, lt)),
@@ -409,7 +521,10 @@ pub(crate) fn elide_lifetime(ty: &Type, lt: &str) -> Type {
             args.iter().map(|a| elide_lifetime(a, lt)).collect(),
             Box::new(elide_lifetime(ret, lt)),
         ),
-        Type::Name(name, args) => Type::Name(name.clone(), args.iter().map(|a| elide_lifetime(a, lt)).collect()),
+        Type::Name(name, args) => Type::Name(
+            name.clone(),
+            args.iter().map(|a| elide_lifetime(a, lt)).collect(),
+        ),
         other => other.clone(),
     }
 }

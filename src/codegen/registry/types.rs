@@ -6,15 +6,20 @@ use inkwell::types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum};
 use inkwell::values::BasicMetadataValueEnum;
 
 impl<'ctx> CodeGenerator<'ctx> {
-    pub(in crate::codegen) fn register_type_def(&mut self, t: &crate::ast::TypeDef) -> MimiResult<()> {
+    pub(in crate::codegen) fn register_type_def(
+        &mut self,
+        t: &crate::ast::TypeDef,
+    ) -> MimiResult<()> {
         let llvm_ty = match &t.kind {
             crate::ast::TypeDefKind::Record(fields) => {
                 let mut field_tys = Vec::new();
                 for f in fields {
-                    let ty = types::mimi_type_to_llvm(self.context, &f.ty)
-                        .ok_or_else(|| CompileError::LlvmError(format!(
-                            "cannot map record field '{}' type to LLVM", crate::core::fmt_type(&f.ty)
-                        )))?;
+                    let ty = types::mimi_type_to_llvm(self.context, &f.ty).ok_or_else(|| {
+                        CompileError::LlvmError(format!(
+                            "cannot map record field '{}' type to LLVM",
+                            crate::core::fmt_type(&f.ty)
+                        ))
+                    })?;
                     field_tys.push(ty);
                 }
                 BasicTypeEnum::StructType(self.context.struct_type(&field_tys, false))
@@ -32,13 +37,24 @@ impl<'ctx> CodeGenerator<'ctx> {
                         let ctor_name = format!("{}_{}", t.name, v.name);
                         if self.module.get_function(&ctor_name).is_none() {
                             let fn_type = self.context.i32_type().fn_type(&[], false);
-                            let ctor = self.module.add_function(&ctor_name, fn_type, Some(inkwell::module::Linkage::Internal));
+                            let ctor = self.module.add_function(
+                                &ctor_name,
+                                fn_type,
+                                Some(inkwell::module::Linkage::Internal),
+                            );
                             let entry = self.context.append_basic_block(ctor, "entry");
                             let prev_block = self.builder.get_insert_block();
                             self.builder.position_at_end(entry);
-                            self.builder.build_return(Some(&self.context.i32_type().const_int(ordinal as u64, false)))
-                                .map_err(|e| CompileError::LlvmError(format!("ctor return error: {}", e)))?;
-                            if let Some(prev) = prev_block { self.builder.position_at_end(prev); }
+                            self.builder
+                                .build_return(Some(
+                                    &self.context.i32_type().const_int(ordinal as u64, false),
+                                ))
+                                .map_err(|e| {
+                                    CompileError::LlvmError(format!("ctor return error: {}", e))
+                                })?;
+                            if let Some(prev) = prev_block {
+                                self.builder.position_at_end(prev);
+                            }
                         }
                     }
                     enum_ty
@@ -47,12 +63,14 @@ impl<'ctx> CodeGenerator<'ctx> {
                     // Struct-typed payloads are ptrtoint-encoded into the i64 slot.
                     let payload_ty = BasicTypeEnum::IntType(self.context.i64_type());
                     let tag_ty = BasicTypeEnum::IntType(self.context.i32_type());
-                    let enum_ty = BasicTypeEnum::StructType(self.context.struct_type(&[tag_ty, payload_ty], false));
+                    let enum_ty = BasicTypeEnum::StructType(
+                        self.context.struct_type(&[tag_ty, payload_ty], false),
+                    );
                     // Register constructor functions for each variant
-                    let struct_ty = self.context.struct_type(&[
-                        BasicTypeEnum::IntType(self.context.i32_type()),
-                        payload_ty,
-                    ], false);
+                    let struct_ty = self.context.struct_type(
+                        &[BasicTypeEnum::IntType(self.context.i32_type()), payload_ty],
+                        false,
+                    );
                     // Metadata type for constructor parameter
                     let meta_payload_ty = match payload_ty {
                         BasicTypeEnum::IntType(t) => BasicMetadataTypeEnum::IntType(t),
@@ -72,73 +90,150 @@ impl<'ctx> CodeGenerator<'ctx> {
                                 }
                                 _ => None,
                             });
-                            let payload_is_struct = matches!(payload_llvm, Some(BasicTypeEnum::StructType(_)));
+                            let payload_is_struct =
+                                matches!(payload_llvm, Some(BasicTypeEnum::StructType(_)));
                             let fn_type = if v.payload.is_some() {
                                 if payload_is_struct {
-                                    struct_ty.fn_type(&[types::basic_to_metadata(self.context, payload_llvm.expect("payload_llvm is Some when payload_is_struct"))], false)
+                                    struct_ty.fn_type(
+                                        &[types::basic_to_metadata(
+                                            self.context,
+                                            payload_llvm.expect(
+                                                "payload_llvm is Some when payload_is_struct",
+                                            ),
+                                        )],
+                                        false,
+                                    )
                                 } else {
                                     struct_ty.fn_type(&[meta_payload_ty], false)
                                 }
                             } else {
                                 struct_ty.fn_type(&[], false)
                             };
-                            let ctor = self.module.add_function(&ctor_name, fn_type, Some(inkwell::module::Linkage::Internal));
+                            let ctor = self.module.add_function(
+                                &ctor_name,
+                                fn_type,
+                                Some(inkwell::module::Linkage::Internal),
+                            );
                             let entry = self.context.append_basic_block(ctor, "entry");
                             let prev_block = self.builder.get_insert_block();
                             self.builder.position_at_end(entry);
-                            let alloca = self.builder.build_alloca(struct_ty, &ctor_name)
-                                .map_err(|e| CompileError::LlvmError(format!("alloca error: {}", e)))?;
-                            let tag_gep = self.gep().build_struct_gep(struct_ty, alloca, 0, "tag")
-                                .map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?;
-                            self.builder.build_store(tag_gep, self.context.i32_type().const_int(ordinal as u64, false))
-                                .map_err(|e| CompileError::LlvmError(format!("store error: {}", e)))?;
+                            let alloca =
+                                self.builder
+                                    .build_alloca(struct_ty, &ctor_name)
+                                    .map_err(|e| {
+                                        CompileError::LlvmError(format!("alloca error: {}", e))
+                                    })?;
+                            let tag_gep = self
+                                .gep()
+                                .build_struct_gep(struct_ty, alloca, 0, "tag")
+                                .map_err(|e| {
+                                    CompileError::LlvmError(format!("gep error: {}", e))
+                                })?;
+                            self.builder
+                                .build_store(
+                                    tag_gep,
+                                    self.context.i32_type().const_int(ordinal as u64, false),
+                                )
+                                .map_err(|e| {
+                                    CompileError::LlvmError(format!("store error: {}", e))
+                                })?;
                             if v.payload.is_some() {
-                                let payload_arg = ctor.get_nth_param(0).ok_or_else(|| CompileError::LlvmError("missing payload param".to_string()))?;
-                                let payload_gep = self.gep().build_struct_gep(struct_ty, alloca, 1, "payload")
-                                    .map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?;
+                                let payload_arg = ctor.get_nth_param(0).ok_or_else(|| {
+                                    CompileError::LlvmError("missing payload param".to_string())
+                                })?;
+                                let payload_gep = self
+                                    .gep()
+                                    .build_struct_gep(struct_ty, alloca, 1, "payload")
+                                    .map_err(|e| {
+                                        CompileError::LlvmError(format!("gep error: {}", e))
+                                    })?;
                                 if payload_is_struct {
                                     // Struct-typed payload: malloc, store, ptrtoint to i64
                                     let payload_struct = payload_arg.into_struct_value();
-                                    let payload_struct_ty = payload_llvm.expect("payload_llvm is Some when payload_is_struct");
-                                    let struct_size = payload_struct_ty.size_of()
-                                        .ok_or_else(|| CompileError::LlvmError("cannot get payload struct size".to_string()))?;
-                                    let malloc_fn = self.module.get_function("malloc")
+                                    let payload_struct_ty = payload_llvm
+                                        .expect("payload_llvm is Some when payload_is_struct");
+                                    let struct_size =
+                                        payload_struct_ty.size_of().ok_or_else(|| {
+                                            CompileError::LlvmError(
+                                                "cannot get payload struct size".to_string(),
+                                            )
+                                        })?;
+                                    let malloc_fn = self
+                                        .module
+                                        .get_function("malloc")
                                         .ok_or_else(|| "malloc not declared".to_string())?;
                                     let size_val = self.context.i64_type().const_int(
-                                        struct_size.get_zero_extended_constant().unwrap_or(16), false
+                                        struct_size.get_zero_extended_constant().unwrap_or(16),
+                                        false,
                                     );
-                                    let malloc_call = self.builder.build_call(malloc_fn, &[
-                                        BasicMetadataValueEnum::IntValue(size_val),
-                                    ], "payload_malloc")
-                                        .map_err(|e| CompileError::LlvmError(format!("malloc error: {}", e)))?;
-                                    let malloc_result = crate::codegen::call_try_basic_value(&malloc_call)
-                                        .ok_or("malloc returned void")?
-                                        .into_pointer_value();
-                                    let typed_ptr = self.builder.build_pointer_cast(
-                                        malloc_result,
-                                        self.context.ptr_type(inkwell::AddressSpace::default()),
-                                        "typed_ptr",
-                                    ).map_err(|e| CompileError::LlvmError(format!("ptr cast: {}", e)))?;
-                                    self.builder.build_store(typed_ptr, payload_struct)
-                                        .map_err(|e| CompileError::LlvmError(format!("store struct: {}", e)))?;
-                                    let i8_ptr = self.context.ptr_type(inkwell::AddressSpace::default());
-                                    let ptr_to_i8 = self.builder.build_pointer_cast(
-                                        malloc_result, i8_ptr, "ptr_i8"
-                                    ).map_err(|e| CompileError::LlvmError(format!("ptr cast: {}", e)))?;
-                                    let int_val = self.builder.build_ptr_to_int(ptr_to_i8, self.context.i64_type(), "payload_int")
-                                        .map_err(|e| CompileError::LlvmError(format!("ptr2int: {}", e)))?;
-                                    self.builder.build_store(payload_gep, int_val)
-                                        .map_err(|e| CompileError::LlvmError(format!("store int: {}", e)))?;
+                                    let malloc_call = self
+                                        .builder
+                                        .build_call(
+                                            malloc_fn,
+                                            &[BasicMetadataValueEnum::IntValue(size_val)],
+                                            "payload_malloc",
+                                        )
+                                        .map_err(|e| {
+                                            CompileError::LlvmError(format!("malloc error: {}", e))
+                                        })?;
+                                    let malloc_result =
+                                        crate::codegen::call_try_basic_value(&malloc_call)
+                                            .ok_or("malloc returned void")?
+                                            .into_pointer_value();
+                                    let typed_ptr = self
+                                        .builder
+                                        .build_pointer_cast(
+                                            malloc_result,
+                                            self.context.ptr_type(inkwell::AddressSpace::default()),
+                                            "typed_ptr",
+                                        )
+                                        .map_err(|e| {
+                                            CompileError::LlvmError(format!("ptr cast: {}", e))
+                                        })?;
+                                    self.builder
+                                        .build_store(typed_ptr, payload_struct)
+                                        .map_err(|e| {
+                                            CompileError::LlvmError(format!("store struct: {}", e))
+                                        })?;
+                                    let i8_ptr =
+                                        self.context.ptr_type(inkwell::AddressSpace::default());
+                                    let ptr_to_i8 = self
+                                        .builder
+                                        .build_pointer_cast(malloc_result, i8_ptr, "ptr_i8")
+                                        .map_err(|e| {
+                                            CompileError::LlvmError(format!("ptr cast: {}", e))
+                                        })?;
+                                    let int_val = self
+                                        .builder
+                                        .build_ptr_to_int(
+                                            ptr_to_i8,
+                                            self.context.i64_type(),
+                                            "payload_int",
+                                        )
+                                        .map_err(|e| {
+                                            CompileError::LlvmError(format!("ptr2int: {}", e))
+                                        })?;
+                                    self.builder.build_store(payload_gep, int_val).map_err(
+                                        |e| CompileError::LlvmError(format!("store int: {}", e)),
+                                    )?;
                                 } else {
-                                    self.builder.build_store(payload_gep, payload_arg)
-                                        .map_err(|e| CompileError::LlvmError(format!("store error: {}", e)))?;
+                                    self.builder.build_store(payload_gep, payload_arg).map_err(
+                                        |e| CompileError::LlvmError(format!("store error: {}", e)),
+                                    )?;
                                 }
                             }
-                            let loaded = self.builder.build_load(struct_ty, alloca, &ctor_name)
-                                .map_err(|e| CompileError::LlvmError(format!("load error: {}", e)))?;
-                            self.builder.build_return(Some(&loaded))
-                                .map_err(|e| CompileError::LlvmError(format!("return error: {}", e)))?;
-                            if let Some(prev) = prev_block { self.builder.position_at_end(prev); }
+                            let loaded = self
+                                .builder
+                                .build_load(struct_ty, alloca, &ctor_name)
+                                .map_err(|e| {
+                                    CompileError::LlvmError(format!("load error: {}", e))
+                                })?;
+                            self.builder.build_return(Some(&loaded)).map_err(|e| {
+                                CompileError::LlvmError(format!("return error: {}", e))
+                            })?;
+                            if let Some(prev) = prev_block {
+                                self.builder.position_at_end(prev);
+                            }
                         }
                     }
                     enum_ty
@@ -150,13 +245,18 @@ impl<'ctx> CodeGenerator<'ctx> {
             }
             crate::ast::TypeDefKind::Union(fields) => {
                 // Represent union as a byte array large enough to hold the largest field
-                let max_size = fields.iter().map(|f| {
-                    let llvm_ty = types::mimi_type_to_llvm(self.context, &f.ty)
-                        .unwrap_or(BasicTypeEnum::IntType(self.context.i64_type()));
-                    llvm_ty.size_of()
-                        .and_then(|s| s.get_zero_extended_constant())
-                        .unwrap_or(8)
-                }).max().unwrap_or(8);
+                let max_size = fields
+                    .iter()
+                    .map(|f| {
+                        let llvm_ty = types::mimi_type_to_llvm(self.context, &f.ty)
+                            .unwrap_or(BasicTypeEnum::IntType(self.context.i64_type()));
+                        llvm_ty
+                            .size_of()
+                            .and_then(|s| s.get_zero_extended_constant())
+                            .unwrap_or(8)
+                    })
+                    .max()
+                    .unwrap_or(8);
                 let array_ty = self.context.i8_type().array_type(max_size as u32);
                 BasicTypeEnum::ArrayType(array_ty)
             }
@@ -173,8 +273,10 @@ impl<'ctx> CodeGenerator<'ctx> {
         Ok(())
     }
 
-
-    pub(in crate::codegen) fn register_actor_def(&mut self, actor: &crate::ast::ActorDef) -> MimiResult<()> {
+    pub(in crate::codegen) fn register_actor_def(
+        &mut self,
+        actor: &crate::ast::ActorDef,
+    ) -> MimiResult<()> {
         // Represent actor as a struct with fields
         let mut field_tys = Vec::new();
         for f in &actor.fields {
@@ -184,15 +286,21 @@ impl<'ctx> CodeGenerator<'ctx> {
         }
         let llvm_ty = BasicTypeEnum::StructType(self.context.struct_type(&field_tys, false));
         self.type_llvm.insert(actor.name.clone(), llvm_ty);
-        
+
         // Also register as a type definition for field access
         let type_def = crate::ast::TypeDef {
             name: actor.name.clone(),
             pub_: actor.pub_,
-            kind: crate::ast::TypeDefKind::Record(actor.fields.iter().map(|f| crate::ast::Field {
-                name: f.name.clone(),
-                ty: f.ty.clone(),
-            }).collect()),
+            kind: crate::ast::TypeDefKind::Record(
+                actor
+                    .fields
+                    .iter()
+                    .map(|f| crate::ast::Field {
+                        name: f.name.clone(),
+                        ty: f.ty.clone(),
+                    })
+                    .collect(),
+            ),
             generics: Vec::new(),
             derives: Vec::new(),
             attributes: Vec::new(),

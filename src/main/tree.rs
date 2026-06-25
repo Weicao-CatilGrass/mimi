@@ -1,5 +1,5 @@
-use std::collections::HashSet;
 use mimi::{lockfile, manifest};
+use std::collections::HashSet;
 
 pub(crate) fn tree() -> Result<(), String> {
     let cwd = std::env::current_dir().map_err(|e| format!("cannot get cwd: {}", e))?;
@@ -8,17 +8,20 @@ pub(crate) fn tree() -> Result<(), String> {
         None => return Err("no mimi.toml found".into()),
     };
 
-    let pkg_name = manifest.package.as_ref()
+    let pkg_name = manifest
+        .package
+        .as_ref()
         .map(|p| p.name.as_str())
         .unwrap_or("root");
-    let pkg_version = manifest.package.as_ref()
+    let pkg_version = manifest
+        .package
+        .as_ref()
         .and_then(|p| p.version.as_deref())
         .unwrap_or("0.0.0");
     println!("{} v{}", pkg_name, pkg_version);
 
     // Try to load lockfile for installed versions
-    let lock = lockfile::Lockfile::load(&dir)?
-        .unwrap_or_else(lockfile::Lockfile::new);
+    let lock = lockfile::Lockfile::load(&dir)?.unwrap_or_else(lockfile::Lockfile::new);
 
     let deps_dir = dir.join(".mimi").join("deps");
 
@@ -29,7 +32,8 @@ pub(crate) fn tree() -> Result<(), String> {
             let version = dep.version.as_deref().unwrap_or("*");
 
             // Get resolved version from lockfile if available
-            let resolved_version = lock.get_package(&dep.name)
+            let resolved_version = lock
+                .get_package(&dep.name)
                 .map(|p| p.version.as_str())
                 .unwrap_or(version);
 
@@ -52,10 +56,14 @@ pub(crate) fn tree() -> Result<(), String> {
 
     // Also show any installed deps not in manifest (orphans)
     if !lock.package.is_empty() {
-        let manifest_names: HashSet<String> = manifest.dependencies.as_ref()
+        let manifest_names: HashSet<String> = manifest
+            .dependencies
+            .as_ref()
             .map(|d| d.iter().map(|d| d.name.clone()).collect())
             .unwrap_or_default();
-        let orphans: Vec<&lockfile::LockEntry> = lock.package.iter()
+        let orphans: Vec<&lockfile::LockEntry> = lock
+            .package
+            .iter()
             .filter(|p| !manifest_names.contains(&p.name))
             .collect();
         if !orphans.is_empty() {
@@ -71,7 +79,11 @@ pub(crate) fn tree() -> Result<(), String> {
     Ok(())
 }
 
-fn print_transitive_tree(dep_dir: &std::path::Path, prefix: &str, visited: &mut HashSet<String>) -> Result<(), String> {
+fn print_transitive_tree(
+    dep_dir: &std::path::Path,
+    prefix: &str,
+    visited: &mut HashSet<String>,
+) -> Result<(), String> {
     let dep_manifest_path = dep_dir.join("mimi.toml");
     if !dep_manifest_path.exists() {
         return Ok(());
@@ -98,7 +110,8 @@ fn print_transitive_tree(dep_dir: &std::path::Path, prefix: &str, visited: &mut 
                     // For non-registry, can't easily locate — skip
                     continue;
                 } else {
-                    dep_dir.parent()
+                    dep_dir
+                        .parent()
                         .map(|p| p.join(&sub_dep.name))
                         .unwrap_or_else(|| std::path::PathBuf::from(&sub_dep.name))
                 };

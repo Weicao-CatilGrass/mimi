@@ -4,29 +4,35 @@ use super::*;
 
 #[test]
 fn pipe_basic() {
-    let v = run_source(r#"
+    let v = run_source(
+        r#"
         func double(x: i32) -> i32 { x * 2 }
         func main() -> i32 { 5 |> double() }
-    "#);
+    "#,
+    );
     assert_eq!(v, interp::Value::Int(10));
 }
 
 #[test]
 fn pipe_chain() {
-    let v = run_source(r#"
+    let v = run_source(
+        r#"
         func add1(x: i32) -> i32 { x + 1 }
         func double(x: i32) -> i32 { x * 2 }
         func main() -> i32 { 5 |> add1() |> double() }
-    "#);
+    "#,
+    );
     assert_eq!(v, interp::Value::Int(12));
 }
 
 #[test]
 fn pipe_ident() {
-    let v = run_source(r#"
+    let v = run_source(
+        r#"
         func id<T>(x: T) -> T { x }
         func main() -> i32 { 42 |> id }
-    "#);
+    "#,
+    );
     assert_eq!(v, interp::Value::Int(42));
 }
 
@@ -34,7 +40,8 @@ fn pipe_ident() {
 
 #[test]
 fn loop_basic() {
-    let v = run_source(r#"
+    let v = run_source(
+        r#"
         func main() -> i32 {
             let mut count = 0
             loop {
@@ -43,13 +50,15 @@ fn loop_basic() {
             }
             count
         }
-    "#);
+    "#,
+    );
     assert_eq!(v, interp::Value::Int(5));
 }
 
 #[test]
 fn loop_break_with_value() {
-    let v = run_source(r#"
+    let v = run_source(
+        r#"
         func main() -> i32 {
             let mut i = 0
             loop {
@@ -58,13 +67,15 @@ fn loop_break_with_value() {
             }
             i
         }
-    "#);
+    "#,
+    );
     assert_eq!(v, interp::Value::Int(3));
 }
 
 #[test]
 fn loop_continue() {
-    let v = run_source(r#"
+    let v = run_source(
+        r#"
         func main() -> i32 {
             let mut count = 0
             let mut i = 0
@@ -76,6 +87,7 @@ fn loop_continue() {
             }
             count
         }
-    "#);
+    "#,
+    );
     assert_eq!(v, interp::Value::Int(3)); // 1, 3, 5
 }

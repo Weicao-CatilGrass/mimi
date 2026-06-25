@@ -13,12 +13,22 @@ pub struct Span {
 impl Span {
     /// Create a new span with explicit start and end positions.
     pub fn new(start_line: usize, start_col: usize, end_line: usize, end_col: usize) -> Self {
-        Self { start_line, start_col, end_line, end_col }
+        Self {
+            start_line,
+            start_col,
+            end_line,
+            end_col,
+        }
     }
 
     /// Create a single-point span (start == end).
     pub fn single(line: usize, col: usize) -> Self {
-        Self { start_line: line, start_col: col, end_line: line, end_col: col }
+        Self {
+            start_line: line,
+            start_col: col,
+            end_line: line,
+            end_col: col,
+        }
     }
 
     /// Create a span from a single point to another point.
@@ -66,7 +76,10 @@ impl Span {
             // First line width + intervening lines + last line + newlines
             let first_line = 80usize.saturating_sub(self.start_col); // approximate
             let mid_lines = lines.saturating_sub(1).saturating_mul(80);
-            first_line.saturating_add(mid_lines).saturating_add(self.end_col).saturating_add(lines)
+            first_line
+                .saturating_add(mid_lines)
+                .saturating_add(self.end_col)
+                .saturating_add(lines)
         }
     }
 }
@@ -80,7 +93,11 @@ impl fmt::Display for Span {
                 write!(f, "{}:{}-{}", self.start_line, self.start_col, self.end_col)
             }
         } else {
-            write!(f, "{}:{}-{}:{}", self.start_line, self.start_col, self.end_line, self.end_col)
+            write!(
+                f,
+                "{}:{}-{}:{}",
+                self.start_line, self.start_col, self.end_line, self.end_col
+            )
         }
     }
 }

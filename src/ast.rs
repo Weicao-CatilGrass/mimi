@@ -245,7 +245,7 @@ pub enum Stmt {
         ty: Option<Type>,
         init: Option<Expr>,
         mut_: bool,
-        ref_: bool,  // let ref x = ... for arena references
+        ref_: bool, // let ref x = ... for arena references
     },
     Return(Option<Expr>),
     Break(Option<Expr>),
@@ -420,7 +420,11 @@ impl Expr {
     }
 
     pub fn with_slice(self, start: Option<Box<Expr>>, end: Option<Box<Expr>>) -> Expr {
-        Expr::SliceExpr { target: Box::new(self), start, end }
+        Expr::SliceExpr {
+            target: Box::new(self),
+            start,
+            end,
+        }
     }
 
     pub fn unary(self, op: UnOp) -> Expr {

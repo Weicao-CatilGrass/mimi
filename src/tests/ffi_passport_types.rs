@@ -19,7 +19,7 @@ func main() -> i32 {
     std::env::set_var("MIMI_FFI_LIB", "/lib/x86_64-linux-gnu/libc.so.6");
     let result = run_source_result(src);
     std::env::remove_var("MIMI_FFI_LIB");
-    
+
     // The error should be about symbol not found, not about argument conversion
     assert!(result.is_err(), "should fail with symbol not found");
     let err = result.unwrap_err();
@@ -47,7 +47,7 @@ func main() -> i32 {
     std::env::set_var("MIMI_FFI_LIB", "/lib/x86_64-linux-gnu/libc.so.6");
     let result = run_source_result(src);
     std::env::remove_var("MIMI_FFI_LIB");
-    
+
     assert!(result.is_err(), "should fail with symbol not found");
     let err = result.unwrap_err();
     assert!(
@@ -74,7 +74,7 @@ func main() -> i32 {
     std::env::set_var("MIMI_FFI_LIB", "/lib/x86_64-linux-gnu/libc.so.6");
     let result = run_source_result(src);
     std::env::remove_var("MIMI_FFI_LIB");
-    
+
     assert!(result.is_err(), "should fail with symbol not found");
     let err = result.unwrap_err();
     assert!(
@@ -101,7 +101,7 @@ func main() -> i32 {
     std::env::set_var("MIMI_FFI_LIB", "/lib/x86_64-linux-gnu/libc.so.6");
     let result = run_source_result(src);
     std::env::remove_var("MIMI_FFI_LIB");
-    
+
     assert!(result.is_err(), "should fail with symbol not found");
     let err = result.unwrap_err();
     assert!(
@@ -128,7 +128,7 @@ func main() -> i32 {
     std::env::set_var("MIMI_FFI_LIB", "/lib/x86_64-linux-gnu/libc.so.6");
     let result = run_source_result(src);
     std::env::remove_var("MIMI_FFI_LIB");
-    
+
     assert!(result.is_err(), "should fail with symbol not found");
     let err = result.unwrap_err();
     assert!(
@@ -157,7 +157,7 @@ func main() -> i32 {
     std::env::set_var("MIMI_FFI_LIB", "/lib/x86_64-linux-gnu/libc.so.6");
     let result = run_source_result(src);
     std::env::remove_var("MIMI_FFI_LIB");
-    
+
     // Cap handling should work, but the function doesn't exist
     assert!(result.is_err(), "should fail with symbol not found");
     let err = result.unwrap_err();
@@ -180,7 +180,10 @@ func main() -> i32 {
     0
 }
 "#;
-    assert!(check_source(src).is_ok(), "raw_string should be allowed in extern signature");
+    assert!(
+        check_source(src).is_ok(),
+        "raw_string should be allowed in extern signature"
+    );
 }
 
 /// Test that raw_string accepts string values with ownership transfer
@@ -199,7 +202,7 @@ func main() -> i32 {
     std::env::set_var("MIMI_FFI_LIB", "/lib/x86_64-linux-gnu/libc.so.6");
     let result = run_source_result(src);
     std::env::remove_var("MIMI_FFI_LIB");
-    
+
     // raw_string conversion should work, but the function doesn't exist
     assert!(result.is_err(), "should fail with symbol not found");
     let err = result.unwrap_err();
@@ -227,7 +230,7 @@ func main() -> i32 {
     std::env::set_var("MIMI_FFI_LIB", "/lib/x86_64-linux-gnu/libc.so.6");
     let result = run_source_result(src);
     std::env::remove_var("MIMI_FFI_LIB");
-    
+
     // Should fail with symbol not found (precondition not checked)
     assert!(result.is_err(), "should fail with symbol not found");
     let err = result.unwrap_err();
@@ -253,14 +256,17 @@ func main() -> i32 {
 }
 "#;
     // Should parse and type-check (the contract is syntactically valid)
-    assert!(check_source(src).is_ok(), "ensures contract with result should parse and type-check");
+    assert!(
+        check_source(src).is_ok(),
+        "ensures contract with result should parse and type-check"
+    );
 }
 
 /// Test that StringOwned contract is generated for raw_string return types
 #[test]
 fn raw_string_uses_string_owned_contract() {
-    use crate::ffi::contract::{FfiContract, FfiRetContract};
     use crate::ast::{ExternFunc, Type};
+    use crate::ffi::contract::{FfiContract, FfiRetContract};
 
     let func = ExternFunc {
         name: "get_string".to_string(),
@@ -269,38 +275,45 @@ fn raw_string_uses_string_owned_contract() {
         requires: None,
         ensures: None,
         variadic: false,
-                no_panic: false,
+        no_panic: false,
     };
 
     let contract = FfiContract::from_extern(&func);
-    assert!(matches!(contract.ret, FfiRetContract::StringOwned),
-        "raw_string return should produce StringOwned contract, got {:?}", contract.ret);
+    assert!(
+        matches!(contract.ret, FfiRetContract::StringOwned),
+        "raw_string return should produce StringOwned contract, got {:?}",
+        contract.ret
+    );
 }
 
 /// Test that Json contract is generated for List types
 #[test]
 fn list_type_uses_json_contract() {
-    use crate::ffi::contract::{FfiContract, FfiArgContract};
     use crate::ast::{ExternFunc, ExternParam, Type};
+    use crate::ffi::contract::{FfiArgContract, FfiContract};
 
     let func = ExternFunc {
         name: "process_list".to_string(),
-        params: vec![
-            ExternParam {
-                name: "xs".to_string(),
-                ty: Type::Name("List".to_string(), vec![Type::Name("i32".to_string(), vec![])]),
-                cap_mode: None,
-            },
-        ],
+        params: vec![ExternParam {
+            name: "xs".to_string(),
+            ty: Type::Name(
+                "List".to_string(),
+                vec![Type::Name("i32".to_string(), vec![])],
+            ),
+            cap_mode: None,
+        }],
         ret: Some(Type::Name("i32".to_string(), vec![])),
         requires: None,
         ensures: None,
         variadic: false,
-                no_panic: false,
+        no_panic: false,
     };
 
     let contract = FfiContract::from_extern(&func);
     assert_eq!(contract.args.len(), 1);
-    assert!(matches!(contract.args[0], FfiArgContract::Json),
-        "List arg should produce Json contract, got {:?}", contract.args[0]);
+    assert!(
+        matches!(contract.args[0], FfiArgContract::Json),
+        "List arg should produce Json contract, got {:?}",
+        contract.args[0]
+    );
 }

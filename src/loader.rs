@@ -1,5 +1,5 @@
 use crate::ast::*;
-use crate::{core, lexer, parser, manifest, lockfile};
+use crate::{core, lexer, lockfile, manifest, parser};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
@@ -8,7 +8,9 @@ use std::path::{Path, PathBuf};
 pub(crate) fn stdlib_dir() -> Option<PathBuf> {
     if let Ok(dir) = std::env::var("MIMI_STDLIB") {
         let p = PathBuf::from(dir);
-        if p.exists() { return Some(p); }
+        if p.exists() {
+            return Some(p);
+        }
     }
     // Resolve relative to the binary: target/debug/mimi -> mimi/std/
     // or installed as /usr/bin/mimi -> /usr/lib/mimi/std/
@@ -16,22 +18,33 @@ pub(crate) fn stdlib_dir() -> Option<PathBuf> {
         // Try: <exe_dir>/../std/  (developer layout)
         if let Some(exe_dir) = exe.parent() {
             let dev = exe_dir.join("std");
-            if dev.exists() { return Some(dev); }
+            if dev.exists() {
+                return Some(dev);
+            }
             // Try: <exe_dir>/../lib/mimi/std/  (installed layout)
-            let installed = exe_dir.parent()
+            let installed = exe_dir
+                .parent()
                 .map(|p| p.join("lib").join("mimi").join("std"));
             if let Some(ref installed) = installed {
-                if installed.exists() { return Some(installed.clone()); }
+                if installed.exists() {
+                    return Some(installed.clone());
+                }
             }
         }
     }
     // Fallback: relative to current directory's parent (project root during development)
     if let Ok(cwd) = std::env::current_dir() {
         let fallback = cwd.join("std");
-        if fallback.exists() { return Some(fallback); }
+        if fallback.exists() {
+            return Some(fallback);
+        }
         // Check one level up (running from mimi/tests/)
         let parent = cwd.parent().map(|p| p.join("std"));
-        if let Some(ref p) = parent { if p.exists() { return Some(p.clone()); } }
+        if let Some(ref p) = parent {
+            if p.exists() {
+                return Some(p.clone());
+            }
+        }
     }
     None
 }
@@ -104,7 +117,8 @@ impl ModuleLoader {
 
     /// Load the main file and all its transitive imports
     pub fn load_main(&mut self, path: &Path) -> Result<LoadedModule, String> {
-        let canonical = path.canonicalize()
+        let canonical = path
+            .canonicalize()
             .map_err(|e| format!("cannot resolve path {}: {}", path.display(), e))?;
         self.load_file(&canonical)
     }
@@ -121,15 +135,20 @@ impl ModuleLoader {
 
         // Cycle detection
         if !self.visiting.insert(path.to_path_buf()) {
-            return Err(format!("circular dependency detected: {} imports itself", path.display()));
+            return Err(format!(
+                "circular dependency detected: {} imports itself",
+                path.display()
+            ));
         }
 
         // Read and parse
         let source = std::fs::read_to_string(path)
             .map_err(|e| format!("failed to read {}: {}", path.display(), e))?;
-        let tokens = lexer::Lexer::new(&source).tokenize()
+        let tokens = lexer::Lexer::new(&source)
+            .tokenize()
             .map_err(|e| format!("lexer error in {}: {}", path.display(), e))?;
-        let file = parser::Parser::new(tokens).parse_file()
+        let file = parser::Parser::new(tokens)
+            .parse_file()
             .map_err(|e| format!("parse error in {}: {}", path.display(), e))?;
 
         let module_name = self.module_key(path);
@@ -162,7 +181,8 @@ impl ModuleLoader {
             if segment == ".." || segment.contains('/') || segment.contains('\\') {
                 return Err(format!(
                     "import path '{}' contains invalid segment '{}'",
-                    path.join("::"), segment
+                    path.join("::"),
+                    segment
                 ));
             }
         }
@@ -301,7 +321,9 @@ impl ModuleLoader {
             for item in &module.file.items {
                 if let Some(name) = item_name(item) {
                     if !seen_names.insert(name.to_string()) {
-                        let dup_modules: Vec<String> = self.modules.values()
+                        let dup_modules: Vec<String> = self
+                            .modules
+                            .values()
                             .filter(|m| m.file.items.iter().any(|i| item_name(i) == Some(name)))
                             .map(|m| m.path.display().to_string())
                             .collect();

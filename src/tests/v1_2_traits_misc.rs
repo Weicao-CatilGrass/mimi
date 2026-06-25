@@ -24,7 +24,6 @@ func main() -> i32 {
     assert_eq!(run_source(src), interp::Value::Int(42));
 }
 
-
 #[test]
 fn trait_method_call_on_type() {
     let src = r#"
@@ -49,7 +48,6 @@ func main() -> i32 {
 "#;
     assert!(check_source(src).is_ok());
 }
-
 
 #[test]
 fn trait_multiple_traits_on_type() {
@@ -85,7 +83,6 @@ func main() -> i32 {
     assert!(check_source(src).is_ok());
 }
 
-
 #[test]
 fn trait_missing_method_error() {
     let src = r#"
@@ -105,9 +102,10 @@ func main() -> i32 {
 }
 "#;
     let err = check_source(src).unwrap_err();
-    assert!(err.iter().any(|d| d.message.contains("missing method 'greet'")));
+    assert!(err
+        .iter()
+        .any(|d| d.message.contains("missing method 'greet'")));
 }
-
 
 #[test]
 fn trait_method_wrong_arg_type() {
@@ -137,7 +135,6 @@ func main() -> i32 {
     assert!(result.is_err() || run_source_result(src).is_err());
 }
 
-
 #[test]
 fn trait_method_return_type() {
     let src = r#"
@@ -161,7 +158,6 @@ func main() -> i32 {
 "#;
     assert!(check_source(src).is_ok());
 }
-
 
 #[test]
 fn trait_impl_method_body_check() {
@@ -187,7 +183,6 @@ func main() -> i32 {
     assert!(check_source(src).is_ok());
 }
 
-
 #[test]
 fn trait_undefined_trait_error() {
     let src = r#"
@@ -208,7 +203,6 @@ func main() -> i32 {
     let err = check_source(src).unwrap_err();
     assert!(err.iter().any(|d| d.message.contains("undefined trait")));
 }
-
 
 #[test]
 fn trait_method_arg_count_mismatch() {
@@ -238,5 +232,3 @@ func main() -> i32 {
 }
 
 // ===== T302: 引用语义测试 =====
-
-

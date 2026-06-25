@@ -2,9 +2,8 @@ use super::super::*;
 use super::helpers::{ffi_guard_new_read, ffi_guard_new_write, FfiGuard, FfiSharedGuard};
 use crate::ast::*;
 use crate::ffi::{
-    cap_table_consume, cap_table_register,
-    shared_table_create, shared_table_create_dedup, shared_table_get,
-    FfiArgContract, FfiRetContract, Errno,
+    cap_table_consume, cap_table_register, shared_table_create, shared_table_create_dedup,
+    shared_table_get, Errno, FfiArgContract, FfiRetContract,
 };
 use std::collections::HashMap;
 use std::ffi::CString;
@@ -340,7 +339,11 @@ impl<'a> Interpreter<'a> {
 
     /// Convert the raw i64 returned by a C function into a Mimi value according
     /// to the return-value contract.
-    pub(in crate::interp) fn ffi_ret_to_value(&self, result: i64, contract: &FfiRetContract) -> Result<Value, Errno> {
+    pub(in crate::interp) fn ffi_ret_to_value(
+        &self,
+        result: i64,
+        contract: &FfiRetContract,
+    ) -> Result<Value, Errno> {
         match contract {
             FfiRetContract::Unit => Ok(Value::Unit),
             FfiRetContract::Int => Ok(Value::Int(result)),
@@ -505,7 +508,8 @@ impl<'a> Interpreter<'a> {
                 if payload.is_empty() {
                     Ok(serde_json::Value::String(name.clone()))
                 } else {
-                    let arr: Result<Vec<_>, _> = payload.iter().map(|i| self.value_to_json(i)).collect();
+                    let arr: Result<Vec<_>, _> =
+                        payload.iter().map(|i| self.value_to_json(i)).collect();
                     let mut map = serde_json::Map::new();
                     map.insert(name.clone(), serde_json::Value::Array(arr?));
                     Ok(serde_json::Value::Object(map))
@@ -533,7 +537,8 @@ impl<'a> Interpreter<'a> {
                 Value::List(arr.iter().map(|v| self.json_to_value(v)).collect())
             }
             serde_json::Value::Object(map) => {
-                let fields: HashMap<String, Value> = map.iter()
+                let fields: HashMap<String, Value> = map
+                    .iter()
                     .map(|(k, v)| (k.clone(), self.json_to_value(v)))
                     .collect();
                 Value::Record(None, fields)

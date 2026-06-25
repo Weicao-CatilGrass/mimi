@@ -11,7 +11,6 @@ func main() -> i32 {
     assert_eq!(run_source(src), interp::Value::Int(12));
 }
 
-
 #[test]
 fn builtin_filter() {
     let src = r#"
@@ -24,7 +23,6 @@ func main() -> i32 {
     assert_eq!(run_source(src), interp::Value::Int(2));
 }
 
-
 #[test]
 fn builtin_reduce() {
     let src = r#"
@@ -35,7 +33,6 @@ func main() -> i32 {
 "#;
     assert_eq!(run_source(src), interp::Value::Int(10));
 }
-
 
 #[test]
 fn builtin_sort() {
@@ -49,7 +46,6 @@ func main() -> i32 {
     assert_eq!(run_source(src), interp::Value::Int(5));
 }
 
-
 #[test]
 fn builtin_reverse() {
     let src = r#"
@@ -62,7 +58,6 @@ func main() -> i32 {
     assert_eq!(run_source(src), interp::Value::Int(3));
 }
 
-
 #[test]
 fn builtin_enumerate() {
     let src = r#"
@@ -74,7 +69,6 @@ func main() -> i32 {
 "#;
     assert_eq!(run_source(src), interp::Value::Int(3));
 }
-
 
 #[test]
 fn builtin_zip() {
@@ -89,7 +83,6 @@ func main() -> i32 {
     assert_eq!(run_source(src), interp::Value::Int(3));
 }
 
-
 #[test]
 fn builtin_flatten() {
     let src = r#"
@@ -102,7 +95,6 @@ func main() -> i32 {
     assert_eq!(run_source(src), interp::Value::Int(5));
 }
 
-
 #[test]
 fn builtin_sum() {
     let src = r#"
@@ -114,7 +106,6 @@ func main() -> i32 {
     assert_eq!(run_source(src), interp::Value::Int(15));
 }
 
-
 #[test]
 fn builtin_assert_eq_pass() {
     let src = r#"
@@ -125,7 +116,6 @@ func main() -> i32 {
 "#;
     assert_eq!(run_source(src), interp::Value::Int(42));
 }
-
 
 #[test]
 fn builtin_assert_eq_fail() {
@@ -139,7 +129,6 @@ func main() -> i32 {
     assert!(err.is_err());
 }
 
-
 #[test]
 fn builtin_assert_ne_pass() {
     let src = r#"
@@ -150,5 +139,3 @@ func main() -> i32 {
 "#;
     assert_eq!(run_source(src), interp::Value::Int(42));
 }
-
-

@@ -63,7 +63,9 @@ impl<'a> Checker<'a> {
                                 return self.resolve_type(&f.ty);
                             }
                             if let Some(methods) = self.type_methods.get(name) {
-                                if let Some((trait_name, _)) = methods.iter().find(|(_, m)| m == field) {
+                                if let Some((trait_name, _)) =
+                                    methods.iter().find(|(_, m)| m == field)
+                                {
                                     let tn = trait_name.clone();
                                     if let Some((params, ret)) = self
                                         .trait_method_sigs
@@ -128,7 +130,9 @@ impl<'a> Checker<'a> {
                         }
                         _ => {
                             if let Some(methods) = self.type_methods.get(name) {
-                                if let Some((trait_name, _)) = methods.iter().find(|(_, m)| m == field) {
+                                if let Some((trait_name, _)) =
+                                    methods.iter().find(|(_, m)| m == field)
+                                {
                                     let tn = trait_name.clone();
                                     if let Some((params, ret)) = self
                                         .trait_method_sigs
@@ -176,7 +180,10 @@ impl<'a> Checker<'a> {
                 self.errors.push(
                     Diagnostic::error_code(
                         crate::diagnostic::codes::E0219,
-                        format!("field access requires record type, found {}", fmt_type(obj_ty)),
+                        format!(
+                            "field access requires record type, found {}",
+                            fmt_type(obj_ty)
+                        ),
                         Span::single(self.current_line, self.current_col),
                     )
                     .with_help("only record types support field access with '.'"),
@@ -217,7 +224,11 @@ impl<'a> Checker<'a> {
             _ => {
                 self.emit_code(
                     crate::diagnostic::codes::E0244,
-                    format!("cannot index non-tuple type {} with .{}", fmt_type(&obj_ty), idx),
+                    format!(
+                        "cannot index non-tuple type {} with .{}",
+                        fmt_type(&obj_ty),
+                        idx
+                    ),
                 );
                 Type::Name("unknown".into(), vec![])
             }

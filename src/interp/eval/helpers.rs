@@ -12,7 +12,11 @@ impl<'a> Interpreter<'a> {
             }
         }
         for func_name in self.file.items.iter().filter_map(|item| {
-            if let Item::Func(f) = item { Some(&f.name) } else { None }
+            if let Item::Func(f) = item {
+                Some(&f.name)
+            } else {
+                None
+            }
         }) {
             if levenshtein_distance(name, func_name) <= 2 && name != func_name {
                 candidates.push(func_name.clone());
@@ -29,8 +33,12 @@ impl<'a> Interpreter<'a> {
 pub(in crate::interp) fn levenshtein_distance(a: &str, b: &str) -> usize {
     let a_len = a.len();
     let b_len = b.len();
-    if a_len == 0 { return b_len; }
-    if b_len == 0 { return a_len; }
+    if a_len == 0 {
+        return b_len;
+    }
+    if b_len == 0 {
+        return a_len;
+    }
 
     let mut prev = vec![0usize; b_len + 1];
     let mut curr = vec![0usize; b_len + 1];
@@ -43,9 +51,7 @@ pub(in crate::interp) fn levenshtein_distance(a: &str, b: &str) -> usize {
         curr[0] = i + 1;
         for (j, cb) in b.chars().enumerate() {
             let cost = if ca == cb { 0 } else { 1 };
-            curr[j + 1] = (prev[j + 1] + 1)
-                .min(curr[j] + 1)
-                .min(prev[j] + cost);
+            curr[j + 1] = (prev[j + 1] + 1).min(curr[j] + 1).min(prev[j] + cost);
         }
         std::mem::swap(&mut prev, &mut curr);
     }

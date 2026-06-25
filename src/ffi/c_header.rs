@@ -47,20 +47,41 @@ impl CHeaderGenerator {
         writeln!(header)?;
 
         // Cap API
-        writeln!(header, "/** Opaque capability handle — see mimi_cap_check / mimi_cap_consume. */")?;
+        writeln!(
+            header,
+            "/** Opaque capability handle — see mimi_cap_check / mimi_cap_consume. */"
+        )?;
         writeln!(header, "typedef int64_t MimiCap;")?;
-        writeln!(header, "/** Check if a capability is valid and matches name (non-consuming). */")?;
-        writeln!(header, "bool mimi_cap_check(MimiCap cap, const char* name);")?;
-        writeln!(header, "/** Consume a capability (mark as used). Returns true if valid and consumed. */")?;
-        writeln!(header, "bool mimi_cap_consume(MimiCap cap, const char* name);")?;
+        writeln!(
+            header,
+            "/** Check if a capability is valid and matches name (non-consuming). */"
+        )?;
+        writeln!(
+            header,
+            "bool mimi_cap_check(MimiCap cap, const char* name);"
+        )?;
+        writeln!(
+            header,
+            "/** Consume a capability (mark as used). Returns true if valid and consumed. */"
+        )?;
+        writeln!(
+            header,
+            "bool mimi_cap_consume(MimiCap cap, const char* name);"
+        )?;
         writeln!(header)?;
 
         // String API
         writeln!(header, "/** Get a C string pointer from a Mimi string (borrow). Caller must NOT free the result. */")?;
-        writeln!(header, "const char* mimi_string_as_c_str(void* mimi_string);")?;
+        writeln!(
+            header,
+            "const char* mimi_string_as_c_str(void* mimi_string);"
+        )?;
         writeln!(header, "/** Transfer string ownership to C. Caller must call mimi_string_free_raw() on result. */")?;
         writeln!(header, "char* mimi_string_into_raw(void* mimi_string);")?;
-        writeln!(header, "/** Create a Mimi string from a C string (takes ownership of c_str). */")?;
+        writeln!(
+            header,
+            "/** Create a Mimi string from a C string (takes ownership of c_str). */"
+        )?;
         writeln!(header, "void* mimi_string_from_raw(char* c_str);")?;
         writeln!(header, "/** Free a string obtained via mimi_string_into_raw() or C-allocated strings returned by extern functions. */")?;
         writeln!(header, "void mimi_string_free_raw(char* c_str);")?;
@@ -124,7 +145,11 @@ impl CHeaderGenerator {
                                             writeln!(header, "        struct {{")?;
                                             for (j, t) in types.iter().enumerate() {
                                                 let c_type = self.mimi_type_to_c_type(t);
-                                                writeln!(header, "            {} field_{};", c_type, j)?;
+                                                writeln!(
+                                                    header,
+                                                    "            {} field_{};",
+                                                    c_type, j
+                                                )?;
                                             }
                                             writeln!(header, "        }} {};", field_name)?;
                                         }
@@ -188,11 +213,17 @@ impl CHeaderGenerator {
         header: &mut String,
         func: &ExternFunc,
     ) -> Result<(), std::fmt::Error> {
-        let record_type_names: std::collections::HashSet<String> = self.type_defs.iter()
+        let record_type_names: std::collections::HashSet<String> = self
+            .type_defs
+            .iter()
             .filter(|(_, td)| matches!(td.kind, crate::ast::TypeDefKind::Record(_)))
             .map(|(name, _)| name.clone())
             .collect();
-        let contract = FfiContract::from_extern_with_caps(func, &std::collections::HashSet::new(), &record_type_names);
+        let contract = FfiContract::from_extern_with_caps(
+            func,
+            &std::collections::HashSet::new(),
+            &record_type_names,
+        );
 
         // Return type
         let ret_type = self.contract_ret_to_c_type(&contract);
@@ -249,9 +280,7 @@ impl CHeaderGenerator {
                 let inner_type = self.mimi_type_to_c_type(inner);
                 format!("{}*", inner_type)
             }
-            Type::CShared(_) | Type::CBorrow(_) | Type::CBorrowMut(_) => {
-                "MimiHandle".to_string()
-            }
+            Type::CShared(_) | Type::CBorrow(_) | Type::CBorrowMut(_) => "MimiHandle".to_string(),
             Type::Cap(_) => "MimiCap".to_string(),
             Type::RawString => "char*".to_string(),
             Type::Infer => "void".to_string(),
@@ -282,14 +311,20 @@ impl CHeaderGenerator {
             FfiArgContract::RawPtr(inner) | FfiArgContract::RawPtrMut(inner) => {
                 format!("{}*", self.mimi_type_to_c_type(inner))
             }
-            FfiArgContract::CShared(inner) | FfiArgContract::CBorrow(inner) | FfiArgContract::CBorrowMut(inner) => {
+            FfiArgContract::CShared(inner)
+            | FfiArgContract::CBorrow(inner)
+            | FfiArgContract::CBorrowMut(inner) => {
                 format!("MimiHandle /* {} */", self.mimi_type_to_c_type(inner))
             }
             FfiArgContract::Json => "const char*".to_string(),
             FfiArgContract::StructByValue(type_name) => format!("struct {}", type_name),
-            FfiArgContract::Callback { param_types, ret_type } => {
+            FfiArgContract::Callback {
+                param_types,
+                ret_type,
+            } => {
                 let ret_c = self.mimi_type_to_c_type(ret_type);
-                let params_c: Vec<String> = param_types.iter()
+                let params_c: Vec<String> = param_types
+                    .iter()
                     .map(|t| self.mimi_type_to_c_type(t))
                     .collect();
                 let params_str = if params_c.is_empty() {
@@ -312,11 +347,16 @@ impl CHeaderGenerator {
             crate::ffi::contract::FfiRetContract::String => "/*borrowed*/ char*".to_string(),
             crate::ffi::contract::FfiRetContract::StringOwned => "/*owned*/ char*".to_string(),
             crate::ffi::contract::FfiRetContract::Json => "char*".to_string(),
-            crate::ffi::contract::FfiRetContract::StructByValue(type_name) => format!("struct {}", type_name),
-            crate::ffi::contract::FfiRetContract::RawPtr(inner) | crate::ffi::contract::FfiRetContract::RawPtrMut(inner) => {
+            crate::ffi::contract::FfiRetContract::StructByValue(type_name) => {
+                format!("struct {}", type_name)
+            }
+            crate::ffi::contract::FfiRetContract::RawPtr(inner)
+            | crate::ffi::contract::FfiRetContract::RawPtrMut(inner) => {
                 format!("{}*", self.mimi_type_to_c_type(inner))
             }
-            crate::ffi::contract::FfiRetContract::CShared(inner) | crate::ffi::contract::FfiRetContract::CBorrow(inner) | crate::ffi::contract::FfiRetContract::CBorrowMut(inner) => {
+            crate::ffi::contract::FfiRetContract::CShared(inner)
+            | crate::ffi::contract::FfiRetContract::CBorrow(inner)
+            | crate::ffi::contract::FfiRetContract::CBorrowMut(inner) => {
                 format!("MimiHandle /* {} */", self.mimi_type_to_c_type(inner))
             }
             crate::ffi::contract::FfiRetContract::Unsupported(_) => "void*".to_string(),
@@ -337,7 +377,8 @@ pub fn generate_c_header_with_exported(
     if !exported_funcs.is_empty() {
         let _ = writeln!(&mut header, "\n// Exported Mimi functions (extern \"C\")");
         for func in exported_funcs {
-            generator.generate_exported_func_decl(&mut header, func)
+            generator
+                .generate_exported_func_decl(&mut header, func)
                 .map_err(|e| format!("Failed to generate exported func decl: {}", e))?;
         }
     }
@@ -352,7 +393,9 @@ impl CHeaderGenerator {
         header: &mut String,
         func: &FuncDef,
     ) -> Result<(), std::fmt::Error> {
-        let ret_type = func.ret.as_ref()
+        let ret_type = func
+            .ret
+            .as_ref()
             .map(|ty| self.mimi_type_to_c_type(ty))
             .unwrap_or_else(|| "void".to_string());
 
@@ -375,7 +418,9 @@ pub fn generate_c_header(
     type_defs: HashMap<String, TypeDef>,
 ) -> Result<String, String> {
     let generator = CHeaderGenerator::new(type_defs);
-    generator.generate(extern_funcs).map_err(|e| format!("Failed to generate C header: {}", e))
+    generator
+        .generate(extern_funcs)
+        .map_err(|e| format!("Failed to generate C header: {}", e))
 }
 
 #[cfg(test)]
@@ -403,10 +448,11 @@ mod tests {
             requires: None,
             ensures: None,
             variadic: false,
-                no_panic: false,
+            no_panic: false,
         }];
 
-        let header = generate_c_header(&extern_funcs, HashMap::new()).expect("src/ffi/c_header.rs:396 unwrap failed");
+        let header = generate_c_header(&extern_funcs, HashMap::new())
+            .expect("src/ffi/c_header.rs:396 unwrap failed");
         assert!(header.contains("int64_t add(int64_t a, int64_t b);"));
     }
 }

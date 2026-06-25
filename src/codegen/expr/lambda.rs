@@ -34,8 +34,10 @@ impl<'ctx> CodeGenerator<'ctx> {
                 .unwrap_or(BasicTypeEnum::IntType(self.context.i64_type()));
             param_types_llvm.push(ty);
         }
-        let metadata_params: Vec<_> = param_types_llvm.iter()
-            .map(|t| types::basic_to_metadata(self.context, *t)).collect();
+        let metadata_params: Vec<_> = param_types_llvm
+            .iter()
+            .map(|t| types::basic_to_metadata(self.context, *t))
+            .collect();
         let fn_type = match ret_type {
             BasicTypeEnum::IntType(t) => t.fn_type(&metadata_params, false),
             BasicTypeEnum::FloatType(t) => t.fn_type(&metadata_params, false),
@@ -54,7 +56,8 @@ impl<'ctx> CodeGenerator<'ctx> {
 
         let mut lambda_vars = vars.clone();
         // Bind env_ptr param (param 0)
-        let env_ptr_param = lambda_fn.get_nth_param(0)
+        let env_ptr_param = lambda_fn
+            .get_nth_param(0)
             .ok_or_else(|| "codegen: lambda env_ptr param index out of range".to_string())?
             .into_pointer_value();
 
@@ -63,20 +66,34 @@ impl<'ctx> CodeGenerator<'ctx> {
             let env_field_types: Vec<BasicTypeEnum<'ctx>> =
                 free_vars.values().map(|&(_, ty)| ty).collect();
             let env_struct_type = self.context.struct_type(&env_field_types, false);
-            let env_struct_ptr = self.builder.build_pointer_cast(
-                env_ptr_param,
-                self.context.ptr_type(inkwell::AddressSpace::default()),
-                "env_struct",
-            ).map_err(|e| CompileError::LlvmError(format!("pointer cast error: {}", e)))?;
+            let env_struct_ptr = self
+                .builder
+                .build_pointer_cast(
+                    env_ptr_param,
+                    self.context.ptr_type(inkwell::AddressSpace::default()),
+                    "env_struct",
+                )
+                .map_err(|e| CompileError::LlvmError(format!("pointer cast error: {}", e)))?;
             for (i, (name, &(_, ty))) in free_vars.iter().enumerate() {
-                let field_gep = self.gep().build_struct_gep(
-                    env_struct_type, env_struct_ptr, i as u32, &format!("env_{}_gep", name),
-                ).map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?;
-                let field_val = self.builder.build_load(ty, field_gep, &format!("cap_{}", name))
+                let field_gep = self
+                    .gep()
+                    .build_struct_gep(
+                        env_struct_type,
+                        env_struct_ptr,
+                        i as u32,
+                        &format!("env_{}_gep", name),
+                    )
+                    .map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?;
+                let field_val = self
+                    .builder
+                    .build_load(ty, field_gep, &format!("cap_{}", name))
                     .map_err(|e| CompileError::LlvmError(format!("load error: {}", e)))?;
-                let alloca = self.builder.build_alloca(ty, &format!("cap_{}_alloca", name))
+                let alloca = self
+                    .builder
+                    .build_alloca(ty, &format!("cap_{}_alloca", name))
                     .map_err(|e| CompileError::LlvmError(format!("alloca error: {}", e)))?;
-                self.builder.build_store(alloca, field_val)
+                self.builder
+                    .build_store(alloca, field_val)
                     .map_err(|e| CompileError::LlvmError(format!("store error: {}", e)))?;
                 lambda_vars.insert(name.clone(), (alloca, ty));
             }
@@ -87,9 +104,17 @@ impl<'ctx> CodeGenerator<'ctx> {
             let param_idx = i as u32 + 1;
             let ty = types::mimi_type_to_llvm(self.context, &p.ty)
                 .unwrap_or(BasicTypeEnum::IntType(self.context.i64_type()));
-            let alloca = self.builder.build_alloca(ty, &p.name)
+            let alloca = self
+                .builder
+                .build_alloca(ty, &p.name)
                 .map_err(|e| CompileError::LlvmError(format!("alloca error: {}", e)))?;
-            self.builder.build_store(alloca, lambda_fn.get_nth_param(param_idx).ok_or_else(|| "codegen: lambda param index out of range".to_string())?)
+            self.builder
+                .build_store(
+                    alloca,
+                    lambda_fn
+                        .get_nth_param(param_idx)
+                        .ok_or_else(|| "codegen: lambda param index out of range".to_string())?,
+                )
                 .map_err(|e| CompileError::LlvmError(format!("store error: {}", e)))?;
             lambda_vars.insert(p.name.clone(), (alloca, ty));
         }
@@ -98,26 +123,40 @@ impl<'ctx> CodeGenerator<'ctx> {
         let mut last_val = self.context.i64_type().const_int(0, false).into();
         for stmt in body {
             match stmt {
-                Stmt::Expr(e) => { last_val = self.compile_expr(e, &lambda_vars)?; }
+                Stmt::Expr(e) => {
+                    last_val = self.compile_expr(e, &lambda_vars)?;
+                }
                 Stmt::Return(Some(e)) => {
                     let v = self.compile_expr(e, &lambda_vars)?;
-                    self.builder.build_return(Some(&v)).map_err(|e| CompileError::LlvmError(format!("return error: {}", e)))?;
+                    self.builder
+                        .build_return(Some(&v))
+                        .map_err(|e| CompileError::LlvmError(format!("return error: {}", e)))?;
                     break;
                 }
                 Stmt::Return(None) => {
-                    self.builder.build_return(None).map_err(|e| CompileError::LlvmError(format!("return error: {}", e)))?;
+                    self.builder
+                        .build_return(None)
+                        .map_err(|e| CompileError::LlvmError(format!("return error: {}", e)))?;
                     break;
                 }
-                Stmt::Let { pat, init: Some(init), .. } => {
+                Stmt::Let {
+                    pat,
+                    init: Some(init),
+                    ..
+                } => {
                     let val = self.compile_expr(init, &lambda_vars)?;
                     self.compile_pattern_bind(pat, val, &mut lambda_vars)
-                        .map_err(|e| CompileError::LlvmError(format!("pattern bind error: {}", e)))?;
+                        .map_err(|e| {
+                            CompileError::LlvmError(format!("pattern bind error: {}", e))
+                        })?;
                 }
                 _ => {}
             }
         }
         if !self.block_has_terminator() {
-            self.builder.build_return(Some(&last_val)).map_err(|e| CompileError::LlvmError(format!("return error: {}", e)))?;
+            self.builder
+                .build_return(Some(&last_val))
+                .map_err(|e| CompileError::LlvmError(format!("return error: {}", e)))?;
         }
         if let Some(bb) = saved_block {
             self.builder.position_at_end(bb);
@@ -125,28 +164,38 @@ impl<'ctx> CodeGenerator<'ctx> {
 
         // Build closure struct: { fn_ptr: i8*, env_ptr: i8* } on stack
         let closure_struct_type = types::closure_struct_type(self.context);
-        let closure_alloca = self.builder.build_alloca(
-            BasicTypeEnum::StructType(closure_struct_type),
-            "closure",
-        ).map_err(|e| CompileError::LlvmError(format!("alloca error: {}", e)))?;
+        let closure_alloca = self
+            .builder
+            .build_alloca(BasicTypeEnum::StructType(closure_struct_type), "closure")
+            .map_err(|e| CompileError::LlvmError(format!("alloca error: {}", e)))?;
 
         let fn_ptr = lambda_fn.as_global_value().as_pointer_value();
-        let fn_gep = self.gep().build_struct_gep(
-            closure_struct_type, closure_alloca, 0, "fn_gep",
-        ).map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?;
-        self.builder.build_store(fn_gep, fn_ptr)
+        let fn_gep = self
+            .gep()
+            .build_struct_gep(closure_struct_type, closure_alloca, 0, "fn_gep")
+            .map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?;
+        self.builder
+            .build_store(fn_gep, fn_ptr)
             .map_err(|e| CompileError::LlvmError(format!("store error: {}", e)))?;
 
         if !free_vars.is_empty() {
             let env_field_types: Vec<BasicTypeEnum<'ctx>> =
                 free_vars.values().map(|&(_, ty)| ty).collect();
             let env_struct_type = self.context.struct_type(&env_field_types, false);
-            let env_byte_size = env_struct_type.size_of().ok_or_else(|| "size_of error".to_string())?;
-            let malloc_fn = self.module.get_function("malloc")
+            let env_byte_size = env_struct_type
+                .size_of()
+                .ok_or_else(|| "size_of error".to_string())?;
+            let malloc_fn = self
+                .module
+                .get_function("malloc")
                 .ok_or_else(|| "malloc not declared".to_string())?;
-            let env_heap_ptr = self.builder.build_call(malloc_fn, &[
-                BasicMetadataValueEnum::IntValue(env_byte_size),
-            ], "env_heap")
+            let env_heap_ptr = self
+                .builder
+                .build_call(
+                    malloc_fn,
+                    &[BasicMetadataValueEnum::IntValue(env_byte_size)],
+                    "env_heap",
+                )
                 .map_err(|e| CompileError::LlvmError(format!("malloc error: {}", e)))?
                 .try_as_basic_value_opt()
                 .ok_or("malloc returned void")?
@@ -155,40 +204,54 @@ impl<'ctx> CodeGenerator<'ctx> {
             // the creating scope if the closure escapes (returned or stored
             // to a shared variable), so we cannot auto-free it on scope exit.
             for (i, (name, &(var_alloca, ty))) in free_vars.iter().enumerate() {
-                let val = self.builder.build_load(ty, var_alloca, &format!("cap_val_{}", name))
+                let val = self
+                    .builder
+                    .build_load(ty, var_alloca, &format!("cap_val_{}", name))
                     .map_err(|e| CompileError::LlvmError(format!("load error: {}", e)))?;
-                let field_gep = self.gep().build_struct_gep(
-                    env_struct_type, env_heap_ptr, i as u32, &format!("env_{}_gep", name),
-                ).map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?;
-                self.builder.build_store(field_gep, val)
+                let field_gep = self
+                    .gep()
+                    .build_struct_gep(
+                        env_struct_type,
+                        env_heap_ptr,
+                        i as u32,
+                        &format!("env_{}_gep", name),
+                    )
+                    .map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?;
+                self.builder
+                    .build_store(field_gep, val)
                     .map_err(|e| CompileError::LlvmError(format!("store error: {}", e)))?;
             }
-            let env_gep = self.gep().build_struct_gep(
-                closure_struct_type, closure_alloca, 1, "env_gep",
-            ).map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?;
-            let env_ptr_i8 = self.builder.build_pointer_cast(
-                env_heap_ptr,
-                i8_ptr,
-                "env_ptr_i8",
-            ).map_err(|e| CompileError::LlvmError(format!("pointer cast error: {}", e)))?;
-            self.builder.build_store(env_gep, env_ptr_i8)
+            let env_gep = self
+                .gep()
+                .build_struct_gep(closure_struct_type, closure_alloca, 1, "env_gep")
+                .map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?;
+            let env_ptr_i8 = self
+                .builder
+                .build_pointer_cast(env_heap_ptr, i8_ptr, "env_ptr_i8")
+                .map_err(|e| CompileError::LlvmError(format!("pointer cast error: {}", e)))?;
+            self.builder
+                .build_store(env_gep, env_ptr_i8)
                 .map_err(|e| CompileError::LlvmError(format!("store error: {}", e)))?;
         } else {
-            let env_gep = self.gep().build_struct_gep(
-                closure_struct_type, closure_alloca, 1, "env_gep",
-            ).map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?;
-            self.builder.build_store(env_gep, i8_ptr.const_null())
+            let env_gep = self
+                .gep()
+                .build_struct_gep(closure_struct_type, closure_alloca, 1, "env_gep")
+                .map_err(|e| CompileError::LlvmError(format!("gep error: {}", e)))?;
+            self.builder
+                .build_store(env_gep, i8_ptr.const_null())
                 .map_err(|e| CompileError::LlvmError(format!("store error: {}", e)))?;
         }
 
-        let closure_val = self.builder.build_load(
-            BasicTypeEnum::StructType(closure_struct_type),
-            closure_alloca,
-            "closure_val",
-        ).map_err(|e| CompileError::LlvmError(format!("load error: {}", e)))?;
+        let closure_val = self
+            .builder
+            .build_load(
+                BasicTypeEnum::StructType(closure_struct_type),
+                closure_alloca,
+                "closure_val",
+            )
+            .map_err(|e| CompileError::LlvmError(format!("load error: {}", e)))?;
         Ok(closure_val)
     }
-
 
     /// Collect free variables used in a block that are defined in the enclosing scope
     pub(in crate::codegen) fn collect_free_vars(
@@ -196,13 +259,20 @@ impl<'ctx> CodeGenerator<'ctx> {
         block: &Block,
         param_names: &std::collections::HashSet<String>,
         vars: &HashMap<String, VarEntry<'ctx>>,
-        free_vars: &mut BTreeMap<String, (inkwell::values::PointerValue<'ctx>, BasicTypeEnum<'ctx>)>,
+        free_vars: &mut BTreeMap<
+            String,
+            (inkwell::values::PointerValue<'ctx>, BasicTypeEnum<'ctx>),
+        >,
     ) {
         let mut defined = param_names.clone();
         for stmt in block {
             match stmt {
                 Stmt::Expr(e) => self.collect_free_vars_expr(e, &defined, vars, free_vars),
-                Stmt::Let { pat, init: Some(init), .. } => {
+                Stmt::Let {
+                    pat,
+                    init: Some(init),
+                    ..
+                } => {
                     self.collect_free_vars_expr(init, &defined, vars, free_vars);
                     if let Pattern::Variable(name) = pat {
                         defined.insert(name.clone());
@@ -258,13 +328,15 @@ impl<'ctx> CodeGenerator<'ctx> {
         }
     }
 
-
     pub(in crate::codegen) fn collect_free_vars_expr(
         &self,
         expr: &Expr,
         defined: &std::collections::HashSet<String>,
         vars: &HashMap<String, VarEntry<'ctx>>,
-        free_vars: &mut BTreeMap<String, (inkwell::values::PointerValue<'ctx>, BasicTypeEnum<'ctx>)>,
+        free_vars: &mut BTreeMap<
+            String,
+            (inkwell::values::PointerValue<'ctx>, BasicTypeEnum<'ctx>),
+        >,
     ) {
         match expr {
             Expr::Ident(name) => {
@@ -322,8 +394,12 @@ impl<'ctx> CodeGenerator<'ctx> {
             }
             Expr::SliceExpr { target, start, end } => {
                 self.collect_free_vars_expr(target, defined, vars, free_vars);
-                if let Some(s) = start { self.collect_free_vars_expr(s, defined, vars, free_vars); }
-                if let Some(e) = end { self.collect_free_vars_expr(e, defined, vars, free_vars); }
+                if let Some(s) = start {
+                    self.collect_free_vars_expr(s, defined, vars, free_vars);
+                }
+                if let Some(e) = end {
+                    self.collect_free_vars_expr(e, defined, vars, free_vars);
+                }
             }
             Expr::Lambda { params, body, .. } => {
                 let param_names: std::collections::HashSet<String> =
@@ -332,10 +408,17 @@ impl<'ctx> CodeGenerator<'ctx> {
                 extended_defined.extend(param_names);
                 self.collect_free_vars(body, &extended_defined, vars, free_vars);
             }
-            Expr::Comprehension { expr: comp_expr, iter, guard, .. } => {
+            Expr::Comprehension {
+                expr: comp_expr,
+                iter,
+                guard,
+                ..
+            } => {
                 self.collect_free_vars_expr(iter, defined, vars, free_vars);
                 self.collect_free_vars_expr(comp_expr, defined, vars, free_vars);
-                if let Some(g) = guard { self.collect_free_vars_expr(g, defined, vars, free_vars); }
+                if let Some(g) = guard {
+                    self.collect_free_vars_expr(g, defined, vars, free_vars);
+                }
             }
             Expr::Turbofish(_, _, args) => {
                 for arg in args {
@@ -368,5 +451,4 @@ impl<'ctx> CodeGenerator<'ctx> {
             _ => {}
         }
     }
-
 }

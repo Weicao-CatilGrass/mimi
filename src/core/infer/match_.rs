@@ -27,7 +27,8 @@ impl<'a> Checker<'a> {
         let mut result_ty: Option<Type> = None;
 
         for arm in arms {
-            let (pattern_covered, is_catchall) = self.pattern_covers_variants(&arm.pat, &subject_ty);
+            let (pattern_covered, is_catchall) =
+                self.pattern_covers_variants(&arm.pat, &subject_ty);
             if is_catchall {
                 has_catchall = true;
             }

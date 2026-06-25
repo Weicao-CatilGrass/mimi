@@ -29,7 +29,8 @@ func area(s: Shape) -> f64 {
 func main() -> f64 {
     area(Circle(5.0)) + area(Rect(3.0, 4.0))
 }
-"#.to_string();
+"#
+    .to_string();
     c.bench_function("codegen/complex", |b| {
         b.iter(|| {
             let tokens = lexer::Lexer::new(black_box(&src)).tokenize().unwrap();
@@ -49,7 +50,8 @@ func fib(n: i32) -> i32 {
     if n <= 1 { n } else { fib(n - 1) + fib(n - 2) }
 }
 func main() -> i32 { fib(20) }
-"#.to_string();
+"#
+    .to_string();
     c.bench_function("codegen/recursive_fib", |b| {
         b.iter(|| {
             let tokens = lexer::Lexer::new(black_box(&src)).tokenize().unwrap();
@@ -71,7 +73,8 @@ func factorial(n: i32) -> i32 {
     if n <= 1 { 1 } else { n * factorial(n - 1) }
 }
 func main() -> i32 { factorial(10) }
-"#.to_string();
+"#
+    .to_string();
     c.bench_function("codegen/with_contracts", |b| {
         b.iter(|| {
             let tokens = lexer::Lexer::new(black_box(&src)).tokenize().unwrap();
@@ -85,7 +88,8 @@ func main() -> i32 { factorial(10) }
     });
 }
 
-criterion_group!(benches,
+criterion_group!(
+    benches,
     codegen_simple,
     codegen_complex,
     codegen_recursive,

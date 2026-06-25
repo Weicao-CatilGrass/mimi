@@ -115,35 +115,54 @@ impl<'ctx> CodeGenerator<'ctx> {
         operation: &str,
     ) -> MimiResult<()> {
         let len = self.load_list_len(list_ptr)?;
-        let function = self.builder.get_insert_block()
+        let function = self
+            .builder
+            .get_insert_block()
             .ok_or_else(|| "check_list_bounds: no insert block".to_string())?
             .get_parent()
             .ok_or_else(|| "check_list_bounds: no parent function".to_string())?;
         let pass_bb = self.context.append_basic_block(function, "bounds_ok");
         let fail_bb = self.context.append_basic_block(function, "bounds_fail");
-        let oob = self.builder.build_int_compare(
-            inkwell::IntPredicate::UGE, idx, len, "oob",
-        ).map_err(|e| CompileError::LlvmError(format!("oob compare: {}", e)))?;
-        self.builder.build_conditional_branch(oob, fail_bb, pass_bb)
+        let oob = self
+            .builder
+            .build_int_compare(inkwell::IntPredicate::UGE, idx, len, "oob")
+            .map_err(|e| CompileError::LlvmError(format!("oob compare: {}", e)))?;
+        self.builder
+            .build_conditional_branch(oob, fail_bb, pass_bb)
             .map_err(|e| CompileError::LlvmError(format!("oob branch: {}", e)))?;
         // Fail block: abort with message
         self.builder.position_at_end(fail_bb);
         let msg = format!("list index out of bounds: {} (idx >= len)", operation);
-        let msg_ptr = self.builder.build_global_string_ptr(&msg, "oob_msg")
+        let msg_ptr = self
+            .builder
+            .build_global_string_ptr(&msg, "oob_msg")
             .map_err(|e| CompileError::LlvmError(format!("oob msg: {}", e)))?;
-        let abort_fn = self.module.get_function("mimi_runtime_abort")
+        let abort_fn = self
+            .module
+            .get_function("mimi_runtime_abort")
             .unwrap_or_else(|| {
                 let i8_ptr = self.context.ptr_type(AddressSpace::default());
-                let ty = self.context.void_type().fn_type(&[
-                    inkwell::types::BasicMetadataTypeEnum::PointerType(i8_ptr),
-                ], false);
-                self.module.add_function("mimi_runtime_abort", ty, Some(inkwell::module::Linkage::External))
+                let ty = self.context.void_type().fn_type(
+                    &[inkwell::types::BasicMetadataTypeEnum::PointerType(i8_ptr)],
+                    false,
+                );
+                self.module.add_function(
+                    "mimi_runtime_abort",
+                    ty,
+                    Some(inkwell::module::Linkage::External),
+                )
             });
-        self.builder.build_call(abort_fn, &[
-            BasicMetadataValueEnum::PointerValue(msg_ptr.as_pointer_value()),
-        ], "oob_abort")
+        self.builder
+            .build_call(
+                abort_fn,
+                &[BasicMetadataValueEnum::PointerValue(
+                    msg_ptr.as_pointer_value(),
+                )],
+                "oob_abort",
+            )
             .map_err(|e| CompileError::LlvmError(format!("oob abort: {}", e)))?;
-        self.builder.build_unconditional_branch(pass_bb)
+        self.builder
+            .build_unconditional_branch(pass_bb)
             .map_err(|e| CompileError::LlvmError(format!("oob branch: {}", e)))?;
         // Continue at pass block
         self.builder.position_at_end(pass_bb);

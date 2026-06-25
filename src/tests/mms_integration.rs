@@ -12,10 +12,21 @@ fn mms_block_exists() {
         }
     "#;
     let file = parse(src);
-    let func = file.items.iter().find_map(|item| {
-        if let Item::Func(f) = item { Some(f) } else { None }
-    }).expect("src/tests/mms_integration.rs:17 unwrap failed");
-    let mms_stmt = func.body.iter().find(|s| matches!(s, Stmt::MmsBlock { .. }));
+    let func = file
+        .items
+        .iter()
+        .find_map(|item| {
+            if let Item::Func(f) = item {
+                Some(f)
+            } else {
+                None
+            }
+        })
+        .expect("src/tests/mms_integration.rs:17 unwrap failed");
+    let mms_stmt = func
+        .body
+        .iter()
+        .find(|s| matches!(s, Stmt::MmsBlock { .. }));
     assert!(mms_stmt.is_some(), "should have MMS block");
 }
 
@@ -29,12 +40,25 @@ fn mms_block_has_content() {
         }
     "#;
     let file = parse(src);
-    let func = file.items.iter().find_map(|item| {
-        if let Item::Func(f) = item { Some(f) } else { None }
-    }).expect("src/tests/mms_integration.rs:34 unwrap failed");
-    let mms_stmt = func.body.iter().find(|s| matches!(s, Stmt::MmsBlock { .. }));
+    let func = file
+        .items
+        .iter()
+        .find_map(|item| {
+            if let Item::Func(f) = item {
+                Some(f)
+            } else {
+                None
+            }
+        })
+        .expect("src/tests/mms_integration.rs:34 unwrap failed");
+    let mms_stmt = func
+        .body
+        .iter()
+        .find(|s| matches!(s, Stmt::MmsBlock { .. }));
     assert!(mms_stmt.is_some());
-    if let Stmt::MmsBlock { content, .. } = mms_stmt.expect("src/tests/mms_integration.rs:37 unwrap failed") {
+    if let Stmt::MmsBlock { content, .. } =
+        mms_stmt.expect("src/tests/mms_integration.rs:37 unwrap failed")
+    {
         assert!(!content.is_empty(), "content should not be empty");
     }
 }
@@ -62,10 +86,22 @@ fn mms_block_multiple() {
         }
     "#;
     let file = parse(src);
-    let func = file.items.iter().find_map(|item| {
-        if let Item::Func(f) = item { Some(f) } else { None }
-    }).expect("src/tests/mms_integration.rs:67 unwrap failed");
-    let mms_count = func.body.iter().filter(|s| matches!(s, Stmt::MmsBlock { .. })).count();
+    let func = file
+        .items
+        .iter()
+        .find_map(|item| {
+            if let Item::Func(f) = item {
+                Some(f)
+            } else {
+                None
+            }
+        })
+        .expect("src/tests/mms_integration.rs:67 unwrap failed");
+    let mms_count = func
+        .body
+        .iter()
+        .filter(|s| matches!(s, Stmt::MmsBlock { .. }))
+        .count();
     assert!(mms_count >= 2, "should have at least 2 MMS blocks");
 }
 
@@ -80,13 +116,32 @@ fn mms_block_in_module() {
         }
     "#;
     let file = parse(src);
-    let module = file.items.iter().find_map(|item| {
-        if let Item::Module(m) = item { Some(m) } else { None }
-    }).expect("src/tests/mms_integration.rs:85 unwrap failed");
-    let func = module.items.iter().find_map(|item| {
-        if let Item::Func(f) = item { Some(f) } else { None }
-    }).expect("src/tests/mms_integration.rs:88 unwrap failed");
-    let mms_stmt = func.body.iter().find(|s| matches!(s, Stmt::MmsBlock { .. }));
+    let module = file
+        .items
+        .iter()
+        .find_map(|item| {
+            if let Item::Module(m) = item {
+                Some(m)
+            } else {
+                None
+            }
+        })
+        .expect("src/tests/mms_integration.rs:85 unwrap failed");
+    let func = module
+        .items
+        .iter()
+        .find_map(|item| {
+            if let Item::Func(f) = item {
+                Some(f)
+            } else {
+                None
+            }
+        })
+        .expect("src/tests/mms_integration.rs:88 unwrap failed");
+    let mms_stmt = func
+        .body
+        .iter()
+        .find(|s| matches!(s, Stmt::MmsBlock { .. }));
     assert!(mms_stmt.is_some(), "should have MMS block in module");
 }
 
@@ -103,19 +158,37 @@ fn mms_block_ast_token_content() {
         }
     "#;
     let file = parse(src);
-    let func = file.items.iter().find_map(|item| {
-        if let Item::Func(f) = item { Some(f) } else { None }
-    }).expect("src/tests/mms_integration.rs:108 unwrap failed");
-    let mms_stmt = func.body.iter().find_map(|s| {
-        if let Stmt::MmsBlock { content, ast, .. } = s {
-            Some((content.clone(), ast.clone()))
-        } else {
-            None
-        }
-    }).expect("src/tests/mms_integration.rs:115 unwrap failed");
+    let func = file
+        .items
+        .iter()
+        .find_map(|item| {
+            if let Item::Func(f) = item {
+                Some(f)
+            } else {
+                None
+            }
+        })
+        .expect("src/tests/mms_integration.rs:108 unwrap failed");
+    let mms_stmt = func
+        .body
+        .iter()
+        .find_map(|s| {
+            if let Stmt::MmsBlock { content, ast, .. } = s {
+                Some((content.clone(), ast.clone()))
+            } else {
+                None
+            }
+        })
+        .expect("src/tests/mms_integration.rs:115 unwrap failed");
     assert!(!mms_stmt.0.is_empty(), "content should not be empty");
-    assert!(mms_stmt.0.contains("func add"), "content should contain original text");
-    assert!(mms_stmt.0.contains("requires"), "content should contain requires");
+    assert!(
+        mms_stmt.0.contains("func add"),
+        "content should contain original text"
+    );
+    assert!(
+        mms_stmt.0.contains("requires"),
+        "content should contain requires"
+    );
     assert!(mms_stmt.1.is_some(), "valid MMS content should produce AST");
 }
 
@@ -130,18 +203,33 @@ fn mms_block_ast_graceful_degradation() {
         }
     "#;
     let file = parse(src);
-    let func = file.items.iter().find_map(|item| {
-        if let Item::Func(f) = item { Some(f) } else { None }
-    }).expect("src/tests/mms_integration.rs:135 unwrap failed");
-    let mms_stmt = func.body.iter().find_map(|s| {
-        if let Stmt::MmsBlock { content, ast, .. } = s {
-            Some((content.clone(), ast.clone()))
-        } else {
-            None
-        }
-    }).expect("src/tests/mms_integration.rs:142 unwrap failed");
+    let func = file
+        .items
+        .iter()
+        .find_map(|item| {
+            if let Item::Func(f) = item {
+                Some(f)
+            } else {
+                None
+            }
+        })
+        .expect("src/tests/mms_integration.rs:135 unwrap failed");
+    let mms_stmt = func
+        .body
+        .iter()
+        .find_map(|s| {
+            if let Stmt::MmsBlock { content, ast, .. } = s {
+                Some((content.clone(), ast.clone()))
+            } else {
+                None
+            }
+        })
+        .expect("src/tests/mms_integration.rs:142 unwrap failed");
     assert!(!mms_stmt.0.is_empty(), "content should not be empty");
-    assert!(mms_stmt.1.is_none(), "invalid MMS content should degrade to None");
+    assert!(
+        mms_stmt.1.is_none(),
+        "invalid MMS content should degrade to None"
+    );
 }
 
 #[test]
@@ -156,18 +244,33 @@ fn mms_block_ast_with_desc() {
         }
     "#;
     let file = parse(src);
-    let func = file.items.iter().find_map(|item| {
-        if let Item::Func(f) = item { Some(f) } else { None }
-    }).expect("src/tests/mms_integration.rs:161 unwrap failed");
-    let mms_stmt = func.body.iter().find_map(|s| {
-        if let Stmt::MmsBlock { content, ast, .. } = s {
-            Some((content.clone(), ast.clone()))
-        } else {
-            None
-        }
-    }).expect("src/tests/mms_integration.rs:168 unwrap failed");
+    let func = file
+        .items
+        .iter()
+        .find_map(|item| {
+            if let Item::Func(f) = item {
+                Some(f)
+            } else {
+                None
+            }
+        })
+        .expect("src/tests/mms_integration.rs:161 unwrap failed");
+    let mms_stmt = func
+        .body
+        .iter()
+        .find_map(|s| {
+            if let Stmt::MmsBlock { content, ast, .. } = s {
+                Some((content.clone(), ast.clone()))
+            } else {
+                None
+            }
+        })
+        .expect("src/tests/mms_integration.rs:168 unwrap failed");
     assert!(!mms_stmt.0.is_empty());
-    assert!(mms_stmt.1.is_none(), "token-represented content should not produce AST");
+    assert!(
+        mms_stmt.1.is_none(),
+        "token-represented content should not produce AST"
+    );
 }
 
 #[test]
@@ -183,17 +286,38 @@ fn mms_block_content_preserved() {
         }
     "#;
     let file = parse(src);
-    let func = file.items.iter().find_map(|item| {
-        if let Item::Func(f) = item { Some(f) } else { None }
-    }).expect("src/tests/mms_integration.rs:188 unwrap failed");
-    let mms_stmt = func.body.iter().find_map(|s| {
-        if let Stmt::MmsBlock { content, .. } = s {
-            Some(content.clone())
-        } else {
-            None
-        }
-    }).expect("src/tests/mms_integration.rs:195 unwrap failed");
-    assert!(mms_stmt.contains("Pay"), "content should contain function name");
-    assert!(mms_stmt.contains("desc"), "content should contain desc keyword");
-    assert!(mms_stmt.contains("requires"), "content should contain requires keyword");
+    let func = file
+        .items
+        .iter()
+        .find_map(|item| {
+            if let Item::Func(f) = item {
+                Some(f)
+            } else {
+                None
+            }
+        })
+        .expect("src/tests/mms_integration.rs:188 unwrap failed");
+    let mms_stmt = func
+        .body
+        .iter()
+        .find_map(|s| {
+            if let Stmt::MmsBlock { content, .. } = s {
+                Some(content.clone())
+            } else {
+                None
+            }
+        })
+        .expect("src/tests/mms_integration.rs:195 unwrap failed");
+    assert!(
+        mms_stmt.contains("Pay"),
+        "content should contain function name"
+    );
+    assert!(
+        mms_stmt.contains("desc"),
+        "content should contain desc keyword"
+    );
+    assert!(
+        mms_stmt.contains("requires"),
+        "content should contain requires keyword"
+    );
 }

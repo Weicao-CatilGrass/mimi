@@ -5,15 +5,22 @@
 use super::*;
 
 fn can_link() -> bool {
-    std::process::Command::new("cc").arg("--version").output().is_ok()
+    std::process::Command::new("cc")
+        .arg("--version")
+        .output()
+        .is_ok()
 }
 
 // ===================== Basic Arithmetic =====================
 
 #[test]
 fn e2e_add() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"func main() -> i32 { println(2 + 3); 0 }"#).expect("src/tests/codegen_e2e.rs:16 unwrap failed");
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(r#"func main() -> i32 { println(2 + 3); 0 }"#)
+        .expect("src/tests/codegen_e2e.rs:16 unwrap failed");
     assert_eq!(stdout.trim(), "5");
 }
 
@@ -21,8 +28,12 @@ fn e2e_add() {
 
 #[test]
 fn e2e_adt_record() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         type Point { x: i32, y: i32 }
         func main() -> i32 {
             let p = Point { x: 3, y: 4 }
@@ -30,15 +41,21 @@ fn e2e_adt_record() {
             println(p.y)
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:33 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:33 unwrap failed");
     assert_eq!(stdout.trim(), "3\n4");
 }
 
 #[test]
 fn e2e_adt_enum_match() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
     // Enum match in codegen: use match on simple int values
-    let stdout = compile_and_run(r#"
+    let stdout = compile_and_run(
+        r#"
         func classify(x: i32) -> i32 {
             if x > 0 { 1 } else if x < 0 { -1 } else { 0 }
         }
@@ -48,15 +65,21 @@ fn e2e_adt_enum_match() {
             println(classify(0))
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:51 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:51 unwrap failed");
     assert_eq!(stdout.trim(), "1\n-1\n0");
 }
 
 #[test]
 fn e2e_nested_match() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
     // Nested if/else as equivalent to nested match
-    let stdout = compile_and_run(r#"
+    let stdout = compile_and_run(
+        r#"
         func abs_val(x: i32) -> i32 {
             if x >= 0 { x } else { 0 - x }
         }
@@ -65,7 +88,9 @@ fn e2e_nested_match() {
             println(abs_val(-7))
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:68 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:68 unwrap failed");
     assert_eq!(stdout.trim(), "42\n7");
 }
 
@@ -73,8 +98,12 @@ fn e2e_nested_match() {
 
 #[test]
 fn e2e_enum_ctor_data_variant() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         type MyEnum {
             VariantA(i32),
             VariantB,
@@ -84,14 +113,20 @@ fn e2e_enum_ctor_data_variant() {
             println(x)
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:87 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:87 unwrap failed");
     assert_eq!(stdout.trim(), "42");
 }
 
 #[test]
 fn e2e_enum_ctor_use_in_match() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         type MyEnum {
             VariantA(i32),
             VariantB,
@@ -103,7 +138,9 @@ fn e2e_enum_ctor_use_in_match() {
             println(b)
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:106 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:106 unwrap failed");
     assert_eq!(stdout.trim(), "100\n200");
 }
 
@@ -113,9 +150,13 @@ fn e2e_enum_ctor_use_in_match() {
 fn e2e_break_continue() {
     // Known codegen bug: break/continue inside if blocks doesn't work correctly in compiled mode.
     // The interpreter handles it correctly. This test documents the known issue.
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
     // Simple while loop without break works fine
-    let stdout = compile_and_run(r#"
+    let stdout = compile_and_run(
+        r#"
         func main() -> i32 {
             let mut sum = 0
             let mut i = 0
@@ -126,14 +167,20 @@ fn e2e_break_continue() {
             println(sum)
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:129 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:129 unwrap failed");
     assert_eq!(stdout.trim(), "10");
 }
 
 #[test]
 fn e2e_recursive_function() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         func factorial(n: i32) -> i32 {
             if n <= 1 { 1 } else { n * factorial(n - 1) }
         }
@@ -142,7 +189,9 @@ fn e2e_recursive_function() {
             println(factorial(10))
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:145 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:145 unwrap failed");
     assert_eq!(stdout.trim(), "120\n3628800");
 }
 
@@ -150,10 +199,14 @@ fn e2e_recursive_function() {
 
 #[test]
 fn e2e_higher_order_func() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
     // Known codegen limitation: string == comparison and function pointers not fully supported.
     // Test multi-function dispatch with integer parameter.
-    let stdout = compile_and_run(r#"
+    let stdout = compile_and_run(
+        r#"
         func double(x: i32) -> i32 { x * 2 }
         func triple(x: i32) -> i32 { x * 3 }
         func pick_and_apply(mode: i32, x: i32) -> i32 {
@@ -164,27 +217,39 @@ fn e2e_higher_order_func() {
             println(pick_and_apply(2, 5))
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:167 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:167 unwrap failed");
     assert_eq!(stdout.trim(), "10\n15");
 }
 
 #[test]
 fn e2e_closure_no_capture() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         func main() -> i32 {
             let f = fn(x: i32) -> i32 { x + 1 }
             println(f(5))
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:180 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:180 unwrap failed");
     assert_eq!(stdout.trim(), "6");
 }
 
 #[test]
 fn e2e_closure_capture() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         func main() -> i32 {
             let a = 10
             let f = fn(x: i32) -> i32 { x + a }
@@ -192,14 +257,20 @@ fn e2e_closure_capture() {
             println(f(20))
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:195 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:195 unwrap failed");
     assert_eq!(stdout.trim(), "15\n30");
 }
 
 #[test]
 fn e2e_closure_multiple_capture() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         func main() -> i32 {
             let a = 3
             let b = 7
@@ -207,14 +278,20 @@ fn e2e_closure_multiple_capture() {
             println(f(10))
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:210 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:210 unwrap failed");
     assert_eq!(stdout.trim(), "37");
 }
 
 #[test]
 fn e2e_closure_extern_callback() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         extern "C" {
             func test_callback(x: i32, cb: func(i32) -> i32) -> i32
         }
@@ -225,14 +302,20 @@ fn e2e_closure_extern_callback() {
             println(result)
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:228 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:228 unwrap failed");
     assert_eq!(stdout.trim(), "10");
 }
 
 #[test]
 fn e2e_extern_float_identity() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         extern "C" {
             func test_float_identity(x: f64) -> f64
         }
@@ -241,18 +324,28 @@ fn e2e_extern_float_identity() {
             println(test_float_identity(x))
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:244 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:244 unwrap failed");
     let trimmed = stdout.trim().to_string();
     // Accept any output starting with "3.14" (the exact formatting may vary)
-    assert!(trimmed.starts_with("3.14"), "expected '3.14...', got '{}'", trimmed);
+    assert!(
+        trimmed.starts_with("3.14"),
+        "expected '3.14...', got '{}'",
+        trimmed
+    );
 }
 
 // ===================== Error Handling =====================
 
 #[test]
 fn e2e_on_failure_compensation() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         func main() -> i32 {
             let mut cleaned = false
             let x = 10
@@ -260,16 +353,22 @@ fn e2e_on_failure_compensation() {
             println(x)
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:263 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:263 unwrap failed");
     assert_eq!(stdout.trim(), "10");
 }
 
 #[test]
 fn e2e_try_operator() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
     // Known codegen limitation: enum match and ? operator not fully supported.
     // Test basic error handling pattern with if/else.
-    let stdout = compile_and_run(r#"
+    let stdout = compile_and_run(
+        r#"
         func safe_div(a: i32, b: i32) -> i32 {
             if b == 0 { 0 } else { a / b }
         }
@@ -278,7 +377,9 @@ fn e2e_try_operator() {
             println(safe_div(10, 0))
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:281 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:281 unwrap failed");
     assert_eq!(stdout.trim(), "5\n0");
 }
 
@@ -286,14 +387,20 @@ fn e2e_try_operator() {
 
 #[test]
 fn e2e_f64_println() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         func main() -> i32 {
             let pi: f64 = 3.14159
             println(pi)
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:296 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:296 unwrap failed");
     assert!(stdout.trim().starts_with("3.14159"));
 }
 
@@ -301,8 +408,12 @@ fn e2e_f64_println() {
 
 #[test]
 fn e2e_contract_requires_pass() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_verify_contracts(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_verify_contracts(
+        r#"
         func double(x: i32) -> i32 {
             requires: x >= 0
             x * 2
@@ -311,14 +422,20 @@ fn e2e_contract_requires_pass() {
             println(double(5))
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:314 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:314 unwrap failed");
     assert_eq!(stdout.trim(), "10");
 }
 
 #[test]
 fn e2e_contract_requires_fail() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let result = compile_and_verify_contracts(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let result = compile_and_verify_contracts(
+        r#"
         func double(x: i32) -> i32 {
             requires: x >= 0
             x * 2
@@ -327,14 +444,19 @@ fn e2e_contract_requires_fail() {
             println(double(-1))
             0
         }
-    "#);
+    "#,
+    );
     assert!(result.is_err(), "should fail on requires violation");
 }
 
 #[test]
 fn e2e_extern_ensures_pass() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_verify_contracts(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_verify_contracts(
+        r#"
         extern "C" {
             func test_positive(x: i32) -> i32
                 ensures: result > 0;
@@ -343,14 +465,20 @@ fn e2e_extern_ensures_pass() {
             println(test_positive(5))
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:346 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:346 unwrap failed");
     assert_eq!(stdout.trim(), "5");
 }
 
 #[test]
 fn e2e_extern_ensures_fail() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let result = compile_and_verify_contracts(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let result = compile_and_verify_contracts(
+        r#"
         extern "C" {
             func test_positive(x: i32) -> i32
                 ensures: result > 0;
@@ -359,16 +487,24 @@ fn e2e_extern_ensures_fail() {
             println(test_positive(0))
             0
         }
-    "#);
-    assert!(result.is_err(), "should fail on ensures violation for extern call");
+    "#,
+    );
+    assert!(
+        result.is_err(),
+        "should fail on ensures violation for extern call"
+    );
 }
 
 // ===================== FFI Type Coverage E2E =====================
 
 #[test]
 fn e2e_extern_strlen() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         extern "C" {
             func test_strlen(s: string) -> i32
         }
@@ -376,14 +512,20 @@ fn e2e_extern_strlen() {
             println(test_strlen("hello world"))
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:379 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:379 unwrap failed");
     assert_eq!(stdout.trim(), "11");
 }
 
 #[test]
 fn e2e_extern_nop() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         extern "C" {
             func test_nop()
         }
@@ -392,14 +534,20 @@ fn e2e_extern_nop() {
             println(42)
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:395 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:395 unwrap failed");
     assert_eq!(stdout.trim(), "42");
 }
 
 #[test]
 fn e2e_extern_greet_raw() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         extern "C" {
             func test_greet(x: i32) -> raw_string
         }
@@ -407,14 +555,20 @@ fn e2e_extern_greet_raw() {
             println(test_greet(42))
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:410 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:410 unwrap failed");
     assert_eq!(stdout.trim(), "Hello 42");
 }
 
 #[test]
 fn e2e_extern_parse_int_raw_string() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         extern "C" {
             func test_parse_int(s: raw_string) -> i32
         }
@@ -422,14 +576,20 @@ fn e2e_extern_parse_int_raw_string() {
             println(test_parse_int("42"))
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:425 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:425 unwrap failed");
     assert_eq!(stdout.trim(), "42");
 }
 
 #[test]
 fn e2e_extern_json_sum() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         extern "C" {
             func test_json_sum(json: List<i32>) -> i32
         }
@@ -437,14 +597,20 @@ fn e2e_extern_json_sum() {
             println(test_json_sum([1, 2, 3, 4, 5]))
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:440 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:440 unwrap failed");
     assert_eq!(stdout.trim(), "15");
 }
 
 #[test]
 fn e2e_actor_spawn_and_method() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         actor Counter {
             count: i32 = 42;
             func get() -> i32 { return self.count; }
@@ -455,7 +621,9 @@ fn e2e_actor_spawn_and_method() {
             println(val);
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:458 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:458 unwrap failed");
     assert_eq!(stdout.trim(), "42");
 }
 
@@ -463,8 +631,12 @@ fn e2e_actor_spawn_and_method() {
 
 #[test]
 fn e2e_arena_block_scope() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         func main() -> i32 {
             let outer = 10
             arena {
@@ -474,7 +646,9 @@ fn e2e_arena_block_scope() {
             println(outer)
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:477 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:477 unwrap failed");
     assert_eq!(stdout.trim(), "20\n10");
 }
 
@@ -482,8 +656,12 @@ fn e2e_arena_block_scope() {
 
 #[test]
 fn e2e_async_spawn_basic() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         func compute(x: i32) -> i32 {
             x * 2
         }
@@ -494,7 +672,9 @@ fn e2e_async_spawn_basic() {
             println(result)
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:497 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:497 unwrap failed");
     assert_eq!(stdout.trim(), "42");
 }
 
@@ -502,147 +682,220 @@ fn e2e_async_spawn_basic() {
 
 #[test]
 fn e2e_json_to_json_int() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         func main() -> i32 {
             let s = to_json(42)
             println(s)
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:512 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:512 unwrap failed");
     assert_eq!(stdout.trim(), "42");
 }
 
 #[test]
 fn e2e_json_to_json_string() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         func main() -> i32 {
             let s = to_json("hello")
             println(s)
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:525 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:525 unwrap failed");
     assert_eq!(stdout.trim(), "\"hello\"");
 }
 
 #[test]
 fn e2e_json_to_json_bool() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         func main() -> i32 {
             let s = to_json(true)
             println(s)
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:538 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:538 unwrap failed");
     assert_eq!(stdout.trim(), "true");
 }
 
 #[test]
 fn e2e_json_to_json_list() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
     // Codegen: to_json on complex types (List, Record) falls back to "{}" stub
     // but extract_raw_str_ptr may extract data pointer from struct, giving unexpected output.
     // This is a known limitation — complex type serialization needs proper struct detection.
     // For now, just verify it doesn't crash.
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         func main() -> i32 {
             let s = to_json([1, 2, 3])
             println(s)
             0
         }
-    "#);
-    assert!(result.is_ok(), "to_json([1,2,3]) should not crash: {:?}", result.err());
+    "#,
+    );
+    assert!(
+        result.is_ok(),
+        "to_json([1,2,3]) should not crash: {:?}",
+        result.err()
+    );
 }
 
 #[test]
 fn e2e_json_is_valid() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
     // Codegen prints booleans as 0/1 (not "true"/"false") — matches printf behavior
-    let stdout = compile_and_run(r#"
+    let stdout = compile_and_run(
+        r#"
         func main() -> i32 {
             println(json_is_valid("{\"a\":1}"))
             println(json_is_valid("invalid"))
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:569 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:569 unwrap failed");
     assert_eq!(stdout.trim(), "1\n0");
 }
 
 #[test]
 fn e2e_json_from_json() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         func main() -> i32 {
             let s = from_json("{\"x\":10}")
             let v = json_get_int(s, "x")
             println(v)
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:583 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:583 unwrap failed");
     assert_eq!(stdout.trim(), "10");
 }
 
 #[test]
 fn e2e_json_key_escaped() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         func main() -> i32 {
             let s = from_json("{\"hello\\nworld\":42}")
             let v = json_get_int(s, "hello\nworld")
             println(v)
             0
         }
-    "#).expect("json key escape test failed");
+    "#,
+    )
+    .expect("json key escape test failed");
     assert_eq!(stdout.trim(), "42");
 }
 
 #[test]
 fn e2e_json_value_escaped() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         func main() -> i32 {
             let s = from_json("{\"key\":\"hello\\tworld\"}")
             let v = json_get_string(s, "key")
             println(v)
             0
         }
-    "#).expect("json value escape test failed");
+    "#,
+    )
+    .expect("json value escape test failed");
     assert_eq!(stdout.trim(), "hello\tworld");
 }
 
 #[test]
 fn e2e_float_sub() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         func main() -> i32 { let x: f64 = 10.0; let y: f64 = 3.0; println(x - y); 0 }
-    "#).expect("src/tests/codegen_e2e.rs:592 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:592 unwrap failed");
     assert_eq!(stdout.trim(), "7.000000");
 }
 
 #[test]
 fn e2e_float_mul() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         func main() -> i32 { let x: f64 = 3.0; let y: f64 = 4.0; println(x * y); 0 }
-    "#).expect("src/tests/codegen_e2e.rs:601 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:601 unwrap failed");
     assert_eq!(stdout.trim(), "12.000000");
 }
 
 #[test]
 fn e2e_float_div() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         func main() -> i32 { let x: f64 = 10.0; let y: f64 = 4.0; println(x / y); 0 }
-    "#).expect("src/tests/codegen_e2e.rs:610 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:610 unwrap failed");
     assert_eq!(stdout.trim(), "2.500000");
 }
 
 #[test]
 fn e2e_float_comparison() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         func main() -> i32 {
             let a: f64 = 3.0
             let b: f64 = 5.0
@@ -652,14 +905,20 @@ fn e2e_float_comparison() {
             println(a >= b)
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:627 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:627 unwrap failed");
     assert_eq!(stdout.trim(), "1\n0\n1\n0");
 }
 
 #[test]
 fn e2e_float_equality() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         func main() -> i32 {
             let a: f64 = 3.14
             let b: f64 = 3.14
@@ -669,28 +928,42 @@ fn e2e_float_equality() {
             println(a != c)
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:644 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:644 unwrap failed");
     assert_eq!(stdout.trim(), "1\n0\n1");
 }
 
 #[test]
 fn e2e_mul() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"func main() -> i32 { println(6 * 7); 0 }"#).expect("src/tests/codegen_e2e.rs:651 unwrap failed");
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(r#"func main() -> i32 { println(6 * 7); 0 }"#)
+        .expect("src/tests/codegen_e2e.rs:651 unwrap failed");
     assert_eq!(stdout.trim(), "42");
 }
 
 #[test]
 fn e2e_div() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"func main() -> i32 { println(12 / 4); 0 }"#).expect("src/tests/codegen_e2e.rs:658 unwrap failed");
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(r#"func main() -> i32 { println(12 / 4); 0 }"#)
+        .expect("src/tests/codegen_e2e.rs:658 unwrap failed");
     assert_eq!(stdout.trim(), "3");
 }
 
 #[test]
 fn e2e_complex_arithmetic() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"func main() -> i32 { println(1 + 2 * 3 - 4 / 2); 0 }"#).expect("src/tests/codegen_e2e.rs:665 unwrap failed");
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(r#"func main() -> i32 { println(1 + 2 * 3 - 4 / 2); 0 }"#)
+        .expect("src/tests/codegen_e2e.rs:665 unwrap failed");
     assert_eq!(stdout.trim(), "5");
 }
 
@@ -698,20 +971,32 @@ fn e2e_complex_arithmetic() {
 
 #[test]
 fn e2e_abs_function() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         func abs(x: i32) -> i32 { if x < 0 { -x } else { x } }
         func main() -> i32 { println(abs(-5)); 0 }
-    "#).expect("src/tests/codegen_e2e.rs:677 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:677 unwrap failed");
     assert_eq!(stdout.trim(), "5");
 }
 
 #[test]
 fn e2e_boolean_and_or() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         func main() -> i32 { let a = 1; let b = 0; println(a && b); println(a || b); 0 }
-    "#).expect("src/tests/codegen_e2e.rs:686 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:686 unwrap failed");
     assert_eq!(stdout.trim(), "0\n1");
 }
 
@@ -719,21 +1004,33 @@ fn e2e_boolean_and_or() {
 
 #[test]
 fn e2e_chained_calls() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         func inc(x: i32) -> i32 { x + 1 }
         func main() -> i32 { println(inc(inc(inc(39)))); 0 }
-    "#).expect("src/tests/codegen_e2e.rs:698 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:698 unwrap failed");
     assert_eq!(stdout.trim(), "42");
 }
 
 #[test]
 fn e2e_three_param_fn() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         func add3(a: i32, b: i32, c: i32) -> i32 { a + b + c }
         func main() -> i32 { println(add3(10, 20, 12)); 0 }
-    "#).expect("src/tests/codegen_e2e.rs:708 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:708 unwrap failed");
     assert_eq!(stdout.trim(), "42");
 }
 
@@ -741,22 +1038,36 @@ fn e2e_three_param_fn() {
 
 #[test]
 fn e2e_builtin_abs() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"func main() -> i32 { println(abs(-42)); 0 }"#).expect("src/tests/codegen_e2e.rs:717 unwrap failed");
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(r#"func main() -> i32 { println(abs(-42)); 0 }"#)
+        .expect("src/tests/codegen_e2e.rs:717 unwrap failed");
     assert_eq!(stdout.trim(), "42");
 }
 
 #[test]
 fn e2e_builtin_min_max() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"func main() -> i32 { println(min(10, 20)); println(max(10, 20)); 0 }"#).expect("src/tests/codegen_e2e.rs:724 unwrap failed");
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout =
+        compile_and_run(r#"func main() -> i32 { println(min(10, 20)); println(max(10, 20)); 0 }"#)
+            .expect("src/tests/codegen_e2e.rs:724 unwrap failed");
     assert_eq!(stdout.trim(), "10\n20");
 }
 
 #[test]
 fn e2e_builtin_len() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"func main() -> i32 { let xs = [1, 2, 3, 4, 5]; println(len(xs)); 0 }"#).expect("src/tests/codegen_e2e.rs:731 unwrap failed");
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout =
+        compile_and_run(r#"func main() -> i32 { let xs = [1, 2, 3, 4, 5]; println(len(xs)); 0 }"#)
+            .expect("src/tests/codegen_e2e.rs:731 unwrap failed");
     assert_eq!(stdout.trim(), "5");
 }
 
@@ -764,8 +1075,14 @@ fn e2e_builtin_len() {
 
 #[test]
 fn e2e_mixed_print_types() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"func main() -> i32 { println("hello"); println("world"); println(42); 0 }"#).expect("src/tests/codegen_e2e.rs:740 unwrap failed");
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"func main() -> i32 { println("hello"); println("world"); println(42); 0 }"#,
+    )
+    .expect("src/tests/codegen_e2e.rs:740 unwrap failed");
     assert_eq!(stdout.trim(), "hello\nworld\n42");
 }
 
@@ -773,17 +1090,27 @@ fn e2e_mixed_print_types() {
 
 #[test]
 fn e2e_fstring_with_var() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"func main() -> i32 { let x = 42; println(f"x = {x}"); 0 }"#).expect("src/tests/codegen_e2e.rs:749 unwrap failed");
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(r#"func main() -> i32 { let x = 42; println(f"x = {x}"); 0 }"#)
+        .expect("src/tests/codegen_e2e.rs:749 unwrap failed");
     assert_eq!(stdout.trim(), "x = 42");
 }
 
 #[test]
 fn e2e_fstring_two_vars() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         func main() -> i32 { let x = 42; let y = 100; println(f"x={x}, y={y}"); 0 }
-    "#).expect("src/tests/codegen_e2e.rs:758 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:758 unwrap failed");
     assert_eq!(stdout.trim(), "x=42, y=100");
 }
 
@@ -797,19 +1124,31 @@ fn e2e_fstring_two_vars() {
 
 #[test]
 fn e2e_int_equality() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         func main() -> i32 { println(42 == 42); println(42 == 43); println(42 != 43); 0 }
-    "#).expect("src/tests/codegen_e2e.rs:775 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:775 unwrap failed");
     assert_eq!(stdout.trim(), "1\n0\n1");
 }
 
 #[test]
 fn e2e_int_comparison() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         func main() -> i32 { println(1 < 2); println(2 < 1); println(1 <= 1); println(2 >= 1); 0 }
-    "#).expect("src/tests/codegen_e2e.rs:784 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:784 unwrap failed");
     assert_eq!(stdout.trim(), "1\n0\n1\n1");
 }
 
@@ -817,8 +1156,14 @@ fn e2e_int_comparison() {
 
 #[test]
 fn e2e_mutable_updates() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"func main() -> i32 { let mut x = 1; x = x + 2; x = x * 3; println(x); 0 }"#).expect("src/tests/codegen_e2e.rs:793 unwrap failed");
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"func main() -> i32 { let mut x = 1; x = x + 2; x = x * 3; println(x); 0 }"#,
+    )
+    .expect("src/tests/codegen_e2e.rs:793 unwrap failed");
     assert_eq!(stdout.trim(), "9");
 }
 
@@ -826,7 +1171,10 @@ fn e2e_mutable_updates() {
 
 #[test]
 fn e2e_list_index() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
     let stdout = compile_and_run(r#"
         func main() -> i32 { let xs = [10, 20, 30, 40, 50]; println(xs[0]); println(xs[2]); println(xs[4]); 0 }
     "#).expect("src/tests/codegen_e2e.rs:804 unwrap failed");
@@ -837,8 +1185,14 @@ fn e2e_list_index() {
 
 #[test]
 fn e2e_type_alias() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"type MyInt = i32; func main() -> i32 { let x: MyInt = 42; println(x); 0 }"#).expect("src/tests/codegen_e2e.rs:813 unwrap failed");
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"type MyInt = i32; func main() -> i32 { let x: MyInt = 42; println(x); 0 }"#,
+    )
+    .expect("src/tests/codegen_e2e.rs:813 unwrap failed");
     assert_eq!(stdout.trim(), "42");
 }
 
@@ -846,8 +1200,13 @@ fn e2e_type_alias() {
 
 #[test]
 fn e2e_range_len() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"func main() -> i32 { let r = range(0, 10); println(len(r)); 0 }"#).expect("src/tests/codegen_e2e.rs:822 unwrap failed");
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout =
+        compile_and_run(r#"func main() -> i32 { let r = range(0, 10); println(len(r)); 0 }"#)
+            .expect("src/tests/codegen_e2e.rs:822 unwrap failed");
     assert_eq!(stdout.trim(), "10");
 }
 
@@ -855,10 +1214,16 @@ fn e2e_range_len() {
 
 #[test]
 fn e2e_fstring_expr() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         func main() -> i32 { let a = 3; let b = 4; println(f"{a} + {b} = {a + b}"); 0 }
-    "#).expect("src/tests/codegen_e2e.rs:833 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:833 unwrap failed");
     assert_eq!(stdout.trim(), "3 + 4 = 7");
 }
 
@@ -866,51 +1231,75 @@ fn e2e_fstring_expr() {
 
 #[test]
 fn e2e_for_range_basic() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         func main() -> i32 {
             for i in range(0, 3) { println(i) }
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:847 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:847 unwrap failed");
     assert_eq!(stdout.trim(), "0\n1\n2");
 }
 
 #[test]
 fn e2e_for_range_sum() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         func main() -> i32 {
             let mut total = 0
             for i in range(1, 6) { total = total + i }
             println(total); 0
         }
-    "#).expect("src/tests/codegen_e2e.rs:860 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:860 unwrap failed");
     assert_eq!(stdout.trim(), "15");
 }
 
 #[test]
 fn e2e_for_list_print() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         func main() -> i32 {
             for x in [10, 20, 30] { println(x) }
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:872 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:872 unwrap failed");
     assert_eq!(stdout.trim(), "10\n20\n30");
 }
 
 #[test]
 fn e2e_for_list_sum() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         func main() -> i32 {
             let mut total = 0
             for x in [1, 2, 3, 4, 5] { total = total + x }
             println(total); 0
         }
-    "#).expect("src/tests/codegen_e2e.rs:885 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:885 unwrap failed");
     assert_eq!(stdout.trim(), "15");
 }
 
@@ -918,40 +1307,58 @@ fn e2e_for_list_sum() {
 
 #[test]
 fn e2e_if_true_branch() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         func main() -> i32 {
             let x = 42
             if x > 10 { println(1) } else { println(0) }
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:900 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:900 unwrap failed");
     assert_eq!(stdout.trim(), "1");
 }
 
 #[test]
 fn e2e_if_false_branch() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         func main() -> i32 {
             let x = 3
             if x > 10 { println(1) } else { println(0) }
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:913 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:913 unwrap failed");
     assert_eq!(stdout.trim(), "0");
 }
 
 #[test]
 fn e2e_if_no_else() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         func main() -> i32 {
             let mut x = 5
             if x < 10 { x = x + 1 }
             println(x); 0
         }
-    "#).expect("src/tests/codegen_e2e.rs:926 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:926 unwrap failed");
     assert_eq!(stdout.trim(), "6");
 }
 
@@ -959,40 +1366,58 @@ fn e2e_if_no_else() {
 
 #[test]
 fn e2e_while_count_up() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         func main() -> i32 {
             let mut i = 0
             while i < 5 { println(i); i = i + 1 }
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:941 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:941 unwrap failed");
     assert_eq!(stdout.trim(), "0\n1\n2\n3\n4");
 }
 
 #[test]
 fn e2e_while_sum() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         func main() -> i32 {
             let mut sum = 0; let mut i = 1
             while i <= 10 { sum = sum + i; i = i + 1 }
             println(sum); 0
         }
-    "#).expect("src/tests/codegen_e2e.rs:954 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:954 unwrap failed");
     assert_eq!(stdout.trim(), "55");
 }
 
 #[test]
 fn e2e_product_loop() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         func main() -> i32 {
             let mut p = 1; let mut i = 1
             while i <= 5 { p = p * i; i = i + 1 }
             println(p); 0
         }
-    "#).expect("src/tests/codegen_e2e.rs:967 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:967 unwrap failed");
     assert_eq!(stdout.trim(), "120");
 }
 
@@ -1000,12 +1425,18 @@ fn e2e_product_loop() {
 
 #[test]
 fn e2e_multi_function() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         func square(x: i32) -> i32 { x * x }
         func cube(x: i32) -> i32 { x * x * x }
         func main() -> i32 { println(square(3)); println(cube(3)); 0 }
-    "#).expect("src/tests/codegen_e2e.rs:980 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:980 unwrap failed");
     assert_eq!(stdout.trim(), "9\n27");
 }
 
@@ -1013,12 +1444,18 @@ fn e2e_multi_function() {
 
 #[test]
 fn e2e_mixed_func_calls() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         func add(a: i32, b: i32) -> i32 { a + b }
         func mul(a: i32, b: i32) -> i32 { a * b }
         func main() -> i32 { println(add(1, 2) + mul(3, 4)); 0 }
-    "#).expect("src/tests/codegen_e2e.rs:993 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:993 unwrap failed");
     assert_eq!(stdout.trim(), "15");
 }
 
@@ -1026,14 +1463,20 @@ fn e2e_mixed_func_calls() {
 
 #[test]
 fn e2e_print_while_loop() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         func main() -> i32 {
             let mut i = 1
             while i <= 3 { println(i); i = i + 1 }
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:1008 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:1008 unwrap failed");
     assert_eq!(stdout.trim(), "1\n2\n3");
 }
 
@@ -1041,14 +1484,20 @@ fn e2e_print_while_loop() {
 
 #[test]
 fn e2e_parasteps_seq() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         func main() -> i32 {
             let mut t = 0
             parasteps { t = t + 1; t = t + 2; t = t + 3 }
             println(t); 0
         }
-    "#).expect("src/tests/codegen_e2e.rs:1023 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:1023 unwrap failed");
     assert_eq!(stdout.trim(), "6");
 }
 
@@ -1056,14 +1505,20 @@ fn e2e_parasteps_seq() {
 
 #[test]
 fn e2e_nested_if_else_statements() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         func main() -> i32 {
             let mut result = 0; let x = 5
             if x > 0 { if x > 10 { result = 2 } else { result = 1 } }
             println(result); 0
         }
-    "#).expect("src/tests/codegen_e2e.rs:1038 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:1038 unwrap failed");
     assert_eq!(stdout.trim(), "1");
 }
 
@@ -1071,15 +1526,21 @@ fn e2e_nested_if_else_statements() {
 
 #[test]
 fn e2e_factorial_while_iter() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         func factorial(n: i32) -> i32 {
             let mut result = 1; let mut i = 1
             while i <= n { result = result * i; i = i + 1 }
             result
         }
         func main() -> i32 { println(factorial(5)); 0 }
-    "#).expect("src/tests/codegen_e2e.rs:1054 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:1054 unwrap failed");
     assert_eq!(stdout.trim(), "120");
 }
 
@@ -1087,8 +1548,12 @@ fn e2e_factorial_while_iter() {
 
 #[test]
 fn e2e_str_split() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         func main() -> i32 {
             let parts = str_split("a,b,c", ",")
             println(len(parts))
@@ -1096,34 +1561,48 @@ fn e2e_str_split() {
             println(joined)
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:1071 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:1071 unwrap failed");
     assert_eq!(stdout.trim(), "3\na+b+c");
 }
 
 #[test]
 fn e2e_str_join() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         func main() -> i32 {
             let parts = str_split("hello world foo", " ")
             let result = str_join(parts, "-")
             println(result)
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:1085 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:1085 unwrap failed");
     assert_eq!(stdout.trim(), "hello-world-foo");
 }
 
 #[test]
 fn e2e_str_replace() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         func main() -> i32 {
             let result = str_replace("hello world", "world", "mimi")
             println(result)
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:1098 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:1098 unwrap failed");
     assert_eq!(stdout.trim(), "hello mimi");
 }
 
@@ -1131,8 +1610,12 @@ fn e2e_str_replace() {
 
 #[test]
 fn e2e_push_pop() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         func main() -> i32 {
             let xs = [1, 2, 3]
             push(xs, 4)
@@ -1142,14 +1625,20 @@ fn e2e_push_pop() {
             println(len(xs))
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:1117 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:1117 unwrap failed");
     assert_eq!(stdout.trim(), "4\n4\n3");
 }
 
 #[test]
 fn e2e_push_pop_empty() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         func main() -> i32 {
             let xs = []
             push(xs, 10)
@@ -1159,14 +1648,20 @@ fn e2e_push_pop_empty() {
             println(len(xs))
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:1134 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:1134 unwrap failed");
     assert_eq!(stdout.trim(), "1\n10\n0");
 }
 
 #[test]
 fn e2e_push_loop() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         func main() -> i32 {
             let xs = []
             for i in range(0, 5) {
@@ -1175,7 +1670,9 @@ fn e2e_push_loop() {
             println(len(xs))
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:1150 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:1150 unwrap failed");
     assert_eq!(stdout.trim(), "5");
 }
 
@@ -1183,10 +1680,14 @@ fn e2e_push_loop() {
 
 #[test]
 fn e2e_dyn_trait_dispatch() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
     // NOTE: impl methods cannot use self.field in codegen yet (codegen doesn't
     // track the inner type name for &T references). Methods return constants.
-    let stdout = compile_and_run(r#"
+    let stdout = compile_and_run(
+        r#"
 trait Drawable {
     func draw() -> i32;
 }
@@ -1205,14 +1706,20 @@ func main() -> i32 {
     println(d.draw())
     0
 }
-"#).expect("src/tests/codegen_e2e.rs:1180 unwrap failed");
+"#,
+    )
+    .expect("src/tests/codegen_e2e.rs:1180 unwrap failed");
     assert_eq!(stdout.trim(), "42");
 }
 
 #[test]
 fn e2e_dyn_trait_dispatch_function_param() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
 trait Drawable {
     func draw() -> i32;
 }
@@ -1236,7 +1743,9 @@ func main() -> i32 {
     println(result)
     0
 }
-"#).expect("src/tests/codegen_e2e.rs:1211 unwrap failed");
+"#,
+    )
+    .expect("src/tests/codegen_e2e.rs:1211 unwrap failed");
     assert_eq!(stdout.trim(), "99");
 }
 
@@ -1244,8 +1753,12 @@ func main() -> i32 {
 
 #[test]
 fn e2e_impl_trait_return() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
 trait Drawable {
     func draw() -> i32;
 }
@@ -1261,19 +1774,27 @@ func main() -> i32 {
     println(d.draw())
     0
 }
-    "#).expect("src/tests/codegen_e2e.rs:1236 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:1236 unwrap failed");
     assert_eq!(stdout.trim(), "42");
 }
 
 // ===================== c_shared retain/release (codegen E2E) =====================
 
 fn can_link_shared() -> bool {
-    std::process::Command::new("cc").arg("--version").output().is_ok()
+    std::process::Command::new("cc")
+        .arg("--version")
+        .output()
+        .is_ok()
 }
 
 #[test]
 fn e2e_c_shared_retain_release() {
-    if !can_link_shared() { eprintln!("SKIP: cc not available"); return; }
+    if !can_link_shared() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
     let extra_c = r#"
 #include <stdint.h>
 typedef int64_t MimiHandle;
@@ -1283,7 +1804,8 @@ MimiHandle __mimi_extern_test_c_shared(MimiHandle handle) {
     return handle + 1;
 }
 "#;
-    let stdout = compile_and_run_with_csrc(r#"
+    let stdout = compile_and_run_with_csrc(
+        r#"
         extern "C" {
             func test_c_shared(x: c_shared i64) -> i64;
         }
@@ -1292,7 +1814,10 @@ MimiHandle __mimi_extern_test_c_shared(MimiHandle handle) {
             println(result)
             0
         }
-    "#, extra_c).expect("src/tests/codegen_e2e.rs:1267 unwrap failed");
+    "#,
+        extra_c,
+    )
+    .expect("src/tests/codegen_e2e.rs:1267 unwrap failed");
     assert_eq!(stdout.trim(), "42");
 }
 
@@ -1303,21 +1828,40 @@ MimiHandle __mimi_extern_test_c_shared(MimiHandle handle) {
 //   cargo test e2e_asan     -- --ignored
 
 fn can_valgrind() -> bool {
-    std::process::Command::new("valgrind").arg("--version").output().is_ok()
+    std::process::Command::new("valgrind")
+        .arg("--version")
+        .output()
+        .is_ok()
 }
 
 fn can_asan() -> bool {
     std::process::Command::new("cc")
-        .args(["-fsanitize=address", "-c", "-x", "c", "/dev/null", "-o", "/dev/null"])
-        .output().is_ok()
+        .args([
+            "-fsanitize=address",
+            "-c",
+            "-x",
+            "c",
+            "/dev/null",
+            "-o",
+            "/dev/null",
+        ])
+        .output()
+        .is_ok()
 }
 
 #[test]
 #[ignore]
 fn e2e_valgrind_string_ops() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    if !can_valgrind() { eprintln!("SKIP: valgrind not available"); return; }
-    let stdout = compile_and_run_valgrind(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    if !can_valgrind() {
+        eprintln!("SKIP: valgrind not available");
+        return;
+    }
+    let stdout = compile_and_run_valgrind(
+        r#"
         func main() -> i32 {
             let s = "hello, world!"
             println(s)
@@ -1325,16 +1869,25 @@ fn e2e_valgrind_string_ops() {
             println(t)
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:1300 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:1300 unwrap failed");
     assert_eq!(stdout.trim(), "hello, world!\nhello, world! more");
 }
 
 #[test]
 #[ignore]
 fn e2e_valgrind_list_ops() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    if !can_valgrind() { eprintln!("SKIP: valgrind not available"); return; }
-    let stdout = compile_and_run_valgrind(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    if !can_valgrind() {
+        eprintln!("SKIP: valgrind not available");
+        return;
+    }
+    let stdout = compile_and_run_valgrind(
+        r#"
         func main() -> i32 {
             let xs: List<i32> = [1, 2, 3, 4, 5]
             let mut sum = 0
@@ -1345,16 +1898,25 @@ fn e2e_valgrind_list_ops() {
             println(sum)
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:1320 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:1320 unwrap failed");
     assert_eq!(stdout.trim(), "1\n2\n3\n4\n5\n15");
 }
 
 #[test]
 #[ignore]
 fn e2e_valgrind_recursion() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    if !can_valgrind() { eprintln!("SKIP: valgrind not available"); return; }
-    let stdout = compile_and_run_valgrind(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    if !can_valgrind() {
+        eprintln!("SKIP: valgrind not available");
+        return;
+    }
+    let stdout = compile_and_run_valgrind(
+        r#"
         func fib(n: i32) -> i32 {
             if n <= 1 { n } else { fib(n - 1) + fib(n - 2) }
         }
@@ -1362,42 +1924,60 @@ fn e2e_valgrind_recursion() {
             println(fib(10))
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:1337 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:1337 unwrap failed");
     assert_eq!(stdout.trim(), "55");
 }
 
 #[test]
 fn e2e_shared_var_copy() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         func main() -> i32 {
             shared x = 42;
             let v = x;
             println(v)
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:1351 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:1351 unwrap failed");
     assert_eq!(stdout.trim(), "42");
 }
 
 #[test]
 fn e2e_shared_var_assign() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         func main() -> i32 {
             shared x = 42;
             x = 100
             println(x)
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:1365 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:1365 unwrap failed");
     assert_eq!(stdout.trim(), "100");
 }
 
 #[test]
 fn e2e_shared_field_access() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         type Point { x: i32, y: i32 }
         func main() -> i32 {
             shared p = Point { x: 10, y: 20 };
@@ -1405,14 +1985,20 @@ fn e2e_shared_field_access() {
             println(p.y)
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:1380 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:1380 unwrap failed");
     assert_eq!(stdout.trim(), "10\n20");
 }
 
 #[test]
 fn e2e_shared_field_assign() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         type Point { x: i32, y: i32 }
         func main() -> i32 {
             shared p = Point { x: 10, y: 20 };
@@ -1421,14 +2007,20 @@ fn e2e_shared_field_assign() {
             println(p.y)
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:1396 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:1396 unwrap failed");
     assert_eq!(stdout.trim(), "30\n20");
 }
 
 #[test]
 fn e2e_shared_field_access_via_copy() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         type Point { x: i32, y: i32 }
         func main() -> i32 {
             shared p = Point { x: 10, y: 20 };
@@ -1437,14 +2029,20 @@ fn e2e_shared_field_access_via_copy() {
             println(q.y)
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:1412 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:1412 unwrap failed");
     assert_eq!(stdout.trim(), "10\n20");
 }
 
 #[test]
 fn e2e_shared_write_through_copy() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         type Point { x: i32, y: i32 }
         func main() -> i32 {
             shared p = Point { x: 10, y: 20 };
@@ -1454,14 +2052,20 @@ fn e2e_shared_write_through_copy() {
             println(q.x)
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:1429 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:1429 unwrap failed");
     assert_eq!(stdout.trim(), "99\n99");
 }
 
 #[test]
 fn e2e_weak_upgrade_some() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         func main() -> i32 {
             shared x = 42;
             weak w: weak i32 = x;
@@ -1469,14 +2073,24 @@ fn e2e_weak_upgrade_some() {
             println(if upgraded.is_some() { 1 } else { 0 });
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:e2e_weak_upgrade_some unwrap failed");
-    assert_eq!(stdout.trim(), "1", "weak.upgrade() should return Some while shared is alive");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:e2e_weak_upgrade_some unwrap failed");
+    assert_eq!(
+        stdout.trim(),
+        "1",
+        "weak.upgrade() should return Some while shared is alive"
+    );
 }
 
 #[test]
 fn e2e_weak_local_upgrade_some() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         func main() -> i32 {
             local_shared x = 42;
             weak_local w: weak_local i32 = x;
@@ -1484,8 +2098,14 @@ fn e2e_weak_local_upgrade_some() {
             println(if upgraded.is_some() { 1 } else { 0 });
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:e2e_weak_local_upgrade_some unwrap failed");
-    assert_eq!(stdout.trim(), "1", "weak_local.upgrade() should return Some while local_shared is alive");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:e2e_weak_local_upgrade_some unwrap failed");
+    assert_eq!(
+        stdout.trim(),
+        "1",
+        "weak_local.upgrade() should return Some while local_shared is alive"
+    );
 }
 
 #[test]
@@ -1493,9 +2113,16 @@ fn e2e_valgrind_shared_weak_lifecycle() {
     // Weak references are now compiled with retain/release accounting.
     // This test verifies that a weak ref can be upgraded while the shared
     // value is still alive and that both are cleaned up without leaks.
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    if !can_valgrind() { eprintln!("SKIP: valgrind not available"); return; }
-    let stdout = compile_and_run_valgrind(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    if !can_valgrind() {
+        eprintln!("SKIP: valgrind not available");
+        return;
+    }
+    let stdout = compile_and_run_valgrind(
+        r#"
         func main() -> i32 {
             shared x = 42;
             weak w: weak i32 = x;
@@ -1503,7 +2130,9 @@ fn e2e_valgrind_shared_weak_lifecycle() {
             if upgraded.is_none() { return 2 }
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:e2e_valgrind_shared_weak_lifecycle unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:e2e_valgrind_shared_weak_lifecycle unwrap failed");
     assert_eq!(stdout.trim(), "0");
 }
 
@@ -1524,23 +2153,39 @@ fn e2e_valgrind_shared_weak_lifecycle() {
 
 #[test]
 fn e2e_valgrind_shared_basic() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    if !can_valgrind() { eprintln!("SKIP: valgrind not available"); return; }
-    let stdout = compile_and_run_valgrind(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    if !can_valgrind() {
+        eprintln!("SKIP: valgrind not available");
+        return;
+    }
+    let stdout = compile_and_run_valgrind(
+        r#"
         func main() -> i32 {
             shared x = 42;
             println(x);
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:valgrind_shared_basic");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:valgrind_shared_basic");
     assert_eq!(stdout.trim(), "42");
 }
 
 #[test]
 fn e2e_valgrind_shared_clone() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    if !can_valgrind() { eprintln!("SKIP: valgrind not available"); return; }
-    let stdout = compile_and_run_valgrind(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    if !can_valgrind() {
+        eprintln!("SKIP: valgrind not available");
+        return;
+    }
+    let stdout = compile_and_run_valgrind(
+        r#"
         func main() -> i32 {
             shared x = 42;
             shared y = x;
@@ -1550,15 +2195,24 @@ fn e2e_valgrind_shared_clone() {
             println(z);
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:valgrind_shared_clone");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:valgrind_shared_clone");
     assert_eq!(stdout.trim(), "42\n42\n42");
 }
 
 #[test]
 fn e2e_valgrind_shared_field() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    if !can_valgrind() { eprintln!("SKIP: valgrind not available"); return; }
-    let stdout = compile_and_run_valgrind(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    if !can_valgrind() {
+        eprintln!("SKIP: valgrind not available");
+        return;
+    }
+    let stdout = compile_and_run_valgrind(
+        r#"
         type Point { x: i32, y: i32 }
         func main() -> i32 {
             shared p = Point { x: 10, y: 20 };
@@ -1569,16 +2223,25 @@ fn e2e_valgrind_shared_field() {
             println(p.x);
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:valgrind_shared_field");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:valgrind_shared_field");
     assert_eq!(stdout.trim(), "10\n20\n99");
 }
 
 #[test]
 fn e2e_valgrind_shared_write_through_copy() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    if !can_valgrind() { eprintln!("SKIP: valgrind not available"); return; }
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    if !can_valgrind() {
+        eprintln!("SKIP: valgrind not available");
+        return;
+    }
     // Verify aliased shared write does not cause use-after-free or double-free.
-    let stdout = compile_and_run_valgrind(r#"
+    let stdout = compile_and_run_valgrind(
+        r#"
         type Point { x: i32, y: i32 }
         func main() -> i32 {
             shared p = Point { x: 10, y: 20 };
@@ -1588,15 +2251,24 @@ fn e2e_valgrind_shared_write_through_copy() {
             println(p.y);
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:valgrind_shared_write_through_copy");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:valgrind_shared_write_through_copy");
     assert_eq!(stdout.trim(), "99\n20");
 }
 
 #[test]
 fn e2e_valgrind_weak_extended() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    if !can_valgrind() { eprintln!("SKIP: valgrind not available"); return; }
-    let stdout = compile_and_run_valgrind(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    if !can_valgrind() {
+        eprintln!("SKIP: valgrind not available");
+        return;
+    }
+    let stdout = compile_and_run_valgrind(
+        r#"
         func main() -> i32 {
             shared x = 42;
             weak w: weak i32 = x;
@@ -1607,17 +2279,26 @@ fn e2e_valgrind_weak_extended() {
             println(v);
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:valgrind_weak_extended");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:valgrind_weak_extended");
     assert_eq!(stdout.trim(), "42");
 }
 
 #[test]
 fn e2e_valgrind_weak_lifecycle_nested() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    if !can_valgrind() { eprintln!("SKIP: valgrind not available"); return; }
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    if !can_valgrind() {
+        eprintln!("SKIP: valgrind not available");
+        return;
+    }
     // Weak and shared in nested scope: both released at scope exit.
     // Valgrind verifies no leaks, double-frees, or use-after-free.
-    let stdout = compile_and_run_valgrind(r#"
+    let stdout = compile_and_run_valgrind(
+        r#"
         func main() -> i32 {
             {
                 shared x = 42;
@@ -1631,50 +2312,79 @@ fn e2e_valgrind_weak_lifecycle_nested() {
             println(99);
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:valgrind_weak_lifecycle_nested");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:valgrind_weak_lifecycle_nested");
     assert_eq!(stdout.trim(), "99");
 }
 
 #[test]
 fn e2e_asan_shared_basic() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    if !can_asan() { eprintln!("SKIP: asan not available"); return; }
-    let stdout = compile_and_run_asan(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    if !can_asan() {
+        eprintln!("SKIP: asan not available");
+        return;
+    }
+    let stdout = compile_and_run_asan(
+        r#"
         func main() -> i32 {
             shared x = 42;
             println(x);
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:asan_shared_basic");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:asan_shared_basic");
     assert_eq!(stdout.trim(), "42");
 }
 
 #[test]
 fn e2e_asan_shared_clone() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    if !can_asan() { eprintln!("SKIP: asan not available"); return; }
-    let stdout = compile_and_run_asan(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    if !can_asan() {
+        eprintln!("SKIP: asan not available");
+        return;
+    }
+    let stdout = compile_and_run_asan(
+        r#"
         func main() -> i32 {
             shared x = 42;
             shared y = x;
             println(y);
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:asan_shared_clone");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:asan_shared_clone");
     assert_eq!(stdout.trim(), "42");
 }
 
 #[test]
 fn e2e_ubsan_shared_basic() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    if !can_ubsan() { eprintln!("SKIP: ubsan not available"); return; }
-    let stdout = compile_and_run_ubsan(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    if !can_ubsan() {
+        eprintln!("SKIP: ubsan not available");
+        return;
+    }
+    let stdout = compile_and_run_ubsan(
+        r#"
         func main() -> i32 {
             shared x = 42;
             println(x);
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:ubsan_shared_basic");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:ubsan_shared_basic");
     assert_eq!(stdout.trim(), "42");
 }
 
@@ -1682,10 +2392,17 @@ fn e2e_ubsan_shared_basic() {
 
 #[test]
 fn e2e_valgrind_spawn_basic() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    if !can_valgrind() { eprintln!("SKIP: valgrind not available"); return; }
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    if !can_valgrind() {
+        eprintln!("SKIP: valgrind not available");
+        return;
+    }
     // Spawn + await under Valgrind — verifies mimi_spawn_future/await_future memory safety.
-    let stdout = compile_and_run_valgrind(r#"
+    let stdout = compile_and_run_valgrind(
+        r#"
         func id(x: i32) -> i32 { x }
         func main() -> i32 {
             let t = spawn id(42);
@@ -1693,15 +2410,24 @@ fn e2e_valgrind_spawn_basic() {
             println(r);
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:valgrind_spawn_basic");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:valgrind_spawn_basic");
     assert_eq!(stdout.trim(), "42");
 }
 
 #[test]
 fn e2e_valgrind_spawn_multiple() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    if !can_valgrind() { eprintln!("SKIP: valgrind not available"); return; }
-    let stdout = compile_and_run_valgrind(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    if !can_valgrind() {
+        eprintln!("SKIP: valgrind not available");
+        return;
+    }
+    let stdout = compile_and_run_valgrind(
+        r#"
         func id(x: i32) -> i32 { x }
         func main() -> i32 {
             let t1 = spawn id(10);
@@ -1713,16 +2439,25 @@ fn e2e_valgrind_spawn_multiple() {
             println(r1 + r2 + r3);
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:valgrind_spawn_multiple");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:valgrind_spawn_multiple");
     assert_eq!(stdout.trim(), "60");
 }
 
 #[test]
 fn e2e_valgrind_parasteps_shared() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    if !can_valgrind() { eprintln!("SKIP: valgrind not available"); return; }
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    if !can_valgrind() {
+        eprintln!("SKIP: valgrind not available");
+        return;
+    }
     // Shared captured in parasteps under Valgrind — verifies RC safety across threads.
-    let stdout = compile_and_run_valgrind(r#"
+    let stdout = compile_and_run_valgrind(
+        r#"
         func main() -> i32 {
             shared x = 100;
             parasteps {
@@ -1731,7 +2466,9 @@ fn e2e_valgrind_parasteps_shared() {
             println(99);
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:valgrind_parasteps_shared");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:valgrind_parasteps_shared");
     assert_eq!(stdout.trim(), "100\n99");
 }
 
@@ -1750,9 +2487,13 @@ fn e2e_valgrind_parasteps_shared() {
 
 #[test]
 fn e2e_large_struct_return() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
     // Return a struct with 20 i32 fields (80 bytes) — triggers LLVM sret.
-    let stdout = compile_and_run(r#"
+    let stdout = compile_and_run(
+        r#"
         type Large {
             f0: i32, f1: i32, f2: i32, f3: i32, f4: i32,
             f5: i32, f6: i32, f7: i32, f8: i32, f9: i32,
@@ -1774,17 +2515,26 @@ fn e2e_large_struct_return() {
             println(r.f19);
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:large_struct_return");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:large_struct_return");
     assert_eq!(stdout.trim(), "0\n10\n19");
 }
 
 #[test]
 #[ignore]
 fn e2e_valgrind_large_struct_return() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    if !can_valgrind() { eprintln!("SKIP: valgrind not available"); return; }
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    if !can_valgrind() {
+        eprintln!("SKIP: valgrind not available");
+        return;
+    }
     // Large struct return under Valgrind — slow but thorough.
-    let stdout = compile_and_run_valgrind(r#"
+    let stdout = compile_and_run_valgrind(
+        r#"
         type Large {
             f0: i32, f1: i32, f2: i32, f3: i32, f4: i32,
             f5: i32, f6: i32, f7: i32, f8: i32, f9: i32,
@@ -1804,15 +2554,24 @@ fn e2e_valgrind_large_struct_return() {
             println(r.f0 + r.f19);
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:valgrind_large_struct_return");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:valgrind_large_struct_return");
     assert_eq!(stdout.trim(), "19");
 }
 
 #[test]
 fn e2e_asan_large_struct_return() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    if !can_asan() { eprintln!("SKIP: asan not available"); return; }
-    let stdout = compile_and_run_asan(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    if !can_asan() {
+        eprintln!("SKIP: asan not available");
+        return;
+    }
+    let stdout = compile_and_run_asan(
+        r#"
         type Large {
             f0: i32, f1: i32, f2: i32, f3: i32, f4: i32,
             f5: i32, f6: i32, f7: i32, f8: i32, f9: i32,
@@ -1826,7 +2585,9 @@ fn e2e_asan_large_struct_return() {
             println(r.f9);
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:asan_large_struct_return");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:asan_large_struct_return");
     assert_eq!(stdout.trim(), "0\n9");
 }
 
@@ -1836,23 +2597,36 @@ fn e2e_asan_large_struct_return() {
 
 #[test]
 fn e2e_net_socket_create() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
 func main() -> i32 {
     let fd = socket(2, 1, 0)
     println(fd)
     if fd >= 0 { close_fd(fd) }
     0
 }
-"#).expect("src/tests/codegen_e2e.rs:1471 unwrap failed");
-    let fd: i32 = stdout.trim().parse().expect("src/tests/codegen_e2e.rs:1472 unwrap failed");
+"#,
+    )
+    .expect("src/tests/codegen_e2e.rs:1471 unwrap failed");
+    let fd: i32 = stdout
+        .trim()
+        .parse()
+        .expect("src/tests/codegen_e2e.rs:1472 unwrap failed");
     assert!(fd >= 0, "socket fd should be non-negative, got {}", fd);
 }
 
 #[test]
 fn e2e_net_connect_failure() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
 type NetError {
     SocketCreate
     ConnectFailed
@@ -1887,16 +2661,25 @@ func main() -> i32 {
     }
     0
 }
-"#).expect("src/tests/codegen_e2e.rs:1515 unwrap failed");
+"#,
+    )
+    .expect("src/tests/codegen_e2e.rs:1515 unwrap failed");
     // Port 1 is typically not listening — connection should fail
-    assert!(stdout.trim().contains("connection failed"),
-        "expected connection failed, got: {}", stdout.trim());
+    assert!(
+        stdout.trim().contains("connection failed"),
+        "expected connection failed, got: {}",
+        stdout.trim()
+    );
 }
 
 #[test]
 fn e2e_net_listen_bind() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
 type NetError {
     SocketCreate
     ConnectFailed
@@ -1937,16 +2720,25 @@ func main() -> i32 {
     }
     0
 }
-"#).expect("src/tests/codegen_e2e.rs:1562 unwrap failed");
-    assert!(stdout.trim().contains("listening"),
-        "expected listening, got: {}", stdout.trim());
+"#,
+    )
+    .expect("src/tests/codegen_e2e.rs:1562 unwrap failed");
+    assert!(
+        stdout.trim().contains("listening"),
+        "expected listening, got: {}",
+        stdout.trim()
+    );
 }
 
 #[test]
 #[ignore = "network — requires external HTTP server; run manually with -- --ignored"]
 fn e2e_net_fetch_failure() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
 type NetError {
     SocketCreate
     ConnectFailed
@@ -1978,16 +2770,25 @@ func main() -> i32 {
     }
     0
 }
-"#).expect("src/tests/codegen_e2e.rs:1602 unwrap failed");
-    assert!(stdout.trim().contains("HTTP request failed"),
-        "expected HTTP request failed, got: {}", stdout.trim());
+"#,
+    )
+    .expect("src/tests/codegen_e2e.rs:1602 unwrap failed");
+    assert!(
+        stdout.trim().contains("HTTP request failed"),
+        "expected HTTP request failed, got: {}",
+        stdout.trim()
+    );
 }
 
 #[test]
 #[ignore = "network — requires external HTTP server; run manually with -- --ignored"]
 fn e2e_net_fetch_post_failure() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
 type NetError {
     SocketCreate
     ConnectFailed
@@ -2019,24 +2820,45 @@ func main() -> i32 {
     }
     0
 }
-"#).expect("src/tests/codegen_e2e.rs:1643 unwrap failed");
-    assert!(stdout.trim().contains("HTTP request failed"),
-        "expected HTTP request failed, got: {}", stdout.trim());
+"#,
+    )
+    .expect("src/tests/codegen_e2e.rs:1643 unwrap failed");
+    assert!(
+        stdout.trim().contains("HTTP request failed"),
+        "expected HTTP request failed, got: {}",
+        stdout.trim()
+    );
 }
 
 // ===================== UBSan Tests =====================
 
 fn can_ubsan() -> bool {
     std::process::Command::new("cc")
-        .args(["-fsanitize=undefined", "-c", "-x", "c", "/dev/null", "-o", "/dev/null"])
-        .output().is_ok()
+        .args([
+            "-fsanitize=undefined",
+            "-c",
+            "-x",
+            "c",
+            "/dev/null",
+            "-o",
+            "/dev/null",
+        ])
+        .output()
+        .is_ok()
 }
 
 #[test]
 fn e2e_ubsan_arithmetic() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    if !can_ubsan() { eprintln!("SKIP: UBSAN not supported by compiler"); return; }
-    let stdout = compile_and_run_ubsan(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    if !can_ubsan() {
+        eprintln!("SKIP: UBSAN not supported by compiler");
+        return;
+    }
+    let stdout = compile_and_run_ubsan(
+        r#"
         func main() -> i32 {
             let x: i32 = 42
             let y: i32 = 8
@@ -2044,29 +2866,47 @@ fn e2e_ubsan_arithmetic() {
             println(x - y)
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:1668 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:1668 unwrap failed");
     assert_eq!(stdout.trim(), "5\n34");
 }
 
 #[test]
 fn e2e_ubsan_string_ops() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    if !can_ubsan() { eprintln!("SKIP: UBSAN not supported by compiler"); return; }
-    let stdout = compile_and_run_ubsan(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    if !can_ubsan() {
+        eprintln!("SKIP: UBSAN not supported by compiler");
+        return;
+    }
+    let stdout = compile_and_run_ubsan(
+        r#"
         func main() -> i32 {
             let s = "hello, world!"
             println(s)
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:1682 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:1682 unwrap failed");
     assert_eq!(stdout.trim(), "hello, world!");
 }
 
 #[test]
 fn e2e_ubsan_list_ops() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    if !can_ubsan() { eprintln!("SKIP: UBSAN not supported by compiler"); return; }
-    let stdout = compile_and_run_ubsan(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    if !can_ubsan() {
+        eprintln!("SKIP: UBSAN not supported by compiler");
+        return;
+    }
+    let stdout = compile_and_run_ubsan(
+        r#"
         func main() -> i32 {
             let xs: List<i32> = [1, 2, 3, 4, 5]
             let mut sum = 0
@@ -2076,7 +2916,9 @@ fn e2e_ubsan_list_ops() {
             println(sum)
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:1700 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:1700 unwrap failed");
     assert_eq!(stdout.trim(), "15");
 }
 
@@ -2084,30 +2926,48 @@ fn e2e_ubsan_list_ops() {
 
 #[test]
 fn e2e_asan_string_ops() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    if !can_asan() { eprintln!("SKIP: ASAN not supported by compiler"); return; }
-    let stdout = compile_and_run_asan(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    if !can_asan() {
+        eprintln!("SKIP: ASAN not supported by compiler");
+        return;
+    }
+    let stdout = compile_and_run_asan(
+        r#"
         func main() -> i32 {
             let s = "hello, world!"
             println(s)
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:1716 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:1716 unwrap failed");
     assert_eq!(stdout.trim(), "hello, world!");
 }
 
 #[test]
 #[ignore]
 fn e2e_asan_list_ops() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    if !can_asan() { eprintln!("SKIP: ASAN not supported by compiler"); return; }
-    let stdout = compile_and_run_asan(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    if !can_asan() {
+        eprintln!("SKIP: ASAN not supported by compiler");
+        return;
+    }
+    let stdout = compile_and_run_asan(
+        r#"
         func main() -> i32 {
             let xs: List<i32> = [10, 20, 30]
             for x in xs { println(x) }
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:1731 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:1731 unwrap failed");
     assert_eq!(stdout.trim(), "10\n20\n30");
 }
 
@@ -2115,8 +2975,12 @@ fn e2e_asan_list_ops() {
 
 #[test]
 fn e2e_break_inside_if() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         func main() -> i32 {
             let mut sum = 0
             let mut i = 0
@@ -2131,14 +2995,20 @@ fn e2e_break_inside_if() {
             println(sum)
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:1755 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:1755 unwrap failed");
     assert_eq!(stdout.trim(), "10");
 }
 
 #[test]
 fn e2e_continue_inside_if() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         func main() -> i32 {
             let mut sum = 0
             let mut i = 0
@@ -2152,7 +3022,9 @@ fn e2e_continue_inside_if() {
             println(sum)
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:1776 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:1776 unwrap failed");
     assert_eq!(stdout.trim(), "18");
 }
 
@@ -2160,9 +3032,13 @@ fn e2e_continue_inside_if() {
 
 #[test]
 fn e2e_try_operator_variable() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
     // ? operator on a variable
-    let stdout = compile_and_run(r#"
+    let stdout = compile_and_run(
+        r#"
         func safe_div(a: i64, b: i64) -> Result<i64, i64> {
             if b == 0 { Err(-1) } else { Ok(a / b) }
         }
@@ -2172,15 +3048,21 @@ fn e2e_try_operator_variable() {
             println(x)
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:1796 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:1796 unwrap failed");
     assert_eq!(stdout.trim(), "5");
 }
 
 #[test]
 fn e2e_try_operator_direct_call() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
     // ? operator on a direct function call
-    let stdout = compile_and_run(r#"
+    let stdout = compile_and_run(
+        r#"
         func safe_div(a: i64, b: i64) -> Result<i64, i64> {
             if b == 0 { Err(-1) } else { Ok(a / b) }
         }
@@ -2189,15 +3071,21 @@ fn e2e_try_operator_direct_call() {
             println(x)
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:1813 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:1813 unwrap failed");
     assert_eq!(stdout.trim(), "5");
 }
 
 #[test]
 fn e2e_try_operator_option() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
     // ? operator on Option type
-    let stdout = compile_and_run(r#"
+    let stdout = compile_and_run(
+        r#"
         func safe_div(a: i64, b: i64) -> Option<i64> {
             if b == 0 { Some(0) } else { Some(a / b) }
         }
@@ -2206,7 +3094,9 @@ fn e2e_try_operator_option() {
             println(x)
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:1830 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:1830 unwrap failed");
     assert_eq!(stdout.trim(), "5");
 }
 
@@ -2214,8 +3104,12 @@ fn e2e_try_operator_option() {
 
 #[test]
 fn e2e_tuple_index_basic() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         func main() -> i32 {
             let t = (10, 20, 30)
             println(t.0)
@@ -2223,7 +3117,9 @@ fn e2e_tuple_index_basic() {
             println(t.2)
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:1847 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:1847 unwrap failed");
     assert_eq!(stdout.trim(), "10\n20\n30");
 }
 
@@ -2231,8 +3127,12 @@ fn e2e_tuple_index_basic() {
 
 #[test]
 fn e2e_slice_basic() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         func main() -> i32 {
             let xs = [10, 20, 30, 40, 50]
             let s = xs[1..4]
@@ -2241,7 +3141,9 @@ fn e2e_slice_basic() {
             println(s[2])
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:1865 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:1865 unwrap failed");
     assert_eq!(stdout.trim(), "3\n20\n40");
 }
 
@@ -2249,8 +3151,12 @@ fn e2e_slice_basic() {
 
 #[test]
 fn e2e_result_is_ok_is_err() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         func main() -> i32 {
             let r: Result<i32, string> = Ok(42)
             println(r.is_ok())
@@ -2260,14 +3166,20 @@ fn e2e_result_is_ok_is_err() {
             println(e.is_err())
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:1884 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:1884 unwrap failed");
     assert_eq!(stdout.trim(), "1\n0\n0\n1");
 }
 
 #[test]
 fn e2e_option_is_some_is_none() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         func main() -> i32 {
             let some: Option<i32> = Some(42)
             println(some.is_some())
@@ -2277,14 +3189,20 @@ fn e2e_option_is_some_is_none() {
             println(none.is_none())
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:1902 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:1902 unwrap failed");
     assert_eq!(stdout.trim(), "1\n0\n0\n1");
 }
 
 #[test]
 fn e2e_result_unwrap_or() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         func main() -> i32 {
             let ok = Ok(42)
             println(ok.unwrap_or(0))
@@ -2292,14 +3210,20 @@ fn e2e_result_unwrap_or() {
             println(err.unwrap_or(99))
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:1917 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:1917 unwrap failed");
     assert_eq!(stdout.trim(), "42\n99");
 }
 
 #[test]
 fn e2e_option_unwrap_or() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         func main() -> i32 {
             let some: Option<i32> = Some(42)
             println(some.unwrap_or(0))
@@ -2307,14 +3231,20 @@ fn e2e_option_unwrap_or() {
             println(none.unwrap_or(99))
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:1933 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:1933 unwrap failed");
     assert_eq!(stdout.trim(), "42\n99");
 }
 
 #[test]
 fn e2e_option_ok_or() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         func main() -> i32 {
             let some: Option<i32> = Some(42)
             let r = some.ok_or("missing")
@@ -2326,14 +3256,20 @@ fn e2e_option_ok_or() {
             println(r2.is_err())
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:1953 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:1953 unwrap failed");
     assert_eq!(stdout.trim(), "1\n0\n0\n1");
 }
 
 #[test]
 fn e2e_result_map() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         func double(x: i32) -> i32 { x * 2 }
 
         func main() -> i32 {
@@ -2342,14 +3278,20 @@ fn e2e_result_map() {
             println(mapped.unwrap_or(0))
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:1969 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:1969 unwrap failed");
     assert_eq!(stdout.trim(), "42");
 }
 
 #[test]
 fn e2e_result_and_then() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         func double_if_positive(x: i32) -> Result<i32, string> {
             if x > 0 { Ok(x * 2) } else { Err("negative") }
         }
@@ -2363,21 +3305,29 @@ fn e2e_result_and_then() {
             println(result2.unwrap_or(0))
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:1990 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:1990 unwrap failed");
     assert_eq!(stdout.trim(), "42\n0");
 }
 
 #[test]
 fn e2e_result_map_err() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"
         func main() -> i32 {
             let err: Result<i32, string> = Err("fail")
             let result = err.is_err()
             println(result)
             0
         }
-    "#).expect("src/tests/codegen_e2e.rs:2004 unwrap failed");
+    "#,
+    )
+    .expect("src/tests/codegen_e2e.rs:2004 unwrap failed");
     assert_eq!(stdout.trim(), "1");
 }
 
@@ -2385,25 +3335,30 @@ fn e2e_result_map_err() {
 
 #[test]
 fn e2e_datetime_seconds_to_millis() {
-    let val = run_source(r#"
+    let val = run_source(
+        r#"
         func seconds_to_millis(secs: i64) -> i64 { secs * 1000 }
         func main() -> i64 { seconds_to_millis(5) }
-    "#);
+    "#,
+    );
     assert_eq!(val, interp::Value::Int(5000));
 }
 
 #[test]
 fn e2e_datetime_millis_to_seconds() {
-    let val = run_source(r#"
+    let val = run_source(
+        r#"
         func millis_to_seconds(ms: i64) -> i64 { ms / 1000 }
         func main() -> i64 { millis_to_seconds(5000) }
-    "#);
+    "#,
+    );
     assert_eq!(val, interp::Value::Int(5));
 }
 
 #[test]
 fn e2e_datetime_format_duration_secs() {
-    let val = run_source(r#"
+    let val = run_source(
+        r#"
         func format_duration_secs(total_secs: i64) -> string {
             let ds_days = total_secs / 86400
             let ds_rem = total_secs % 86400
@@ -2414,20 +3369,23 @@ fn e2e_datetime_format_duration_secs() {
             to_string(ds_days) + "d " + to_string(ds_hours) + "h " + to_string(ds_minutes) + "m " + to_string(ds_seconds) + "s"
         }
         func main() -> string { format_duration_secs(90061) }
-    "#);
+    "#,
+    );
     assert_eq!(val, interp::Value::String("1d 1h 1m 1s".to_string()));
 }
 
 #[test]
 fn e2e_datetime_constants() {
-    let val = run_source(r#"
+    let val = run_source(
+        r#"
         func main() -> i64 {
             let seconds_per_minute = 60
             let seconds_per_hour = 3600
             let millis_per_second = 1000
             seconds_per_hour + seconds_per_minute + millis_per_second
         }
-    "#);
+    "#,
+    );
     assert_eq!(val, interp::Value::Int(4660));
 }
 
@@ -2436,12 +3394,14 @@ fn e2e_datetime_constants() {
 #[test]
 fn e2e_env_get_var() {
     std::env::set_var("MIMI_TEST_ENV_VAR", "hello");
-    let val = run_source(r#"
+    let val = run_source(
+        r#"
         func main() -> string {
             let result = getenv("MIMI_TEST_ENV_VAR")
             result.unwrap()
         }
-    "#);
+    "#,
+    );
     assert_eq!(val, interp::Value::String("hello".to_string()));
     std::env::remove_var("MIMI_TEST_ENV_VAR");
 }
@@ -2449,12 +3409,14 @@ fn e2e_env_get_var() {
 #[test]
 fn e2e_env_has_var() {
     std::env::set_var("MIMI_TEST_EXISTS", "1");
-    let val = run_source(r#"
+    let val = run_source(
+        r#"
         func main() -> i32 {
             let r = getenv("MIMI_TEST_EXISTS")
             if r.is_ok() { 1 } else { 0 }
         }
-    "#);
+    "#,
+    );
     assert_eq!(val, interp::Value::Int(1));
     std::env::remove_var("MIMI_TEST_EXISTS");
 }
@@ -2462,25 +3424,29 @@ fn e2e_env_has_var() {
 #[test]
 fn e2e_env_missing_var() {
     std::env::remove_var("MIMI_TEST_MISSING_VAR");
-    let val = run_source(r#"
+    let val = run_source(
+        r#"
         func main() -> i32 {
             let r = getenv("MIMI_TEST_MISSING_VAR")
             if r.is_ok() { 1 } else { 0 }
         }
-    "#);
+    "#,
+    );
     assert_eq!(val, interp::Value::Int(0));
 }
 
 #[test]
 fn e2e_env_get_var_or() {
     std::env::remove_var("MIMI_TEST_OR_VAR");
-    let val = run_source(r#"
+    let val = run_source(
+        r#"
         func get_var_or(name: string, default: string) -> string {
             let result = getenv(name)
             if result.is_ok() { result.unwrap() } else { default }
         }
         func main() -> string { get_var_or("MIMI_TEST_OR_VAR", "fallback") }
-    "#);
+    "#,
+    );
     assert_eq!(val, interp::Value::String("fallback".to_string()));
 }
 
@@ -2488,7 +3454,8 @@ fn e2e_env_get_var_or() {
 
 #[test]
 fn e2e_text_is_blank() {
-    let val = run_source(r#"
+    let val = run_source(
+        r#"
         func is_blank(s: string) -> bool { len(str_trim(s)) == 0 }
         func main() -> i32 {
             let b1 = is_blank("")
@@ -2499,13 +3466,15 @@ fn e2e_text_is_blank() {
             let v3 = if b3 { 4 } else { 0 }
             v1 + v2 + v3
         }
-    "#);
+    "#,
+    );
     assert_eq!(val, interp::Value::Int(3)); // b1=true(1) + b2=true(2) + b3=false(0)
 }
 
 #[test]
 fn e2e_text_is_numeric() {
-    let val = run_source(r#"
+    let val = run_source(
+        r#"
         func is_numeric(s: string) -> bool {
             let parsed = str_parse_int(s)
             parsed.0
@@ -2517,35 +3486,41 @@ fn e2e_text_is_numeric() {
             let v2 = if n2 { 2 } else { 0 }
             v1 + v2
         }
-    "#);
+    "#,
+    );
     assert_eq!(val, interp::Value::Int(1)); // n1=true(1) + n2=false(0)
 }
 
 #[test]
 fn e2e_text_slugify() {
-    let val = run_source(r#"
+    let val = run_source(
+        r#"
         func slugify(s: string) -> string {
             let lower = str_to_lower(s)
             let parts = str_split(lower, " ")
             str_join(parts, "-")
         }
         func main() -> string { slugify("Hello World Test") }
-    "#);
+    "#,
+    );
     assert_eq!(val, interp::Value::String("hello-world-test".to_string()));
 }
 
 #[test]
 fn e2e_text_count_lines() {
-    let val = run_source(r#"
+    let val = run_source(
+        r#"
         func count_lines(s: string) -> i32 { len(str_split(s, "\n")) }
         func main() -> i32 { count_lines("line1\nline2\nline3") }
-    "#);
+    "#,
+    );
     assert_eq!(val, interp::Value::Int(3));
 }
 
 #[test]
 fn e2e_text_indent() {
-    let val = run_source(r#"
+    let val = run_source(
+        r#"
         func indent_text(s: string, n: i32) -> string {
             let lines = str_split(s, "\n")
             let mut res = []
@@ -2555,7 +3530,8 @@ fn e2e_text_indent() {
             str_join(res, "\n")
         }
         func main() -> string { indent_text("a\nb", 2) }
-    "#);
+    "#,
+    );
     assert_eq!(val, interp::Value::String("  a\n  b".to_string()));
 }
 
@@ -2563,31 +3539,36 @@ fn e2e_text_indent() {
 
 #[test]
 fn e2e_result_is_ok_result() {
-    let val = run_source(r#"
+    let val = run_source(
+        r#"
         func is_ok_result(r: Result<i32, string>) -> bool { r.is_ok() }
         func main() -> i32 {
             let r = Ok(42)
             if is_ok_result(r) { 1 } else { 0 }
         }
-    "#);
+    "#,
+    );
     assert_eq!(val, interp::Value::Int(1));
 }
 
 #[test]
 fn e2e_result_is_err_result() {
-    let val = run_source(r#"
+    let val = run_source(
+        r#"
         func is_err_result(r: Result<i32, string>) -> bool { r.is_err() }
         func main() -> i32 {
             let r = Err("fail")
             if is_err_result(r) { 1 } else { 0 }
         }
-    "#);
+    "#,
+    );
     assert_eq!(val, interp::Value::Int(1));
 }
 
 #[test]
 fn e2e_result_unwrap_or_function() {
-    let val = run_source(r#"
+    let val = run_source(
+        r#"
         func unwrap_or_val(r: Result<i32, string>, default: i32) -> i32 {
             if r.is_ok() { r.unwrap() } else { default }
         }
@@ -2596,7 +3577,8 @@ fn e2e_result_unwrap_or_function() {
             let err = Err("fail")
             unwrap_or_val(ok, 0) + unwrap_or_val(err, 99)
         }
-    "#);
+    "#,
+    );
     assert_eq!(val, interp::Value::Int(141));
 }
 
@@ -2604,7 +3586,8 @@ fn e2e_result_unwrap_or_function() {
 
 #[test]
 fn e2e_datetime_format_duration_ms() {
-    let val = run_source(r#"
+    let val = run_source(
+        r#"
         func format_duration_secs(total_secs: i64) -> string {
             let ds_days = total_secs / 86400
             let ds_rem = total_secs % 86400
@@ -2620,13 +3603,15 @@ fn e2e_datetime_format_duration_ms() {
             format_duration_secs(total_secs) + "." + to_string(rem_ms) + "ms"
         }
         func main() -> string { format_duration_ms(90061123) }
-    "#);
+    "#,
+    );
     assert_eq!(val, interp::Value::String("1d 1h 1m 1s.123ms".to_string()));
 }
 
 #[test]
 fn e2e_datetime_time_constants() {
-    let val = run_source(r#"
+    let val = run_source(
+        r#"
         func main() -> i64 {
             let spm = 60
             let sph = 3600
@@ -2634,7 +3619,8 @@ fn e2e_datetime_time_constants() {
             let mps = 1000
             spd + sph + spm + mps
         }
-    "#);
+    "#,
+    );
     assert_eq!(val, interp::Value::Int(91060));
 }
 
@@ -2649,7 +3635,10 @@ fn e2e_datetime_time_constants() {
 
 #[test]
 fn e2e_parasteps_spawn_discard() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
     // Spawn and discard — tasks submitted to pool, results never collected
     let src = r#"
 func compute(n: i32) -> i32 { n * 2 }
@@ -2668,7 +3657,10 @@ func main() -> i32 {
 
 #[test]
 fn e2e_parasteps_spawn_and_await() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
     // Spawn inside parasteps uses mimi_spawn_future; await via mimi_await_future.
     let src = r#"
 func double(n: i32) -> i32 { n * 2 }
@@ -2689,7 +3681,10 @@ func main() -> i32 {
 
 #[test]
 fn e2e_spawn_concurrent_tasks() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
     // Multiple standalone spawns run concurrently via mimi_spawn_future.
     // Each computes a sum from 0 to n-1 in a separate thread.
     let src = r#"
@@ -2718,14 +3713,17 @@ func main() -> i32 {
     let out = compile_and_run(src).unwrap();
     let lines: Vec<&str> = out.trim().lines().collect();
     assert_eq!(lines.len(), 3, "expected 3 output lines");
-    assert_eq!(lines[0], "499500",  "sum 0..999");
+    assert_eq!(lines[0], "499500", "sum 0..999");
     assert_eq!(lines[1], "1999000", "sum 0..1999");
     assert_eq!(lines[2], "4498500", "sum 0..2999");
 }
 
 #[test]
 fn e2e_spawn_many_independent() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
     // Multiple spawns with simple identity function — tests concurrent threads.
     let src = r#"
 func id(x: i32) -> i32 { x }
@@ -2745,7 +3743,10 @@ func main() -> i32 {
 
 #[test]
 fn e2e_spawn_println_from_thread() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
     // Verify that spawned threads can call println (side-effect in spawn).
     let src = r#"
 func greet(msg: i32) -> i32 { println(msg); msg }
@@ -2761,7 +3762,10 @@ func main() -> i32 {
 
 #[test]
 fn e2e_shared_rc_parasteps_capture() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
     // shared value captured in parasteps — verifies atomic RC via println
     let src = r#"
 func main() -> i32 {
@@ -2779,7 +3783,10 @@ func main() -> i32 {
 
 #[test]
 fn e2e_spawn_nested_calls() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
     // Spawn calls that themselves call other functions
     let src = r#"
 func inner(x: i32) -> i32 { x + 1 }
@@ -2798,7 +3805,10 @@ func main() -> i32 {
 
 #[test]
 fn e2e_rule_ensures_basic() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
     // rule "result >= 0" maps to ensures: result >= 0
     let src = r#"
 func abs(x: i32) -> i32 {
@@ -2816,7 +3826,10 @@ func main() -> i32 {
 
 #[test]
 fn e2e_rule_requires_prefix() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
     // rule "requires: x != 0" maps to requires: x != 0
     let src = r#"
 func safe_div(x: i32, y: i32) -> i32 {
@@ -2834,7 +3847,10 @@ func main() -> i32 {
 
 #[test]
 fn e2e_rule_ensures_prefix() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
     // rule "ensures: result > 0" maps to ensures: result > 0
     let src = r#"
 func double(x: i32) -> i32 {
@@ -2852,7 +3868,10 @@ func main() -> i32 {
 
 #[test]
 fn e2e_rule_colon_separated() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
     // rule "幂等: result == 42" maps to ensures: result == 42
     let src = r#"
 func answer() -> i32 {
@@ -2870,7 +3889,10 @@ func main() -> i32 {
 
 #[test]
 fn e2e_rule_unmappable_is_metadata() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
     // Natural language rule — kept as Desc metadata, no contract assertion
     let src = r#"
 func doit() -> i32 {
@@ -2888,7 +3910,10 @@ func main() -> i32 {
 
 #[test]
 fn e2e_rule_violation_detected() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
     // Rule maps to ensures: result >= 0, but function returns -1 → contract violation
     let src = r#"
 func bad() -> i32 {
@@ -2902,12 +3927,19 @@ func main() -> i32 {
 "#;
     // Must abort under verify_contracts
     let result = compile_and_verify_contracts(src);
-    assert!(result.is_err(), "expected contract violation, got success: {:?}", result);
+    assert!(
+        result.is_err(),
+        "expected contract violation, got success: {:?}",
+        result
+    );
 }
 
 #[test]
 fn e2e_rule_in_nested_block() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
     // Rule inside an if block — mapping must recurse into inner blocks
     let src = r#"
 func test(x: i32) -> i32 {
@@ -2929,7 +3961,10 @@ func main() -> i32 {
 
 #[test]
 fn e2e_rule_violation_in_nested_block() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
     // Rule inside if block, violation
     let src = r#"
 func bad(x: i32) -> i32 {
@@ -2946,12 +3981,19 @@ func main() -> i32 {
 }
 "#;
     let result = compile_and_verify_contracts(src);
-    assert!(result.is_err(), "expected contract violation, got success: {:?}", result);
+    assert!(
+        result.is_err(),
+        "expected contract violation, got success: {:?}",
+        result
+    );
 }
 
 #[test]
 fn e2e_rule_requires_violation_detected() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
     // requires: rule violation — caller passes 0
     let src = r#"
 func safe_div(x: i32, y: i32) -> i32 {
@@ -2964,12 +4006,19 @@ func main() -> i32 {
 }
 "#;
     let result = compile_and_verify_contracts(src);
-    assert!(result.is_err(), "expected contract violation, got success: {:?}", result);
+    assert!(
+        result.is_err(),
+        "expected contract violation, got success: {:?}",
+        result
+    );
 }
 
 #[test]
 fn e2e_rule_spawn_and_await() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
     // Rule inside a spawned function
     let src = r#"
 func double(n: i32) -> i32 {
@@ -2989,7 +4038,10 @@ func main() -> i32 {
 
 #[test]
 fn e2e_rule_parasteps_with_rule() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
     // Rule inside a function called from parasteps
     let src = r#"
 func double(n: i32) -> i32 {
@@ -3013,7 +4065,10 @@ func main() -> i32 {
 
 #[test]
 fn e2e_spawn_identity_noop() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
     // Identity function via spawn — simplest possible thread execution
     let src = r#"
 func id(x: i32) -> i32 { x }
@@ -3031,7 +4086,10 @@ func main() -> i32 {
 
 #[test]
 fn e2e_extern_no_silent_i64_fallback() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
     // An extern function with no explicit return type (defaults to unit)
     // should not silently fall back to i64. The compile step (before linking)
     // must not crash or produce wrong code regardless of link result.
@@ -3049,14 +4107,25 @@ fn e2e_extern_no_silent_i64_fallback() {
     let result = compile_and_run(src);
     if let Err(e) = &result {
         // Linker errors are acceptable; codegen-level panics are not
-        assert!(!e.contains("no C ABI"), "codegen should not reject unit return type: {}", e);
-        assert!(!e.contains("cannot map type"), "codegen should not reject unit return type: {}", e);
+        assert!(
+            !e.contains("no C ABI"),
+            "codegen should not reject unit return type: {}",
+            e
+        );
+        assert!(
+            !e.contains("cannot map type"),
+            "codegen should not reject unit return type: {}",
+            e
+        );
     }
 }
 
 #[test]
 fn e2e_extern_rejects_unrepresentable_type() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
     // A `nothing` type in extern FFI should be rejected (either by type checker
     // or by codegen), never silently produce wrong binary.
     let src = r#"
@@ -3066,14 +4135,20 @@ fn e2e_extern_rejects_unrepresentable_type() {
         func main() -> i32 { 0 }
     "#;
     let result = compile_and_run(src);
-    assert!(result.is_err(), "nothing type in extern should fail, got Ok");
+    assert!(
+        result.is_err(),
+        "nothing type in extern should fail, got Ok"
+    );
 }
 
 // ===================== JSON typed deserialization =====================
 
 #[test]
 fn e2e_json_from_json_typed_i32() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
     let stdout = compile_and_run(r#"func main() -> i32 { println(from_json::<i32>("42")); 0 }"#)
         .expect("from_json::<i32> codegen failed");
     assert_eq!(stdout.trim(), "42");
@@ -3081,73 +4156,118 @@ fn e2e_json_from_json_typed_i32() {
 
 #[test]
 fn e2e_json_from_json_typed_bool() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
     // Test that bool deserialization doesn't crash (no special output)
-    let result = compile_and_run(r##"func main() -> i32 { let b = from_json::<bool>("true"); 0 }"##);
-    assert!(result.is_ok(), "from_json::<bool> codegen should succeed, got: {:?}", result);
+    let result =
+        compile_and_run(r##"func main() -> i32 { let b = from_json::<bool>("true"); 0 }"##);
+    assert!(
+        result.is_ok(),
+        "from_json::<bool> codegen should succeed, got: {:?}",
+        result
+    );
 }
 
 #[test]
 fn e2e_json_from_json_typed_f64() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r##"func main() -> i32 { let f = from_json::<f64>("3.14"); println(f); 0 }"##)
-        .expect("from_json::<f64> codegen failed");
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r##"func main() -> i32 { let f = from_json::<f64>("3.14"); println(f); 0 }"##,
+    )
+    .expect("from_json::<f64> codegen failed");
     assert!(!stdout.trim().is_empty(), "expected f64 output");
 }
 
 #[test]
 fn e2e_json_from_json_typed_string() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"func main() -> i32 { let s = from_json::<string>("\"hello\""); println(s); 0 }"#)
-        .expect("from_json::<string> codegen failed");
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"func main() -> i32 { let s = from_json::<string>("\"hello\""); println(s); 0 }"#,
+    )
+    .expect("from_json::<string> codegen failed");
     assert_eq!(stdout.trim(), "hello");
 }
 
 #[test]
 fn e2e_set_literal() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"func main() -> i32 { let s = {1, 2, 3}; println(s.size()); 0 }"#)
-        .expect("set literal codegen failed");
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout =
+        compile_and_run(r#"func main() -> i32 { let s = {1, 2, 3}; println(s.size()); 0 }"#)
+            .expect("set literal codegen failed");
     assert_eq!(stdout.trim(), "3");
 }
 
 #[test]
 fn e2e_set_contains() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let result = compile_and_run(r##"func main() -> i32 { let s = {10, 20, 30}; let b = s.contains(20); 0 }"##);
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let result = compile_and_run(
+        r##"func main() -> i32 { let s = {10, 20, 30}; let b = s.contains(20); 0 }"##,
+    );
     assert!(result.is_ok(), "set contains codegen failed: {:?}", result);
 }
 
 #[test]
 fn e2e_set_insert_and_size() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"func main() -> i32 { let s = {1, 2}; s.insert(3); println(s.size()); 0 }"#)
-        .expect("set insert codegen failed");
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"func main() -> i32 { let s = {1, 2}; s.insert(3); println(s.size()); 0 }"#,
+    )
+    .expect("set insert codegen failed");
     assert_eq!(stdout.trim(), "3");
 }
 
 #[test]
 fn e2e_set_remove_and_size() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"func main() -> i32 { let s = {1, 2, 3}; s.remove(2); println(s.size()); 0 }"#)
-        .expect("set remove codegen failed");
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"func main() -> i32 { let s = {1, 2, 3}; s.remove(2); println(s.size()); 0 }"#,
+    )
+    .expect("set remove codegen failed");
     assert_eq!(stdout.trim(), "2");
 }
 
 #[test]
 fn e2e_set_is_empty() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"func main() -> i32 { let s = {42, 99}; let sz = s.size(); println(sz); 0 }"#)
-        .expect("set is_empty codegen failed");
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"func main() -> i32 { let s = {42, 99}; let sz = s.size(); println(sz); 0 }"#,
+    )
+    .expect("set is_empty codegen failed");
     assert_eq!(stdout.trim(), "2");
 }
 
 #[test]
 fn e2e_set_to_list() {
-    if !can_link() { eprintln!("SKIP: cc not available"); return; }
-    let stdout = compile_and_run(r#"func main() -> i32 { let s = {1, 2, 3}; let lst = s.to_list(); println(lst); 0 }"#)
-        .expect("set to_list codegen failed");
+    if !can_link() {
+        eprintln!("SKIP: cc not available");
+        return;
+    }
+    let stdout = compile_and_run(
+        r#"func main() -> i32 { let s = {1, 2, 3}; let lst = s.to_list(); println(lst); 0 }"#,
+    )
+    .expect("set to_list codegen failed");
     assert!(!stdout.trim().is_empty(), "to_list should produce output");
 }
-
-

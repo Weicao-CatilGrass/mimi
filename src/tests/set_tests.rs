@@ -35,7 +35,9 @@ fn set_contains_false() {
 
 #[test]
 fn set_size_empty() {
-    let v = run_source(r#"func main() -> i32 { let s = {1, 2}; let s2 = s.remove(1).remove(2); s2.size() }"#);
+    let v = run_source(
+        r#"func main() -> i32 { let s = {1, 2}; let s2 = s.remove(1).remove(2); s2.size() }"#,
+    );
     assert_eq!(v, interp::Value::Int(0));
 }
 
@@ -65,43 +67,52 @@ fn set_is_empty_false() {
 
 #[test]
 fn set_is_empty_true() {
-    let v = run_source(r#"func main() -> bool { let s = {1, 2}; s.remove(1).remove(2).is_empty() }"#);
+    let v =
+        run_source(r#"func main() -> bool { let s = {1, 2}; s.remove(1).remove(2).is_empty() }"#);
     assert_eq!(v, interp::Value::Bool(true));
 }
 
 #[test]
 fn set_to_list() {
-    let v = run_source(r#"func main() -> i32 {
+    let v = run_source(
+        r#"func main() -> i32 {
         let s = {1, 2, 3};
         let lst = s.to_list();
         lst.len()
-    }"#);
+    }"#,
+    );
     assert_eq!(v, interp::Value::Int(3));
 }
 
 #[test]
 fn set_string_elements() {
-    let v = run_source(r#"func main() -> i32 {
+    let v = run_source(
+        r#"func main() -> i32 {
         let s = {"a", "b", "c"};
         s.size()
-    }"#);
+    }"#,
+    );
     assert_eq!(v, interp::Value::Int(3));
 }
 
 #[test]
 fn set_contains_string() {
-    let v = run_source(r#"func main() -> bool {
+    let v = run_source(
+        r#"func main() -> bool {
         let s = {"hello", "world"};
         s.contains("hello")
-    }"#);
+    }"#,
+    );
     assert_eq!(v, interp::Value::Bool(true));
 }
 
 #[test]
 fn set_chain_operations() {
-    let v = run_source(r#"func main() -> i32 {
+    let v = run_source(
+        r#"func main() -> i32 {
         let s = {1, 2, 3};
         s.insert(4).remove(2).size()
-    }"#);
+    }"#,
+    );
     assert_eq!(v, interp::Value::Int(3));
 }

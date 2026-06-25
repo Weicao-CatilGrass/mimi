@@ -59,7 +59,9 @@ extern "C" fn ffi_crash_signal_handler(sig: i32) {
     FFI_CRASH_JUMP_BUF.with(|cell| {
         let buf = cell.load(std::sync::atomic::Ordering::Relaxed);
         if !buf.is_null() {
-            unsafe { siglongjmp(buf, sig); }
+            unsafe {
+                siglongjmp(buf, sig);
+            }
         }
     });
 }
@@ -79,18 +81,34 @@ fn install_crash_handlers() -> [libc::sigaction; 5] {
         unsafe { std::mem::zeroed() },
         unsafe { std::mem::zeroed() },
     ];
-    let sigs = [libc::SIGSEGV, libc::SIGABRT, libc::SIGBUS, libc::SIGILL, libc::SIGFPE];
+    let sigs = [
+        libc::SIGSEGV,
+        libc::SIGABRT,
+        libc::SIGBUS,
+        libc::SIGILL,
+        libc::SIGFPE,
+    ];
     for (i, &s) in sigs.iter().enumerate() {
-        unsafe { libc::sigaction(s, &sa, &mut old[i]); }
+        unsafe {
+            libc::sigaction(s, &sa, &mut old[i]);
+        }
     }
     old
 }
 
 /// Restore previously saved signal handlers.
 fn restore_crash_handlers(old: &[libc::sigaction; 5]) {
-    let sigs = [libc::SIGSEGV, libc::SIGABRT, libc::SIGBUS, libc::SIGILL, libc::SIGFPE];
+    let sigs = [
+        libc::SIGSEGV,
+        libc::SIGABRT,
+        libc::SIGBUS,
+        libc::SIGILL,
+        libc::SIGFPE,
+    ];
     for (i, &s) in sigs.iter().enumerate() {
-        unsafe { libc::sigaction(s, &old[i], std::ptr::null_mut()); }
+        unsafe {
+            libc::sigaction(s, &old[i], std::ptr::null_mut());
+        }
     }
 }
 
@@ -164,23 +182,34 @@ impl<'a> Interpreter<'a> {
         let sig = unsafe { sigsetjmp_impl(buf_ptr, 1) };
         if sig != 0 {
             restore_crash_handlers(&old_handlers);
-            unsafe { let _ = Box::from_raw(buf_ptr); }
+            unsafe {
+                let _ = Box::from_raw(buf_ptr);
+            }
             let sig_name = match sig {
-                6 => "SIGABRT", 11 => "SIGSEGV", 7 => "SIGBUS",
-                4 => "SIGILL", 8 => "SIGFPE", n => {
+                6 => "SIGABRT",
+                11 => "SIGSEGV",
+                7 => "SIGBUS",
+                4 => "SIGILL",
+                8 => "SIGFPE",
+                n => {
                     return Err(format!("FFI safety: C function crashed with signal {}", n));
                 }
             };
-            return Err(format!("FFI safety: C function crashed with {} (signal {})", sig_name, sig));
+            return Err(format!(
+                "FFI safety: C function crashed with {} (signal {})",
+                sig_name, sig
+            ));
         }
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            unsafe { Self::call_ffi_raw_struct(cif, code_ptr, ffi_args, rvalue) }
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+            Self::call_ffi_raw_struct(cif, code_ptr, ffi_args, rvalue)
         }));
         FFI_CRASH_JUMP_BUF.with(|cell| {
             cell.store(std::ptr::null_mut(), std::sync::atomic::Ordering::Release);
         });
         restore_crash_handlers(&old_handlers);
-        unsafe { let _ = Box::from_raw(buf_ptr); }
+        unsafe {
+            let _ = Box::from_raw(buf_ptr);
+        }
         match result {
             Ok(()) => Ok(()),
             Err(panic_info) => {
@@ -191,7 +220,10 @@ impl<'a> Interpreter<'a> {
                 } else {
                     "unknown cause".to_string()
                 };
-                Err(format!("FFI safety: Rust panic in extern function: {}", msg))
+                Err(format!(
+                    "FFI safety: Rust panic in extern function: {}",
+                    msg
+                ))
             }
         }
     }
@@ -212,8 +244,7 @@ impl<'a> Interpreter<'a> {
         ffi_args: &[libffi::middle::Arg],
         ret_buf: &mut [u8],
     ) -> Result<(), String> {
-        let _guard = ensure_fork_lock().lock()
-            .expect("FFI fork lock poisoned");
+        let _guard = ensure_fork_lock().lock().expect("FFI fork lock poisoned");
         let mut pipe_fds: [std::ffi::c_int; 2] = [0; 2];
         let pipe_ret = unsafe { libc::pipe(pipe_fds.as_mut_ptr()) };
         if pipe_ret != 0 {
@@ -221,16 +252,26 @@ impl<'a> Interpreter<'a> {
         }
         let pid = unsafe { libc::fork() };
         if pid == 0 {
-            unsafe { libc::close(pipe_fds[0]); }
-            let rvalue = ret_buf.as_mut_ptr() as *mut c_void;
-            unsafe { Self::call_ffi_raw_struct(cif, code_ptr, ffi_args, rvalue); }
             unsafe {
-                libc::write(pipe_fds[1], ret_buf.as_ptr() as *const libc::c_void, ret_buf.len());
+                libc::close(pipe_fds[0]);
+            }
+            let rvalue = ret_buf.as_mut_ptr() as *mut c_void;
+            unsafe {
+                Self::call_ffi_raw_struct(cif, code_ptr, ffi_args, rvalue);
+            }
+            unsafe {
+                libc::write(
+                    pipe_fds[1],
+                    ret_buf.as_ptr() as *const libc::c_void,
+                    ret_buf.len(),
+                );
                 libc::close(pipe_fds[1]);
                 libc::_exit(0);
             }
         }
-        unsafe { libc::close(pipe_fds[1]); }
+        unsafe {
+            libc::close(pipe_fds[1]);
+        }
         unsafe {
             let flags = libc::fcntl(pipe_fds[0], libc::F_GETFL, 0);
             if flags >= 0 {
@@ -238,43 +279,69 @@ impl<'a> Interpreter<'a> {
             }
         }
         let ffi_timeout_ms = std::env::var("MIMI_FFI_TIMEOUT_MS")
-            .ok().and_then(|s| s.parse::<u64>().ok()).unwrap_or(30_000);
+            .ok()
+            .and_then(|s| s.parse::<u64>().ok())
+            .unwrap_or(30_000);
         let deadline = std::time::Instant::now()
             .checked_add(std::time::Duration::from_millis(ffi_timeout_ms))
             .unwrap_or_else(|| std::time::Instant::now() + std::time::Duration::from_secs(30));
         let mut status: i32 = 0;
         loop {
             let ret = unsafe { libc::waitpid(pid, &mut status, libc::WNOHANG) };
-            if ret == pid { break; }
+            if ret == pid {
+                break;
+            }
             if ret == -1 {
                 let err = std::io::Error::last_os_error();
-                unsafe { libc::close(pipe_fds[0]); }
+                unsafe {
+                    libc::close(pipe_fds[0]);
+                }
                 return Err(format!("FFI safety: waitpid error: {}", err));
             }
             if std::time::Instant::now() >= deadline {
-                unsafe { libc::kill(pid, libc::SIGKILL); }
-                unsafe { libc::waitpid(pid, &mut status, 0); }
-                unsafe { libc::close(pipe_fds[0]); }
-                return Err(format!("FFI safety: C function timed out after {}ms", ffi_timeout_ms));
+                unsafe {
+                    libc::kill(pid, libc::SIGKILL);
+                }
+                unsafe {
+                    libc::waitpid(pid, &mut status, 0);
+                }
+                unsafe {
+                    libc::close(pipe_fds[0]);
+                }
+                return Err(format!(
+                    "FFI safety: C function timed out after {}ms",
+                    ffi_timeout_ms
+                ));
             }
             std::thread::sleep(std::time::Duration::from_millis(50));
         }
         if libc::WIFSIGNALED(status) {
             let sig = libc::WTERMSIG(status);
             let sig_name = match sig {
-                6 => "SIGABRT", 11 => "SIGSEGV", 7 => "SIGBUS",
-                4 => "SIGILL", 8 => "SIGFPE", _ => "unknown signal",
+                6 => "SIGABRT",
+                11 => "SIGSEGV",
+                7 => "SIGBUS",
+                4 => "SIGILL",
+                8 => "SIGFPE",
+                _ => "unknown signal",
             };
-            unsafe { libc::close(pipe_fds[0]); }
-            return Err(format!("FFI safety: C function crashed with {} (signal {})", sig_name, sig));
+            unsafe {
+                libc::close(pipe_fds[0]);
+            }
+            return Err(format!(
+                "FFI safety: C function crashed with {} (signal {})",
+                sig_name, sig
+            ));
         }
         let buf_len = ret_buf.len();
         let mut total_read = 0usize;
         while total_read < buf_len {
             let nread = unsafe {
-                libc::read(pipe_fds[0],
+                libc::read(
+                    pipe_fds[0],
                     ret_buf.as_mut_ptr().add(total_read) as *mut libc::c_void,
-                    buf_len - total_read)
+                    buf_len - total_read,
+                )
             };
             if nread > 0 {
                 total_read += nread as usize;
@@ -286,13 +353,19 @@ impl<'a> Interpreter<'a> {
                     std::thread::sleep(std::time::Duration::from_millis(10));
                     continue;
                 }
-                unsafe { libc::close(pipe_fds[0]); }
+                unsafe {
+                    libc::close(pipe_fds[0]);
+                }
                 return Err(format!("FFI safety: failed to read struct return: {}", err));
             }
         }
-        unsafe { libc::close(pipe_fds[0]); }
+        unsafe {
+            libc::close(pipe_fds[0]);
+        }
         if total_read != buf_len {
-            return Err("FFI safety: C function exited without producing a struct result".to_string());
+            return Err(
+                "FFI safety: C function exited without producing a struct result".to_string(),
+            );
         }
         Ok(())
     }
@@ -305,9 +378,7 @@ impl<'a> Interpreter<'a> {
         ffi_args: &[libffi::middle::Arg],
         ret_contract: &FfiRetContract,
     ) -> Result<i64, String> {
-        unsafe {
-            Ok(Self::call_ffi_raw(cif, code_ptr, ffi_args, ret_contract))
-        }
+        unsafe { Ok(Self::call_ffi_raw(cif, code_ptr, ffi_args, ret_contract)) }
     }
 
     /// Call a C function with full #[no_panic] protection:
@@ -344,19 +415,28 @@ impl<'a> Interpreter<'a> {
         if sig != 0 {
             // C crash: after siglongjmp, restore saved handlers and free jump buf.
             restore_crash_handlers(&old_handlers);
-            unsafe { let _ = Box::from_raw(buf_ptr); }
+            unsafe {
+                let _ = Box::from_raw(buf_ptr);
+            }
             let sig_name = match sig {
-                6 => "SIGABRT", 11 => "SIGSEGV", 7 => "SIGBUS",
-                4 => "SIGILL", 8 => "SIGFPE", n => {
+                6 => "SIGABRT",
+                11 => "SIGSEGV",
+                7 => "SIGBUS",
+                4 => "SIGILL",
+                8 => "SIGFPE",
+                n => {
                     return Err(format!("FFI safety: C function crashed with signal {}", n));
                 }
             };
-            return Err(format!("FFI safety: C function crashed with {} (signal {})", sig_name, sig));
+            return Err(format!(
+                "FFI safety: C function crashed with {} (signal {})",
+                sig_name, sig
+            ));
         }
 
         // 5. Call the actual C function, wrapped in catch_unwind for Rust panics
-        let result = std::panic::catch_unwind(|| {
-            unsafe { Self::call_ffi_raw(cif, code_ptr, ffi_args, ret_contract) }
+        let result = std::panic::catch_unwind(|| unsafe {
+            Self::call_ffi_raw(cif, code_ptr, ffi_args, ret_contract)
         });
 
         // 6. Normal path: restore signal handlers and free jump buffer
@@ -364,7 +444,9 @@ impl<'a> Interpreter<'a> {
             cell.store(std::ptr::null_mut(), std::sync::atomic::Ordering::Release);
         });
         restore_crash_handlers(&old_handlers);
-        unsafe { let _ = Box::from_raw(buf_ptr); }
+        unsafe {
+            let _ = Box::from_raw(buf_ptr);
+        }
 
         match result {
             Ok(val) => Ok(val),
@@ -376,7 +458,10 @@ impl<'a> Interpreter<'a> {
                 } else {
                     "unknown cause".to_string()
                 };
-                Err(format!("FFI safety: Rust panic in extern function: {}", msg))
+                Err(format!(
+                    "FFI safety: Rust panic in extern function: {}",
+                    msg
+                ))
             }
         }
     }
@@ -407,8 +492,7 @@ impl<'a> Interpreter<'a> {
     ) -> Result<i64, String> {
         // Acquire fork lock to serialize fork() with other FFI operations.
         // The lock is held across fork and released in parent/child handlers.
-        let _guard = ensure_fork_lock().lock()
-            .expect("FFI fork lock poisoned");
+        let _guard = ensure_fork_lock().lock().expect("FFI fork lock poisoned");
 
         let mut pipe_fds: [std::ffi::c_int; 2] = [0; 2];
         let pipe_ret = unsafe { libc::pipe(pipe_fds.as_mut_ptr()) };
@@ -418,18 +502,25 @@ impl<'a> Interpreter<'a> {
 
         let pid = unsafe { libc::fork() };
         if pid == 0 {
-            unsafe { libc::close(pipe_fds[0]); }
+            unsafe {
+                libc::close(pipe_fds[0]);
+            }
             let result_code = unsafe { Self::call_ffi_raw(cif, code_ptr, ffi_args, ret_contract) };
             unsafe {
-                libc::write(pipe_fds[1], &result_code as *const i64 as *const libc::c_void,
-                    std::mem::size_of::<i64>());
+                libc::write(
+                    pipe_fds[1],
+                    &result_code as *const i64 as *const libc::c_void,
+                    std::mem::size_of::<i64>(),
+                );
                 libc::close(pipe_fds[1]);
                 libc::_exit(0);
             }
         }
 
         // PARENT
-        unsafe { libc::close(pipe_fds[1]); }
+        unsafe {
+            libc::close(pipe_fds[1]);
+        }
 
         unsafe {
             let flags = libc::fcntl(pipe_fds[0], libc::F_GETFL, 0);
@@ -454,13 +545,21 @@ impl<'a> Interpreter<'a> {
             }
             if ret == -1 {
                 let err = std::io::Error::last_os_error();
-                unsafe { libc::close(pipe_fds[0]); }
+                unsafe {
+                    libc::close(pipe_fds[0]);
+                }
                 return Err(format!("FFI safety: waitpid error: {}", err));
             }
             if std::time::Instant::now() >= deadline {
-                unsafe { libc::kill(pid, libc::SIGKILL); }
-                unsafe { libc::waitpid(pid, &mut status, 0); }
-                unsafe { libc::close(pipe_fds[0]); }
+                unsafe {
+                    libc::kill(pid, libc::SIGKILL);
+                }
+                unsafe {
+                    libc::waitpid(pid, &mut status, 0);
+                }
+                unsafe {
+                    libc::close(pipe_fds[0]);
+                }
                 return Err(format!(
                     "FFI safety: C function timed out after {}ms",
                     ffi_timeout_ms,
@@ -472,17 +571,29 @@ impl<'a> Interpreter<'a> {
         if libc::WIFSIGNALED(status) {
             let sig = libc::WTERMSIG(status);
             let sig_name = match sig {
-                6 => "SIGABRT", 11 => "SIGSEGV", 7 => "SIGBUS",
-                4 => "SIGILL", 8 => "SIGFPE", _ => "unknown signal",
+                6 => "SIGABRT",
+                11 => "SIGSEGV",
+                7 => "SIGBUS",
+                4 => "SIGILL",
+                8 => "SIGFPE",
+                _ => "unknown signal",
             };
-            unsafe { libc::close(pipe_fds[0]); }
-            return Err(format!("FFI safety: C function crashed with {} (signal {})", sig_name, sig));
+            unsafe {
+                libc::close(pipe_fds[0]);
+            }
+            return Err(format!(
+                "FFI safety: C function crashed with {} (signal {})",
+                sig_name, sig
+            ));
         }
 
         let mut result: i64 = 0;
         let nread = unsafe {
-            let n = libc::read(pipe_fds[0], &mut result as *mut i64 as *mut libc::c_void,
-                std::mem::size_of::<i64>());
+            let n = libc::read(
+                pipe_fds[0],
+                &mut result as *mut i64 as *mut libc::c_void,
+                std::mem::size_of::<i64>(),
+            );
             libc::close(pipe_fds[0]);
             n
         };

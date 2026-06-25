@@ -1,12 +1,11 @@
-use std::path::Path;
 use std::io::Read;
+use std::path::Path;
 
 /// Compute a deterministic content-based checksum for a directory.
 /// Walks all files (sorted by path), hashes path + content with FNV1a.
 pub fn compute_dir_checksum(dir: &Path) -> Result<String, String> {
     let mut entries: Vec<_> = Vec::new();
-    collect_files(dir, dir, &mut entries)
-        .map_err(|e| format!("failed to read dir: {}", e))?;
+    collect_files(dir, dir, &mut entries).map_err(|e| format!("failed to read dir: {}", e))?;
     entries.sort();
 
     let mut hash: u64 = 0xcbf29ce484222325; // FNV offset basis (64-bit)
@@ -32,7 +31,11 @@ pub fn compute_dir_checksum(dir: &Path) -> Result<String, String> {
     Ok(format!("{:016x}", hash))
 }
 
-fn collect_files(_base: &Path, dir: &Path, entries: &mut Vec<std::path::PathBuf>) -> std::io::Result<()> {
+fn collect_files(
+    _base: &Path,
+    dir: &Path,
+    entries: &mut Vec<std::path::PathBuf>,
+) -> std::io::Result<()> {
     for entry in std::fs::read_dir(dir)? {
         let entry = entry?;
         let path = entry.path();
@@ -48,7 +51,9 @@ fn collect_files(_base: &Path, dir: &Path, entries: &mut Vec<std::path::PathBuf>
 /// Get the local registry directory (~/.mimi/registry/)
 pub fn registry_dir() -> Result<std::path::PathBuf, String> {
     let home = std::env::var("HOME").map_err(|e| format!("cannot get HOME: {}", e))?;
-    let reg_dir = std::path::PathBuf::from(home).join(".mimi").join("registry");
+    let reg_dir = std::path::PathBuf::from(home)
+        .join(".mimi")
+        .join("registry");
     std::fs::create_dir_all(&reg_dir)
         .map_err(|e| format!("failed to create registry dir: {}", e))?;
     Ok(reg_dir)
@@ -56,11 +61,8 @@ pub fn registry_dir() -> Result<std::path::PathBuf, String> {
 
 /// Recursively copy a directory
 pub fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), String> {
-    std::fs::create_dir_all(dst)
-        .map_err(|e| format!("mkdir {}: {}", dst.display(), e))?;
-    for entry in std::fs::read_dir(src)
-        .map_err(|e| format!("read_dir {}: {}", src.display(), e))?
-    {
+    std::fs::create_dir_all(dst).map_err(|e| format!("mkdir {}: {}", dst.display(), e))?;
+    for entry in std::fs::read_dir(src).map_err(|e| format!("read_dir {}: {}", src.display(), e))? {
         let entry = entry.map_err(|e| format!("read_dir entry: {}", e))?;
         let src_path = entry.path();
         let dst_path = dst.join(entry.file_name());

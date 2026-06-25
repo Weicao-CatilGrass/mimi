@@ -2,13 +2,16 @@ use super::*;
 
 impl<'a> Interpreter<'a> {
     pub(crate) fn spawn_actor(&mut self, actor_name: &str) -> Result<Value, InterpError> {
-        let actor_def = self.find_actor(actor_name)
+        let actor_def = self
+            .find_actor(actor_name)
             .ok_or_else(|| format!("actor '{}' not found", actor_name))?;
 
         // Create actor instance with initialized fields
         let mut fields = HashMap::new();
         for field in &actor_def.fields {
-            let value = field.init.as_ref()
+            let value = field
+                .init
+                .as_ref()
                 .map(|e| self.eval_expr(e))
                 .transpose()?
                 .unwrap_or_else(|| match &field.ty {

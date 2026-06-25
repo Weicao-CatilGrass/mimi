@@ -40,7 +40,9 @@ func main() -> f64 {
 }
 
 fn parse_large(c: &mut Criterion) {
-    let src = (0..500).map(|i| format!("func f{}() -> i32 {{ {} }}\n", i, i)).collect::<String>();
+    let src = (0..500)
+        .map(|i| format!("func f{}() -> i32 {{ {} }}\n", i, i))
+        .collect::<String>();
     let src = format!("{}func main() -> i32 {{ 0 }}", src);
     c.bench_function("parser/500_functions", |b| {
         b.iter(|| {
@@ -69,5 +71,11 @@ fn parse_deep_nesting(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, parse_simple, parse_complex, parse_large, parse_deep_nesting);
+criterion_group!(
+    benches,
+    parse_simple,
+    parse_complex,
+    parse_large,
+    parse_deep_nesting
+);
 criterion_main!(benches);

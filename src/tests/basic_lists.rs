@@ -54,7 +54,10 @@ func main() -> string {
     words[0] + words[1] + words[2]
 }
 "#;
-    assert_eq!(run_source(src), interp::Value::String("hello world".to_string()));
+    assert_eq!(
+        run_source(src),
+        interp::Value::String("hello world".to_string())
+    );
 }
 
 #[test]

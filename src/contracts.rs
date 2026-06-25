@@ -27,14 +27,29 @@ impl Default for Contract {
 /// Prefer `extract_contracts_with_span` when the source position is available.
 pub fn extract_contracts(mms_text: &str) -> Contract {
     Contract {
-        requires: mms_text.lines()
-            .filter_map(|line| line.trim().strip_prefix("requires:").map(|s| s.trim().to_string()))
+        requires: mms_text
+            .lines()
+            .filter_map(|line| {
+                line.trim()
+                    .strip_prefix("requires:")
+                    .map(|s| s.trim().to_string())
+            })
             .collect(),
-        ensures: mms_text.lines()
-            .filter_map(|line| line.trim().strip_prefix("ensures:").map(|s| s.trim().to_string()))
+        ensures: mms_text
+            .lines()
+            .filter_map(|line| {
+                line.trim()
+                    .strip_prefix("ensures:")
+                    .map(|s| s.trim().to_string())
+            })
             .collect(),
-        math: mms_text.lines()
-            .filter_map(|line| line.trim().strip_prefix("math:").map(|s| s.trim().to_string()))
+        math: mms_text
+            .lines()
+            .filter_map(|line| {
+                line.trim()
+                    .strip_prefix("math:")
+                    .map(|s| s.trim().to_string())
+            })
             .collect(),
         // Callers should use extract_contracts_with_span when possible
         span: Span::single(0, 0),
@@ -43,14 +58,29 @@ pub fn extract_contracts(mms_text: &str) -> Contract {
 
 pub fn extract_contracts_with_span(mms_text: &str, span: Span) -> Contract {
     Contract {
-        requires: mms_text.lines()
-            .filter_map(|line| line.trim().strip_prefix("requires:").map(|s| s.trim().to_string()))
+        requires: mms_text
+            .lines()
+            .filter_map(|line| {
+                line.trim()
+                    .strip_prefix("requires:")
+                    .map(|s| s.trim().to_string())
+            })
             .collect(),
-        ensures: mms_text.lines()
-            .filter_map(|line| line.trim().strip_prefix("ensures:").map(|s| s.trim().to_string()))
+        ensures: mms_text
+            .lines()
+            .filter_map(|line| {
+                line.trim()
+                    .strip_prefix("ensures:")
+                    .map(|s| s.trim().to_string())
+            })
             .collect(),
-        math: mms_text.lines()
-            .filter_map(|line| line.trim().strip_prefix("math:").map(|s| s.trim().to_string()))
+        math: mms_text
+            .lines()
+            .filter_map(|line| {
+                line.trim()
+                    .strip_prefix("math:")
+                    .map(|s| s.trim().to_string())
+            })
             .collect(),
         span,
     }
@@ -66,7 +96,11 @@ pub fn bind_contracts(file: &mut File, contracts: HashMap<String, Contract>) -> 
     errors
 }
 
-fn bind_item_contracts(item: &mut Item, contracts: &HashMap<String, Contract>, errors: &mut Vec<String>) {
+fn bind_item_contracts(
+    item: &mut Item,
+    contracts: &HashMap<String, Contract>,
+    errors: &mut Vec<String>,
+) {
     match item {
         Item::Func(func) => {
             if let Some(contract) = contracts.get(&func.name) {
@@ -74,13 +108,17 @@ fn bind_item_contracts(item: &mut Item, contracts: &HashMap<String, Contract>, e
                 for req in &contract.requires {
                     match parse_condition(req) {
                         Ok(expr) => prefix.push(Stmt::Requires(expr, contract.span)),
-                        Err(e) => errors.push(format!("parse error in requires for '{}': {}", func.name, e)),
+                        Err(e) => errors.push(format!(
+                            "parse error in requires for '{}': {}",
+                            func.name, e
+                        )),
                     }
                 }
                 for ens in &contract.ensures {
                     match parse_condition(ens) {
                         Ok(expr) => prefix.push(Stmt::Ensures(expr, contract.span)),
-                        Err(e) => errors.push(format!("parse error in ensures for '{}': {}", func.name, e)),
+                        Err(e) => errors
+                            .push(format!("parse error in ensures for '{}': {}", func.name, e)),
                     }
                 }
                 if !contract.math.is_empty() {
@@ -88,7 +126,8 @@ fn bind_item_contracts(item: &mut Item, contracts: &HashMap<String, Contract>, e
                     for m in &contract.math {
                         match parse_condition(m) {
                             Ok(expr) => math_exprs.push(expr),
-                            Err(e) => errors.push(format!("parse error in math for '{}': {}", func.name, e)),
+                            Err(e) => errors
+                                .push(format!("parse error in math for '{}': {}", func.name, e)),
                         }
                     }
                     if !math_exprs.is_empty() {
@@ -156,7 +195,8 @@ fn transform_rules_in_block(stmts: &mut [Stmt]) {
 
         // Phase 2: Recurse into inner blocks (uses &mut to pass to recursive call)
         match &mut stmts[i] {
-            Stmt::Block(block) | Stmt::While { body: block, .. }
+            Stmt::Block(block)
+            | Stmt::While { body: block, .. }
             | Stmt::For { body: block, .. }
             | Stmt::Loop(block)
             | Stmt::Arena(block)
@@ -188,13 +228,17 @@ fn map_rule_text(text: &str, span: Span) -> Option<Stmt> {
     if let Some(rest) = text.strip_prefix("requires:") {
         let expr_str = rest.trim();
         if !expr_str.is_empty() {
-            return parse_condition(expr_str).ok().map(|expr| Stmt::Requires(expr, span));
+            return parse_condition(expr_str)
+                .ok()
+                .map(|expr| Stmt::Requires(expr, span));
         }
     }
     if let Some(rest) = text.strip_prefix("ensures:") {
         let expr_str = rest.trim();
         if !expr_str.is_empty() {
-            return parse_condition(expr_str).ok().map(|expr| Stmt::Ensures(expr, span));
+            return parse_condition(expr_str)
+                .ok()
+                .map(|expr| Stmt::Ensures(expr, span));
         }
     }
 
@@ -244,7 +288,9 @@ fn parse_condition_full(text: &str) -> Result<(Expr, bool), String> {
         .map_err(|e| format!("lex error: {}", e))?;
     let total = tokens.len();
     let mut parser = crate::parser::Parser::new(tokens);
-    let expr = parser.parse_expr(0).map_err(|e| format!("parse error: {}", e))?;
+    let expr = parser
+        .parse_expr(0)
+        .map_err(|e| format!("parse error: {}", e))?;
     // tokens include EOF; parser stops before EOF
     let consumed_all = total > 0 && parser.pos() >= total - 1;
     Ok((expr, consumed_all))
@@ -257,5 +303,7 @@ fn parse_condition(text: &str) -> Result<Expr, String> {
         .tokenize()
         .map_err(|e| format!("lex error: {}", e))?;
     let mut parser = crate::parser::Parser::new(tokens);
-    parser.parse_expr(0).map_err(|e| format!("parse error: {}", e))
+    parser
+        .parse_expr(0)
+        .map_err(|e| format!("parse error: {}", e))
 }

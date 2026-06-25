@@ -1,6 +1,19 @@
 # Changelog
 
-## [Unreleased] — 0.24.1-dev
+## [Unreleased] — 0.24.2-dev
+
+### Fixed
+- **E1**: Z3 verifier `solver.pop(1)` underflow after Unknown/crash — added `push_depth` tracking; `solver_pop` guards against pop when solver was replaced
+- **E4**: Match guard expressions invisible to NLL borrow checker — `collect_uses_in_expr` now traverses `arm.guard`, preventing premature borrow release
+- **E5**: Field-level borrows never released at NLL last use — added `release_field_borrow` and integrated field-borrow release into `release_borrows_at_last_use`
+- **V5**: Counterexample now displays string variable values (z3 String theory)
+- **V8**: `build_let_subst` now traverses While/WhileLet/For/OnFailure/Loop/Expr/Assign/Return/SharedLet/Alloc blocks and expressions (previously skipped)
+
+### Tests
+- `verify_solver_pop_after_unknown_no_crash` — E1 solver state safety
+- `borrow_match_guard_uses_ref` — E4 match guard + borrow NLL
+- `borrow_field_level_nll_release` — E5 field borrow NLL release
+- 基线: 2,137 passed, 0 failed, 21 ignored
 
 ### Fixed
 - **R1**: `mod no_panic` ×4 重叠 cfg — 删除 2 个重复空实现模块（macOS 编译错误）

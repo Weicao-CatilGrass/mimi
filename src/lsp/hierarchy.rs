@@ -14,7 +14,9 @@ impl LspServer {
         };
         let mut calls = Vec::new();
         // Find the definition line of `name` so we can exclude it
-        let def_line = text.lines().position(|l| l.contains(&format!("func {}", name)));
+        let def_line = text
+            .lines()
+            .position(|l| l.contains(&format!("func {}", name)));
         for item in &file.items {
             if let Item::Func(f) = item {
                 if f.name == name {
@@ -100,7 +102,11 @@ fn collect_calls_from_exprs(
             Stmt::Let { init: Some(e), .. } => {
                 collect_calls_from_expr(e, text, items, uri, calls, visited);
             }
-            Stmt::If { cond: _, then_, else_ } => {
+            Stmt::If {
+                cond: _,
+                then_,
+                else_,
+            } => {
                 collect_calls_from_exprs(then_, text, items, uri, calls, visited);
                 if let Some(els) = else_ {
                     collect_calls_from_exprs(els, text, items, uri, calls, visited);
@@ -109,7 +115,11 @@ fn collect_calls_from_exprs(
             Stmt::While { cond: _, body } => {
                 collect_calls_from_exprs(body, text, items, uri, calls, visited);
             }
-            Stmt::For { var: _, iterable: _, body } => {
+            Stmt::For {
+                var: _,
+                iterable: _,
+                body,
+            } => {
                 collect_calls_from_exprs(body, text, items, uri, calls, visited);
             }
             _ => {}
@@ -212,7 +222,9 @@ fn collect_calls_from_expr(
                 collect_calls_from_expr(&f.value, text, items, uri, calls, visited);
             }
         }
-        Expr::Comprehension { expr, iter, guard, .. } => {
+        Expr::Comprehension {
+            expr, iter, guard, ..
+        } => {
             collect_calls_from_expr(expr, text, items, uri, calls, visited);
             collect_calls_from_expr(iter, text, items, uri, calls, visited);
             if let Some(g) = guard {

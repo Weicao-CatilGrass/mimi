@@ -1,5 +1,5 @@
-use std::collections::HashSet;
 use mimi::{lockfile, manifest, pkg_registry, pkg_resolve};
+use std::collections::HashSet;
 
 pub(crate) fn update() -> Result<(), String> {
     let cwd = std::env::current_dir().map_err(|e| format!("cannot get cwd: {}", e))?;
@@ -18,11 +18,9 @@ pub(crate) fn update() -> Result<(), String> {
 
     let reg = pkg_registry::registry_dir()?;
     let deps_dir = dir.join(".mimi").join("deps");
-    std::fs::create_dir_all(&deps_dir)
-        .map_err(|e| format!("failed to create deps dir: {}", e))?;
+    std::fs::create_dir_all(&deps_dir).map_err(|e| format!("failed to create deps dir: {}", e))?;
 
-    let mut lock = lockfile::Lockfile::load(&dir)?
-        .unwrap_or_else(lockfile::Lockfile::new);
+    let mut lock = lockfile::Lockfile::load(&dir)?.unwrap_or_else(lockfile::Lockfile::new);
     let mut visited: HashSet<String> = HashSet::new();
     let mut queue: Vec<manifest::Dependency> = direct_deps;
     let mut updated_count = 0;
@@ -50,10 +48,17 @@ pub(crate) fn update() -> Result<(), String> {
 
         let old_version = lock.get_package(&dep.name).map(|p| p.version.clone());
         let resolved = pkg_resolve::resolve_single_dep(&dep, &dst, &reg)?;
-        lock.add_package(&resolved.name, &resolved.version, resolved.source.as_deref(), resolved.checksum.as_deref());
+        lock.add_package(
+            &resolved.name,
+            &resolved.version,
+            resolved.source.as_deref(),
+            resolved.checksum.as_deref(),
+        );
 
         match old_version {
-            Some(v) if v != resolved.version => println!("  ↑ {} ({} → {})", dep.name, v, resolved.version),
+            Some(v) if v != resolved.version => {
+                println!("  ↑ {} ({} → {})", dep.name, v, resolved.version)
+            }
             Some(v) => println!("  = {} ({})", dep.name, v),
             None => println!("  ✓ {} (v{})", dep.name, resolved.version),
         }

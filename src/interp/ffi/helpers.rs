@@ -23,8 +23,14 @@ use std::sync::{Arc, RwLock};
 /// See `test_ffi_guard_field_ordering` for a runtime assertion that the
 /// transmute-based safety contract holds (guard dropped before Arc).
 pub(in crate::interp) enum FfiGuard {
-    Read(std::sync::RwLockReadGuard<'static, Value>, Arc<RwLock<Value>>),
-    Write(std::sync::RwLockWriteGuard<'static, Value>, Arc<RwLock<Value>>),
+    Read(
+        std::sync::RwLockReadGuard<'static, Value>,
+        Arc<RwLock<Value>>,
+    ),
+    Write(
+        std::sync::RwLockWriteGuard<'static, Value>,
+        Arc<RwLock<Value>>,
+    ),
     /// A libffi closure (dynamic C-compatible function pointer) that must
     /// remain alive for the duration of the C call, plus its boxed userdata.
     CallbackClosure {
@@ -43,15 +49,37 @@ pub(in crate::interp) enum FfiGuard {
 ///    The guard exists purely to keep the lock held.
 ///
 /// If you add/remove/reorder fields in `FfiGuard`, update this comment.
-pub(in crate::interp) fn ffi_guard_new_read(guard: std::sync::RwLockReadGuard<'_, Value>, arc: Arc<RwLock<Value>>) -> FfiGuard {
+pub(in crate::interp) fn ffi_guard_new_read(
+    guard: std::sync::RwLockReadGuard<'_, Value>,
+    arc: Arc<RwLock<Value>>,
+) -> FfiGuard {
     // SAFETY: See safety doc on this function.
-    FfiGuard::Read(unsafe { std::mem::transmute::<std::sync::RwLockReadGuard<'_, Value>, std::sync::RwLockReadGuard<'static, Value>>(guard) }, arc)
+    FfiGuard::Read(
+        unsafe {
+            std::mem::transmute::<
+                std::sync::RwLockReadGuard<'_, Value>,
+                std::sync::RwLockReadGuard<'static, Value>,
+            >(guard)
+        },
+        arc,
+    )
 }
 
 /// Same safety contract as `ffi_guard_new_read` but for write guards.
-pub(in crate::interp) fn ffi_guard_new_write(guard: std::sync::RwLockWriteGuard<'_, Value>, arc: Arc<RwLock<Value>>) -> FfiGuard {
+pub(in crate::interp) fn ffi_guard_new_write(
+    guard: std::sync::RwLockWriteGuard<'_, Value>,
+    arc: Arc<RwLock<Value>>,
+) -> FfiGuard {
     // SAFETY: See safety doc on `ffi_guard_new_read`.
-    FfiGuard::Write(unsafe { std::mem::transmute::<std::sync::RwLockWriteGuard<'_, Value>, std::sync::RwLockWriteGuard<'static, Value>>(guard) }, arc)
+    FfiGuard::Write(
+        unsafe {
+            std::mem::transmute::<
+                std::sync::RwLockWriteGuard<'_, Value>,
+                std::sync::RwLockWriteGuard<'static, Value>,
+            >(guard)
+        },
+        arc,
+    )
 }
 
 /// RAII guard that tracks shared handles created during an FFI call and
@@ -91,7 +119,8 @@ impl<'a> Interpreter<'a> {
             Value::String(s) => format!("\"{}\"", s),
             Value::Record(type_name, fields) => {
                 let name = type_name.as_deref().unwrap_or("Record");
-                let fs: Vec<String> = fields.iter()
+                let fs: Vec<String> = fields
+                    .iter()
                     .map(|(k, v)| format!("{}: {}", k, self.value_to_debug_string(v)))
                     .collect();
                 format!("{} {{ {} }}", name, fs.join(", "))
@@ -100,20 +129,30 @@ impl<'a> Interpreter<'a> {
                 if args.is_empty() {
                     name.clone()
                 } else {
-                    let as_: Vec<String> = args.iter().map(|a| self.value_to_debug_string(a)).collect();
+                    let as_: Vec<String> =
+                        args.iter().map(|a| self.value_to_debug_string(a)).collect();
                     format!("{}({})", name, as_.join(", "))
                 }
             }
             Value::List(items) => {
-                let is_: Vec<String> = items.iter().map(|i| self.value_to_debug_string(i)).collect();
+                let is_: Vec<String> = items
+                    .iter()
+                    .map(|i| self.value_to_debug_string(i))
+                    .collect();
                 format!("[{}]", is_.join(", "))
             }
             Value::Set(items) => {
-                let is_: Vec<String> = items.iter().map(|i| self.value_to_debug_string(i)).collect();
+                let is_: Vec<String> = items
+                    .iter()
+                    .map(|i| self.value_to_debug_string(i))
+                    .collect();
                 format!("Set{{{}}}", is_.join(", "))
             }
             Value::Tuple(items) => {
-                let ts: Vec<String> = items.iter().map(|i| self.value_to_debug_string(i)).collect();
+                let ts: Vec<String> = items
+                    .iter()
+                    .map(|i| self.value_to_debug_string(i))
+                    .collect();
                 format!("({})", ts.join(", "))
             }
             Value::Unit => "unit".to_string(),
@@ -134,9 +173,11 @@ impl<'a> Interpreter<'a> {
 pub(crate) fn compute_arg_free_mask(param_types: &[Type]) -> Vec<bool> {
     param_types
         .iter()
-        .map(|pt| matches!(pt, Type::Name(n, _) if n == "string")
-            || matches!(pt, Type::RawString)
-            || matches!(pt, Type::CBuffer(_)))
+        .map(|pt| {
+            matches!(pt, Type::Name(n, _) if n == "string")
+                || matches!(pt, Type::RawString)
+                || matches!(pt, Type::CBuffer(_))
+        })
         .collect()
 }
 

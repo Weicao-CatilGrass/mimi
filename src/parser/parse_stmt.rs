@@ -10,7 +10,11 @@ impl Parser {
             TokenKind::Return => self.parse_return(),
             TokenKind::Break => {
                 self.advance();
-                let val = if self.peek_kind() == &TokenKind::Semi || self.peek_kind() == &TokenKind::Newline || self.peek_kind() == &TokenKind::RBrace || self.peek_kind() == &TokenKind::Eof {
+                let val = if self.peek_kind() == &TokenKind::Semi
+                    || self.peek_kind() == &TokenKind::Newline
+                    || self.peek_kind() == &TokenKind::RBrace
+                    || self.peek_kind() == &TokenKind::Eof
+                {
                     None
                 } else {
                     Some(self.parse_expr(0)?)
@@ -95,7 +99,10 @@ impl Parser {
                     self.advance();
                     let value = self.parse_expr(0)?;
                     self.match_semi();
-                    Ok(Stmt::Assign { target: expr, value })
+                    Ok(Stmt::Assign {
+                        target: expr,
+                        value,
+                    })
                 } else if self.at(&TokenKind::PlusEq)
                     || self.at(&TokenKind::MinusEq)
                     || self.at(&TokenKind::StarEq)
@@ -116,10 +123,19 @@ impl Parser {
                         TokenKind::BitAndEq => BinOp::BitAnd,
                         TokenKind::BitOrEq => BinOp::BitOr,
                         TokenKind::BitXorEq => BinOp::BitXor,
-                        _ => return Err(ParseError::new("unexpected token in statement parsing".to_string(), 0, 0)),
+                        _ => {
+                            return Err(ParseError::new(
+                                "unexpected token in statement parsing".to_string(),
+                                0,
+                                0,
+                            ))
+                        }
                     };
                     let rhs = expr.clone().binary(op, value);
-                    Ok(Stmt::Assign { target: expr, value: rhs })
+                    Ok(Stmt::Assign {
+                        target: expr,
+                        value: rhs,
+                    })
                 } else {
                     self.match_semi();
                     Ok(Stmt::Expr(expr))
@@ -157,22 +173,32 @@ impl Parser {
                     "System" => AllocKind::System,
                     "Arena" => AllocKind::Arena,
                     "Bump" => AllocKind::Bump,
-                    _ => return Err(ParseError::new(
-                        format!("expected allocator type (System, Arena, Bump), found `{}`", name),
-                        kind_tok.line,
-                        kind_tok.col,
-                    )),
+                    _ => {
+                        return Err(ParseError::new(
+                            format!(
+                                "expected allocator type (System, Arena, Bump), found `{}`",
+                                name
+                            ),
+                            kind_tok.line,
+                            kind_tok.col,
+                        ))
+                    }
                 }
             }
             TokenKind::Arena => {
                 self.advance();
                 AllocKind::Arena
             }
-            _ => return Err(ParseError::new(
-                format!("expected allocator type (System, Arena, Bump), found {}", kind_tok.kind),
-                kind_tok.line,
-                kind_tok.col,
-            )),
+            _ => {
+                return Err(ParseError::new(
+                    format!(
+                        "expected allocator type (System, Arena, Bump), found {}",
+                        kind_tok.kind
+                    ),
+                    kind_tok.line,
+                    kind_tok.col,
+                ))
+            }
         };
         self.expect(TokenKind::RParen, "`)`")?;
         self.skip_newlines();
@@ -267,15 +293,20 @@ impl Parser {
                 self.advance();
                 s.clone()
             }
-            _ => return Err(ParseError::new(
-                format!("expected variable name after '{}'", match kind {
-                    SharedKind::Shared => "shared",
-                    SharedKind::LocalShared => "local_shared",
-                    SharedKind::Weak | SharedKind::WeakLocal => "weak",
-                }),
-                tok.line,
-                tok.col,
-            )),
+            _ => {
+                return Err(ParseError::new(
+                    format!(
+                        "expected variable name after '{}'",
+                        match kind {
+                            SharedKind::Shared => "shared",
+                            SharedKind::LocalShared => "local_shared",
+                            SharedKind::Weak | SharedKind::WeakLocal => "weak",
+                        }
+                    ),
+                    tok.line,
+                    tok.col,
+                ))
+            }
         };
         let ty = if self.at(&TokenKind::Colon) {
             self.advance();
@@ -286,7 +317,12 @@ impl Parser {
         self.expect(TokenKind::Eq, "`=`")?;
         let init = self.parse_expr(0)?;
         self.match_semi();
-        Ok(Stmt::SharedLet { kind, name, ty, init })
+        Ok(Stmt::SharedLet {
+            kind,
+            name,
+            ty,
+            init,
+        })
     }
 
     fn parse_let(&mut self) -> Result<Stmt, ParseError> {
@@ -398,7 +434,11 @@ impl Parser {
         self.skip_newlines();
         self.expect(TokenKind::LBrace, "`{`")?;
         let body = self.parse_block()?;
-        Ok(Stmt::For { var, iterable, body })
+        Ok(Stmt::For {
+            var,
+            iterable,
+            body,
+        })
     }
 
     pub(crate) fn expect_string(&mut self) -> Result<String, ParseError> {
@@ -417,12 +457,15 @@ impl Parser {
         }
     }
 
-    pub(crate) fn parse_fstring_parts(&self, raw: &str) -> Result<Vec<crate::ast::FStringPart>, ParseError> {
+    pub(crate) fn parse_fstring_parts(
+        &self,
+        raw: &str,
+    ) -> Result<Vec<crate::ast::FStringPart>, ParseError> {
         use crate::ast::FStringPart;
         let mut parts = Vec::new();
         let mut chars = raw.chars().peekable();
         let mut current_text = String::new();
-        
+
         while let Some(&c) = chars.peek() {
             if c == '{' {
                 if !current_text.is_empty() {
@@ -433,8 +476,9 @@ impl Parser {
                 let mut expr_str = String::new();
                 let mut depth = 1;
                 while let Some(&c) = chars.peek() {
-                    if c == '{' { depth += 1; }
-                    else if c == '}' {
+                    if c == '{' {
+                        depth += 1;
+                    } else if c == '}' {
                         depth -= 1;
                         if depth == 0 {
                             chars.next();
@@ -445,9 +489,14 @@ impl Parser {
                     chars.next();
                 }
                 if depth != 0 {
-                    return Err(ParseError::new("unterminated interpolation in f-string", 0, 0));
+                    return Err(ParseError::new(
+                        "unterminated interpolation in f-string",
+                        0,
+                        0,
+                    ));
                 }
-                let tokens = crate::lexer::Lexer::new(&expr_str).tokenize()
+                let tokens = crate::lexer::Lexer::new(&expr_str)
+                    .tokenize()
                     .map_err(|e| ParseError::new(e.to_string(), 0, 0))?;
                 let expr = Parser::new(tokens).parse_expr(0)?;
                 parts.push(FStringPart::Interp(expr));
@@ -462,7 +511,10 @@ impl Parser {
                         '"' => current_text.push('"'),
                         '{' => current_text.push('{'),
                         '}' => current_text.push('}'),
-                        other => { current_text.push('\\'); current_text.push(other); }
+                        other => {
+                            current_text.push('\\');
+                            current_text.push(other);
+                        }
                     }
                     chars.next();
                 }
@@ -485,7 +537,11 @@ impl Parser {
         self.parse_block_with_terminator(TokenKind::Dedent, "dedent")
     }
 
-    fn parse_block_with_terminator(&mut self, terminator: TokenKind, label: &str) -> Result<Block, ParseError> {
+    fn parse_block_with_terminator(
+        &mut self,
+        terminator: TokenKind,
+        label: &str,
+    ) -> Result<Block, ParseError> {
         // In recovery mode, catch statement errors and continue
         if self.recovery_mode {
             return self.parse_block_with_recovery(terminator, label);
@@ -562,7 +618,11 @@ impl Parser {
 
     /// Parse a block with error recovery: catches statement errors and continues.
     /// Always returns Ok with partial results; errors are collected internally.
-    fn parse_block_with_recovery(&mut self, terminator: TokenKind, label: &str) -> Result<Block, ParseError> {
+    fn parse_block_with_recovery(
+        &mut self,
+        terminator: TokenKind,
+        label: &str,
+    ) -> Result<Block, ParseError> {
         let mut stmts = Vec::new();
         self.skip_newlines();
         while !self.at(&terminator) && !self.at(&TokenKind::Eof) {

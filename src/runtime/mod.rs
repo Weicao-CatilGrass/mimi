@@ -84,8 +84,11 @@ mod libc {
     extern "C" {
         pub fn socket(domain: i32, type_: i32, protocol: i32) -> i32;
         pub fn setsockopt(
-            sockfd: i32, level: i32, optname: i32,
-            optval: *const c_void, optlen: socklen_t,
+            sockfd: i32,
+            level: i32,
+            optname: i32,
+            optval: *const c_void,
+            optlen: socklen_t,
         ) -> i32;
         pub fn bind(sockfd: i32, addr: *const sockaddr, addrlen: socklen_t) -> i32;
         pub fn listen(sockfd: i32, backlog: i32) -> i32;
@@ -95,8 +98,10 @@ mod libc {
         pub fn recv(sockfd: i32, buf: *mut c_void, len: usize, flags: i32) -> isize;
         pub fn close(fd: i32) -> i32;
         pub fn getaddrinfo(
-            node: *const i8, service: *const i8,
-            hints: *const addrinfo, res: *mut *mut addrinfo,
+            node: *const i8,
+            service: *const i8,
+            hints: *const addrinfo,
+            res: *mut *mut addrinfo,
         ) -> i32;
         pub fn freeaddrinfo(res: *mut addrinfo);
         pub fn signal(signum: i32, handler: usize) -> usize;
@@ -106,8 +111,8 @@ mod libc {
 }
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicI64, Ordering};
 use std::ffi::{CStr, CString};
+use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::Mutex;
 
 // Re-export types used by FFI tests and codegen
@@ -131,11 +136,17 @@ fn alloc_c_string(s: &str) -> *mut std::ffi::c_char {
     let bytes = s.as_bytes();
     let len = bytes.len();
     let ptr = unsafe { libc::malloc(len + 1) as *mut u8 };
-    if ptr.is_null() { return std::ptr::null_mut(); }
-    if len > 0 {
-        unsafe { std::ptr::copy_nonoverlapping(bytes.as_ptr(), ptr, len); }
+    if ptr.is_null() {
+        return std::ptr::null_mut();
     }
-    unsafe { *ptr.add(len) = 0; }
+    if len > 0 {
+        unsafe {
+            std::ptr::copy_nonoverlapping(bytes.as_ptr(), ptr, len);
+        }
+    }
+    unsafe {
+        *ptr.add(len) = 0;
+    }
     ptr as *mut std::ffi::c_char
 }
 
@@ -143,12 +154,20 @@ fn alloc_c_string(s: &str) -> *mut std::ffi::c_char {
 fn alloc_c_string_from_bytes(bytes: &[u8]) -> *mut std::ffi::c_char {
     if bytes.is_empty() {
         let ptr = unsafe { libc::malloc(1) as *mut u8 };
-        if !ptr.is_null() { unsafe { *ptr = 0; } }
+        if !ptr.is_null() {
+            unsafe {
+                *ptr = 0;
+            }
+        }
         return ptr as *mut std::ffi::c_char;
     }
     let ptr = unsafe { libc::malloc(bytes.len()) as *mut u8 };
-    if ptr.is_null() { return std::ptr::null_mut(); }
-    unsafe { std::ptr::copy_nonoverlapping(bytes.as_ptr(), ptr, bytes.len()); }
+    if ptr.is_null() {
+        return std::ptr::null_mut();
+    }
+    unsafe {
+        std::ptr::copy_nonoverlapping(bytes.as_ptr(), ptr, bytes.len());
+    }
     ptr as *mut std::ffi::c_char
 }
 
@@ -158,8 +177,12 @@ fn alloc_c_string_from_bytes(bytes: &[u8]) -> *mut std::ffi::c_char {
 
 #[no_mangle]
 pub extern "C" fn __mimi_pow_i64(base: i64, exp: i64) -> i64 {
-    if exp < 0 { return 0; }
-    if exp == 0 { return 1; }
+    if exp < 0 {
+        return 0;
+    }
+    if exp == 0 {
+        return 1;
+    }
     let mut result: i64 = 1;
     let mut b: i64 = base;
     let mut e: i64 = exp;
@@ -211,7 +234,9 @@ pub extern "C" fn mimi_rc_alloc(size: i64) -> *mut std::ffi::c_void {
         .0
         .pad_to_align();
     let ptr = unsafe { std::alloc::alloc(total) };
-    if ptr.is_null() { return std::ptr::null_mut(); }
+    if ptr.is_null() {
+        return std::ptr::null_mut();
+    }
     let hdr = ptr as *mut RcHeader;
     unsafe {
         (*hdr).strong = AtomicI64::new(1);
@@ -222,14 +247,18 @@ pub extern "C" fn mimi_rc_alloc(size: i64) -> *mut std::ffi::c_void {
 
 #[no_mangle]
 pub extern "C" fn mimi_rc_retain(ptr: *mut std::ffi::c_void) {
-    if ptr.is_null() { return; }
+    if ptr.is_null() {
+        return;
+    }
     let hdr = unsafe { rc_header_from_ptr(ptr) };
     hdr.strong.fetch_add(1, Ordering::Relaxed);
 }
 
 #[no_mangle]
 pub extern "C" fn mimi_rc_release(ptr: *mut std::ffi::c_void) {
-    if ptr.is_null() { return; }
+    if ptr.is_null() {
+        return;
+    }
     let hdr = unsafe { rc_header_from_ptr(ptr) };
     if hdr.strong.fetch_sub(1, Ordering::Release) == 1 {
         std::sync::atomic::fence(Ordering::Acquire);
@@ -240,25 +269,33 @@ pub extern "C" fn mimi_rc_release(ptr: *mut std::ffi::c_void) {
                 .expect("layout extension failed")
                 .0
                 .pad_to_align();
-            unsafe { std::alloc::dealloc(hdr_mut as *mut RcHeader as *mut u8, layout); }
+            unsafe {
+                std::alloc::dealloc(hdr_mut as *mut RcHeader as *mut u8, layout);
+            }
         }
     }
 }
 
 #[no_mangle]
 pub extern "C" fn mimi_rc_weak_retain(ptr: *mut std::ffi::c_void) {
-    if ptr.is_null() { return; }
+    if ptr.is_null() {
+        return;
+    }
     let hdr = unsafe { rc_header_from_ptr(ptr) };
     // Guard: don't retain if object is being freed (strong == 0 && weak == 0)
     let s = hdr.strong.load(Ordering::Relaxed);
     let w = hdr.weak.load(Ordering::Relaxed);
-    if s == 0 && w == 0 { return; }
+    if s == 0 && w == 0 {
+        return;
+    }
     hdr.weak.fetch_add(1, Ordering::Relaxed);
 }
 
 #[no_mangle]
 pub extern "C" fn mimi_rc_weak_release(ptr: *mut std::ffi::c_void) {
-    if ptr.is_null() { return; }
+    if ptr.is_null() {
+        return;
+    }
     let hdr = unsafe { rc_header_from_ptr(ptr) };
     if hdr.weak.fetch_sub(1, Ordering::Release) == 1 {
         std::sync::atomic::fence(Ordering::Acquire);
@@ -269,19 +306,28 @@ pub extern "C" fn mimi_rc_weak_release(ptr: *mut std::ffi::c_void) {
                 .expect("layout extension failed")
                 .0
                 .pad_to_align();
-            unsafe { std::alloc::dealloc(hdr_mut as *mut RcHeader as *mut u8, layout); }
+            unsafe {
+                std::alloc::dealloc(hdr_mut as *mut RcHeader as *mut u8, layout);
+            }
         }
     }
 }
 
 #[no_mangle]
 pub extern "C" fn mimi_rc_upgrade(ptr: *mut std::ffi::c_void) -> *mut std::ffi::c_void {
-    if ptr.is_null() { return std::ptr::null_mut(); }
+    if ptr.is_null() {
+        return std::ptr::null_mut();
+    }
     let hdr = unsafe { rc_header_from_ptr(ptr) };
     let mut s = hdr.strong.load(Ordering::Relaxed);
     loop {
-        if s == 0 { return std::ptr::null_mut(); }
-        match hdr.strong.compare_exchange_weak(s, s + 1, Ordering::Acquire, Ordering::Relaxed) {
+        if s == 0 {
+            return std::ptr::null_mut();
+        }
+        match hdr
+            .strong
+            .compare_exchange_weak(s, s + 1, Ordering::Acquire, Ordering::Relaxed)
+        {
             Ok(_) => return ptr,
             Err(new_s) => s = new_s,
         }
@@ -305,48 +351,68 @@ unsafe fn map_from_handle(handle: MapHandle) -> &'static mut MimiMap {
 
 #[no_mangle]
 pub extern "C" fn mimi_map_new() -> MapHandle {
-    let map = Box::new(MimiMap { inner: HashMap::new() });
+    let map = Box::new(MimiMap {
+        inner: HashMap::new(),
+    });
     Box::into_raw(map) as MapHandle
 }
 
 #[no_mangle]
 pub extern "C" fn mimi_map_destroy(handle: MapHandle) {
-    if handle == 0 { return; }
-    unsafe { drop(Box::from_raw(handle as *mut MimiMap)); }
+    if handle == 0 {
+        return;
+    }
+    unsafe {
+        drop(Box::from_raw(handle as *mut MimiMap));
+    }
 }
 
 #[no_mangle]
 pub extern "C" fn mimi_map_size(handle: MapHandle) -> i64 {
-    if handle == 0 { return 0; }
+    if handle == 0 {
+        return 0;
+    }
     unsafe { map_from_handle(handle).inner.len() as i64 }
 }
 
 #[no_mangle]
 pub extern "C" fn mimi_map_has_key(handle: MapHandle, key: *const std::ffi::c_char) -> i32 {
-    if handle == 0 || key.is_null() { return 0; }
+    if handle == 0 || key.is_null() {
+        return 0;
+    }
     let s = unsafe { cstr_to_string(key) };
     unsafe { map_from_handle(handle).inner.contains_key(&s) as i32 }
 }
 
 #[no_mangle]
 pub extern "C" fn mimi_map_get(handle: MapHandle, key: *const std::ffi::c_char) -> ValueHandle {
-    if handle == 0 || key.is_null() { return 0; }
+    if handle == 0 || key.is_null() {
+        return 0;
+    }
+    let s = unsafe { cstr_to_string(key) };
+    unsafe { map_from_handle(handle).inner.get(&s).copied().unwrap_or(0) }
+}
+
+#[no_mangle]
+pub extern "C" fn mimi_map_set(
+    handle: MapHandle,
+    key: *const std::ffi::c_char,
+    value: ValueHandle,
+) {
+    if handle == 0 || key.is_null() {
+        return;
+    }
     let s = unsafe { cstr_to_string(key) };
     unsafe {
-        map_from_handle(handle).inner.get(&s).copied().unwrap_or(0)
+        map_from_handle(handle).inner.insert(s, value);
     }
 }
 
 #[no_mangle]
-pub extern "C" fn mimi_map_set(handle: MapHandle, key: *const std::ffi::c_char, value: ValueHandle) {
-    if handle == 0 || key.is_null() { return; }
-    let s = unsafe { cstr_to_string(key) };
-    unsafe { map_from_handle(handle).inner.insert(s, value); }
-}
-
-#[no_mangle]
 pub extern "C" fn mimi_map_remove(handle: MapHandle, key: *const std::ffi::c_char) -> i32 {
-    if handle == 0 || key.is_null() { return 0; }
+    if handle == 0 || key.is_null() {
+        return 0;
+    }
     let s = unsafe { cstr_to_string(key) };
     unsafe { map_from_handle(handle).inner.remove(&s).is_some() as i32 }
 }
@@ -358,7 +424,9 @@ pub extern "C" fn mimi_map_from_list(
     n: i64,
 ) -> MapHandle {
     let handle = mimi_map_new();
-    if handle == 0 || keys.is_null() || values.is_null() || n == 0 { return handle; }
+    if handle == 0 || keys.is_null() || values.is_null() || n == 0 {
+        return handle;
+    }
     for i in 0..n {
         unsafe {
             let key_handle = *keys.add(i as usize);
@@ -366,7 +434,9 @@ pub extern "C" fn mimi_map_from_list(
             let key_str = key_handle as *const std::ffi::c_char;
             if !key_str.is_null() {
                 let s = CStr::from_ptr(key_str).to_str().unwrap_or("");
-                map_from_handle(handle).inner.insert(s.to_string(), val_handle);
+                map_from_handle(handle)
+                    .inner
+                    .insert(s.to_string(), val_handle);
             }
         }
     }
@@ -375,13 +445,19 @@ pub extern "C" fn mimi_map_from_list(
 
 fn mimi_map_collect(handle: MapHandle, collect_values: bool) -> *mut MimiList {
     if handle == 0 {
-        let list = Box::new(MimiList { len: 0, data: std::ptr::null_mut() });
+        let list = Box::new(MimiList {
+            len: 0,
+            data: std::ptr::null_mut(),
+        });
         return Box::into_raw(list);
     }
     let map = unsafe { map_from_handle(handle) };
     let len = map.inner.len() as i64;
     if len == 0 {
-        let list = Box::new(MimiList { len: 0, data: std::ptr::null_mut() });
+        let list = Box::new(MimiList {
+            len: 0,
+            data: std::ptr::null_mut(),
+        });
         return Box::into_raw(list);
     }
 
@@ -398,7 +474,10 @@ fn mimi_map_collect(handle: MapHandle, collect_values: bool) -> *mut MimiList {
 
     let data_ptr = items.as_mut_ptr();
     std::mem::forget(items);
-    let list = Box::new(MimiList { len, data: data_ptr });
+    let list = Box::new(MimiList {
+        len,
+        data: data_ptr,
+    });
     Box::into_raw(list)
 }
 
@@ -424,7 +503,9 @@ pub extern "C" fn mimi_value_type_name(_handle: ValueHandle) -> *const std::ffi:
 // ---------------------------------------------------------------------------
 
 unsafe fn cstr_to_string(ptr: *const std::ffi::c_char) -> String {
-    if ptr.is_null() { return String::new(); }
+    if ptr.is_null() {
+        return String::new();
+    }
     CStr::from_ptr(ptr).to_string_lossy().into_owned()
 }
 
@@ -459,14 +540,15 @@ pub extern "C" fn mimi_str_split(
     };
 
     let len = parts.len() as i64;
-    let mut c_strings: Vec<*mut std::ffi::c_char> = parts
-        .into_iter()
-        .map(|p| alloc_c_string(&p))
-        .collect();
+    let mut c_strings: Vec<*mut std::ffi::c_char> =
+        parts.into_iter().map(|p| alloc_c_string(&p)).collect();
     let data_ptr = c_strings.as_mut_ptr();
     std::mem::forget(c_strings);
 
-    let list = Box::new(MimiList { len, data: data_ptr });
+    let list = Box::new(MimiList {
+        len,
+        data: data_ptr,
+    });
     Box::into_raw(list)
 }
 
@@ -573,7 +655,10 @@ static CLI_ARGS: std::sync::OnceLock<Mutex<CliArgs>> = std::sync::OnceLock::new(
 
 fn init_cli_args() {
     let _ = CLI_ARGS.get_or_init(|| {
-        Mutex::new(CliArgs { argc: 0, argv: Vec::new() })
+        Mutex::new(CliArgs {
+            argc: 0,
+            argv: Vec::new(),
+        })
     });
 }
 
@@ -607,7 +692,9 @@ pub extern "C" fn mimi_args_count() -> i64 {
     init_cli_args();
     let args_mutex = CLI_ARGS.get().expect("CLI_ARGS not initialized");
     let args = args_mutex.lock().expect("lock poisoned");
-    if args.argc <= 1 { return 0; }
+    if args.argc <= 1 {
+        return 0;
+    }
     (args.argc - 1) as i64
 }
 
@@ -616,9 +703,15 @@ pub extern "C" fn mimi_args_get(i: i64) -> *mut std::ffi::c_char {
     init_cli_args();
     let args_mutex = CLI_ARGS.get().expect("CLI_ARGS not initialized");
     let args = args_mutex.lock().expect("lock poisoned");
-    if i < 0 || i >= (args.argc - 1) as i64 { return std::ptr::null_mut(); }
+    if i < 0 || i >= (args.argc - 1) as i64 {
+        return std::ptr::null_mut();
+    }
     let idx = (i + 1) as usize; // +1 to skip program name
-    args.argv.get(idx).copied().map(|p| p as *mut std::ffi::c_char).unwrap_or(std::ptr::null_mut())
+    args.argv
+        .get(idx)
+        .copied()
+        .map(|p| p as *mut std::ffi::c_char)
+        .unwrap_or(std::ptr::null_mut())
 }
 
 // ---------------------------------------------------------------------------
@@ -635,15 +728,25 @@ struct JsonParser<'a> {
 
 impl<'a> JsonParser<'a> {
     fn new(input: &'a str) -> Self {
-        Self { p: input.as_bytes(), pos: 0, depth: 0 }
+        Self {
+            p: input.as_bytes(),
+            pos: 0,
+            depth: 0,
+        }
     }
 
     fn peek(&self) -> u8 {
-        if self.pos < self.p.len() { self.p[self.pos] } else { 0 }
+        if self.pos < self.p.len() {
+            self.p[self.pos]
+        } else {
+            0
+        }
     }
 
     fn advance(&mut self) {
-        if self.pos < self.p.len() { self.pos += 1; }
+        if self.pos < self.p.len() {
+            self.pos += 1;
+        }
     }
 
     fn skip_ws(&mut self) {
@@ -657,9 +760,13 @@ impl<'a> JsonParser<'a> {
 
     fn parse_value(&mut self) -> Option<String> {
         self.skip_ws();
-        if self.pos >= self.p.len() { return None; }
+        if self.pos >= self.p.len() {
+            return None;
+        }
         self.depth += 1;
-        if self.depth > JSON_MAX_DEPTH { return None; }
+        if self.depth > JSON_MAX_DEPTH {
+            return None;
+        }
 
         let result = match self.peek() {
             b'"' => self.parse_string(),
@@ -677,13 +784,17 @@ impl<'a> JsonParser<'a> {
     }
 
     fn parse_string(&mut self) -> Option<String> {
-        if self.peek() != b'"' { return None; }
+        if self.peek() != b'"' {
+            return None;
+        }
         self.advance(); // skip "
         let _start = self.pos;
         let mut result = String::new();
         let mut esc = false;
         loop {
-            if self.pos >= self.p.len() { return None; }
+            if self.pos >= self.p.len() {
+                return None;
+            }
             let c = self.p[self.pos];
             if esc {
                 match c {
@@ -697,8 +808,10 @@ impl<'a> JsonParser<'a> {
                     b't' => result.push('\t'),
                     b'u' => {
                         // Parse 4-digit hex
-                        if self.pos + 4 >= self.p.len() { return None; }
-                        let hex_str = &self.p[self.pos+1..self.pos+5];
+                        if self.pos + 4 >= self.p.len() {
+                            return None;
+                        }
+                        let hex_str = &self.p[self.pos + 1..self.pos + 5];
                         let hex = std::str::from_utf8(hex_str).ok()?;
                         let cp = u32::from_str_radix(hex, 16).ok()?;
                         if let Some(ch) = char::from_u32(cp) {
@@ -706,14 +819,23 @@ impl<'a> JsonParser<'a> {
                         }
                         self.pos += 4;
                     }
-                    _ => { result.push(c as char); }
+                    _ => {
+                        result.push(c as char);
+                    }
                 }
                 esc = false;
                 self.pos += 1;
                 continue;
             }
-            if c == b'\\' { esc = true; self.pos += 1; continue; }
-            if c == b'"' { self.pos += 1; return Some(result); }
+            if c == b'\\' {
+                esc = true;
+                self.pos += 1;
+                continue;
+            }
+            if c == b'"' {
+                self.pos += 1;
+                return Some(result);
+            }
             result.push(c as char);
             self.pos += 1;
         }
@@ -721,9 +843,15 @@ impl<'a> JsonParser<'a> {
 
     fn parse_number(&mut self) -> Option<String> {
         let start = self.pos;
-        if self.peek() == b'-' { self.advance(); }
-        if self.pos >= self.p.len() || !self.peek().is_ascii_digit() { return None; }
-        while self.pos < self.p.len() && self.p[self.pos].is_ascii_digit() { self.advance(); }
+        if self.peek() == b'-' {
+            self.advance();
+        }
+        if self.pos >= self.p.len() || !self.peek().is_ascii_digit() {
+            return None;
+        }
+        while self.pos < self.p.len() && self.p[self.pos].is_ascii_digit() {
+            self.advance();
+        }
 
         let mut is_float = false;
         if self.pos < self.p.len() && self.p[self.pos] == b'.' {
@@ -734,7 +862,9 @@ impl<'a> JsonParser<'a> {
                 has_digits = true;
                 self.advance();
             }
-            if !has_digits { return None; }
+            if !has_digits {
+                return None;
+            }
         }
         if self.pos < self.p.len() && (self.p[self.pos] == b'e' || self.p[self.pos] == b'E') {
             is_float = true;
@@ -747,7 +877,9 @@ impl<'a> JsonParser<'a> {
                 has_digits = true;
                 self.advance();
             }
-            if !has_digits { return None; }
+            if !has_digits {
+                return None;
+            }
         }
 
         let s = std::str::from_utf8(&self.p[start..self.pos]).ok()?;
@@ -756,7 +888,10 @@ impl<'a> JsonParser<'a> {
             let val: f64 = s.parse().ok()?;
             let mut formatted = format!("{}", val);
             if formatted.contains('.') {
-                formatted = formatted.trim_end_matches('0').trim_end_matches('.').to_string();
+                formatted = formatted
+                    .trim_end_matches('0')
+                    .trim_end_matches('.')
+                    .to_string();
             }
             Some(formatted)
         } else {
@@ -766,7 +901,9 @@ impl<'a> JsonParser<'a> {
 
     fn parse_literal(&mut self, expected: &str, value: &str) -> Option<String> {
         let bytes = expected.as_bytes();
-        if self.pos + bytes.len() > self.p.len() { return None; }
+        if self.pos + bytes.len() > self.p.len() {
+            return None;
+        }
         if &self.p[self.pos..self.pos + bytes.len()] == bytes {
             self.pos += bytes.len();
             Some(value.to_string())
@@ -776,7 +913,9 @@ impl<'a> JsonParser<'a> {
     }
 
     fn parse_object(&mut self) -> Option<String> {
-        if self.peek() != b'{' { return None; }
+        if self.peek() != b'{' {
+            return None;
+        }
         self.advance();
         let start = self.pos;
         let mut depth = 1u32;
@@ -787,24 +926,37 @@ impl<'a> JsonParser<'a> {
                 b'"' => {
                     self.advance();
                     loop {
-                        if self.pos >= self.p.len() { return None; }
-                        if self.p[self.pos] == b'\\' { self.pos += 2; continue; }
-                        if self.p[self.pos] == b'"' { break; }
+                        if self.pos >= self.p.len() {
+                            return None;
+                        }
+                        if self.p[self.pos] == b'\\' {
+                            self.pos += 2;
+                            continue;
+                        }
+                        if self.p[self.pos] == b'"' {
+                            break;
+                        }
                         self.pos += 1;
                     }
                 }
                 _ => {}
             }
-            if depth > 0 { self.pos += 1; }
+            if depth > 0 {
+                self.pos += 1;
+            }
         }
-        if depth != 0 { return None; }
+        if depth != 0 {
+            return None;
+        }
         let s = std::str::from_utf8(&self.p[start..self.pos]).ok()?;
         self.pos += 1; // skip }
         Some(format!("{{{}}}", s))
     }
 
     fn parse_array(&mut self) -> Option<String> {
-        if self.peek() != b'[' { return None; }
+        if self.peek() != b'[' {
+            return None;
+        }
         self.advance();
         let start = self.pos;
         let mut depth = 1u32;
@@ -815,17 +967,28 @@ impl<'a> JsonParser<'a> {
                 b'"' => {
                     self.advance();
                     loop {
-                        if self.pos >= self.p.len() { return None; }
-                        if self.p[self.pos] == b'\\' { self.pos += 2; continue; }
-                        if self.p[self.pos] == b'"' { break; }
+                        if self.pos >= self.p.len() {
+                            return None;
+                        }
+                        if self.p[self.pos] == b'\\' {
+                            self.pos += 2;
+                            continue;
+                        }
+                        if self.p[self.pos] == b'"' {
+                            break;
+                        }
                         self.pos += 1;
                     }
                 }
                 _ => {}
             }
-            if depth > 0 { self.pos += 1; }
+            if depth > 0 {
+                self.pos += 1;
+            }
         }
-        if depth != 0 { return None; }
+        if depth != 0 {
+            return None;
+        }
         let s = std::str::from_utf8(&self.p[start..self.pos]).ok()?;
         self.pos += 1; // skip ]
         Some(format!("[{}]", s))
@@ -834,7 +997,9 @@ impl<'a> JsonParser<'a> {
     fn parse_full(&mut self) -> Option<String> {
         let val = self.parse_value()?;
         self.skip_ws();
-        if self.pos != self.p.len() { return None; } // trailing garbage
+        if self.pos != self.p.len() {
+            return None;
+        } // trailing garbage
         Some(val)
     }
 
@@ -845,7 +1010,9 @@ impl<'a> JsonParser<'a> {
 
 #[no_mangle]
 pub extern "C" fn mimi_from_json(json_str: *const std::ffi::c_char) -> *mut std::ffi::c_void {
-    if json_str.is_null() { return std::ptr::null_mut(); }
+    if json_str.is_null() {
+        return std::ptr::null_mut();
+    }
     let s = unsafe { cstr_to_string(json_str) };
     let mut parser = JsonParser::new(&s);
     match parser.parse_full() {
@@ -856,35 +1023,54 @@ pub extern "C" fn mimi_from_json(json_str: *const std::ffi::c_char) -> *mut std:
 
 #[no_mangle]
 pub extern "C" fn mimi_is_valid_json(json_str: *const std::ffi::c_char) -> i64 {
-    if json_str.is_null() { return 0; }
+    if json_str.is_null() {
+        return 0;
+    }
     let s = unsafe { cstr_to_string(json_str) };
     let mut parser = JsonParser::new(&s);
     parser.is_valid() as i64
 }
 
-fn json_get_inner(json_str: *const std::ffi::c_char, key: *const std::ffi::c_char) -> Option<String> {
-    if json_str.is_null() || key.is_null() { return None; }
+fn json_get_inner(
+    json_str: *const std::ffi::c_char,
+    key: *const std::ffi::c_char,
+) -> Option<String> {
+    if json_str.is_null() || key.is_null() {
+        return None;
+    }
     let json = unsafe { cstr_to_string(json_str) };
     let k = unsafe { cstr_to_string(key) };
     let bytes = json.as_bytes();
     let mut pos = 0;
 
     // Skip whitespace
-    while pos < bytes.len() && matches!(bytes[pos], b' ' | b'\t' | b'\n' | b'\r') { pos += 1; }
-    if pos >= bytes.len() || bytes[pos] != b'{' { return None; }
+    while pos < bytes.len() && matches!(bytes[pos], b' ' | b'\t' | b'\n' | b'\r') {
+        pos += 1;
+    }
+    if pos >= bytes.len() || bytes[pos] != b'{' {
+        return None;
+    }
     pos += 1;
 
     loop {
-        if pos >= bytes.len() || bytes[pos] == b'}' { return None; }
-        while pos < bytes.len() && matches!(bytes[pos], b' ' | b'\t' | b'\n' | b'\r') { pos += 1; }
+        if pos >= bytes.len() || bytes[pos] == b'}' {
+            return None;
+        }
+        while pos < bytes.len() && matches!(bytes[pos], b' ' | b'\t' | b'\n' | b'\r') {
+            pos += 1;
+        }
 
         // Parse key string
-        if bytes[pos] != b'"' { return None; }
+        if bytes[pos] != b'"' {
+            return None;
+        }
         pos += 1;
         let mut key_buf = String::new();
         let mut key_esc = false;
         loop {
-            if pos >= bytes.len() { return None; }
+            if pos >= bytes.len() {
+                return None;
+            }
             let c = bytes[pos];
             if key_esc {
                 match c {
@@ -897,28 +1083,47 @@ fn json_get_inner(json_str: *const std::ffi::c_char, key: *const std::ffi::c_cha
                     b'r' => key_buf.push('\r'),
                     b't' => key_buf.push('\t'),
                     b'u' => {
-                        if pos + 4 >= bytes.len() { return None; }
-                        let hex_str = std::str::from_utf8(&bytes[pos+1..pos+5]).ok()?;
+                        if pos + 4 >= bytes.len() {
+                            return None;
+                        }
+                        let hex_str = std::str::from_utf8(&bytes[pos + 1..pos + 5]).ok()?;
                         let cp = u32::from_str_radix(hex_str, 16).ok()?;
-                        if let Some(ch) = char::from_u32(cp) { key_buf.push(ch); }
+                        if let Some(ch) = char::from_u32(cp) {
+                            key_buf.push(ch);
+                        }
                         pos += 4;
                     }
-                    _ => { key_buf.push(c as char); }
+                    _ => {
+                        key_buf.push(c as char);
+                    }
                 }
                 key_esc = false;
                 pos += 1;
                 continue;
             }
-            if c == b'\\' { key_esc = true; pos += 1; continue; }
-            if c == b'"' { pos += 1; break; }
+            if c == b'\\' {
+                key_esc = true;
+                pos += 1;
+                continue;
+            }
+            if c == b'"' {
+                pos += 1;
+                break;
+            }
             key_buf.push(c as char);
             pos += 1;
         }
 
-        while pos < bytes.len() && matches!(bytes[pos], b' ' | b'\t' | b'\n' | b'\r') { pos += 1; }
-        if pos >= bytes.len() || bytes[pos] != b':' { return None; }
+        while pos < bytes.len() && matches!(bytes[pos], b' ' | b'\t' | b'\n' | b'\r') {
+            pos += 1;
+        }
+        if pos >= bytes.len() || bytes[pos] != b':' {
+            return None;
+        }
         pos += 1;
-        while pos < bytes.len() && matches!(bytes[pos], b' ' | b'\t' | b'\n' | b'\r') { pos += 1; }
+        while pos < bytes.len() && matches!(bytes[pos], b' ' | b'\t' | b'\n' | b'\r') {
+            pos += 1;
+        }
 
         if key_buf == k {
             // Extract the value at current position
@@ -933,9 +1138,15 @@ fn json_get_inner(json_str: *const std::ffi::c_char, key: *const std::ffi::c_cha
         dummy_parser.parse_value()?;
         pos = val_start + dummy_parser.pos;
 
-        while pos < bytes.len() && matches!(bytes[pos], b' ' | b'\t' | b'\n' | b'\r') { pos += 1; }
-        if pos >= bytes.len() { return None; }
-        if bytes[pos] == b',' { pos += 1; }
+        while pos < bytes.len() && matches!(bytes[pos], b' ' | b'\t' | b'\n' | b'\r') {
+            pos += 1;
+        }
+        if pos >= bytes.len() {
+            return None;
+        }
+        if bytes[pos] == b',' {
+            pos += 1;
+        }
     }
 }
 
@@ -966,19 +1177,29 @@ pub extern "C" fn json_get_element(
     json_str: *const std::ffi::c_char,
     index: i64,
 ) -> *mut std::ffi::c_char {
-    if json_str.is_null() { return std::ptr::null_mut(); }
+    if json_str.is_null() {
+        return std::ptr::null_mut();
+    }
     let json = unsafe { cstr_to_string(json_str) };
     let bytes = json.as_bytes();
     let mut pos = 0;
 
-    while pos < bytes.len() && matches!(bytes[pos], b' ' | b'\t' | b'\n' | b'\r') { pos += 1; }
-    if pos >= bytes.len() || bytes[pos] != b'[' { return std::ptr::null_mut(); }
+    while pos < bytes.len() && matches!(bytes[pos], b' ' | b'\t' | b'\n' | b'\r') {
+        pos += 1;
+    }
+    if pos >= bytes.len() || bytes[pos] != b'[' {
+        return std::ptr::null_mut();
+    }
     pos += 1;
 
     let mut idx: i64 = 0;
     loop {
-        if pos >= bytes.len() || bytes[pos] == b']' { return std::ptr::null_mut(); }
-        while pos < bytes.len() && matches!(bytes[pos], b' ' | b'\t' | b'\n' | b'\r') { pos += 1; }
+        if pos >= bytes.len() || bytes[pos] == b']' {
+            return std::ptr::null_mut();
+        }
+        while pos < bytes.len() && matches!(bytes[pos], b' ' | b'\t' | b'\n' | b'\r') {
+            pos += 1;
+        }
 
         if idx == index {
             let val_start = pos;
@@ -991,12 +1212,20 @@ pub extern "C" fn json_get_element(
 
         let val_start = pos;
         let mut dummy_parser = JsonParser::new(&json[val_start..]);
-        if dummy_parser.parse_value().is_none() { return std::ptr::null_mut(); }
+        if dummy_parser.parse_value().is_none() {
+            return std::ptr::null_mut();
+        }
         pos = val_start + dummy_parser.pos;
 
-        while pos < bytes.len() && matches!(bytes[pos], b' ' | b'\t' | b'\n' | b'\r') { pos += 1; }
-        if pos >= bytes.len() { return std::ptr::null_mut(); }
-        if bytes[pos] == b',' { pos += 1; }
+        while pos < bytes.len() && matches!(bytes[pos], b' ' | b'\t' | b'\n' | b'\r') {
+            pos += 1;
+        }
+        if pos >= bytes.len() {
+            return std::ptr::null_mut();
+        }
+        if bytes[pos] == b',' {
+            pos += 1;
+        }
         idx += 1;
     }
 }
@@ -1005,7 +1234,9 @@ pub extern "C" fn json_get_element(
 
 #[no_mangle]
 pub extern "C" fn mimi_json_as_i64(json: *const std::ffi::c_char) -> i64 {
-    if json.is_null() { return 0; }
+    if json.is_null() {
+        return 0;
+    }
     let s = unsafe { cstr_to_string(json) };
     let mut parser = JsonParser::new(&s);
     match parser.parse_value() {
@@ -1016,7 +1247,9 @@ pub extern "C" fn mimi_json_as_i64(json: *const std::ffi::c_char) -> i64 {
 
 #[no_mangle]
 pub extern "C" fn mimi_json_as_f64(json: *const std::ffi::c_char) -> f64 {
-    if json.is_null() { return 0.0; }
+    if json.is_null() {
+        return 0.0;
+    }
     let s = unsafe { cstr_to_string(json) };
     let mut parser = JsonParser::new(&s);
     match parser.parse_value() {
@@ -1027,7 +1260,9 @@ pub extern "C" fn mimi_json_as_f64(json: *const std::ffi::c_char) -> f64 {
 
 #[no_mangle]
 pub extern "C" fn mimi_json_as_bool(json: *const std::ffi::c_char) -> i64 {
-    if json.is_null() { return 0; }
+    if json.is_null() {
+        return 0;
+    }
     let s = unsafe { cstr_to_string(json) };
     let mut parser = JsonParser::new(&s);
     match parser.parse_value() {
@@ -1054,49 +1289,74 @@ fn set_from_handle(handle: SetHandle) -> &'static mut MimiSet {
 
 #[no_mangle]
 pub extern "C" fn mimi_set_new() -> SetHandle {
-    let set = Box::new(MimiSet { inner: std::collections::HashSet::new() });
+    let set = Box::new(MimiSet {
+        inner: std::collections::HashSet::new(),
+    });
     Box::into_raw(set) as SetHandle
 }
 
 #[no_mangle]
 pub extern "C" fn mimi_set_destroy(handle: SetHandle) {
-    if handle == 0 { return; }
-    unsafe { drop(Box::from_raw(handle as *mut MimiSet)); }
+    if handle == 0 {
+        return;
+    }
+    unsafe {
+        drop(Box::from_raw(handle as *mut MimiSet));
+    }
 }
 
 #[no_mangle]
 pub extern "C" fn mimi_set_insert(handle: SetHandle, value: SetValueHandle) -> SetHandle {
-    if handle == 0 { return handle; }
+    if handle == 0 {
+        return handle;
+    }
     set_from_handle(handle).inner.insert(value);
     handle
 }
 
 #[no_mangle]
 pub extern "C" fn mimi_set_contains(handle: SetHandle, value: SetValueHandle) -> i64 {
-    if handle == 0 { return 0; }
+    if handle == 0 {
+        return 0;
+    }
     set_from_handle(handle).inner.contains(&value) as i64
 }
 
 #[no_mangle]
 pub extern "C" fn mimi_set_remove(handle: SetHandle, value: SetValueHandle) -> SetHandle {
-    if handle == 0 { return handle; }
+    if handle == 0 {
+        return handle;
+    }
     set_from_handle(handle).inner.remove(&value);
     handle
 }
 
 #[no_mangle]
 pub extern "C" fn mimi_set_size(handle: SetHandle) -> i64 {
-    if handle == 0 { return 0; }
+    if handle == 0 {
+        return 0;
+    }
     set_from_handle(handle).inner.len() as i64
 }
 
 #[no_mangle]
 pub extern "C" fn mimi_set_to_list(handle: SetHandle, out_len: *mut i64) -> *mut SetValueHandle {
-    if handle == 0 || out_len.is_null() { unsafe { if !out_len.is_null() { *out_len = 0; } } return std::ptr::null_mut(); }
+    if handle == 0 || out_len.is_null() {
+        unsafe {
+            if !out_len.is_null() {
+                *out_len = 0;
+            }
+        }
+        return std::ptr::null_mut();
+    }
     let set = set_from_handle(handle);
     let len = set.inner.len() as i64;
-    unsafe { *out_len = len; }
-    if len == 0 { return std::ptr::null_mut(); }
+    unsafe {
+        *out_len = len;
+    }
+    if len == 0 {
+        return std::ptr::null_mut();
+    }
     let mut vec: Vec<SetValueHandle> = set.inner.iter().copied().collect();
     vec.shrink_to_fit();
     let ptr = vec.as_mut_ptr();
@@ -1149,7 +1409,9 @@ impl RegexEngine {
         let mut result = String::new();
         let mut cursor = 0;
         loop {
-            if cursor >= text_bytes.len() { break; }
+            if cursor >= text_bytes.len() {
+                break;
+            }
             let mut best_pos = text_bytes.len() + 1;
             let mut best_len = 0;
             for start in cursor..text_bytes.len() {
@@ -1184,7 +1446,9 @@ impl RegexEngine {
         let tlen = text.len();
 
         // Skip leading ^
-        if pi < plen && pattern[pi] == b'^' { pi += 1; }
+        if pi < plen && pattern[pi] == b'^' {
+            pi += 1;
+        }
 
         loop {
             if pi >= plen {
@@ -1198,12 +1462,18 @@ impl RegexEngine {
 
             // Parse element
             let (elem_end, elem_is_class) = Self::parse_element(pattern, pi);
-            if elem_end == pi { return -1; }
+            if elem_end == pi {
+                return -1;
+            }
 
             // Check for quantifier
             let has_star = elem_end < plen && pattern[elem_end] == b'*';
             let has_plus = elem_end < plen && pattern[elem_end] == b'+';
-            let after_quant = if has_star || has_plus { elem_end + 1 } else { elem_end };
+            let after_quant = if has_star || has_plus {
+                elem_end + 1
+            } else {
+                elem_end
+            };
 
             if has_star || has_plus {
                 // Greedy matching
@@ -1231,13 +1501,19 @@ impl RegexEngine {
                         break;
                     }
                 }
-                if !matched { return -1; }
+                if !matched {
+                    return -1;
+                }
                 pi = plen; // after_quant is already consumed via recursive call
                 continue;
             }
 
-            if ti >= tlen { return -1; }
-            if !Self::elem_match(pattern, &mut pi, text[ti], elem_is_class) { return -1; }
+            if ti >= tlen {
+                return -1;
+            }
+            if !Self::elem_match(pattern, &mut pi, text[ti], elem_is_class) {
+                return -1;
+            }
             ti += 1;
         }
     }
@@ -1251,17 +1527,26 @@ impl RegexEngine {
 
     /// Parse pattern element starting at pi, return (end_pos, is_class).
     fn parse_element(pattern: &[u8], pi: usize) -> (usize, bool) {
-        if pi >= pattern.len() { return (pi, false); }
+        if pi >= pattern.len() {
+            return (pi, false);
+        }
         match pattern[pi] {
             b'\\' => (pi + 2, false),
             b'[' => {
                 let mut ep = pi + 1;
-                if ep < pattern.len() && pattern[ep] == b'^' { ep += 1; }
-                while ep < pattern.len() && pattern[ep] != b']' {
-                    if pattern[ep] == b'\\' && ep + 1 < pattern.len() { ep += 2; }
-                    else { ep += 1; }
+                if ep < pattern.len() && pattern[ep] == b'^' {
+                    ep += 1;
                 }
-                if ep < pattern.len() { ep += 1; } // skip ]
+                while ep < pattern.len() && pattern[ep] != b']' {
+                    if pattern[ep] == b'\\' && ep + 1 < pattern.len() {
+                        ep += 2;
+                    } else {
+                        ep += 1;
+                    }
+                }
+                if ep < pattern.len() {
+                    ep += 1;
+                } // skip ]
                 (ep, true)
             }
             _ => (pi + 1, false),
@@ -1271,28 +1556,44 @@ impl RegexEngine {
     fn elem_match_in_class(class: &[u8], c: u8, start: usize) -> (bool, usize) {
         let mut pos = start;
         let neg = pos < class.len() && class[pos] == b'^';
-        if neg { pos += 1; }
+        if neg {
+            pos += 1;
+        }
 
         let mut matched = false;
         while pos < class.len() && class[pos] != b']' {
             if pos + 2 < class.len() && class[pos + 1] == b'-' && class[pos + 2] != b']' {
-                if c >= class[pos] && c <= class[pos + 2] { matched = true; }
+                if c >= class[pos] && c <= class[pos + 2] {
+                    matched = true;
+                }
                 pos += 3;
             } else {
-                if c == class[pos] { matched = true; }
+                if c == class[pos] {
+                    matched = true;
+                }
                 pos += 1;
             }
         }
         // Advance to end of class
-        while pos < class.len() && class[pos] != b']' { pos += 1; }
-        if pos < class.len() { pos += 1; } // skip ]
+        while pos < class.len() && class[pos] != b']' {
+            pos += 1;
+        }
+        if pos < class.len() {
+            pos += 1;
+        } // skip ]
 
-        if neg { (!matched, pos) } else { (matched, pos) }
+        if neg {
+            (!matched, pos)
+        } else {
+            (matched, pos)
+        }
     }
 
     /// Check if pattern element at pi matches character c. Advances pi past element.
     fn elem_match(pattern: &[u8], pi: &mut usize, c: u8, is_class: bool) -> bool {
-        if *pi >= pattern.len() { return false; }
+        if *pi >= pattern.len() {
+            return false;
+        }
 
         if is_class {
             // [...] class
@@ -1304,7 +1605,9 @@ impl RegexEngine {
 
         match pattern[*pi] {
             b'\\' => {
-                if *pi + 1 >= pattern.len() { return false; }
+                if *pi + 1 >= pattern.len() {
+                    return false;
+                }
                 let esc = pattern[*pi + 1];
                 *pi += 2;
                 match esc {
@@ -1335,7 +1638,9 @@ pub extern "C" fn mimi_regex_match(
     text: *const std::ffi::c_char,
     pattern: *const std::ffi::c_char,
 ) -> i32 {
-    if text.is_null() || pattern.is_null() { return 0; }
+    if text.is_null() || pattern.is_null() {
+        return 0;
+    }
     let t = unsafe { cstr_to_string(text) };
     let p = unsafe { cstr_to_string(pattern) };
     RegexEngine::match_pattern(&t, &p) as i32
@@ -1382,7 +1687,11 @@ pub extern "C" fn mimi_regex_replace(
 
 /// Safely convert i64 fd to i32, returning None if out of range.
 fn fd_to_i32(fd: i64) -> Option<i32> {
-    if fd < 0 || fd > i32::MAX as i64 { None } else { Some(fd as i32) }
+    if fd < 0 || fd > i32::MAX as i64 {
+        None
+    } else {
+        Some(fd as i32)
+    }
 }
 
 #[no_mangle]
@@ -1392,21 +1701,23 @@ pub extern "C" fn mimi_socket(domain: i64, type_: i64, protocol: i64) -> i64 {
         let fd = libc::socket(domain as i32, type_ as i32, protocol as i32);
         if fd >= 0 {
             let reuse: i32 = 1;
-            libc::setsockopt(fd, libc::SOL_SOCKET, libc::SO_REUSEADDR,
-                             &reuse as *const _ as *const std::ffi::c_void,
-                             std::mem::size_of::<i32>() as libc::socklen_t);
+            libc::setsockopt(
+                fd,
+                libc::SOL_SOCKET,
+                libc::SO_REUSEADDR,
+                &reuse as *const _ as *const std::ffi::c_void,
+                std::mem::size_of::<i32>() as libc::socklen_t,
+            );
         }
         fd as i64
     }
 }
 
 #[no_mangle]
-pub extern "C" fn mimi_connect(
-    fd: i64,
-    host: *const std::ffi::c_char,
-    port: i64,
-) -> i64 {
-    if host.is_null() || fd < 0 { return -1; }
+pub extern "C" fn mimi_connect(fd: i64, host: *const std::ffi::c_char, port: i64) -> i64 {
+    if host.is_null() || fd < 0 {
+        return -1;
+    }
     let h = unsafe { cstr_to_string(host) };
 
     // Resolve address
@@ -1420,19 +1731,26 @@ pub extern "C" fn mimi_connect(
     let mut res: *mut libc::addrinfo = std::ptr::null_mut();
     let c_host = CString::new(h.as_str()).unwrap_or_default();
     let c_port = CString::new(port_str.as_str()).unwrap_or_default();
-    let err = unsafe {
-        libc::getaddrinfo(c_host.as_ptr(), c_port.as_ptr(), &hints, &mut res)
-    };
-    if err != 0 || res.is_null() { return -1; }
+    let err = unsafe { libc::getaddrinfo(c_host.as_ptr(), c_port.as_ptr(), &hints, &mut res) };
+    if err != 0 || res.is_null() {
+        return -1;
+    }
 
     unsafe {
-        let fd_i32 = match fd_to_i32(fd) { Some(v) => v, None => return -1 };
+        let fd_i32 = match fd_to_i32(fd) {
+            Some(v) => v,
+            None => return -1,
+        };
         let r = libc::connect(fd_i32, (*res).ai_addr, (*res).ai_addrlen);
         if r == 0 {
             let flag: i32 = 1;
-            libc::setsockopt(fd_i32, libc::IPPROTO_TCP, libc::TCP_NODELAY,
-                             &flag as *const _ as *const std::ffi::c_void,
-                             std::mem::size_of::<i32>() as libc::socklen_t);
+            libc::setsockopt(
+                fd_i32,
+                libc::IPPROTO_TCP,
+                libc::TCP_NODELAY,
+                &flag as *const _ as *const std::ffi::c_void,
+                std::mem::size_of::<i32>() as libc::socklen_t,
+            );
         }
         libc::freeaddrinfo(res);
         r as i64
@@ -1441,34 +1759,53 @@ pub extern "C" fn mimi_connect(
 
 #[no_mangle]
 pub extern "C" fn mimi_bind(fd: i64, port: i64) -> i64 {
-    if fd < 0 { return -1; }
+    if fd < 0 {
+        return -1;
+    }
     unsafe {
-        let fd_i32 = match fd_to_i32(fd) { Some(v) => v, None => return -1 };
+        let fd_i32 = match fd_to_i32(fd) {
+            Some(v) => v,
+            None => return -1,
+        };
         let mut addr: libc::sockaddr_in = std::mem::zeroed();
         addr.sin_family = libc::AF_INET as libc::sa_family_t;
         addr.sin_port = (port as u16).to_be();
         addr.sin_addr.s_addr = libc::INADDR_ANY;
-        libc::bind(fd_i32, &addr as *const _ as *const libc::sockaddr,
-                   std::mem::size_of::<libc::sockaddr_in>() as libc::socklen_t) as i64
+        libc::bind(
+            fd_i32,
+            &addr as *const _ as *const libc::sockaddr,
+            std::mem::size_of::<libc::sockaddr_in>() as libc::socklen_t,
+        ) as i64
     }
 }
 
 #[no_mangle]
 pub extern "C" fn mimi_listen(fd: i64, backlog: i64) -> i64 {
-    if fd < 0 { return -1; }
+    if fd < 0 {
+        return -1;
+    }
     unsafe {
-        let fd_i32 = match fd_to_i32(fd) { Some(v) => v, None => return -1 };
+        let fd_i32 = match fd_to_i32(fd) {
+            Some(v) => v,
+            None => return -1,
+        };
         libc::listen(fd_i32, backlog as i32) as i64
     }
 }
 
 #[no_mangle]
 pub extern "C" fn mimi_accept(fd: i64) -> i64 {
-    if fd < 0 { return -1; }
+    if fd < 0 {
+        return -1;
+    }
     unsafe {
-        let fd_i32 = match fd_to_i32(fd) { Some(v) => v, None => return -1 };
+        let fd_i32 = match fd_to_i32(fd) {
+            Some(v) => v,
+            None => return -1,
+        };
         let mut addr: libc::sockaddr_in = std::mem::zeroed();
-        let mut addr_len: libc::socklen_t = std::mem::size_of::<libc::sockaddr_in>() as libc::socklen_t;
+        let mut addr_len: libc::socklen_t =
+            std::mem::size_of::<libc::sockaddr_in>() as libc::socklen_t;
         let client_fd = libc::accept(
             fd_i32,
             &mut addr as *mut _ as *mut libc::sockaddr,
@@ -1479,50 +1816,58 @@ pub extern "C" fn mimi_accept(fd: i64) -> i64 {
 }
 
 #[no_mangle]
-pub extern "C" fn mimi_send(
-    fd: i64,
-    data: *const std::ffi::c_char,
-    len: i64,
-) -> i64 {
-    if fd < 0 || data.is_null() { return -1; }
+pub extern "C" fn mimi_send(fd: i64, data: *const std::ffi::c_char, len: i64) -> i64 {
+    if fd < 0 || data.is_null() {
+        return -1;
+    }
     unsafe {
-        let fd_i32 = match fd_to_i32(fd) { Some(v) => v, None => return -1 };
-        libc::send(
-            fd_i32,
-            data as *const std::ffi::c_void,
-            len as usize,
-            0,
-        ) as i64
+        let fd_i32 = match fd_to_i32(fd) {
+            Some(v) => v,
+            None => return -1,
+        };
+        libc::send(fd_i32, data as *const std::ffi::c_void, len as usize, 0) as i64
     }
 }
 
 #[no_mangle]
-pub extern "C" fn mimi_recv(
-    fd: i64,
-    buf_size: i64,
-    out_len: *mut i64,
-) -> *mut std::ffi::c_char {
-    if fd < 0 || buf_size <= 0 { return std::ptr::null_mut(); }
-    let fd_i32 = match fd_to_i32(fd) { Some(v) => v, None => return std::ptr::null_mut() };
+pub extern "C" fn mimi_recv(fd: i64, buf_size: i64, out_len: *mut i64) -> *mut std::ffi::c_char {
+    if fd < 0 || buf_size <= 0 {
+        return std::ptr::null_mut();
+    }
+    let fd_i32 = match fd_to_i32(fd) {
+        Some(v) => v,
+        None => return std::ptr::null_mut(),
+    };
     let size = buf_size as usize;
     let mut buf: Vec<u8> = vec![0u8; size + 1];
-    let n = unsafe {
-        libc::recv(fd_i32, buf.as_mut_ptr() as *mut std::ffi::c_void, size, 0)
-    };
+    let n = unsafe { libc::recv(fd_i32, buf.as_mut_ptr() as *mut std::ffi::c_void, size, 0) };
     if n <= 0 {
-        if !out_len.is_null() { unsafe { *out_len = 0; } }
+        if !out_len.is_null() {
+            unsafe {
+                *out_len = 0;
+            }
+        }
         return std::ptr::null_mut();
     }
     buf[n as usize] = 0;
-    if !out_len.is_null() { unsafe { *out_len = n as i64; } }
+    if !out_len.is_null() {
+        unsafe {
+            *out_len = n as i64;
+        }
+    }
     alloc_c_string_from_bytes(&buf[..=n as usize])
 }
 
 #[no_mangle]
 pub extern "C" fn mimi_close(fd: i64) -> i64 {
-    if fd < 0 { return -1; }
+    if fd < 0 {
+        return -1;
+    }
     unsafe {
-        let fd_i32 = match fd_to_i32(fd) { Some(v) => v, None => return -1 };
+        let fd_i32 = match fd_to_i32(fd) {
+            Some(v) => v,
+            None => return -1,
+        };
         libc::close(fd_i32) as i64
     }
 }
@@ -1533,7 +1878,9 @@ pub extern "C" fn mimi_close(fd: i64) -> i64 {
 
 fn parse_http_url(url: &str) -> Option<(String, u16, String)> {
     let rest = url.strip_prefix("http://")?;
-    if url.starts_with("https://") { return None; }
+    if url.starts_with("https://") {
+        return None;
+    }
 
     let (host_part, path_part) = if let Some(slash_idx) = rest.find('/') {
         let (h, p) = rest.split_at(slash_idx);
@@ -1592,7 +1939,9 @@ fn http_request(host: &str, port: u16, request: &str) -> Option<Vec<u8>> {
         }
     }
 
-    if response.is_empty() { return None; }
+    if response.is_empty() {
+        return None;
+    }
 
     // Strip HTTP headers
     let body_start = if let Some(pos) = response.windows(4).position(|w| w == b"\r\n\r\n") {
@@ -1608,7 +1957,9 @@ fn http_request(host: &str, port: u16, request: &str) -> Option<Vec<u8>> {
 
 #[no_mangle]
 pub extern "C" fn mimi_http_get(url: *const std::ffi::c_char) -> *mut std::ffi::c_char {
-    if url.is_null() { return std::ptr::null_mut(); }
+    if url.is_null() {
+        return std::ptr::null_mut();
+    }
     let u = unsafe { cstr_to_string(url) };
     let (host, port, path) = match parse_http_url(&u) {
         Some(v) => v,
@@ -1634,9 +1985,15 @@ pub extern "C" fn mimi_http_post(
     url: *const std::ffi::c_char,
     body: *const std::ffi::c_char,
 ) -> *mut std::ffi::c_char {
-    if url.is_null() { return std::ptr::null_mut(); }
+    if url.is_null() {
+        return std::ptr::null_mut();
+    }
     let u = unsafe { cstr_to_string(url) };
-    let b = if body.is_null() { String::new() } else { unsafe { cstr_to_string(body) } };
+    let b = if body.is_null() {
+        String::new()
+    } else {
+        unsafe { cstr_to_string(body) }
+    };
     let (host, port, path) = match parse_http_url(&u) {
         Some(v) => v,
         None => return std::ptr::null_mut(),
@@ -1674,7 +2031,9 @@ pub extern "C" fn mimi_json_serialize(
     let elements = unsafe { std::slice::from_raw_parts(data as *const i64, len as usize) };
 
     for (i, &raw) in elements.iter().enumerate() {
-        if i > 0 { result.push(','); }
+        if i > 0 {
+            result.push(',');
+        }
         match elem_type {
             1 => {
                 // Float: bitcast i64 to f64
@@ -1731,15 +2090,24 @@ pub extern "C" fn mimi_json_deserialize(
     out_len: *mut i64,
     elem_type: i64,
 ) -> *mut std::ffi::c_void {
-    if json.is_null() { unsafe { *out_len = 0; } return std::ptr::null_mut(); }
+    if json.is_null() {
+        unsafe {
+            *out_len = 0;
+        }
+        return std::ptr::null_mut();
+    }
     let s = unsafe { cstr_to_string(json) };
     let bytes = s.as_bytes();
     let mut pos = 0;
 
     // Skip whitespace
-    while pos < bytes.len() && matches!(bytes[pos], b' ' | b'\t' | b'\n' | b'\r') { pos += 1; }
+    while pos < bytes.len() && matches!(bytes[pos], b' ' | b'\t' | b'\n' | b'\r') {
+        pos += 1;
+    }
     if pos >= bytes.len() || bytes[pos] != b'[' {
-        unsafe { *out_len = 0; }
+        unsafe {
+            *out_len = 0;
+        }
         return std::ptr::null_mut();
     }
     pos += 1;
@@ -1749,30 +2117,52 @@ pub extern "C" fn mimi_json_deserialize(
     {
         let mut p = pos;
         loop {
-            if p >= bytes.len() { break; }
-            while p < bytes.len() && matches!(bytes[p], b' ' | b'\t' | b'\n' | b'\r' | b',') { p += 1; }
-            if p >= bytes.len() || bytes[p] == b']' { break; }
+            if p >= bytes.len() {
+                break;
+            }
+            while p < bytes.len() && matches!(bytes[p], b' ' | b'\t' | b'\n' | b'\r' | b',') {
+                p += 1;
+            }
+            if p >= bytes.len() || bytes[p] == b']' {
+                break;
+            }
 
             if elem_type == 2 && bytes[p] == b'"' {
                 count += 1;
                 p += 1;
                 loop {
-                    if p >= bytes.len() { break; }
-                    if bytes[p] == b'\\' { p += 2; continue; }
-                    if bytes[p] == b'"' { p += 1; break; }
+                    if p >= bytes.len() {
+                        break;
+                    }
+                    if bytes[p] == b'\\' {
+                        p += 2;
+                        continue;
+                    }
+                    if bytes[p] == b'"' {
+                        p += 1;
+                        break;
+                    }
                     p += 1;
                 }
             } else if bytes[p] == b'-' || bytes[p].is_ascii_digit() {
                 count += 1;
-                if bytes[p] == b'-' { p += 1; }
-                while p < bytes.len() && bytes[p].is_ascii_digit() { p += 1; }
+                if bytes[p] == b'-' {
+                    p += 1;
+                }
+                while p < bytes.len() && bytes[p].is_ascii_digit() {
+                    p += 1;
+                }
                 if p < bytes.len() && bytes[p] == b'.' {
                     p += 1;
-                    while p < bytes.len() && bytes[p].is_ascii_digit() { p += 1; }
+                    while p < bytes.len() && bytes[p].is_ascii_digit() {
+                        p += 1;
+                    }
                 }
             } else {
                 // Skip unknown (true/false/null)
-                while p < bytes.len() && !matches!(bytes[p], b']' | b',') { p += 1; }
+                while p < bytes.len() && !matches!(bytes[p], b']' | b',') {
+                    p += 1;
+                }
             }
         }
     }
@@ -1782,10 +2172,18 @@ pub extern "C" fn mimi_json_deserialize(
     pos = 1; // skip initial [
     let mut idx: i64 = 0;
     loop {
-        if pos >= bytes.len() { break; }
-        while pos < bytes.len() && matches!(bytes[pos], b' ' | b'\t' | b'\n' | b'\r' | b',') { pos += 1; }
-        if pos >= bytes.len() || bytes[pos] == b']' { break; }
-        if idx >= count { break; }
+        if pos >= bytes.len() {
+            break;
+        }
+        while pos < bytes.len() && matches!(bytes[pos], b' ' | b'\t' | b'\n' | b'\r' | b',') {
+            pos += 1;
+        }
+        if pos >= bytes.len() || bytes[pos] == b']' {
+            break;
+        }
+        if idx >= count {
+            break;
+        }
 
         match elem_type {
             1 => {
@@ -1802,26 +2200,43 @@ pub extern "C" fn mimi_json_deserialize(
             }
             2 => {
                 // String
-                if bytes[pos] == b'"' { pos += 1; }
+                if bytes[pos] == b'"' {
+                    pos += 1;
+                }
                 let start = pos;
                 while pos < bytes.len() && bytes[pos] != b'"' {
-                    if bytes[pos] == b'\\' { pos += 2; } else { pos += 1; }
+                    if bytes[pos] == b'\\' {
+                        pos += 2;
+                    } else {
+                        pos += 1;
+                    }
                 }
                 let slen = pos - start;
                 let s_bytes = bytes[start..start + slen].to_vec();
                 data[idx as usize] = alloc_c_string_from_bytes(&s_bytes) as i64;
-                if pos < bytes.len() && bytes[pos] == b'"' { pos += 1; }
+                if pos < bytes.len() && bytes[pos] == b'"' {
+                    pos += 1;
+                }
                 idx += 1;
             }
             _ => {
                 // Integer
-                let neg = if bytes[pos] == b'-' { pos += 1; true } else { false };
+                let neg = if bytes[pos] == b'-' {
+                    pos += 1;
+                    true
+                } else {
+                    false
+                };
                 let mut val: i64 = 0;
                 while pos < bytes.len() && bytes[pos].is_ascii_digit() {
-                    val = val.wrapping_mul(10).wrapping_add((bytes[pos] - b'0') as i64);
+                    val = val
+                        .wrapping_mul(10)
+                        .wrapping_add((bytes[pos] - b'0') as i64);
                     pos += 1;
                 }
-                if neg { val = val.wrapping_neg(); }
+                if neg {
+                    val = val.wrapping_neg();
+                }
                 data[idx as usize] = val;
                 idx += 1;
             }
@@ -1830,7 +2245,9 @@ pub extern "C" fn mimi_json_deserialize(
 
     let result = data.as_mut_ptr();
     std::mem::forget(data);
-    unsafe { *out_len = idx; }
+    unsafe {
+        *out_len = idx;
+    }
     result as *mut std::ffi::c_void
 }
 
@@ -1860,7 +2277,9 @@ pub extern "C" fn mimi_tuple_serialize(
 
     let mut result = String::from("[");
     for i in 0..count as usize {
-        if i > 0 { result.push(','); }
+        if i > 0 {
+            result.push(',');
+        }
         let raw = vals[i];
         let tag = if i < types.len() { types[i] } else { 0 };
         match tag {
@@ -1908,13 +2327,19 @@ pub extern "C" fn mimi_tuple_deserialize(
     elem_types: *mut i64,
     out_values: *mut i64,
 ) -> i64 {
-    if json.is_null() || out_values.is_null() || count <= 0 { return -1; }
+    if json.is_null() || out_values.is_null() || count <= 0 {
+        return -1;
+    }
     let s = unsafe { cstr_to_string(json) };
     let bytes = s.as_bytes();
     let mut pos = 0;
 
-    while pos < bytes.len() && matches!(bytes[pos], b' ' | b'\t' | b'\n' | b'\r') { pos += 1; }
-    if pos >= bytes.len() || bytes[pos] != b'[' { return -1; }
+    while pos < bytes.len() && matches!(bytes[pos], b' ' | b'\t' | b'\n' | b'\r') {
+        pos += 1;
+    }
+    if pos >= bytes.len() || bytes[pos] != b'[' {
+        return -1;
+    }
     pos += 1;
 
     let types = if elem_types.is_null() {
@@ -1925,51 +2350,100 @@ pub extern "C" fn mimi_tuple_deserialize(
 
     let mut idx: i64 = 0;
     loop {
-        if pos >= bytes.len() { break; }
-        while pos < bytes.len() && matches!(bytes[pos], b' ' | b'\t' | b'\n' | b'\r' | b',') { pos += 1; }
-        if pos >= bytes.len() || bytes[pos] == b']' { break; }
-        if idx >= count { break; }
+        if pos >= bytes.len() {
+            break;
+        }
+        while pos < bytes.len() && matches!(bytes[pos], b' ' | b'\t' | b'\n' | b'\r' | b',') {
+            pos += 1;
+        }
+        if pos >= bytes.len() || bytes[pos] == b']' {
+            break;
+        }
+        if idx >= count {
+            break;
+        }
 
-        let tag = if (idx as usize) < types.len() { types[idx as usize] } else { 0 };
+        let tag = if (idx as usize) < types.len() {
+            types[idx as usize]
+        } else {
+            0
+        };
         match tag {
             1 => {
                 // Float
                 let mut end = pos;
-                if end < bytes.len() && bytes[end] == b'-' { end += 1; }
-                while end < bytes.len() && (bytes[end].is_ascii_digit() || bytes[end] == b'.' || bytes[end] == b'e' || bytes[end] == b'E' || bytes[end] == b'+' || bytes[end] == b'-') { end += 1; }
+                if end < bytes.len() && bytes[end] == b'-' {
+                    end += 1;
+                }
+                while end < bytes.len()
+                    && (bytes[end].is_ascii_digit()
+                        || bytes[end] == b'.'
+                        || bytes[end] == b'e'
+                        || bytes[end] == b'E'
+                        || bytes[end] == b'+'
+                        || bytes[end] == b'-')
+                {
+                    end += 1;
+                }
                 let num_str = std::str::from_utf8(&bytes[pos..end]).unwrap_or("0");
                 let f: f64 = num_str.parse().unwrap_or(0.0);
-                unsafe { *out_values.offset(idx as isize) = f64::to_bits(f) as i64; }
+                unsafe {
+                    *out_values.offset(idx as isize) = f64::to_bits(f) as i64;
+                }
                 pos = end;
                 idx += 1;
             }
             2 => {
                 // String
-                if bytes[pos] == b'"' { pos += 1; }
+                if bytes[pos] == b'"' {
+                    pos += 1;
+                }
                 let start = pos;
                 while pos < bytes.len() && bytes[pos] != b'"' {
-                    if bytes[pos] == b'\\' { pos += 2; } else { pos += 1; }
+                    if bytes[pos] == b'\\' {
+                        pos += 2;
+                    } else {
+                        pos += 1;
+                    }
                 }
                 let slen = pos - start;
                 if slen > 0 {
                     let s_bytes = bytes[start..start + slen].to_vec();
-                    unsafe { *out_values.offset(idx as isize) = alloc_c_string_from_bytes(&s_bytes) as i64; }
+                    unsafe {
+                        *out_values.offset(idx as isize) =
+                            alloc_c_string_from_bytes(&s_bytes) as i64;
+                    }
                 } else {
-                    unsafe { *out_values.offset(idx as isize) = 0; }
+                    unsafe {
+                        *out_values.offset(idx as isize) = 0;
+                    }
                 }
-                if pos < bytes.len() && bytes[pos] == b'"' { pos += 1; }
+                if pos < bytes.len() && bytes[pos] == b'"' {
+                    pos += 1;
+                }
                 idx += 1;
             }
             _ => {
                 // Integer
-                let neg = if bytes[pos] == b'-' { pos += 1; true } else { false };
+                let neg = if bytes[pos] == b'-' {
+                    pos += 1;
+                    true
+                } else {
+                    false
+                };
                 let mut val: i64 = 0;
                 while pos < bytes.len() && bytes[pos].is_ascii_digit() {
-                    val = val.wrapping_mul(10).wrapping_add((bytes[pos] - b'0') as i64);
+                    val = val
+                        .wrapping_mul(10)
+                        .wrapping_add((bytes[pos] - b'0') as i64);
                     pos += 1;
                 }
-                if neg { val = val.wrapping_neg(); }
-                unsafe { *out_values.offset(idx as isize) = val; }
+                if neg {
+                    val = val.wrapping_neg();
+                }
+                unsafe {
+                    *out_values.offset(idx as isize) = val;
+                }
                 idx += 1;
             }
         }
@@ -2013,7 +2487,9 @@ pub struct __mimi_TimespecStruct {
 }
 
 #[no_mangle]
-pub extern "C" fn __mimi_extern_test_positive(x: i32) -> i32 { x }
+pub extern "C" fn __mimi_extern_test_positive(x: i32) -> i32 {
+    x
+}
 
 #[no_mangle]
 pub extern "C" fn __mimi_extern_test_callback(
@@ -2027,10 +2503,14 @@ pub extern "C" fn __mimi_extern_test_callback(
 }
 
 #[no_mangle]
-pub extern "C" fn __mimi_extern_test_float_identity(x: f64) -> f64 { x }
+pub extern "C" fn __mimi_extern_test_float_identity(x: f64) -> f64 {
+    x
+}
 
 #[no_mangle]
-pub extern "C" fn __mimi_extern_test_struct_by_val(p: __mimi_TestPoint) -> i32 { p.x + p.y }
+pub extern "C" fn __mimi_extern_test_struct_by_val(p: __mimi_TestPoint) -> i32 {
+    p.x + p.y
+}
 
 #[no_mangle]
 pub extern "C" fn __mimi_extern_test_mixed_struct(s: __mimi_MixedStruct) -> f64 {
@@ -2049,7 +2529,9 @@ pub extern "C" fn __mimi_extern_test_timespec_sum(t: __mimi_TimespecStruct) -> i
 
 #[no_mangle]
 pub extern "C" fn __mimi_extern_test_strlen(s: *const std::ffi::c_char) -> i32 {
-    if s.is_null() { return -1; }
+    if s.is_null() {
+        return -1;
+    }
     let str = unsafe { CStr::from_ptr(s) };
     str.to_bytes().len() as i32
 }
@@ -2059,13 +2541,24 @@ pub extern "C" fn __mimi_extern_test_nop() {}
 
 #[no_mangle]
 pub extern "C" fn __mimi_extern_test_parse_int(json: *const std::ffi::c_char) -> i32 {
-    if json.is_null() { return -1; }
+    if json.is_null() {
+        return -1;
+    }
     let s = unsafe { cstr_to_string(json) };
     let s = s.trim();
     let neg = s.starts_with('-');
     let digits = s.trim_start_matches('-');
-    let val: i32 = digits.chars().take_while(|c| c.is_ascii_digit()).collect::<String>().parse().unwrap_or(0);
-    if neg { -val } else { val }
+    let val: i32 = digits
+        .chars()
+        .take_while(|c| c.is_ascii_digit())
+        .collect::<String>()
+        .parse()
+        .unwrap_or(0);
+    if neg {
+        -val
+    } else {
+        val
+    }
 }
 
 #[no_mangle]
@@ -2076,15 +2569,21 @@ pub extern "C" fn __mimi_extern_test_greet(x: i32) -> *mut std::ffi::c_char {
 
 #[no_mangle]
 pub extern "C" fn __mimi_extern_test_json_sum(json: *const std::ffi::c_char) -> i32 {
-    if json.is_null() { return -1; }
+    if json.is_null() {
+        return -1;
+    }
     let s = unsafe { cstr_to_string(json) };
     let s = s.trim();
-    if !s.starts_with('[') { return -1; }
+    if !s.starts_with('[') {
+        return -1;
+    }
     let inner = s.trim_start_matches('[').trim_end_matches(']');
     let mut sum = 0i32;
     for part in inner.split(',') {
         let part = part.trim();
-        if part.is_empty() { continue; }
+        if part.is_empty() {
+            continue;
+        }
         if let Ok(n) = part.parse::<i32>() {
             sum = sum.wrapping_add(n);
         }
@@ -2095,7 +2594,9 @@ pub extern "C" fn __mimi_extern_test_json_sum(json: *const std::ffi::c_char) -> 
 #[no_mangle]
 pub extern "C" fn __mimi_extern_test_segfault() {
     // Deliberate null pointer dereference for testing
-    unsafe { std::ptr::write_volatile(std::ptr::null_mut::<i32>(), 42); }
+    unsafe {
+        std::ptr::write_volatile(std::ptr::null_mut::<i32>(), 42);
+    }
 }
 
 #[no_mangle]
@@ -2112,13 +2613,19 @@ pub extern "C" fn __mimi_extern_test_make_point(x: i32, y: i32) -> __mimi_TestPo
 // These MUST have the exact `extern "C"` ABI so the FFI test .so bindings work.
 
 #[no_mangle]
-pub extern "C" fn test_float_identity(x: f64) -> f64 { __mimi_extern_test_float_identity(x) }
+pub extern "C" fn test_float_identity(x: f64) -> f64 {
+    __mimi_extern_test_float_identity(x)
+}
 
 #[no_mangle]
-pub extern "C" fn test_strlen(s: *const std::ffi::c_char) -> i32 { __mimi_extern_test_strlen(s) }
+pub extern "C" fn test_strlen(s: *const std::ffi::c_char) -> i32 {
+    __mimi_extern_test_strlen(s)
+}
 
 #[no_mangle]
-pub extern "C" fn test_nop() { __mimi_extern_test_nop() }
+pub extern "C" fn test_nop() {
+    __mimi_extern_test_nop()
+}
 
 #[no_mangle]
 pub extern "C" fn test_parse_int(json: *const std::ffi::c_char) -> i32 {
@@ -2131,10 +2638,14 @@ pub extern "C" fn test_json_sum(json: *const std::ffi::c_char) -> i32 {
 }
 
 #[no_mangle]
-pub extern "C" fn test_segfault() { __mimi_extern_test_segfault() }
+pub extern "C" fn test_segfault() {
+    __mimi_extern_test_segfault()
+}
 
 #[no_mangle]
-pub extern "C" fn test_abort() { __mimi_extern_test_abort() }
+pub extern "C" fn test_abort() {
+    __mimi_extern_test_abort()
+}
 
 #[no_mangle]
 pub extern "C" fn test_struct_by_val(p: __mimi_TestPoint) -> i32 {
@@ -2167,10 +2678,7 @@ pub extern "C" fn test_greet(x: i32) -> *mut std::ffi::c_char {
 }
 
 #[no_mangle]
-pub extern "C" fn test_callback(
-    x: i32,
-    cb: Option<unsafe extern "C" fn(i32) -> i32>,
-) -> i32 {
+pub extern "C" fn test_callback(x: i32, cb: Option<unsafe extern "C" fn(i32) -> i32>) -> i32 {
     __mimi_extern_test_callback(x, cb)
 }
 
@@ -2180,11 +2688,11 @@ pub extern "C" fn test_callback(
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 mod no_panic {
-    use std::sync::atomic::{AtomicBool, Ordering};
-    use std::cell::UnsafeCell;
-    use std::cell::Cell;
     #[cfg(standalone)]
     use crate::libc;
+    use std::cell::Cell;
+    use std::cell::UnsafeCell;
+    use std::sync::atomic::{AtomicBool, Ordering};
 
     static HANDLERS_INSTALLED: AtomicBool = AtomicBool::new(false);
 
@@ -2203,8 +2711,11 @@ mod no_panic {
     }
 
     const SIGS: &[i32; 5] = &[
-        libc::SIGSEGV, libc::SIGABRT, libc::SIGBUS,
-        libc::SIGILL, libc::SIGFPE,
+        libc::SIGSEGV,
+        libc::SIGABRT,
+        libc::SIGBUS,
+        libc::SIGILL,
+        libc::SIGFPE,
     ];
 
     #[allow(dead_code)]
@@ -2229,7 +2740,9 @@ mod no_panic {
         NO_PANIC_JUMP_BUF.with(|buf| {
             let jmp_buf = buf.get();
             if !jmp_buf.is_null() {
-                unsafe { siglongjmp(jmp_buf, sig); }
+                unsafe {
+                    siglongjmp(jmp_buf, sig);
+                }
             }
         });
     }
@@ -2280,9 +2793,7 @@ type ErrorHandler = unsafe extern "C" fn(*const std::ffi::c_char);
 static ERROR_HANDLER: AtomicPtr<std::ffi::c_void> = AtomicPtr::new(std::ptr::null_mut());
 
 #[no_mangle]
-pub extern "C" fn mimi_runtime_set_error_handler(
-    handler: Option<ErrorHandler>,
-) {
+pub extern "C" fn mimi_runtime_set_error_handler(handler: Option<ErrorHandler>) {
     let ptr: *mut std::ffi::c_void = match handler {
         Some(f) => f as *const () as *mut std::ffi::c_void,
         None => std::ptr::null_mut(),
@@ -2302,7 +2813,8 @@ pub extern "C" fn mimi_runtime_abort(msg: *const std::ffi::c_char) -> ! {
     let handler_ptr = ERROR_HANDLER.load(Ordering::Acquire);
     if !handler_ptr.is_null() {
         ERROR_HANDLER.store(std::ptr::null_mut(), Ordering::Release); // prevent re-entry
-        let handler: ErrorHandler = unsafe { std::mem::transmute::<*mut std::ffi::c_void, ErrorHandler>(handler_ptr) };
+        let handler: ErrorHandler =
+            unsafe { std::mem::transmute::<*mut std::ffi::c_void, ErrorHandler>(handler_ptr) };
         unsafe { handler(msg) };
         std::process::abort();
     }
@@ -2332,12 +2844,20 @@ struct CapTableData {
 
 #[no_mangle]
 pub extern "C" fn mimi_cap_register(name: *const std::ffi::c_char) -> i64 {
-    let n = if name.is_null() { String::new() } else { unsafe { cstr_to_string(name) } };
+    let n = if name.is_null() {
+        String::new()
+    } else {
+        unsafe { cstr_to_string(name) }
+    };
     CAP_TABLE.with(|table| {
         let mut state = table.lock().expect("cap table lock poisoned");
         let id = state.next_id;
         state.next_id += 1;
-        state.entries.push(CapEntry { id, name: n, consumed: false });
+        state.entries.push(CapEntry {
+            id,
+            name: n,
+            consumed: false,
+        });
         id
     })
 }
@@ -2371,13 +2891,19 @@ pub extern "C" fn mimi_future_alloc(_result_size: u64) -> *mut std::ffi::c_void 
 
 #[no_mangle]
 pub extern "C" fn mimi_future_free(fut: *mut std::ffi::c_void) {
-    if fut.is_null() { return; }
-    unsafe { drop(Box::from_raw(fut as *mut MimiFutureRepr)); }
+    if fut.is_null() {
+        return;
+    }
+    unsafe {
+        drop(Box::from_raw(fut as *mut MimiFutureRepr));
+    }
 }
 
 #[no_mangle]
 pub extern "C" fn mimi_future_set_completed(fut: *mut std::ffi::c_void) {
-    if fut.is_null() { return; }
+    if fut.is_null() {
+        return;
+    }
     use std::sync::atomic::Ordering;
     unsafe {
         let rep = &*(fut as *const MimiFutureRepr);
@@ -2387,7 +2913,9 @@ pub extern "C" fn mimi_future_set_completed(fut: *mut std::ffi::c_void) {
 
 #[no_mangle]
 pub extern "C" fn mimi_future_is_completed(fut: *mut std::ffi::c_void) -> i32 {
-    if fut.is_null() { return 1; }
+    if fut.is_null() {
+        return 1;
+    }
     use std::sync::atomic::Ordering;
     unsafe {
         let rep = &*(fut as *const MimiFutureRepr);
@@ -2403,7 +2931,9 @@ pub extern "C" fn mimi_spawn_future(
     future: *mut std::ffi::c_void,
     poll_fn: unsafe extern "C" fn(*mut std::ffi::c_void),
 ) -> *mut std::ffi::c_void {
-    if future.is_null() { return std::ptr::null_mut(); }
+    if future.is_null() {
+        return std::ptr::null_mut();
+    }
     let future_addr = future as usize;
     std::thread::spawn(move || {
         unsafe { poll_fn(future_addr as *mut std::ffi::c_void) };
@@ -2415,7 +2945,9 @@ pub extern "C" fn mimi_spawn_future(
 /// for thread-spawned futures (not managed by the single-threaded executor).
 #[no_mangle]
 pub extern "C" fn mimi_await_future(future: *mut std::ffi::c_void) {
-    if future.is_null() { return; }
+    if future.is_null() {
+        return;
+    }
     use std::sync::atomic::Ordering;
     // Spin until completed (the spawned thread sets completed=1 after poll_fn returns)
     // Uses Acquire ordering to synchronize-with the Release store in set_completed,
@@ -2446,7 +2978,9 @@ pub extern "C" fn mimi_executor_spawn(
     future: *mut std::ffi::c_void,
     poll_fn: unsafe extern "C" fn(*mut std::ffi::c_void),
 ) {
-    if future.is_null() { return; }
+    if future.is_null() {
+        return;
+    }
     let mut queue = EXECUTOR_QUEUE.lock().expect("executor queue lock poisoned");
     // Don't add duplicates
     if !queue.iter().any(|(_, f)| f.0 == future) {
@@ -2461,7 +2995,9 @@ pub extern "C" fn mimi_executor_run() {
     loop {
         let entry = {
             let mut queue = EXECUTOR_QUEUE.lock().expect("executor queue lock poisoned");
-            if queue.is_empty() { return; }
+            if queue.is_empty() {
+                return;
+            }
             let mut found = None;
             for i in 0..queue.len() {
                 let (_, future) = &queue[i];
@@ -2496,19 +3032,34 @@ pub extern "C" fn mimi_executor_run() {
 
 #[no_mangle]
 pub extern "C" fn mimi_cap_check(cap: i64, name: *const std::ffi::c_char) -> bool {
-    let n = if name.is_null() { "" } else { unsafe { CStr::from_ptr(name) }.to_str().unwrap_or("") };
+    let n = if name.is_null() {
+        ""
+    } else {
+        unsafe { CStr::from_ptr(name) }.to_str().unwrap_or("")
+    };
     CAP_TABLE.with(|table| {
         let state = table.lock().expect("cap table lock poisoned");
-        state.entries.iter().any(|e| e.id == cap && !e.consumed && e.name == n)
+        state
+            .entries
+            .iter()
+            .any(|e| e.id == cap && !e.consumed && e.name == n)
     })
 }
 
 #[no_mangle]
 pub extern "C" fn mimi_cap_consume(cap: i64, name: *const std::ffi::c_char) -> bool {
-    let n = if name.is_null() { "" } else { unsafe { CStr::from_ptr(name) }.to_str().unwrap_or("") };
+    let n = if name.is_null() {
+        ""
+    } else {
+        unsafe { CStr::from_ptr(name) }.to_str().unwrap_or("")
+    };
     CAP_TABLE.with(|table| {
         let mut state = table.lock().expect("cap table lock poisoned");
-        if let Some(entry) = state.entries.iter_mut().find(|e| e.id == cap && !e.consumed) {
+        if let Some(entry) = state
+            .entries
+            .iter_mut()
+            .find(|e| e.id == cap && !e.consumed)
+        {
             if entry.name == n {
                 entry.consumed = true;
                 return true;
@@ -2517,4 +3068,3 @@ pub extern "C" fn mimi_cap_consume(cap: i64, name: *const std::ffi::c_char) -> b
         false
     })
 }
-

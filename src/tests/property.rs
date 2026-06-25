@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 use crate::ast::Type;
-use crate::core::{self, fmt_type, is_int, is_numeric, is_bool, is_string};
+use crate::core::{self, fmt_type, is_bool, is_int, is_numeric, is_string};
 use crate::tests::*;
 use proptest::prelude::*;
 
@@ -25,16 +25,18 @@ fn arb_type() -> impl Strategy<Value = Type> {
         Just(Type::Cap("write".into())),
     ];
     leaf.prop_recursive(
-        3,    // depth
-        16,   // max nodes
-        8,    // items per collection
+        3,  // depth
+        16, // max nodes
+        8,  // items per collection
         |inner| {
             prop_oneof![
                 (inner.clone(),).prop_map(|(i,)| Type::Ref(None, Box::new(i))),
                 (inner.clone(),).prop_map(|(i,)| Type::RefMut(None, Box::new(i))),
                 (inner.clone(),).prop_map(|(i,)| Type::Option(Box::new(i))),
-                (inner.clone(), inner.clone()).prop_map(|(ok, err)| Type::Result(Box::new(ok), Box::new(err))),
-                (inner.clone(), inner.clone()).prop_map(|(l, r)| Type::ExternFunc(vec![l], Box::new(r))),
+                (inner.clone(), inner.clone())
+                    .prop_map(|(ok, err)| Type::Result(Box::new(ok), Box::new(err))),
+                (inner.clone(), inner.clone())
+                    .prop_map(|(l, r)| Type::ExternFunc(vec![l], Box::new(r))),
                 (inner.clone(),).prop_map(|(i,)| Type::Shared(Box::new(i))),
                 (inner.clone(),).prop_map(|(i,)| Type::LocalShared(Box::new(i))),
                 (inner.clone(),).prop_map(|(i,)| Type::Weak(Box::new(i))),
@@ -119,9 +121,15 @@ proptest! {
 /// Strategy for generating type-checkable expressions.
 /// These are *syntactically* valid snippets that exercise the type checker.
 fn arb_type_check_expr() -> impl Strategy<Value = String> {
-    fn intv() -> impl Strategy<Value = i64> { -100i64..100i64 }
-    fn boolv() -> impl Strategy<Value = bool> { any::<bool>() }
-    fn strv() -> impl Strategy<Value = String> { "[a-z]{0,10}".prop_map(|s: String| s) }
+    fn intv() -> impl Strategy<Value = i64> {
+        -100i64..100i64
+    }
+    fn boolv() -> impl Strategy<Value = bool> {
+        any::<bool>()
+    }
+    fn strv() -> impl Strategy<Value = String> {
+        "[a-z]{0,10}".prop_map(|s: String| s)
+    }
 
     prop_oneof![
         // Literals
@@ -152,7 +160,8 @@ fn arb_type_check_expr() -> impl Strategy<Value = String> {
             format!("[{}]", items.join(", "))
         }),
         // Block expressions (if-else)
-        (boolv(), intv(), intv()).prop_map(|(c, a, b)| format!("if {} {{ {} }} else {{ {} }}", c, a, b)),
+        (boolv(), intv(), intv())
+            .prop_map(|(c, a, b)| format!("if {} {{ {} }} else {{ {} }}", c, a, b)),
         // Function call with literal
         intv().prop_map(|n| format!("abs({})", n)),
     ]
@@ -177,9 +186,15 @@ proptest! {
 /// Strategy for generating programs that can be compiled and run.
 /// These produce syntactically valid Mimi programs with a main function.
 fn arb_runnable_program() -> impl Strategy<Value = String> {
-    fn intv() -> impl Strategy<Value = i64> { -50i64..50i64 }
-    fn boolv() -> impl Strategy<Value = bool> { any::<bool>() }
-    fn ident() -> impl Strategy<Value = String> { "[a-z][a-z0-9_]{0,6}".prop_map(|s: String| s) }
+    fn intv() -> impl Strategy<Value = i64> {
+        -50i64..50i64
+    }
+    fn boolv() -> impl Strategy<Value = bool> {
+        any::<bool>()
+    }
+    fn ident() -> impl Strategy<Value = String> {
+        "[a-z][a-z0-9_]{0,6}".prop_map(|s: String| s)
+    }
 
     // A local expression: literal, variable, or simple op
     let local_expr = prop_oneof![
@@ -194,7 +209,8 @@ fn arb_runnable_program() -> impl Strategy<Value = String> {
         // let x = <expr>;
         (ident(), local_expr.clone()).prop_map(|(name, expr)| format!("let {} = {};", name, expr)),
         // let mut x = <expr>;
-        (ident(), local_expr.clone()).prop_map(|(name, expr)| format!("let mut {} = {};", name, expr)),
+        (ident(), local_expr.clone())
+            .prop_map(|(name, expr)| format!("let mut {} = {};", name, expr)),
         // x = <expr>;  (only assign to x, which is declared as mutable)
         (local_expr.clone()).prop_map(|expr| format!("x = {};", expr)),
     ];
@@ -207,7 +223,10 @@ fn arb_runnable_program() -> impl Strategy<Value = String> {
             s.push_str("\n    x");
             s
         };
-        format!("func main() -> i64 {{\n    let x = 0;\n    let mut y = 0;\n    {}\n}}", body)
+        format!(
+            "func main() -> i64 {{\n    let x = 0;\n    let mut y = 0;\n    {}\n}}",
+            body
+        )
     })
 }
 
@@ -578,7 +597,9 @@ func main() -> i64 {{
 
 /// Strategy for generating complex Mimi programs with types, match, and generics.
 fn arb_complex_program() -> impl Strategy<Value = String> {
-    fn small_int() -> impl Strategy<Value = i64> { -10i64..10i64 }
+    fn small_int() -> impl Strategy<Value = i64> {
+        -10i64..10i64
+    }
 
     // Type name
     fn type_name() -> impl Strategy<Value = String> {
@@ -627,14 +648,12 @@ fn arb_complex_program() -> impl Strategy<Value = String> {
             (arb_expr(d), arb_expr(d)).prop_map(|(a, b)| format!("({} > {})", a, b)),
             arb_expr(d).prop_map(|e| format!("-{}", e)),
             // Match expression on an integer
-            (arb_expr(d),).prop_map(|(e,)| {
-                format!("match {} {{ 0 => 10, 1 => 20, _ => 0 }}", e)
-            }),
+            (arb_expr(d),)
+                .prop_map(|(e,)| { format!("match {} {{ 0 => 10, 1 => 20, _ => 0 }}", e) }),
             // Closure
-            (arb_expr(d),).prop_map(|(e,)| {
-                format!("fn(x: i32) -> i32 {{ x + {} }}", e)
-            }),
-        ].boxed()
+            (arb_expr(d),).prop_map(|(e,)| { format!("fn(x: i32) -> i32 {{ x + {} }}", e) }),
+        ]
+        .boxed()
     }
 
     // Statement
@@ -752,7 +771,10 @@ fn arb_differential_program() -> impl Strategy<Value = String> {
     }
 
     int_expr().prop_map(|expr| {
-        format!("func main() -> i32 {{\n    let r = {};\n    println(r);\n    r\n}}", expr)
+        format!(
+            "func main() -> i32 {{\n    let r = {};\n    println(r);\n    r\n}}",
+            expr
+        )
     })
 }
 

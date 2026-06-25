@@ -8,9 +8,7 @@ pub(crate) fn search(query: &str) -> Result<(), String> {
     }
 
     let mut found = 0;
-    for entry in std::fs::read_dir(&reg)
-        .map_err(|e| format!("failed to read registry: {}", e))?
-    {
+    for entry in std::fs::read_dir(&reg).map_err(|e| format!("failed to read registry: {}", e))? {
         let entry = entry.map_err(|e| format!("read entry: {}", e))?;
         if !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
             continue;

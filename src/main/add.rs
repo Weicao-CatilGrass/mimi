@@ -1,6 +1,12 @@
 use mimi::manifest;
 
-pub(crate) fn add(name: &str, version: Option<&str>, path: Option<&str>, git: Option<&str>, tag: Option<&str>) -> Result<(), String> {
+pub(crate) fn add(
+    name: &str,
+    version: Option<&str>,
+    path: Option<&str>,
+    git: Option<&str>,
+    tag: Option<&str>,
+) -> Result<(), String> {
     let cwd = std::env::current_dir().map_err(|e| format!("cannot get cwd: {}", e))?;
     let (dir, mut manifest) = match manifest::Manifest::find(&cwd)? {
         Some((d, m)) => (d, m),

@@ -31,7 +31,10 @@ impl Parser {
         let mut derives = Vec::new();
         let mut attributes = Vec::new();
         let mut no_panic_block = false;
-        while self.at(&TokenKind::Hash) && self.pos + 1 < self.tokens.len() && self.tokens[self.pos + 1].kind == TokenKind::LBracket {
+        while self.at(&TokenKind::Hash)
+            && self.pos + 1 < self.tokens.len()
+            && self.tokens[self.pos + 1].kind == TokenKind::LBracket
+        {
             self.advance(); // skip #
             self.advance(); // skip [
             if self.at(&TokenKind::Ident("derive".to_string())) {
@@ -114,13 +117,14 @@ impl Parser {
             TokenKind::Extern => {
                 // Check if this is `extern "C" func` (export) or `extern "C" { ... }` (import)
                 // Peek at the token AFTER `extern` to see if it's a string literal
-                let has_abi_string = self.tokens.get(self.pos + 1)
+                let has_abi_string = self
+                    .tokens
+                    .get(self.pos + 1)
                     .map(|t| matches!(t.kind, TokenKind::String(_)))
                     .unwrap_or(false);
                 if has_abi_string {
                     // Peek past the string to see if next is `func`
-                    let after_abi = self.tokens.get(self.pos + 2)
-                        .map(|t| &t.kind);
+                    let after_abi = self.tokens.get(self.pos + 2).map(|t| &t.kind);
                     if matches!(after_abi, Some(TokenKind::Func)) {
                         // extern "C" func ... { body } — Mimi → C export
                         self.advance(); // consume `extern`
@@ -138,7 +142,9 @@ impl Parser {
                         return Ok(Item::Func(f));
                     }
                 }
-                Ok(Item::ExternBlock(self.parse_extern_block_with_no_panic(no_panic_block)?))
+                Ok(Item::ExternBlock(
+                    self.parse_extern_block_with_no_panic(no_panic_block)?,
+                ))
             }
             _ => {
                 let tok = self.peek();
@@ -253,7 +259,8 @@ impl Parser {
                 let tok = self.peek();
                 return Err(ParseError::new(
                     "expected a named type after `for`",
-                    tok.line, tok.col,
+                    tok.line,
+                    tok.col,
                 ));
             }
         };
@@ -279,7 +286,10 @@ impl Parser {
         })
     }
 
-    fn parse_extern_block_with_no_panic(&mut self, no_panic: bool) -> Result<ExternBlock, ParseError> {
+    fn parse_extern_block_with_no_panic(
+        &mut self,
+        no_panic: bool,
+    ) -> Result<ExternBlock, ParseError> {
         self.expect(TokenKind::Extern, "`extern`")?;
         // Parse optional ABI string: extern "C" { ... }
         let abi = if matches!(self.peek_kind(), TokenKind::String(_)) {
@@ -382,7 +392,12 @@ impl Parser {
             });
         }
         self.expect(TokenKind::RBrace, "`}`")?;
-        Ok(ExternBlock { abi, funcs, no_panic, unsafe_: false })
+        Ok(ExternBlock {
+            abi,
+            funcs,
+            no_panic,
+            unsafe_: false,
+        })
     }
 
     fn parse_actor_def(&mut self) -> Result<ActorDef, ParseError> {
@@ -419,7 +434,12 @@ impl Parser {
                         None
                     };
                     self.match_semi();
-                    fields.push(ActorField { name: fname, ty: fty, mut_, init });
+                    fields.push(ActorField {
+                        name: fname,
+                        ty: fty,
+                        mut_,
+                        init,
+                    });
                 } else {
                     // Not a field - error
                     let tok = self.peek();
@@ -443,7 +463,12 @@ impl Parser {
         }
 
         self.expect(TokenKind::RBrace, "`}`")?;
-        Ok(ActorDef { name, pub_: false, fields, methods })
+        Ok(ActorDef {
+            name,
+            pub_: false,
+            fields,
+            methods,
+        })
     }
 
     fn parse_module(&mut self) -> Result<ModuleDef, ParseError> {
@@ -591,7 +616,12 @@ impl Parser {
             } else {
                 None
             };
-            params.push(Param { name, ty, mut_, default_value });
+            params.push(Param {
+                name,
+                ty,
+                mut_,
+                default_value,
+            });
             if !self.at(&TokenKind::Comma) {
                 break;
             }

@@ -20,15 +20,23 @@ impl LspServer {
                         .lines()
                         .position(|l| l.contains(&format!("func {}", f.name)))
                         .unwrap_or(0);
-                    lenses.push(code_lens_value(def_line, count_text_references(text, &f.name)));
+                    lenses.push(code_lens_value(
+                        def_line,
+                        count_text_references(text, &f.name),
+                    ));
 
                     // Add verification status lens if function has contracts
-                    let has_contracts = f.body.iter().any(|s| matches!(s,
-                        Stmt::Requires(_, _) | Stmt::Ensures(_, _) | Stmt::Invariant(_, _)
-                    ));
+                    let has_contracts = f.body.iter().any(|s| {
+                        matches!(
+                            s,
+                            Stmt::Requires(_, _) | Stmt::Ensures(_, _) | Stmt::Invariant(_, _)
+                        )
+                    });
                     if has_contracts {
                         let cache_key = format!("{}:{}", uri, f.name);
-                        let verify_title = if let Some((_, status, msg)) = self.verification_cache.get(&cache_key) {
+                        let verify_title = if let Some((_, status, msg)) =
+                            self.verification_cache.get(&cache_key)
+                        {
                             match status {
                                 VerifStatus::Verified => format!("✓ {}", msg),
                                 VerifStatus::Failed => format!("✗ {}", msg),
@@ -54,14 +62,20 @@ impl LspServer {
                         .lines()
                         .position(|l| l.contains(&format!("type {}", t.name)))
                         .unwrap_or(0);
-                    lenses.push(code_lens_value(def_line, count_text_references(text, &t.name)));
+                    lenses.push(code_lens_value(
+                        def_line,
+                        count_text_references(text, &t.name),
+                    ));
                 }
                 Item::Trait(t) => {
                     let def_line = text
                         .lines()
                         .position(|l| l.contains(&format!("trait {}", t.name)))
                         .unwrap_or(0);
-                    lenses.push(code_lens_value(def_line, count_text_references(text, &t.name)));
+                    lenses.push(code_lens_value(
+                        def_line,
+                        count_text_references(text, &t.name),
+                    ));
                 }
                 Item::Impl(i) => {
                     let def_line = text.lines().position(|l| l.contains("impl")).unwrap_or(0);
@@ -81,7 +95,10 @@ impl LspServer {
                         .lines()
                         .position(|l| l.contains(&format!("actor {}", a.name)))
                         .unwrap_or(0);
-                    lenses.push(code_lens_value(def_line, count_text_references(text, &a.name)));
+                    lenses.push(code_lens_value(
+                        def_line,
+                        count_text_references(text, &a.name),
+                    ));
                 }
                 _ => {}
             }

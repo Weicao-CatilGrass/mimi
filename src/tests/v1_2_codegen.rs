@@ -4,18 +4,28 @@ fn compile_to_ir(src: &str) -> String {
     let file = parse(src);
     let context = inkwell::context::Context::create();
     let mut codegen = crate::codegen::CodeGenerator::new(&context, "test");
-    codegen.compile_file(&file).expect("src/tests/v1_2_codegen.rs:7 unwrap failed");
+    codegen
+        .compile_file(&file)
+        .expect("src/tests/v1_2_codegen.rs:7 unwrap failed");
     codegen.emit_ir()
 }
 
 fn assert_compiles(src: &str) {
     let ir = compile_to_ir(src);
-    assert!(ir.contains("define"), "IR should contain function definitions");
+    assert!(
+        ir.contains("define"),
+        "IR should contain function definitions"
+    );
 }
 
 fn assert_ir_contains(src: &str, pattern: &str) {
     let ir = compile_to_ir(src);
-    assert!(ir.contains(pattern), "IR should contain '{}': {}", pattern, &ir[..300.min(ir.len())]);
+    assert!(
+        ir.contains(pattern),
+        "IR should contain '{}': {}",
+        pattern,
+        &ir[..300.min(ir.len())]
+    );
 }
 
 #[test]
@@ -150,18 +160,22 @@ fn codegen_nested_expr() {
 
 #[test]
 fn codegen_function_call() {
-    assert_compiles(r#"
+    assert_compiles(
+        r#"
 func inc(x: i32) -> i32 { x + 1 }
 func main() -> i32 { inc(41) }
-"#);
+"#,
+    );
 }
 
 #[test]
 fn codegen_chained_calls() {
-    assert_compiles(r#"
+    assert_compiles(
+        r#"
 func inc(x: i32) -> i32 { x + 1 }
 func main() -> i32 { inc(inc(40)) }
-"#);
+"#,
+    );
 }
 
 #[test]
@@ -171,11 +185,13 @@ fn codegen_with_return() {
 
 #[test]
 fn codegen_multiple_functions() {
-    assert_compiles(r#"
+    assert_compiles(
+        r#"
 func a() -> i32 { 1 }
 func b() -> i32 { 2 }
 func main() -> i32 { a() + b() }
-"#);
+"#,
+    );
 }
 
 #[test]

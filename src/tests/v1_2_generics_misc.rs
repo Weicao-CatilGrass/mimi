@@ -27,9 +27,12 @@ func main() -> i32 {
 }
 "#;
     let result = check_source(src);
-    assert!(result.is_ok(), "where clause satisfied should pass: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "where clause satisfied should pass: {:?}",
+        result.err()
+    );
 }
-
 
 #[test]
 fn generic_monomorphize_type_inference() {
@@ -45,7 +48,6 @@ func main() -> i32 {
     assert_eq!(run_source(src), interp::Value::Int(42));
 }
 
-
 #[test]
 fn generic_monomorphize_type_check_pass() {
     let src = r#"
@@ -60,7 +62,6 @@ func main() -> i32 {
     assert!(check_source(src).is_ok());
 }
 
-
 #[test]
 fn generic_turbofish_type_check_pass() {
     let src = r#"
@@ -74,7 +75,6 @@ func main() -> i32 {
 "#;
     assert!(check_source(src).is_ok());
 }
-
 
 #[test]
 fn generic_multi_param_type_inference() {
@@ -91,7 +91,6 @@ func main() -> i32 {
     assert_eq!(run_source(src), interp::Value::Int(42));
 }
 
-
 #[test]
 fn generic_multi_param_type_check_pass() {
     let src = r#"
@@ -107,7 +106,6 @@ func main() -> i32 {
     assert!(check_source(src).is_ok());
 }
 
-
 #[test]
 fn generic_type_mismatch_inferred() {
     let src = r#"
@@ -122,7 +120,6 @@ func main() -> i32 {
     assert!(check_source(src).is_ok());
 }
 
-
 #[test]
 fn generic_turbofish_wrong_type_arg_count() {
     let src = r#"
@@ -135,9 +132,10 @@ func main() -> i32 {
 }
 "#;
     let err = check_source(src).unwrap_err();
-    assert!(err.iter().any(|d| d.message.contains("expects 1 type arguments")));
+    assert!(err
+        .iter()
+        .any(|d| d.message.contains("expects 1 type arguments")));
 }
-
 
 #[test]
 fn generic_function_wrong_arg_type() {
@@ -151,9 +149,10 @@ func main() -> i32 {
 }
 "#;
     let err = check_source(src).unwrap_err();
-    assert!(err.iter().any(|d| d.message.contains("expected i32") && d.message.contains("found string")));
+    assert!(err
+        .iter()
+        .any(|d| d.message.contains("expected i32") && d.message.contains("found string")));
 }
-
 
 #[test]
 fn generic_function_body_type_check() {
@@ -169,7 +168,6 @@ func main() -> i32 {
     assert!(check_source(src).is_ok());
     assert_eq!(run_source(src), interp::Value::Int(42));
 }
-
 
 #[test]
 fn generic_function_return_type_inferred() {
@@ -187,7 +185,6 @@ func main() -> i32 {
     assert_eq!(run_source(src), interp::Value::Int(43));
 }
 
-
 #[test]
 fn generic_turbofish_return_type_substituted() {
     let src = r#"
@@ -204,7 +201,6 @@ func main() -> i32 {
     assert_eq!(run_source(src), interp::Value::Int(43));
 }
 
-
 #[test]
 fn generic_nested_type_inference() {
     let src = r#"
@@ -220,7 +216,6 @@ func main() -> i32 {
     assert_eq!(run_source(src), interp::Value::Int(42));
 }
 
-
 #[test]
 fn generic_undefined_function() {
     let src = r#"
@@ -231,7 +226,6 @@ func main() -> i32 {
     let err = check_source(src).unwrap_err();
     assert!(err.iter().any(|d| d.message.contains("undefined function")));
 }
-
 
 #[test]
 fn generic_func_arg_count_mismatch() {
@@ -245,9 +239,10 @@ func main() -> i32 {
 }
 "#;
     let err = check_source(src).unwrap_err();
-    assert!(err.iter().any(|d| d.message.contains("expects 1") && d.message.contains("got 2")));
+    assert!(err
+        .iter()
+        .any(|d| d.message.contains("expects 1") && d.message.contains("got 2")));
 }
-
 
 #[test]
 fn generic_function_with_builtin_call() {
@@ -264,7 +259,6 @@ func main() -> i32 {
     assert!(check_source(src).is_ok());
     assert_eq!(run_source(src), interp::Value::Int(42));
 }
-
 
 #[test]
 fn generic_function_in_closure() {
@@ -286,7 +280,6 @@ func main() -> i32 {
     assert_eq!(run_source(src), interp::Value::Int(10));
 }
 
-
 #[test]
 fn generic_type_param_shadow_warning() {
     let src = r#"
@@ -301,7 +294,6 @@ func main() -> i32 {
 "#;
     assert!(check_source(src).is_ok());
 }
-
 
 #[test]
 fn generic_function_multiple_calls() {
@@ -448,5 +440,3 @@ func main() -> i32 {
 }
 
 // ===== T301: Trait 方法静态分派测试 =====
-
-

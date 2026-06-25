@@ -6,9 +6,11 @@ func main() -> string {
     "hello" + " " + "world"
 }
 "#;
-    assert_eq!(run_source(src), interp::Value::String("hello world".to_string()));
+    assert_eq!(
+        run_source(src),
+        interp::Value::String("hello world".to_string())
+    );
 }
-
 
 #[test]
 fn float_arithmetic_chain() {
@@ -20,7 +22,6 @@ func main() -> f64 {
     assert_eq!(run_source(src), interp::Value::Float(8.0));
 }
 
-
 #[test]
 fn boolean_logic() {
     let src = r#"
@@ -30,7 +31,6 @@ func main() -> bool {
 "#;
     assert_eq!(run_source(src), interp::Value::Bool(true));
 }
-
 
 #[test]
 fn comparison_chain() {
@@ -42,7 +42,6 @@ func main() -> bool {
     assert_eq!(run_source(src), interp::Value::Bool(true));
 }
 
-
 #[test]
 fn bitwise_operations() {
     let src = r#"
@@ -52,7 +51,6 @@ func main() -> i32 {
 "#;
     assert_eq!(run_source(src), interp::Value::Int(3));
 }
-
 
 #[test]
 fn shift_operations() {
@@ -64,7 +62,6 @@ func main() -> i32 {
     assert_eq!(run_source(src), interp::Value::Int(10));
 }
 
-
 #[test]
 fn power_operator() {
     let src = r#"
@@ -74,7 +71,6 @@ func main() -> i32 {
 "#;
     assert_eq!(run_source(src), interp::Value::Int(1024));
 }
-
 
 #[test]
 fn negate_expression() {
@@ -86,7 +82,6 @@ func main() -> i32 {
     assert_eq!(run_source(src), interp::Value::Int(-8));
 }
 
-
 #[test]
 fn not_expression() {
     let src = r#"
@@ -96,7 +91,6 @@ func main() -> bool {
 "#;
     assert_eq!(run_source(src), interp::Value::Bool(true));
 }
-
 
 #[test]
 fn short_circuit_and_early() {
@@ -113,7 +107,6 @@ func side_effect() -> bool {
     assert_eq!(run_source(src), interp::Value::Bool(false));
 }
 
-
 #[test]
 fn short_circuit_or_early() {
     let src = r#"
@@ -128,5 +121,3 @@ func side_effect() -> bool {
 "#;
     assert_eq!(run_source(src), interp::Value::Bool(true));
 }
-
-

@@ -19,7 +19,10 @@ impl LspServer {
         let mut func_params: HashMap<String, Vec<String>> = HashMap::new();
         for item in &file.items {
             if let Item::Func(f) = item {
-                func_params.insert(f.name.clone(), f.params.iter().map(|p| p.name.clone()).collect());
+                func_params.insert(
+                    f.name.clone(),
+                    f.params.iter().map(|p| p.name.clone()).collect(),
+                );
             }
         }
 
@@ -52,7 +55,9 @@ impl LspServer {
                                 crate::ast::Lit::Int(_) => "i64",
                                 crate::ast::Lit::Float(_) => "f64",
                                 crate::ast::Lit::Bool(_) => "bool",
-                                crate::ast::Lit::String(_) | crate::ast::Lit::FString(_) => "string",
+                                crate::ast::Lit::String(_) | crate::ast::Lit::FString(_) => {
+                                    "string"
+                                }
                                 crate::ast::Lit::Unit => "()",
                             },
                             _ => "",
@@ -65,7 +70,9 @@ impl LspServer {
                                 _ => "",
                             };
                             if let Some(let_line) = lines.iter().position(|l| {
-                                l.trim().starts_with("let") && !pat_name.is_empty() && l.contains(pat_name)
+                                l.trim().starts_with("let")
+                                    && !pat_name.is_empty()
+                                    && l.contains(pat_name)
                             }) {
                                 let line_text = lines[let_line];
                                 if let Some(eq_pos) = line_text.find('=') {
@@ -87,7 +94,11 @@ impl LspServer {
                     // Parameter name hints for function calls
                     self.collect_param_hints(expr, text, hints, func_params);
                 }
-                Stmt::If { cond: _, then_, else_ } => {
+                Stmt::If {
+                    cond: _,
+                    then_,
+                    else_,
+                } => {
                     self.collect_hints_from_block(then_, text, hints, func_params);
                     if let Some(els) = else_ {
                         self.collect_hints_from_block(els, text, hints, func_params);
@@ -96,7 +107,11 @@ impl LspServer {
                 Stmt::While { cond: _, body } => {
                     self.collect_hints_from_block(body, text, hints, func_params);
                 }
-                Stmt::For { var: _, iterable: _, body } => {
+                Stmt::For {
+                    var: _,
+                    iterable: _,
+                    body,
+                } => {
                     self.collect_hints_from_block(body, text, hints, func_params);
                 }
                 _ => {}
@@ -125,7 +140,9 @@ impl LspServer {
                     None => return,
                 };
                 // Find the call line
-                let call_line = text.lines().position(|l| l.contains(func_name) && l.contains('('));
+                let call_line = text
+                    .lines()
+                    .position(|l| l.contains(func_name) && l.contains('('));
                 let cl = match call_line {
                     Some(l) => l,
                     None => return,

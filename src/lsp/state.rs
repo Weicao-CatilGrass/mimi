@@ -1,11 +1,11 @@
 use serde_json::Value;
 
-use crate::{core, lexer, parser};
 use crate::ast::Stmt;
 use crate::lsp::diagnostic;
-use crate::lsp::LspServer;
 use crate::lsp::util::{find_enclosing_func_in_items, hash_func_body};
+use crate::lsp::LspServer;
 use crate::verifier::{VerifStatus, Verifier};
+use crate::{core, lexer, parser};
 
 impl LspServer {
     pub(crate) fn cache_put(&mut self, uri: String, text: String) {
@@ -118,10 +118,15 @@ impl LspServer {
         };
 
         // Only verify if function has contracts
-        let has_contracts = func
-            .body
-            .iter()
-            .any(|s| matches!(s, Stmt::Requires(_, _) | Stmt::Ensures(_, _) | Stmt::Invariant(_, _) | Stmt::MmsBlock { .. }));
+        let has_contracts = func.body.iter().any(|s| {
+            matches!(
+                s,
+                Stmt::Requires(_, _)
+                    | Stmt::Ensures(_, _)
+                    | Stmt::Invariant(_, _)
+                    | Stmt::MmsBlock { .. }
+            )
+        });
         if !has_contracts {
             return diagnostics;
         }
@@ -153,14 +158,15 @@ impl LspServer {
         // Dynamic timeout based on function complexity
         let func_body_lines = func.pos.1.saturating_sub(func.pos.0).max(1);
         let param_count = func.params.len();
-        let dynamic_timeout = (func_body_lines * 50 + param_count * 100)
-            .clamp(200, 5000) as u64;
+        let dynamic_timeout = (func_body_lines * 50 + param_count * 100).clamp(200, 5000) as u64;
 
         // Lazily initialize the Z3 verifier with dynamic timeout
-        let verifier = self.verifier.get_or_insert(match Verifier::with_timeout(dynamic_timeout) {
-            Ok(v) => v,
-            Err(_) => return diagnostics, // Z3 not available
-        });
+        let verifier = self
+            .verifier
+            .get_or_insert(match Verifier::with_timeout(dynamic_timeout) {
+                Ok(v) => v,
+                Err(_) => return diagnostics, // Z3 not available
+            });
         // Update timeout for this invocation (reuses existing verifier)
         verifier.set_timeout(dynamic_timeout);
 

@@ -5,8 +5,8 @@ use mimispec::latex::render_file_latex;
 use serde::Serialize;
 
 use mimi::diagnostic::format::{colors_enabled, format_diagnostic, strip_ansi};
-use mimi::span;
 use mimi::diagnostic::Diagnostic;
+use mimi::span;
 
 #[derive(Serialize)]
 struct MmsJsonError {
@@ -33,7 +33,13 @@ struct MmsJsonOutput {
     results: Vec<MmsJsonResult>,
 }
 
-pub(crate) fn mms(files: &[PathBuf], show_ast: bool, json: bool, render: bool, latex: bool) -> Result<(), String> {
+pub(crate) fn mms(
+    files: &[PathBuf],
+    show_ast: bool,
+    json: bool,
+    render: bool,
+    latex: bool,
+) -> Result<(), String> {
     let paths: Vec<PathBuf> = if files.is_empty() {
         vec![PathBuf::from("-")]
     } else {
@@ -48,10 +54,13 @@ pub(crate) fn mms(files: &[PathBuf], show_ast: bool, json: bool, render: bool, l
         let source = if path == &PathBuf::from("-") {
             use std::io::Read;
             let mut input = String::new();
-            std::io::stdin().read_to_string(&mut input).map_err(|e| format!("stdin error: {}", e))?;
+            std::io::stdin()
+                .read_to_string(&mut input)
+                .map_err(|e| format!("stdin error: {}", e))?;
             input
         } else {
-            fs::read_to_string(path).map_err(|e| format!("failed to read {}: {}", path.display(), e))?
+            fs::read_to_string(path)
+                .map_err(|e| format!("failed to read {}: {}", path.display(), e))?
         };
 
         let result = mimispec::parse(&source);
@@ -78,11 +87,15 @@ pub(crate) fn mms(files: &[PathBuf], show_ast: bool, json: bool, render: bool, l
             None
         };
 
-        let errors: Vec<MmsJsonError> = result.errors.iter().map(|e| MmsJsonError {
-            line: e.line,
-            col: e.col,
-            message: e.to_string(),
-        }).collect();
+        let errors: Vec<MmsJsonError> = result
+            .errors
+            .iter()
+            .map(|e| MmsJsonError {
+                line: e.line,
+                col: e.col,
+                message: e.to_string(),
+            })
+            .collect();
 
         let json_result = MmsJsonResult {
             path: path.display().to_string(),
@@ -120,7 +133,11 @@ pub(crate) fn mms(files: &[PathBuf], show_ast: bool, json: bool, render: bool, l
                     }
                 }
             } else {
-                eprintln!("✗ Parsing failed for {} with {} error(s)", path.display(), result.errors.len());
+                eprintln!(
+                    "✗ Parsing failed for {} with {} error(s)",
+                    path.display(),
+                    result.errors.len()
+                );
                 let use_color = colors_enabled();
                 let src_ref = Some(source.as_str());
                 let filename = &path.display().to_string();
@@ -145,8 +162,13 @@ pub(crate) fn mms(files: &[PathBuf], show_ast: bool, json: bool, render: bool, l
     }
 
     if json {
-        let output = MmsJsonOutput { results: json_results };
-        println!("{}", serde_json::to_string_pretty(&output).unwrap_or_default());
+        let output = MmsJsonOutput {
+            results: json_results,
+        };
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&output).unwrap_or_default()
+        );
     }
 
     if any_failure {

@@ -8,7 +8,9 @@ func main() {
 }
 "#;
     let errs = check_source(src).unwrap_err();
-    assert!(errs.iter().any(|d| d.message.contains("undefined variable")));
+    assert!(errs
+        .iter()
+        .any(|d| d.message.contains("undefined variable")));
 }
 
 #[test]
@@ -103,7 +105,9 @@ func main() -> i32 {
 }
 "#;
     let errs = check_source(src).unwrap_err();
-    assert!(errs.iter().any(|d| d.message.contains("argument 1") || d.message.contains("UserId")));
+    assert!(errs
+        .iter()
+        .any(|d| d.message.contains("argument 1") || d.message.contains("UserId")));
 }
 
 #[test]
@@ -214,8 +218,15 @@ func main() -> i32 {
 }
 "#;
     let result = run_source_result(src);
-    assert!(result.is_ok(), "spawn of non-actor call should complete via await: {:?}", result.err());
-    assert_eq!(result.expect("src/tests/basic_other.rs:217 unwrap failed"), interp::Value::Int(42));
+    assert!(
+        result.is_ok(),
+        "spawn of non-actor call should complete via await: {:?}",
+        result.err()
+    );
+    assert_eq!(
+        result.expect("src/tests/basic_other.rs:217 unwrap failed"),
+        interp::Value::Int(42)
+    );
 }
 
 #[test]
@@ -267,10 +278,14 @@ func main() -> i32 {
 }
 "#;
     let result = run_source_result(src);
-    assert!(result.is_ok(), "? should propagate error as value, got: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "? should propagate error as value, got: {:?}",
+        result
+    );
     let val = result.expect("src/tests/basic_other.rs:270 unwrap failed");
     match &val {
-        interp::Value::Variant(name, _) if name == "Err" => {},
+        interp::Value::Variant(name, _) if name == "Err" => {}
         other => panic!("Expected Err variant, got: {}", other),
     }
 }
@@ -300,10 +315,14 @@ func main() -> i32 {
 }
 "#;
     let result = run_source_result(src);
-    assert!(result.is_ok(), "? should propagate error as value, got: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "? should propagate error as value, got: {:?}",
+        result
+    );
     let val = result.expect("src/tests/basic_other.rs:303 unwrap failed");
     match &val {
-        interp::Value::Variant(name, _) if name == "Err" => {},
+        interp::Value::Variant(name, _) if name == "Err" => {}
         other => panic!("Expected Err variant, got: {}", other),
     }
 }
@@ -591,11 +610,15 @@ func main() -> i32 {
     ...
 }
 "#;
-    let tokens = lexer::Lexer::new(src).tokenize().expect("src/tests/basic_other.rs:593 unwrap failed");
+    let tokens = lexer::Lexer::new(src)
+        .tokenize()
+        .expect("src/tests/basic_other.rs:593 unwrap failed");
     let result = parser::Parser::new(tokens).parse_file();
     assert!(result.is_err());
     let err = result.unwrap_err();
-    assert!(err.message.contains("placeholder is not allowed in production mode"));
+    assert!(err
+        .message
+        .contains("placeholder is not allowed in production mode"));
 }
 
 // ===== Option/Result combinator tests =====
@@ -847,7 +870,8 @@ func main() -> i32 {
 
 #[test]
 fn interp_parasteps_on_failure_cleanup() {
-    let result = run_source_result(r#"
+    let result = run_source_result(
+        r#"
 type Res { Ok(i32) | Err(string) }
 func ok_inner() -> Res { Ok(42) }
 func main() -> i32 {
@@ -859,8 +883,13 @@ func main() -> i32 {
     };
     cleaned
 }
-"#);
-    assert!(result.is_ok(), "parasteps+on_failure with success: {:?}", result);
+"#,
+    );
+    assert!(
+        result.is_ok(),
+        "parasteps+on_failure with success: {:?}",
+        result
+    );
     assert_eq!(result.unwrap(), interp::Value::Int(0));
 }
 

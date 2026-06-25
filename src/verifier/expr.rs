@@ -2,8 +2,8 @@ use crate::ast::*;
 use crate::verifier::ctx::Z3VarMap;
 use crate::verifier::helpers::{block_tail_expr, extract_string_empty_cmp, is_string_empty_cmp};
 use std::str::FromStr;
-use z3::ast::{Bool as Z3Bool, Int as Z3Int, Real as Z3Real};
 use z3::ast::String as Z3String;
+use z3::ast::{Bool as Z3Bool, Int as Z3Int, Real as Z3Real};
 
 impl crate::verifier::Verifier {
     /// Encode an expression as a Z3 Int term.
@@ -47,8 +47,7 @@ impl crate::verifier::Verifier {
             }
             Expr::If { cond, then_, else_ } => {
                 let cond_z3 = self.expr_to_z3_bool(cond, vars)?;
-                let then_z3 = block_tail_expr(then_)
-                    .and_then(|e| self.expr_to_z3_int(&e, vars))?;
+                let then_z3 = block_tail_expr(then_).and_then(|e| self.expr_to_z3_int(&e, vars))?;
                 let else_z3 = else_
                     .as_ref()
                     .and_then(|b| block_tail_expr(b))
@@ -56,8 +55,7 @@ impl crate::verifier::Verifier {
                 Some(cond_z3.ite(&then_z3, &else_z3))
             }
             Expr::Block(stmts) => {
-                block_tail_expr(stmts)
-                    .and_then(|e| self.expr_to_z3_int(&e, vars))
+                block_tail_expr(stmts).and_then(|e| self.expr_to_z3_int(&e, vars))
             }
             Expr::Match(expr, arms) => {
                 let matched = self.expr_to_z3_int(expr, vars)?;
@@ -178,8 +176,8 @@ impl crate::verifier::Verifier {
             }
             Expr::If { cond, then_, else_ } => {
                 let cond_z3 = self.expr_to_z3_bool(cond, vars)?;
-                let then_z3 = block_tail_expr(then_)
-                    .and_then(|e| self.expr_to_z3_real(&e, vars))?;
+                let then_z3 =
+                    block_tail_expr(then_).and_then(|e| self.expr_to_z3_real(&e, vars))?;
                 let else_z3 = else_
                     .as_ref()
                     .and_then(|b| block_tail_expr(b))
@@ -187,8 +185,7 @@ impl crate::verifier::Verifier {
                 Some(cond_z3.ite(&then_z3, &else_z3))
             }
             Expr::Block(stmts) => {
-                block_tail_expr(stmts)
-                    .and_then(|e| self.expr_to_z3_real(&e, vars))
+                block_tail_expr(stmts).and_then(|e| self.expr_to_z3_real(&e, vars))
             }
             Expr::Match(expr, arms) => {
                 let matched = self.expr_to_z3_real(expr, vars)?;
@@ -224,13 +221,22 @@ impl crate::verifier::Verifier {
         match expr {
             Expr::Literal(Lit::Bool(b)) => Some(Z3Bool::from_bool(*b)),
             Expr::Ident(name) => {
-                vars.get_int(name).map(|v| v.ne(Z3Int::from_i64(0)))
+                if let Some(v) = vars.get_int(name) {
+                    Some(v.ne(Z3Int::from_i64(0)))
+                } else if let Some(v) = vars.get_real(name) {
+                    Some(v.ne(Z3Real::from_int(&Z3Int::from_i64(0))))
+                } else {
+                    None
+                }
             }
             Expr::Old(inner) => {
                 if let Expr::Ident(name) = inner.as_ref() {
                     let old_name = format!("old_{}", name);
                     if let Some(v) = vars.get_int(&old_name) {
                         return Some(v.ne(Z3Int::from_i64(0)));
+                    }
+                    if let Some(v) = vars.get_real(&old_name) {
+                        return Some(v.ne(Z3Real::from_int(&Z3Int::from_i64(0))));
                     }
                 }
                 None
@@ -360,8 +366,8 @@ impl crate::verifier::Verifier {
             }
             Expr::If { cond, then_, else_ } => {
                 let cond_z3 = self.expr_to_z3_bool(cond, vars)?;
-                let then_z3 = block_tail_expr(then_)
-                    .and_then(|e| self.expr_to_z3_bool(&e, vars))?;
+                let then_z3 =
+                    block_tail_expr(then_).and_then(|e| self.expr_to_z3_bool(&e, vars))?;
                 let else_z3 = else_
                     .as_ref()
                     .and_then(|b| block_tail_expr(b))
@@ -369,8 +375,7 @@ impl crate::verifier::Verifier {
                 Some(cond_z3.ite(&then_z3, &else_z3))
             }
             Expr::Block(stmts) => {
-                block_tail_expr(stmts)
-                    .and_then(|e| self.expr_to_z3_bool(&e, vars))
+                block_tail_expr(stmts).and_then(|e| self.expr_to_z3_bool(&e, vars))
             }
             Expr::Match(expr, arms) => {
                 let matched = self.expr_to_z3_int(expr, vars)?;
@@ -457,8 +462,11 @@ impl crate::verifier::Verifier {
                 block_tail_expr(stmts).is_some_and(|e| self.is_real_expr(&e, vars))
             }
             Expr::Match(expr, arms) => {
-                if self.is_real_expr(expr, vars) { true }
-                else { arms.iter().any(|a| self.is_real_expr(&a.body, vars)) }
+                if self.is_real_expr(expr, vars) {
+                    true
+                } else {
+                    arms.iter().any(|a| self.is_real_expr(&a.body, vars))
+                }
             }
             Expr::Call(callee, args) => {
                 if let Expr::Ident(name) = callee.as_ref() {
@@ -495,7 +503,12 @@ impl crate::verifier::Verifier {
     /// previous PRECISION-scaling approach.
     /// Encode a pattern match condition: returns a Z3 boolean that is true
     /// when the pattern matches the given encoded matched term.
-    fn pattern_matches_z3(&mut self, matched: &Z3Int, pat: &Pattern, _vars: &mut Z3VarMap) -> Option<Z3Bool> {
+    fn pattern_matches_z3(
+        &mut self,
+        matched: &Z3Int,
+        pat: &Pattern,
+        _vars: &mut Z3VarMap,
+    ) -> Option<Z3Bool> {
         match pat {
             Pattern::Wildcard => Some(Z3Bool::from_bool(true)),
             Pattern::Variable(_) => Some(Z3Bool::from_bool(true)),
@@ -516,6 +529,7 @@ impl crate::verifier::Verifier {
         arms: &[MatchArm],
         vars: &mut Z3VarMap,
     ) -> Option<Z3Int> {
+        let has_wildcard = arms.iter().any(|a| matches!(a.pat, Pattern::Wildcard));
         let mut result: Option<Z3Int> = None;
         for (i, arm) in arms.iter().rev().enumerate() {
             let arm_val = self.expr_to_z3_int(&arm.body, vars)?;
@@ -537,7 +551,14 @@ impl crate::verifier::Verifier {
             };
             result = Some(match result {
                 Some(prev) => cond.ite(&arm_val, &prev),
-                None => cond.ite(&arm_val, &Z3Int::from_i64(0)),
+                None if has_wildcard => cond.ite(&arm_val, &Z3Int::from_i64(0)),
+                None => {
+                    // E2: Non-exhaustive match with no wildcard — use an
+                    // unconstrained variable so the verifier doesn't silently
+                    // assume result == 0 when no arm matches.
+                    let fallback = vars.get_or_create_int("_match_fallback");
+                    cond.ite(&arm_val, &fallback)
+                }
             });
         }
         result
@@ -649,6 +670,11 @@ impl crate::verifier::Verifier {
                 } else {
                     None
                 }
+            }
+            // V4: Support field paths like p.name in string operations.
+            Expr::Field(obj, field) => {
+                let key = format!("{}_{}", self.field_var_name(obj), field);
+                vars.get_string_var(&key).cloned()
             }
             Expr::Call(callee, args) => {
                 if let Expr::Ident(name) = callee.as_ref() {

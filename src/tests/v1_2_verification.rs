@@ -17,22 +17,40 @@ func main() -> i32 {
 }
 "#;
     // Without verify_contracts, requires is ignored
-    let tokens = crate::lexer::Lexer::new(src).tokenize().expect("src/tests/v1_2_verification.rs:20 unwrap failed");
-    let file = crate::parser::Parser::new(tokens).parse_file().expect("src/tests/v1_2_verification.rs:21 unwrap failed");
+    let tokens = crate::lexer::Lexer::new(src)
+        .tokenize()
+        .expect("src/tests/v1_2_verification.rs:20 unwrap failed");
+    let file = crate::parser::Parser::new(tokens)
+        .parse_file()
+        .expect("src/tests/v1_2_verification.rs:21 unwrap failed");
     let mut interp = crate::interp::Interpreter::new(&file);
     interp.verify_contracts = false;
     let result = interp.run();
-    assert!(result.is_ok(), "without verify_contracts, requires should be ignored");
+    assert!(
+        result.is_ok(),
+        "without verify_contracts, requires should be ignored"
+    );
 
     // With verify_contracts, requires is enforced
-    let tokens = crate::lexer::Lexer::new(src).tokenize().expect("src/tests/v1_2_verification.rs:28 unwrap failed");
-    let file = crate::parser::Parser::new(tokens).parse_file().expect("src/tests/v1_2_verification.rs:29 unwrap failed");
+    let tokens = crate::lexer::Lexer::new(src)
+        .tokenize()
+        .expect("src/tests/v1_2_verification.rs:28 unwrap failed");
+    let file = crate::parser::Parser::new(tokens)
+        .parse_file()
+        .expect("src/tests/v1_2_verification.rs:29 unwrap failed");
     let mut interp = crate::interp::Interpreter::new(&file);
     interp.verify_contracts = true;
     let result = interp.run();
-    assert!(result.is_err(), "with verify_contracts, requires violation should error");
+    assert!(
+        result.is_err(),
+        "with verify_contracts, requires violation should error"
+    );
     let err = result.unwrap_err();
-    assert!(err.message().contains("requires condition failed"), "Expected requires error, got: {}", err.message());
+    assert!(
+        err.message().contains("requires condition failed"),
+        "Expected requires error, got: {}",
+        err.message()
+    );
 }
 
 #[test]
@@ -48,22 +66,40 @@ func main() -> i32 {
 }
 "#;
     // Without verify_contracts, ensures is ignored
-    let tokens = crate::lexer::Lexer::new(src).tokenize().expect("src/tests/v1_2_verification.rs:51 unwrap failed");
-    let file = crate::parser::Parser::new(tokens).parse_file().expect("src/tests/v1_2_verification.rs:52 unwrap failed");
+    let tokens = crate::lexer::Lexer::new(src)
+        .tokenize()
+        .expect("src/tests/v1_2_verification.rs:51 unwrap failed");
+    let file = crate::parser::Parser::new(tokens)
+        .parse_file()
+        .expect("src/tests/v1_2_verification.rs:52 unwrap failed");
     let mut interp = crate::interp::Interpreter::new(&file);
     interp.verify_contracts = false;
     let result = interp.run();
-    assert!(result.is_ok(), "without verify_contracts, ensures should be ignored");
+    assert!(
+        result.is_ok(),
+        "without verify_contracts, ensures should be ignored"
+    );
 
     // With verify_contracts, ensures is enforced
-    let tokens = crate::lexer::Lexer::new(src).tokenize().expect("src/tests/v1_2_verification.rs:59 unwrap failed");
-    let file = crate::parser::Parser::new(tokens).parse_file().expect("src/tests/v1_2_verification.rs:60 unwrap failed");
+    let tokens = crate::lexer::Lexer::new(src)
+        .tokenize()
+        .expect("src/tests/v1_2_verification.rs:59 unwrap failed");
+    let file = crate::parser::Parser::new(tokens)
+        .parse_file()
+        .expect("src/tests/v1_2_verification.rs:60 unwrap failed");
     let mut interp = crate::interp::Interpreter::new(&file);
     interp.verify_contracts = true;
     let result = interp.run();
-    assert!(result.is_err(), "with verify_contracts, ensures violation should error");
+    assert!(
+        result.is_err(),
+        "with verify_contracts, ensures violation should error"
+    );
     let err = result.unwrap_err();
-    assert!(err.message().contains("ensures condition failed"), "Expected ensures error, got: {}", err.message());
+    assert!(
+        err.message().contains("ensures condition failed"),
+        "Expected ensures error, got: {}",
+        err.message()
+    );
 }
 
 #[test]
@@ -80,13 +116,23 @@ func main() -> i32 {
 }
 "#;
     // With verify_contracts, valid contracts should pass
-    let tokens = crate::lexer::Lexer::new(src).tokenize().expect("src/tests/v1_2_verification.rs:83 unwrap failed");
-    let file = crate::parser::Parser::new(tokens).parse_file().expect("src/tests/v1_2_verification.rs:84 unwrap failed");
+    let tokens = crate::lexer::Lexer::new(src)
+        .tokenize()
+        .expect("src/tests/v1_2_verification.rs:83 unwrap failed");
+    let file = crate::parser::Parser::new(tokens)
+        .parse_file()
+        .expect("src/tests/v1_2_verification.rs:84 unwrap failed");
     let mut interp = crate::interp::Interpreter::new(&file);
     interp.verify_contracts = true;
     let result = interp.run();
-    assert!(result.is_ok(), "valid contracts should pass with verify_contracts");
-    assert_eq!(result.expect("src/tests/v1_2_verification.rs:89 unwrap failed"), crate::interp::Value::Int(3));
+    assert!(
+        result.is_ok(),
+        "valid contracts should pass with verify_contracts"
+    );
+    assert_eq!(
+        result.expect("src/tests/v1_2_verification.rs:89 unwrap failed"),
+        crate::interp::Value::Int(3)
+    );
 }
 
 // ============================================================
@@ -98,7 +144,8 @@ fn z3_available() -> bool {
 }
 
 fn verify_source(source: &str) -> Vec<crate::verifier::VerificationResult> {
-    crate::verifier::verify_source(source).expect("src/tests/v1_2_verification.rs:101 unwrap failed")
+    crate::verifier::verify_source(source)
+        .expect("src/tests/v1_2_verification.rs:101 unwrap failed")
 }
 
 fn assert_verified(source: &str) {
@@ -108,7 +155,13 @@ fn assert_verified(source: &str) {
     }
     let results = verify_source(source);
     for r in &results {
-        assert_eq!(r.status, crate::verifier::VerifStatus::Verified, "{}: {}", r.func_name, r.message);
+        assert_eq!(
+            r.status,
+            crate::verifier::VerifStatus::Verified,
+            "{}: {}",
+            r.func_name,
+            r.message
+        );
     }
 }
 
@@ -118,14 +171,30 @@ fn assert_failed(source: &str) {
         return;
     }
     let results = verify_source(source);
-    assert!(results.iter().any(|r| r.status == crate::verifier::VerifStatus::Failed),
-        "expected at least one Failed result, got: {:?}", results.iter().map(|r| (&r.func_name, &r.status)).collect::<Vec<_>>());
+    assert!(
+        results
+            .iter()
+            .any(|r| r.status == crate::verifier::VerifStatus::Failed),
+        "expected at least one Failed result, got: {:?}",
+        results
+            .iter()
+            .map(|r| (&r.func_name, &r.status))
+            .collect::<Vec<_>>()
+    );
 }
 
 fn assert_unknown(source: &str) {
     let results = verify_source(source);
-    assert!(results.iter().all(|r| r.status == crate::verifier::VerifStatus::Unknown),
-        "expected all Unknown results, got: {:?}", results.iter().map(|r| (&r.func_name, &r.status)).collect::<Vec<_>>());
+    assert!(
+        results
+            .iter()
+            .all(|r| r.status == crate::verifier::VerifStatus::Unknown),
+        "expected all Unknown results, got: {:?}",
+        results
+            .iter()
+            .map(|r| (&r.func_name, &r.status))
+            .collect::<Vec<_>>()
+    );
 }
 
 #[test]
@@ -311,7 +380,9 @@ func f2(x: i32) -> i32 {
 "#;
     let results = verify_source(src);
     assert_eq!(results.len(), 2);
-    assert!(results.iter().all(|r| r.status == crate::verifier::VerifStatus::Verified));
+    assert!(results
+        .iter()
+        .all(|r| r.status == crate::verifier::VerifStatus::Verified));
 }
 
 #[test]

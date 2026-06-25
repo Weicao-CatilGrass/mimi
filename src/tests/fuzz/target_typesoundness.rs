@@ -5,9 +5,9 @@
 //!
 //! Run: `cargo test fuzz::target_typesoundness -- --nocapture`
 
+use crate::{core, interp, lexer, parser};
 use proptest::prelude::*;
 use proptest::strategy::ValueTree;
-use crate::{core, interp, lexer, parser};
 
 /// Generate simple typed programs with explicit i32 and i64 annotations.
 fn arb_typed_program() -> impl Strategy<Value = String> {
@@ -21,10 +21,7 @@ fn arb_typed_program() -> impl Strategy<Value = String> {
         (0i64..100i64).prop_map(|n| format!("({} + {})", n, n + 1)),
         (0i64..50i64).prop_map(|n| format!("({} * {})", n, 2)),
     ];
-    let ret_ty = prop_oneof![
-        Just("i32"),
-        Just("i64"),
-    ];
+    let ret_ty = prop_oneof![Just("i32"), Just("i64"),];
     (ret_ty, expr1, expr2).prop_map(|(ty, e1, e2)| {
         format!(
             "func add_{}(a: {}, b: {}) -> {} {{ a + b }}\nfunc main() -> {} {{\n    let r = add_{}({}, {});\n    println(r);\n    0\n}}",
@@ -53,19 +50,34 @@ fn arb_maybe_ill_typed_program() -> impl Strategy<Value = String> {
 
 /// Type-check a program, returning Ok if it passes.
 fn typecheck(src: &str) -> Result<(), String> {
-    let tokens = lexer::Lexer::new(src).tokenize().map_err(|e| e.to_string())?;
-    let file = parser::Parser::new(tokens).parse_file().map_err(|e| e.message.clone())?;
+    let tokens = lexer::Lexer::new(src)
+        .tokenize()
+        .map_err(|e| e.to_string())?;
+    let file = parser::Parser::new(tokens)
+        .parse_file()
+        .map_err(|e| e.message.clone())?;
     core::check(&file).map_err(|diags| {
-        diags.iter().map(|d| d.message.clone()).collect::<Vec<String>>().join("; ")
+        diags
+            .iter()
+            .map(|d| d.message.clone())
+            .collect::<Vec<String>>()
+            .join("; ")
     })
 }
 
 /// Run a program in the interpreter, returning Ok(value_string) if it succeeds.
 fn interpret(src: &str) -> Result<String, String> {
-    let tokens = lexer::Lexer::new(src).tokenize().map_err(|e| e.to_string())?;
-    let file = parser::Parser::new(tokens).parse_file().map_err(|e| e.message.clone())?;
+    let tokens = lexer::Lexer::new(src)
+        .tokenize()
+        .map_err(|e| e.to_string())?;
+    let file = parser::Parser::new(tokens)
+        .parse_file()
+        .map_err(|e| e.message.clone())?;
     let mut interp = interp::Interpreter::new(&file);
-    interp.run().map(|v| format!("{}", v)).map_err(|e| e.message().to_string())
+    interp
+        .run()
+        .map(|v| format!("{}", v))
+        .map_err(|e| e.message().to_string())
 }
 
 proptest! {
@@ -119,9 +131,12 @@ mod tests {
 
     #[test]
     fn typesoundness_generator_smoke() {
-        let mut runner = proptest::test_runner::TestRunner::new(proptest::test_runner::Config::default());
+        let mut runner =
+            proptest::test_runner::TestRunner::new(proptest::test_runner::Config::default());
         for _ in 0..20 {
-            let tree = arb_typed_program().new_tree(&mut runner).expect("generator failed");
+            let tree = arb_typed_program()
+                .new_tree(&mut runner)
+                .expect("generator failed");
             let src = tree.current();
             let tokens = lexer::Lexer::new(&src).tokenize();
             assert!(tokens.is_ok(), "Failed to lex: {}", &src);

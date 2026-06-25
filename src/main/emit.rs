@@ -2,9 +2,9 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
+use crate::resolve_path;
 use mimi::ast::{self, File, Item};
 use mimi::{ffi, lexer, parser};
-use crate::resolve_path;
 
 pub(crate) fn emit_c_headers(path: Option<&Path>, output: Option<&Path>) -> Result<(), String> {
     let path = resolve_path(path)?;
@@ -38,7 +38,11 @@ pub(crate) fn emit_c_headers(path: Option<&Path>, output: Option<&Path>) -> Resu
     Ok(())
 }
 
-pub(crate) fn emit_py_bindings(path: Option<&Path>, output: Option<&Path>, mimi_lib: Option<&Path>) -> Result<(), String> {
+pub(crate) fn emit_py_bindings(
+    path: Option<&Path>,
+    output: Option<&Path>,
+    mimi_lib: Option<&Path>,
+) -> Result<(), String> {
     let path = resolve_path(path)?;
     let source = fs::read_to_string(&path)
         .map_err(|e| format!("failed to read {}: {}", path.display(), e))?;
@@ -54,16 +58,20 @@ pub(crate) fn emit_py_bindings(path: Option<&Path>, output: Option<&Path>, mimi_
     for ef in &exported_funcs {
         let extern_func = ast::ExternFunc {
             name: ef.name.clone(),
-            params: ef.params.iter().map(|p| ast::ExternParam {
-                name: p.name.clone(),
-                ty: p.ty.clone(),
-                cap_mode: None,
-            }).collect(),
+            params: ef
+                .params
+                .iter()
+                .map(|p| ast::ExternParam {
+                    name: p.name.clone(),
+                    ty: p.ty.clone(),
+                    cap_mode: None,
+                })
+                .collect(),
             ret: ef.ret.clone(),
             requires: None,
             ensures: None,
             variadic: false,
-                no_panic: false,
+            no_panic: false,
         };
         extern_funcs.push(extern_func);
     }
@@ -75,7 +83,8 @@ pub(crate) fn emit_py_bindings(path: Option<&Path>, output: Option<&Path>, mimi_
         .to_string();
 
     let gen = ffi::py_bind::PyBindGenerator::new(type_defs, &pkg_name);
-    let bindings = gen.generate(&extern_funcs)
+    let bindings = gen
+        .generate(&extern_funcs)
         .map_err(|e| format!("failed to generate bindings: {}", e))?;
 
     match output {
@@ -92,7 +101,9 @@ pub(crate) fn emit_py_bindings(path: Option<&Path>, output: Option<&Path>, mimi_
             }
             // Also emit a CMakeLists.txt next to the output
             let cmake_out = out_path.with_extension("cmake");
-            let mimi_lib_str = mimi_lib.map(|p| p.display().to_string()).unwrap_or_default();
+            let mimi_lib_str = mimi_lib
+                .map(|p| p.display().to_string())
+                .unwrap_or_default();
             let cmake = ffi::py_bind::generate_cmake_snippet(
                 &pkg_name,
                 "./",

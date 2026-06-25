@@ -226,7 +226,11 @@ func main() -> i32 {
     let result = run_source_result(src);
     assert!(result.is_err());
     let err = result.unwrap_err();
-    assert!(err.contains("use of moved value"), "Expected 'use of moved value' error, got: {}", err);
+    assert!(
+        err.contains("use of moved value"),
+        "Expected 'use of moved value' error, got: {}",
+        err
+    );
 }
 
 #[test]
@@ -254,7 +258,11 @@ func main() -> i32 {
     let result = run_source_result(src);
     assert!(result.is_err());
     let err = result.unwrap_err();
-    assert!(err.contains("use of moved value"), "Expected 'use of moved value' error, got: {}", err);
+    assert!(
+        err.contains("use of moved value"),
+        "Expected 'use of moved value' error, got: {}",
+        err
+    );
 }
 
 #[test]
@@ -325,7 +333,11 @@ func main() -> i32 {
     let result = run_source_result(src);
     assert!(result.is_err());
     let err = result.unwrap_err();
-    assert!(err.contains("use of moved value"), "Expected 'use of moved value' error, got: {}", err);
+    assert!(
+        err.contains("use of moved value"),
+        "Expected 'use of moved value' error, got: {}",
+        err
+    );
 }
 
 #[test]
@@ -393,7 +405,11 @@ func main() -> i32 {
 }
 "#;
     let result = run_source_result(src);
-    assert!(result.is_ok(), "Some(42) should be Copy (all args are Copy): {:?}", result);
+    assert!(
+        result.is_ok(),
+        "Some(42) should be Copy (all args are Copy): {:?}",
+        result
+    );
 }
 
 #[test]
@@ -434,5 +450,3 @@ func main() -> i32 {
     let v = run_source(src);
     assert_eq!(v, interp::Value::Int(84));
 }
-
-

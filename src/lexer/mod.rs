@@ -3,8 +3,8 @@ pub(crate) mod keywords;
 mod scan;
 pub mod token;
 
-pub use errors::LexerError;
 pub(crate) use errors::unexpected_character;
+pub use errors::LexerError;
 pub use keywords::is_keyword_kind;
 pub use token::{LexerMode, Token, TokenKind};
 
@@ -59,7 +59,11 @@ impl<'a> Lexer<'a> {
             if c == '\n' {
                 self.advance();
                 self.at_line_start = true;
-                tokens.push(Token { kind: TokenKind::Newline, line, col });
+                tokens.push(Token {
+                    kind: TokenKind::Newline,
+                    line,
+                    col,
+                });
                 continue;
             }
 
@@ -91,7 +95,11 @@ impl<'a> Lexer<'a> {
             tokens.push(Token { kind, line, col });
         }
         self.flush_indent(&mut tokens);
-        tokens.push(Token { kind: TokenKind::Eof, line: self.line, col: self.col });
+        tokens.push(Token {
+            kind: TokenKind::Eof,
+            line: self.line,
+            col: self.col,
+        });
         Ok(tokens)
     }
 }

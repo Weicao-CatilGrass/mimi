@@ -44,11 +44,19 @@ impl Lockfile {
 
     /// Create a new empty lockfile
     pub fn new() -> Self {
-        Lockfile { package: Vec::new() }
+        Lockfile {
+            package: Vec::new(),
+        }
     }
 
     /// Add or update a package entry
-    pub fn add_package(&mut self, name: &str, version: &str, source: Option<&str>, checksum: Option<&str>) {
+    pub fn add_package(
+        &mut self,
+        name: &str,
+        version: &str,
+        source: Option<&str>,
+        checksum: Option<&str>,
+    ) {
         self.package.retain(|p| p.name != name);
         self.package.push(LockEntry {
             name: name.to_string(),
@@ -94,7 +102,8 @@ impl Lockfile {
         }
 
         // Fallback: exact match
-        available.iter()
+        available
+            .iter()
             .find(|&&v| v == constraint)
             .map(|s| s.to_string())
     }
@@ -119,7 +128,12 @@ mod tests {
 
         lf.add_package("foo", "2.0.0", None, None);
         assert_eq!(lf.package.len(), 1);
-        assert_eq!(lf.get_package("foo").expect("src/lockfile.rs:124 unwrap failed").version, "2.0.0");
+        assert_eq!(
+            lf.get_package("foo")
+                .expect("src/lockfile.rs:124 unwrap failed")
+                .version,
+            "2.0.0"
+        );
 
         assert!(lf.remove_package("foo"));
         assert!(!lf.remove_package("foo"));
@@ -128,14 +142,20 @@ mod tests {
     #[test]
     fn resolve_version_exact() {
         let available = ["0.1.0", "0.2.0", "1.0.0"];
-        assert_eq!(Lockfile::resolve_version("=1.0.0", &available), Some("1.0.0".into()));
+        assert_eq!(
+            Lockfile::resolve_version("=1.0.0", &available),
+            Some("1.0.0".into())
+        );
     }
 
     #[test]
     fn resolve_version_exact_fallback() {
         let available = ["0.1.0", "0.2.0", "1.0.0"];
         // Bare "1.0.0" is not a valid semver requirement, so it falls through to exact match
-        assert_eq!(Lockfile::resolve_version("1.0.0", &available), Some("1.0.0".into()));
+        assert_eq!(
+            Lockfile::resolve_version("1.0.0", &available),
+            Some("1.0.0".into())
+        );
         // Should return None if no exact match
         assert_eq!(Lockfile::resolve_version("9.9.9", &available), None);
     }
@@ -143,18 +163,27 @@ mod tests {
     #[test]
     fn resolve_version_caret() {
         let available = ["0.1.0", "0.2.0", "1.0.0", "1.1.0", "2.0.0"];
-        assert_eq!(Lockfile::resolve_version("^1.0", &available), Some("1.1.0".into()));
+        assert_eq!(
+            Lockfile::resolve_version("^1.0", &available),
+            Some("1.1.0".into())
+        );
     }
 
     #[test]
     fn resolve_version_wildcard() {
         let available = ["0.1.0", "0.2.0", "1.0.0"];
-        assert_eq!(Lockfile::resolve_version("*", &available), Some("1.0.0".into()));
+        assert_eq!(
+            Lockfile::resolve_version("*", &available),
+            Some("1.0.0".into())
+        );
     }
 
     #[test]
     fn resolve_version_range() {
         let available = ["0.1.0", "0.5.0", "1.0.0", "1.5.0", "2.0.0"];
-        assert_eq!(Lockfile::resolve_version(">=0.5, <2.0", &available), Some("1.5.0".into()));
+        assert_eq!(
+            Lockfile::resolve_version(">=0.5, <2.0", &available),
+            Some("1.5.0".into())
+        );
     }
 }

@@ -61,7 +61,10 @@ impl<'a> Checker<'a> {
             if n != "List" || args.len() != 1 {
                 self.emit_code(
                     crate::diagnostic::codes::E0250,
-                    format!("comprehension requires a list, found {}", fmt_type(&iter_ty)),
+                    format!(
+                        "comprehension requires a list, found {}",
+                        fmt_type(&iter_ty)
+                    ),
                 );
             }
         }
@@ -87,7 +90,10 @@ impl<'a> Checker<'a> {
             if !matches!(&guard_ty, Type::Name(n, _) if n == "bool") {
                 self.emit_code(
                     crate::diagnostic::codes::E0230,
-                    format!("comprehension guard must be bool, found {}", fmt_type(&guard_ty)),
+                    format!(
+                        "comprehension guard must be bool, found {}",
+                        fmt_type(&guard_ty)
+                    ),
                 );
             }
         }
@@ -179,7 +185,10 @@ impl<'a> Checker<'a> {
                         _ => {
                             self.emit_code(
                                 crate::diagnostic::codes::E0224,
-                                format!("? operator requires Result or Option type, found '{}'", name),
+                                format!(
+                                    "? operator requires Result or Option type, found '{}'",
+                                    name
+                                ),
                             );
                             Type::Name("unknown".into(), vec![])
                         }
@@ -187,7 +196,10 @@ impl<'a> Checker<'a> {
                 } else {
                     self.emit_code(
                         crate::diagnostic::codes::E0224,
-                        format!("? operator requires Result or Option type, found '{}'", name),
+                        format!(
+                            "? operator requires Result or Option type, found '{}'",
+                            name
+                        ),
                     );
                     Type::Name("unknown".into(), vec![])
                 }

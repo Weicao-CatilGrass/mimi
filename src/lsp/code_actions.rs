@@ -10,8 +10,12 @@ impl LspServer {
             return actions;
         };
         for diag in diagnostics {
-            let Some(code) = diag.get("code").and_then(|c| c.as_str()) else { continue };
-            let Some(msg) = diag.get("message").and_then(|m| m.as_str()) else { continue };
+            let Some(code) = diag.get("code").and_then(|c| c.as_str()) else {
+                continue;
+            };
+            let Some(msg) = diag.get("message").and_then(|m| m.as_str()) else {
+                continue;
+            };
             let _range = diag.get("range").cloned().unwrap_or_default();
             match code {
                 crate::diagnostic::codes::E0400 => {

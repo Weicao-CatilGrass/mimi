@@ -15,9 +15,7 @@ impl<'a> Checker<'a> {
     ) -> Type {
         match callee {
             Expr::Ident(name) => self.check_call(name, args, scopes),
-            Expr::Field(obj, method_name) => {
-                self.infer_method_call(obj, method_name, args, scopes)
-            }
+            Expr::Field(obj, method_name) => self.infer_method_call(obj, method_name, args, scopes),
             _ => {
                 self.emit_code(
                     crate::diagnostic::codes::E0223,

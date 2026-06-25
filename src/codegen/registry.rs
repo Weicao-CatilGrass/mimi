@@ -1,3 +1,3 @@
+mod funcs;
 mod helpers;
 mod types;
-mod funcs;

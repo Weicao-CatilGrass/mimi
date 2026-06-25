@@ -31,13 +31,23 @@ impl<'a> Checker<'a> {
         }
 
         // Check for contracts on shared-param functions (E0502)
-        let has_shared_param = func.params.iter().any(|p| matches!(&p.ty,
-            Type::Shared(_) | Type::LocalShared(_) | Type::CShared(_)
-        ));
+        let has_shared_param = func.params.iter().any(|p| {
+            matches!(
+                &p.ty,
+                Type::Shared(_) | Type::LocalShared(_) | Type::CShared(_)
+            )
+        });
         if has_shared_param {
-            let has_contract = func.body.iter().any(|s| matches!(s,
-                Stmt::Requires(..) | Stmt::Ensures(..) | Stmt::Invariant(..) | Stmt::Math(_) | Stmt::MmsBlock { .. }
-            ));
+            let has_contract = func.body.iter().any(|s| {
+                matches!(
+                    s,
+                    Stmt::Requires(..)
+                        | Stmt::Ensures(..)
+                        | Stmt::Invariant(..)
+                        | Stmt::Math(_)
+                        | Stmt::MmsBlock { .. }
+                )
+            });
             if has_contract {
                 self.emit_code(codes::E0502, format!(
                     "function '{}' has contracts but takes a shared parameter — Z3 cannot verify heap state",
@@ -57,7 +67,9 @@ impl<'a> Checker<'a> {
         }
         self.available_effects.push(effects_scope);
         // Check all-return-paths requirement
-        if !matches!(&ret, Type::Name(n, _) if n == "unit") && !self.block_returns_on_all_paths(&func.body) {
+        if !matches!(&ret, Type::Name(n, _) if n == "unit")
+            && !self.block_returns_on_all_paths(&func.body)
+        {
             self.errors.push(
                 Diagnostic::error_code(
                     crate::diagnostic::codes::E0255,
@@ -75,8 +87,8 @@ impl<'a> Checker<'a> {
                 Type::Shared(i) | Type::LocalShared(i) | Type::CShared(i) => (**i).clone(),
                 _ => last_ty.clone(),
             };
-            let type_ok = same_type(&ret, &last_ty_clean)
-                || is_numeric_coercion(&ret, &last_ty_clean);
+            let type_ok =
+                same_type(&ret, &last_ty_clean) || is_numeric_coercion(&ret, &last_ty_clean);
             if !type_ok && !matches!(&ret, Type::Name(n, _) if n == "unit") {
                 self.errors.push(
                     Diagnostic::error_code(
@@ -112,7 +124,8 @@ impl<'a> Checker<'a> {
                 Stmt::Expr(_) => return true, // implicit return via last expression
                 Stmt::If { then_, else_, .. } => {
                     let then_returns = self.block_returns_on_all_paths(then_);
-                    let else_returns = else_.as_ref()
+                    let else_returns = else_
+                        .as_ref()
                         .map(|e| self.block_returns_on_all_paths(e))
                         .unwrap_or(false);
                     if then_returns && else_returns {
@@ -140,15 +153,19 @@ impl<'a> Checker<'a> {
 
     pub(crate) fn check_unconsumed_caps(&mut self) {
         if let Some(scope) = self.cap_vars.last() {
-            let unconsumed: Vec<String> = scope.iter()
+            let unconsumed: Vec<String> = scope
+                .iter()
                 .filter(|(_, consumed)| !*consumed)
                 .map(|(name, _)| name.clone())
                 .collect();
             for name in unconsumed {
-                self.emit_code(crate::diagnostic::codes::E0256, format!(
-                    "linear capability '{}' must be consumed (via drop) before end of scope",
-                    name
-                ));
+                self.emit_code(
+                    crate::diagnostic::codes::E0256,
+                    format!(
+                        "linear capability '{}' must be consumed (via drop) before end of scope",
+                        name
+                    ),
+                );
             }
         }
     }

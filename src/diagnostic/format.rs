@@ -38,14 +38,23 @@ pub fn format_diagnostic(diagnostic: &Diagnostic, source: Option<&str>, filename
         diagnostic.code.as_deref().unwrap_or(""),
         colors::RESET,
     ));
-    out.push_str(&format!("{}{}{}\n", colors::BOLD, diagnostic.message, colors::RESET));
+    out.push_str(&format!(
+        "{}{}{}\n",
+        colors::BOLD,
+        diagnostic.message,
+        colors::RESET
+    ));
 
     // Location: --> filename:line:col
     if diagnostic.span.start_line > 0 {
         out.push_str(&format!(
             " {}{}-->{} {}:{}:{}\n",
-            colors::DIM, colors::BOLD, colors::RESET,
-            filename, diagnostic.span.start_line, diagnostic.span.start_col
+            colors::DIM,
+            colors::BOLD,
+            colors::RESET,
+            filename,
+            diagnostic.span.start_line,
+            diagnostic.span.start_col
         ));
     }
 
@@ -58,7 +67,9 @@ pub fn format_diagnostic(diagnostic: &Diagnostic, source: Option<&str>, filename
 
             out.push_str(&format!(
                 " {}{}|{}\n",
-                colors::DIM, colors::BOLD, colors::RESET
+                colors::DIM,
+                colors::BOLD,
+                colors::RESET
             ));
 
             // Show the error line
@@ -66,7 +77,9 @@ pub fn format_diagnostic(diagnostic: &Diagnostic, source: Option<&str>, filename
                 // Line number gutter
                 out.push_str(&format!(
                     " {}{: >width$}{} | {}\n",
-                    colors::DIM, diagnostic.span.start_line, colors::RESET,
+                    colors::DIM,
+                    diagnostic.span.start_line,
+                    colors::RESET,
                     line_text,
                     width = gutter_width
                 ));
@@ -74,7 +87,11 @@ pub fn format_diagnostic(diagnostic: &Diagnostic, source: Option<&str>, filename
                 // Underline the span
                 let start_col = diagnostic.span.start_col.saturating_sub(1);
                 let width = if diagnostic.span.end_line == diagnostic.span.start_line {
-                    diagnostic.span.end_col.saturating_sub(diagnostic.span.start_col).max(1)
+                    diagnostic
+                        .span
+                        .end_col
+                        .saturating_sub(diagnostic.span.start_col)
+                        .max(1)
                 } else {
                     line_text.len().saturating_sub(start_col)
                 };
@@ -87,7 +104,9 @@ pub fn format_diagnostic(diagnostic: &Diagnostic, source: Option<&str>, filename
 
                 out.push_str(&format!(
                     " {}{: >width$}{} | {}{}{}{}\n",
-                    colors::DIM, "", colors::RESET,
+                    colors::DIM,
+                    "",
+                    colors::RESET,
                     " ".repeat(start_col),
                     indicator_color,
                     "^".repeat(width),
@@ -102,7 +121,10 @@ pub fn format_diagnostic(diagnostic: &Diagnostic, source: Option<&str>, filename
         if note.span.start_line > 0 {
             out.push_str(&format!(
                 "  {}{}note{}: {}\n",
-                colors::DIM, colors::BOLD, colors::RESET, note.message
+                colors::DIM,
+                colors::BOLD,
+                colors::RESET,
+                note.message
             ));
             if let Some(src) = source {
                 let lines: Vec<&str> = src.lines().collect();
@@ -111,11 +133,15 @@ pub fn format_diagnostic(diagnostic: &Diagnostic, source: Option<&str>, filename
                 if let Some(line_text) = lines.get(line_idx) {
                     out.push_str(&format!(
                         " {}{}|{}\n",
-                        colors::DIM, colors::BOLD, colors::RESET
+                        colors::DIM,
+                        colors::BOLD,
+                        colors::RESET
                     ));
                     out.push_str(&format!(
                         " {}{: >width$}{} | {}\n",
-                        colors::DIM, note.span.start_line, colors::RESET,
+                        colors::DIM,
+                        note.span.start_line,
+                        colors::RESET,
                         line_text,
                         width = gutter_width
                     ));
@@ -128,10 +154,14 @@ pub fn format_diagnostic(diagnostic: &Diagnostic, source: Option<&str>, filename
                     let indicator = "~".repeat(indicator_width.max(1));
                     out.push_str(&format!(
                         " {}{: >width$}{} | {}{}{} {}{}\n",
-                        colors::DIM, "", colors::RESET,
+                        colors::DIM,
+                        "",
+                        colors::RESET,
                         " ".repeat(start_col),
-                        colors::CYAN, indicator,
-                        note.message, colors::RESET,
+                        colors::CYAN,
+                        indicator,
+                        note.message,
+                        colors::RESET,
                         width = gutter_width,
                     ));
                 }
@@ -139,7 +169,10 @@ pub fn format_diagnostic(diagnostic: &Diagnostic, source: Option<&str>, filename
         } else {
             out.push_str(&format!(
                 "  {}{}note{}: {}\n",
-                colors::DIM, colors::BOLD, colors::RESET, note.message
+                colors::DIM,
+                colors::BOLD,
+                colors::RESET,
+                note.message
             ));
         }
     }
@@ -148,7 +181,10 @@ pub fn format_diagnostic(diagnostic: &Diagnostic, source: Option<&str>, filename
     if let Some(help) = &diagnostic.help {
         out.push_str(&format!(
             "  {}{}help{}: {}\n",
-            colors::CYAN, colors::BOLD, colors::RESET, help
+            colors::CYAN,
+            colors::BOLD,
+            colors::RESET,
+            help
         ));
     }
 

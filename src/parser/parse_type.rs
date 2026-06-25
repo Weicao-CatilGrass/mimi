@@ -179,11 +179,13 @@ impl Parser {
                 let name_tok = self.peek();
                 let name = match &name_tok.kind {
                     TokenKind::Ident(n) => n.clone(),
-                    _ => return Err(ParseError::new(
-                        "expected capability name after `cap`",
-                        name_tok.line,
-                        name_tok.col,
-                    )),
+                    _ => {
+                        return Err(ParseError::new(
+                            "expected capability name after `cap`",
+                            name_tok.line,
+                            name_tok.col,
+                        ))
+                    }
                 };
                 self.advance();
                 Ok(Type::Cap(name))
@@ -218,8 +220,12 @@ impl Parser {
                 if !self.at(&TokenKind::Fn) && !self.at(&TokenKind::Func) {
                     let tok = self.peek();
                     return Err(ParseError::new(
-                        format!("expected `fn` or `func` after `extern \"C\"`, found {}", tok.kind),
-                        tok.line, tok.col,
+                        format!(
+                            "expected `fn` or `func` after `extern \"C\"`, found {}",
+                            tok.kind
+                        ),
+                        tok.line,
+                        tok.col,
                     ));
                 }
                 self.advance();
@@ -249,11 +255,13 @@ impl Parser {
                 let trait_tok = self.peek();
                 let trait_name = match &trait_tok.kind {
                     TokenKind::Ident(n) => n.clone(),
-                    _ => return Err(ParseError::new(
-                        "expected trait name after `impl`",
-                        trait_tok.line,
-                        trait_tok.col,
-                    )),
+                    _ => {
+                        return Err(ParseError::new(
+                            "expected trait name after `impl`",
+                            trait_tok.line,
+                            trait_tok.col,
+                        ))
+                    }
                 };
                 self.advance();
                 traits.push(trait_name);
@@ -263,11 +271,13 @@ impl Parser {
                     let next_tok = self.peek();
                     let next_name = match &next_tok.kind {
                         TokenKind::Ident(n) => n.clone(),
-                        _ => return Err(ParseError::new(
-                            "expected trait name after `+`",
-                            next_tok.line,
-                            next_tok.col,
-                        )),
+                        _ => {
+                            return Err(ParseError::new(
+                                "expected trait name after `+`",
+                                next_tok.line,
+                                next_tok.col,
+                            ))
+                        }
                     };
                     self.advance();
                     traits.push(next_name);
@@ -280,11 +290,13 @@ impl Parser {
                 let first_tok = self.peek();
                 let first_name = match &first_tok.kind {
                     TokenKind::Ident(n) => n.clone(),
-                    _ => return Err(ParseError::new(
-                        "expected trait name after `dyn`",
-                        first_tok.line,
-                        first_tok.col,
-                    )),
+                    _ => {
+                        return Err(ParseError::new(
+                            "expected trait name after `dyn`",
+                            first_tok.line,
+                            first_tok.col,
+                        ))
+                    }
                 };
                 self.advance();
                 traits.push(first_name);
@@ -294,11 +306,13 @@ impl Parser {
                     let next_tok = self.peek();
                     let next_name = match &next_tok.kind {
                         TokenKind::Ident(n) => n.clone(),
-                        _ => return Err(ParseError::new(
-                            "expected trait name after `+`",
-                            next_tok.line,
-                            next_tok.col,
-                        )),
+                        _ => {
+                            return Err(ParseError::new(
+                                "expected trait name after `+`",
+                                next_tok.line,
+                                next_tok.col,
+                            ))
+                        }
                     };
                     self.advance();
                     traits.push(next_name);
@@ -313,16 +327,20 @@ impl Parser {
                     // [T; n] — fixed-size array
                     let size_tok = self.peek();
                     let size = match &size_tok.kind {
-                        TokenKind::Int(s) => s.parse::<usize>().map_err(|_| ParseError::new(
-                            "array size must be a non-negative integer",
-                            size_tok.line,
-                            size_tok.col,
-                        ))?,
-                        _ => return Err(ParseError::new(
-                            "expected integer array size after `;`",
-                            size_tok.line,
-                            size_tok.col,
-                        )),
+                        TokenKind::Int(s) => s.parse::<usize>().map_err(|_| {
+                            ParseError::new(
+                                "array size must be a non-negative integer",
+                                size_tok.line,
+                                size_tok.col,
+                            )
+                        })?,
+                        _ => {
+                            return Err(ParseError::new(
+                                "expected integer array size after `;`",
+                                size_tok.line,
+                                size_tok.col,
+                            ))
+                        }
                     };
                     self.advance();
                     self.expect(TokenKind::RBracket, "`]`")?;
@@ -343,7 +361,11 @@ impl Parser {
         }
     }
 
-    pub(crate) fn parse_type_def(&mut self, derives: Vec<String>, attributes: Vec<crate::ast::TypeAttribute>) -> Result<TypeDef, ParseError> {
+    pub(crate) fn parse_type_def(
+        &mut self,
+        derives: Vec<String>,
+        attributes: Vec<crate::ast::TypeAttribute>,
+    ) -> Result<TypeDef, ParseError> {
         self.expect_keyword(TokenKind::Type)?;
         let name = self.expect_ident()?;
         let generics = self.parse_generic_params()?;
@@ -382,7 +404,14 @@ impl Parser {
                 let variants = self.parse_enum_variants()?;
                 TypeDefKind::Enum(variants)
             };
-            return Ok(TypeDef { name, pub_: false, kind, generics, derives, attributes });
+            return Ok(TypeDef {
+                name,
+                pub_: false,
+                kind,
+                generics,
+                derives,
+                attributes,
+            });
         }
         if self.at(&TokenKind::Eq) {
             self.advance();
@@ -426,7 +455,14 @@ impl Parser {
         };
         self.skip_newlines();
         self.expect(TokenKind::RBrace, "`}`")?;
-        Ok(TypeDef { name, pub_: false, kind, generics, derives, attributes })
+        Ok(TypeDef {
+            name,
+            pub_: false,
+            kind,
+            generics,
+            derives,
+            attributes,
+        })
     }
 
     fn lookahead_is_record(&self) -> bool {
@@ -447,11 +483,17 @@ impl Parser {
     fn parse_record_fields(&mut self) -> Result<Vec<Field>, ParseError> {
         let mut fields = Vec::new();
         self.skip_newlines();
-        while !self.at(&TokenKind::RBrace) && !self.at(&TokenKind::Dedent) && !self.at(&TokenKind::Eof) {
+        while !self.at(&TokenKind::RBrace)
+            && !self.at(&TokenKind::Dedent)
+            && !self.at(&TokenKind::Eof)
+        {
             let fname = self.expect_ident()?;
             self.expect(TokenKind::Colon, "`:`")?;
             let fty = self.parse_type()?;
-            fields.push(Field { name: fname, ty: fty });
+            fields.push(Field {
+                name: fname,
+                ty: fty,
+            });
             if matches!(self.peek_kind(), TokenKind::Comma | TokenKind::Newline) {
                 self.advance();
                 self.skip_newlines();
@@ -466,7 +508,10 @@ impl Parser {
         let mut variants = Vec::new();
         self.skip_newlines();
         loop {
-            if self.at(&TokenKind::RBrace) || self.at(&TokenKind::Dedent) || self.at(&TokenKind::Eof) {
+            if self.at(&TokenKind::RBrace)
+                || self.at(&TokenKind::Dedent)
+                || self.at(&TokenKind::Eof)
+            {
                 break;
             }
             let vname = self.expect_ident()?;
@@ -492,8 +537,14 @@ impl Parser {
             } else {
                 None
             };
-            variants.push(Variant { name: vname, payload });
-            if matches!(self.peek_kind(), TokenKind::BitOr | TokenKind::Comma | TokenKind::Newline) {
+            variants.push(Variant {
+                name: vname,
+                payload,
+            });
+            if matches!(
+                self.peek_kind(),
+                TokenKind::BitOr | TokenKind::Comma | TokenKind::Newline
+            ) {
                 self.advance();
                 self.skip_newlines();
             } else if matches!(self.peek_kind(), TokenKind::Ident(_)) {

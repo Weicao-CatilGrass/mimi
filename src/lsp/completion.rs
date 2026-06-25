@@ -87,7 +87,9 @@ impl LspServer {
                                     let params: Vec<String> = m
                                         .params
                                         .iter()
-                                        .map(|p| format!("{}: {}", p.name, crate::core::fmt_type(&p.ty)))
+                                        .map(|p| {
+                                            format!("{}: {}", p.name, crate::core::fmt_type(&p.ty))
+                                        })
                                         .collect();
                                     let ret = m
                                         .ret
@@ -127,7 +129,8 @@ impl LspServer {
                 let before_cursor: String = current_line.chars().take(character).collect();
                 let trimmed = before_cursor.trim().trim_end_matches(':');
                 // Extract the last identifier before `::` (the module name)
-                let prefix = trimmed.split_whitespace()
+                let prefix = trimmed
+                    .split_whitespace()
                     .last()
                     .unwrap_or("")
                     .trim_end_matches(':');
@@ -188,7 +191,8 @@ impl LspServer {
                     }
                 }
                 // Add stdlib module names
-                let mut std_modules: Vec<&str> = self.stdlib_funcs.keys().map(|s| s.as_str()).collect();
+                let mut std_modules: Vec<&str> =
+                    self.stdlib_funcs.keys().map(|s| s.as_str()).collect();
                 std_modules.sort();
                 for name in std_modules {
                     items.push(serde_json::json!({
@@ -240,11 +244,23 @@ impl LspServer {
                 }));
                 let c_funcs = vec![
                     ("strlen", "strlen(s: string) -> i64", "get string length"),
-                    ("printf", "printf(format: &i8, ...) -> i32", "print formatted"),
+                    (
+                        "printf",
+                        "printf(format: &i8, ...) -> i32",
+                        "print formatted",
+                    ),
                     ("malloc", "malloc(size: i64) -> *mut i8", "allocate memory"),
                     ("free", "free(ptr: *mut i8)", "free memory"),
-                    ("memcpy", "memcpy(dest: *mut i8, src: *mut i8, n: i64) -> *mut i8", "copy memory"),
-                    ("memset", "memset(s: *mut i8, c: i32, n: i64) -> *mut i8", "set memory"),
+                    (
+                        "memcpy",
+                        "memcpy(dest: *mut i8, src: *mut i8, n: i64) -> *mut i8",
+                        "copy memory",
+                    ),
+                    (
+                        "memset",
+                        "memset(s: *mut i8, c: i32, n: i64) -> *mut i8",
+                        "set memory",
+                    ),
                     ("puts", "puts(s: &i8) -> i32", "print string with newline"),
                     ("exit", "exit(code: i32)", "exit program"),
                     ("atoi", "atoi(s: &i8) -> i32", "string to int"),
@@ -273,11 +289,39 @@ impl LspServer {
         // Default "top" context: show everything
         // Keywords
         let keywords = vec![
-            "func", "type", "flow", "module", "if", "else", "while", "for",
-            "return", "let", "mut", "shared", "local_shared", "weak",
-            "match", "spawn", "await", "try", "comptime", "quote",
-            "extern", "actor", "trait", "impl", "cap", "true", "false",
-            "async", "newtype", "arena", "alloc", "requires", "ensures",
+            "func",
+            "type",
+            "flow",
+            "module",
+            "if",
+            "else",
+            "while",
+            "for",
+            "return",
+            "let",
+            "mut",
+            "shared",
+            "local_shared",
+            "weak",
+            "match",
+            "spawn",
+            "await",
+            "try",
+            "comptime",
+            "quote",
+            "extern",
+            "actor",
+            "trait",
+            "impl",
+            "cap",
+            "true",
+            "false",
+            "async",
+            "newtype",
+            "arena",
+            "alloc",
+            "requires",
+            "ensures",
             "loop",
         ];
 
@@ -317,7 +361,8 @@ impl LspServer {
                         }));
                     }
                     Item::Trait(t) => {
-                        let method_names: Vec<String> = t.methods.iter().map(|m| m.name.clone()).collect();
+                        let method_names: Vec<String> =
+                            t.methods.iter().map(|m| m.name.clone()).collect();
                         items.push(serde_json::json!({
                             "label": t.name.clone(),
                             "kind": 11, // Interface
@@ -325,7 +370,8 @@ impl LspServer {
                         }));
                     }
                     Item::Actor(a) => {
-                        let method_names: Vec<String> = a.methods.iter().map(|m| m.name.clone()).collect();
+                        let method_names: Vec<String> =
+                            a.methods.iter().map(|m| m.name.clone()).collect();
                         items.push(serde_json::json!({
                             "label": a.name.clone(),
                             "kind": 23, // Struct (closest match)
@@ -346,17 +392,55 @@ impl LspServer {
 
         // Builtins
         let builtins = vec![
-            "println", "print", "assert", "assert_eq", "assert_ne", "len", "push",
-            "pop", "range", "sqrt", "abs", "min", "max", "to_string",
-            "map", "filter", "reduce", "sort", "reverse", "flatten",
-            "zip", "enumerate", "sum", "contains", "input",
-            "type_name", "type_fields", "type_variants", "type_info",
-            "ast_dump", "ast_eval",
-            "pow", "floor", "ceil", "round", "random", "pi",
-            "read_file", "write_file", "file_exists",
-            "to_int", "to_float",
-            "str_char_at", "str_substring", "str_parse_int", "str_parse_float",
-            "keys", "values", "has_key",
+            "println",
+            "print",
+            "assert",
+            "assert_eq",
+            "assert_ne",
+            "len",
+            "push",
+            "pop",
+            "range",
+            "sqrt",
+            "abs",
+            "min",
+            "max",
+            "to_string",
+            "map",
+            "filter",
+            "reduce",
+            "sort",
+            "reverse",
+            "flatten",
+            "zip",
+            "enumerate",
+            "sum",
+            "contains",
+            "input",
+            "type_name",
+            "type_fields",
+            "type_variants",
+            "type_info",
+            "ast_dump",
+            "ast_eval",
+            "pow",
+            "floor",
+            "ceil",
+            "round",
+            "random",
+            "pi",
+            "read_file",
+            "write_file",
+            "file_exists",
+            "to_int",
+            "to_float",
+            "str_char_at",
+            "str_substring",
+            "str_parse_int",
+            "str_parse_float",
+            "keys",
+            "values",
+            "has_key",
         ];
 
         for b in builtins {

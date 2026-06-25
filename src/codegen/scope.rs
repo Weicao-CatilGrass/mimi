@@ -25,19 +25,29 @@ impl<'ctx> CodeGenerator<'ctx> {
             let await_fn = self.module.get_function("mimi_await_future");
             if let Some(await_fn) = await_fn {
                 for &(future_ptr, _) in &self.parasteps_future_ptrs {
-                    self.builder.build_call(await_fn, &[
-                        BasicMetadataValueEnum::PointerValue(future_ptr),
-                    ], "parasteps_await")
-                        .map_err(|e| CompileError::LlvmError(format!("parasteps await error: {}", e)))?;
+                    self.builder
+                        .build_call(
+                            await_fn,
+                            &[BasicMetadataValueEnum::PointerValue(future_ptr)],
+                            "parasteps_await",
+                        )
+                        .map_err(|e| {
+                            CompileError::LlvmError(format!("parasteps await error: {}", e))
+                        })?;
                 }
             }
             // Free all futures
             if let Some(free_fn) = self.module.get_function("mimi_future_free") {
                 for &(future_ptr, _) in &self.parasteps_future_ptrs {
-                    self.builder.build_call(free_fn, &[
-                        BasicMetadataValueEnum::PointerValue(future_ptr),
-                    ], "parasteps_future_free")
-                        .map_err(|e| CompileError::LlvmError(format!("future free error: {}", e)))?;
+                    self.builder
+                        .build_call(
+                            free_fn,
+                            &[BasicMetadataValueEnum::PointerValue(future_ptr)],
+                            "parasteps_future_free",
+                        )
+                        .map_err(|e| {
+                            CompileError::LlvmError(format!("future free error: {}", e))
+                        })?;
                 }
             }
         }
@@ -86,35 +96,55 @@ impl<'ctx> CodeGenerator<'ctx> {
         let cond_bool = if let BasicValueEnum::IntValue(iv) = cond_val {
             iv
         } else {
-            return Err(CompileError::ContractCondition(format!("{:?}", cond_val.get_type())));
+            return Err(CompileError::ContractCondition(format!(
+                "{:?}",
+                cond_val.get_type()
+            )));
         };
 
-        let function = self.current_function()
-            .ok_or_else(|| CompileError::LlvmError("codegen: no current function for contract assert".to_string()))?;
+        let function = self.current_function().ok_or_else(|| {
+            CompileError::LlvmError("codegen: no current function for contract assert".to_string())
+        })?;
         let pass_bb = self.context.append_basic_block(function, "contract_pass");
         let fail_bb = self.context.append_basic_block(function, "contract_fail");
 
-        self.builder.build_conditional_branch(cond_bool, pass_bb, fail_bb)
+        self.builder
+            .build_conditional_branch(cond_bool, pass_bb, fail_bb)
             .map_err(|e| CompileError::LlvmError(format!("branch error: {}", e)))?;
 
         self.builder.position_at_end(fail_bb);
         let contract_text = format!("{:?}", expr);
         let full_msg = format!("{} | contract: {}", msg, contract_text);
-        let msg_ptr = self.builder.build_global_string_ptr(&full_msg, "contract_msg")
+        let msg_ptr = self
+            .builder
+            .build_global_string_ptr(&full_msg, "contract_msg")
             .map_err(|e| CompileError::LlvmError(format!("string error: {}", e)))?;
-        let abort_fn = self.module.get_function("mimi_runtime_abort")
+        let abort_fn = self
+            .module
+            .get_function("mimi_runtime_abort")
             .unwrap_or_else(|| {
                 let i8_ptr = self.context.ptr_type(inkwell::AddressSpace::default());
-                let ty = self.context.void_type().fn_type(&[
-                    BasicMetadataTypeEnum::PointerType(i8_ptr),
-                ], false);
-                self.module.add_function("mimi_runtime_abort", ty, Some(inkwell::module::Linkage::External))
+                let ty = self
+                    .context
+                    .void_type()
+                    .fn_type(&[BasicMetadataTypeEnum::PointerType(i8_ptr)], false);
+                self.module.add_function(
+                    "mimi_runtime_abort",
+                    ty,
+                    Some(inkwell::module::Linkage::External),
+                )
             });
-        self.builder.build_call(abort_fn, &[
-            BasicMetadataValueEnum::PointerValue(msg_ptr.as_pointer_value()),
-        ], "abort_call")
+        self.builder
+            .build_call(
+                abort_fn,
+                &[BasicMetadataValueEnum::PointerValue(
+                    msg_ptr.as_pointer_value(),
+                )],
+                "abort_call",
+            )
             .map_err(|e| CompileError::LlvmError(format!("abort call error: {}", e)))?;
-        self.builder.build_unconditional_branch(pass_bb)
+        self.builder
+            .build_unconditional_branch(pass_bb)
             .map_err(|e| CompileError::LlvmError(format!("branch error: {}", e)))?;
 
         self.builder.position_at_end(pass_bb);
@@ -184,20 +214,34 @@ impl<'ctx> CodeGenerator<'ctx> {
         if let Some(scope) = self.shared_release_vars.pop() {
             if let Some(release_fn) = self.module.get_function("mimi_rc_release") {
                 for heap_ptr in &scope {
-                    self.builder.build_call(release_fn, &[
-                        inkwell::values::BasicMetadataValueEnum::PointerValue(*heap_ptr),
-                    ], "shared_release")
-                        .map_err(|e| CompileError::LlvmError(format!("shared release error: {}", e)))?;
+                    self.builder
+                        .build_call(
+                            release_fn,
+                            &[inkwell::values::BasicMetadataValueEnum::PointerValue(
+                                *heap_ptr,
+                            )],
+                            "shared_release",
+                        )
+                        .map_err(|e| {
+                            CompileError::LlvmError(format!("shared release error: {}", e))
+                        })?;
                 }
             }
         }
         if let Some(scope) = self.weak_release_vars.pop() {
             if let Some(release_fn) = self.module.get_function("mimi_rc_weak_release") {
                 for heap_ptr in &scope {
-                    self.builder.build_call(release_fn, &[
-                        inkwell::values::BasicMetadataValueEnum::PointerValue(*heap_ptr),
-                    ], "weak_release")
-                        .map_err(|e| CompileError::LlvmError(format!("weak release error: {}", e)))?;
+                    self.builder
+                        .build_call(
+                            release_fn,
+                            &[inkwell::values::BasicMetadataValueEnum::PointerValue(
+                                *heap_ptr,
+                            )],
+                            "weak_release",
+                        )
+                        .map_err(|e| {
+                            CompileError::LlvmError(format!("weak release error: {}", e))
+                        })?;
                 }
             }
         }
@@ -206,29 +250,41 @@ impl<'ctx> CodeGenerator<'ctx> {
 
     /// Release all remaining shared and weak variables at function exit
     pub(super) fn release_all_shared(&mut self) -> MimiResult<()> {
-        let all_release: Vec<inkwell::values::PointerValue<'ctx>> = self.shared_release_vars
+        let all_release: Vec<inkwell::values::PointerValue<'ctx>> = self
+            .shared_release_vars
             .iter()
             .flat_map(|scope| scope.iter())
             .copied()
             .collect();
         if let Some(release_fn) = self.module.get_function("mimi_rc_release") {
             for heap_ptr in all_release {
-                self.builder.build_call(release_fn, &[
-                    inkwell::values::BasicMetadataValueEnum::PointerValue(heap_ptr),
-                ], "shared_release")
+                self.builder
+                    .build_call(
+                        release_fn,
+                        &[inkwell::values::BasicMetadataValueEnum::PointerValue(
+                            heap_ptr,
+                        )],
+                        "shared_release",
+                    )
                     .map_err(|e| CompileError::LlvmError(format!("shared release error: {}", e)))?;
             }
         }
-        let all_weak: Vec<inkwell::values::PointerValue<'ctx>> = self.weak_release_vars
+        let all_weak: Vec<inkwell::values::PointerValue<'ctx>> = self
+            .weak_release_vars
             .iter()
             .flat_map(|scope| scope.iter())
             .copied()
             .collect();
         if let Some(release_fn) = self.module.get_function("mimi_rc_weak_release") {
             for heap_ptr in all_weak {
-                self.builder.build_call(release_fn, &[
-                    inkwell::values::BasicMetadataValueEnum::PointerValue(heap_ptr),
-                ], "weak_release")
+                self.builder
+                    .build_call(
+                        release_fn,
+                        &[inkwell::values::BasicMetadataValueEnum::PointerValue(
+                            heap_ptr,
+                        )],
+                        "weak_release",
+                    )
                     .map_err(|e| CompileError::LlvmError(format!("weak release error: {}", e)))?;
             }
         }

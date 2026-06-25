@@ -1,7 +1,7 @@
 use super::*;
 use std::io::{Read, Write};
-use std::time::Duration;
 use std::net::TcpListener;
+use std::time::Duration;
 
 // ─── TCP echo server via Rust OS threads ──────────────────────
 // Tests the full server lifecycle: socket → bind → listen → accept → recv → send → close.
@@ -47,19 +47,25 @@ fn net_echo_server() {
     let server_src = SERVER_ECHO.replace("PORT", &ECHO_PORT.to_string());
     let client_src = CLIENT_ECHO.replace("PORT", &ECHO_PORT.to_string());
 
-    let server = std::thread::spawn(move || {
-        run_source(&server_src)
-    });
+    let server = std::thread::spawn(move || run_source(&server_src));
 
     std::thread::sleep(Duration::from_millis(100));
 
     let client_result = run_source(&client_src);
     let server_result = server.join().unwrap();
 
-    assert_eq!(server_result, interp::Value::String("hello".to_string()),
-        "Server should receive 'hello', got {:?}", server_result);
-    assert_eq!(client_result, interp::Value::String("echo: hello".to_string()),
-        "Client should receive 'echo: hello', got {:?}", client_result);
+    assert_eq!(
+        server_result,
+        interp::Value::String("hello".to_string()),
+        "Server should receive 'hello', got {:?}",
+        server_result
+    );
+    assert_eq!(
+        client_result,
+        interp::Value::String("echo: hello".to_string()),
+        "Client should receive 'echo: hello', got {:?}",
+        client_result
+    );
 }
 
 #[test]
@@ -85,7 +91,8 @@ func main() -> string {
     close_fd(fd)
     msg1 + msg2
 }
-"#.replace("PORT", &MULTI_PORT.to_string());
+"#
+    .replace("PORT", &MULTI_PORT.to_string());
 
     let client_src = r#"
 func main() -> string {
@@ -100,21 +107,28 @@ func main() -> string {
     close_fd(fd)
     resp1 + resp2
 }
-"#.replace("PORT", &MULTI_PORT.to_string());
+"#
+    .replace("PORT", &MULTI_PORT.to_string());
 
-    let server = std::thread::spawn(move || {
-        run_source(&server_src)
-    });
+    let server = std::thread::spawn(move || run_source(&server_src));
 
     std::thread::sleep(Duration::from_millis(100));
 
     let client_result = run_source(&client_src);
     let server_result = server.join().unwrap();
 
-    assert_eq!(server_result, interp::Value::String("abcd".to_string()),
-        "Server should receive 'ab' + 'cd', got {:?}", server_result);
-    assert_eq!(client_result, interp::Value::String("ack1: aback2: cd".to_string()),
-        "Client should receive ack'd responses, got {:?}", client_result);
+    assert_eq!(
+        server_result,
+        interp::Value::String("abcd".to_string()),
+        "Server should receive 'ab' + 'cd', got {:?}",
+        server_result
+    );
+    assert_eq!(
+        client_result,
+        interp::Value::String("ack1: aback2: cd".to_string()),
+        "Client should receive ack'd responses, got {:?}",
+        client_result
+    );
 }
 
 #[test]
@@ -136,7 +150,8 @@ func main() -> string {
     close_fd(fd)
     data
 }
-"#.replace("PORT", &WRAP_PORT.to_string());
+"#
+    .replace("PORT", &WRAP_PORT.to_string());
 
     let client_src = r#"
 func main() -> string {
@@ -149,21 +164,28 @@ func main() -> string {
     close_fd(fd)
     data
 }
-"#.replace("PORT", &WRAP_PORT.to_string());
+"#
+    .replace("PORT", &WRAP_PORT.to_string());
 
-    let server = std::thread::spawn(move || {
-        run_source(&server_src)
-    });
+    let server = std::thread::spawn(move || run_source(&server_src));
 
     std::thread::sleep(Duration::from_millis(100));
 
     let client_result = run_source(&client_src);
     let server_result = server.join().unwrap();
 
-    assert_eq!(server_result, interp::Value::String("world".to_string()),
-        "Server should receive 'world', got {:?}", server_result);
-    assert_eq!(client_result, interp::Value::String("received: world".to_string()),
-        "Client should receive 'received: world', got {:?}", client_result);
+    assert_eq!(
+        server_result,
+        interp::Value::String("world".to_string()),
+        "Server should receive 'world', got {:?}",
+        server_result
+    );
+    assert_eq!(
+        client_result,
+        interp::Value::String("received: world".to_string()),
+        "Client should receive 'received: world', got {:?}",
+        client_result
+    );
 }
 
 // ─── HTTP server demo test ─────────────────────────────────
@@ -213,35 +235,48 @@ func main() -> i32 {
 fn net_http_server_demo() {
     let server_src = HTTP_SERVER.replace("PORT", &HTTP_PORT.to_string());
 
-    let server = std::thread::spawn(move || {
-        run_source(&server_src)
-    });
+    let server = std::thread::spawn(move || run_source(&server_src));
 
     std::thread::sleep(Duration::from_millis(200));
 
     // Connect as HTTP client via Rust TcpStream
     let addr = format!("127.0.0.1:{}", HTTP_PORT);
-    let mut stream = std::net::TcpStream::connect(&addr)
-        .expect("Rust client should connect to Mimi server");
+    let mut stream =
+        std::net::TcpStream::connect(&addr).expect("Rust client should connect to Mimi server");
 
     use std::io::{Read, Write};
-    stream.write_all(b"GET / HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+    stream
+        .write_all(b"GET / HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
         .expect("Rust client should send request");
 
     let mut response = String::new();
-    stream.read_to_string(&mut response)
+    stream
+        .read_to_string(&mut response)
         .expect("Rust client should read response");
 
     let server_result = server.join().unwrap();
-    assert_eq!(server_result, interp::Value::Int(0),
-        "Server should exit with code 0, got {:?}", server_result);
+    assert_eq!(
+        server_result,
+        interp::Value::Int(0),
+        "Server should exit with code 0, got {:?}",
+        server_result
+    );
 
-    assert!(response.contains("200 OK"),
-        "Response should contain 200 OK, got: {}", response);
-    assert!(response.contains("Hello from Mimi!"),
-        "Response should contain 'Hello from Mimi!', got: {}", response);
-    assert!(response.contains("Content-Length:"),
-        "Response should contain Content-Length, got: {}", response);
+    assert!(
+        response.contains("200 OK"),
+        "Response should contain 200 OK, got: {}",
+        response
+    );
+    assert!(
+        response.contains("Hello from Mimi!"),
+        "Response should contain 'Hello from Mimi!', got: {}",
+        response
+    );
+    assert!(
+        response.contains("Content-Length:"),
+        "Response should contain Content-Length, got: {}",
+        response
+    );
 }
 
 // ─── Dual-backend TCP client test ──────────────────────────
@@ -249,8 +284,8 @@ fn net_http_server_demo() {
 // Rust provides a TCP echo server for both to connect to.
 
 fn start_echo_server(port: u16) -> std::thread::JoinHandle<()> {
-    let listener = TcpListener::bind(format!("127.0.0.1:{}", port))
-        .expect("Rust echo server should bind");
+    let listener =
+        TcpListener::bind(format!("127.0.0.1:{}", port)).expect("Rust echo server should bind");
     std::thread::spawn(move || {
         if let Some(Ok(mut s)) = listener.incoming().next() {
             let _ = s.set_nodelay(true);
@@ -289,8 +324,12 @@ fn dual_net_tcp_client_echo() {
         std::thread::sleep(Duration::from_millis(200));
         let src = TCP_CLIENT_PROG.replace("PORT", &DUAL_PORT.to_string());
         let interp_result = run_source(&src);
-        assert_eq!(interp_result, interp::Value::Int(0),
-            "Interpreter should exit with 0, got {:?}", interp_result);
+        assert_eq!(
+            interp_result,
+            interp::Value::Int(0),
+            "Interpreter should exit with 0, got {:?}",
+            interp_result
+        );
         let _ = echo_server.join();
     }
 
@@ -300,10 +339,18 @@ fn dual_net_tcp_client_echo() {
         std::thread::sleep(Duration::from_millis(200));
         let src = TCP_CLIENT_PROG.replace("PORT", &DUAL_PORT2.to_string());
         let codegen_result = compile_and_run(&src);
-        assert!(codegen_result.is_ok(), "Codegen should succeed: {:?}", codegen_result.err());
+        assert!(
+            codegen_result.is_ok(),
+            "Codegen should succeed: {:?}",
+            codegen_result.err()
+        );
         let stdout = codegen_result.unwrap();
-        assert_eq!(stdout.trim(), "ping",
-            "Codegen should output 'ping', got: {}", stdout.trim());
+        assert_eq!(
+            stdout.trim(),
+            "ping",
+            "Codegen should output 'ping', got: {}",
+            stdout.trim()
+        );
         let _ = echo_server.join();
     }
 }
@@ -315,10 +362,18 @@ fn codegen_net_tcp_client_echo() {
 
     let src = TCP_CLIENT_PROG.replace("PORT", &CODEGEN_PORT.to_string());
     let codegen_result = compile_and_run(&src);
-    assert!(codegen_result.is_ok(), "Codegen should succeed: {:?}", codegen_result.err());
+    assert!(
+        codegen_result.is_ok(),
+        "Codegen should succeed: {:?}",
+        codegen_result.err()
+    );
     let stdout = codegen_result.unwrap();
-    assert_eq!(stdout.trim(), "ping",
-        "Codegen should output 'ping', got: {}", stdout.trim());
+    assert_eq!(
+        stdout.trim(),
+        "ping",
+        "Codegen should output 'ping', got: {}",
+        stdout.trim()
+    );
 
     let _ = echo_server.join();
 }

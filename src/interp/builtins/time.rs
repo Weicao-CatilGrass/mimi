@@ -3,7 +3,9 @@ use super::*;
 impl<'a> Interpreter<'a> {
     // === Time ===
     pub(crate) fn builtin_now(&self, args: Vec<Value>) -> Result<Value, InterpError> {
-        if !args.is_empty() { return Err(InterpError::new("now/timestamp expects 0 arguments")); }
+        if !args.is_empty() {
+            return Err(InterpError::new("now/timestamp expects 0 arguments"));
+        }
         let ts = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_err(|e| InterpError::new(format!("time error: {}", e)))?
@@ -12,7 +14,9 @@ impl<'a> Interpreter<'a> {
     }
 
     pub(crate) fn builtin_now_ms(&self, args: Vec<Value>) -> Result<Value, InterpError> {
-        if !args.is_empty() { return Err(InterpError::new("now_ms/timestamp_ms expects 0 arguments")); }
+        if !args.is_empty() {
+            return Err(InterpError::new("now_ms/timestamp_ms expects 0 arguments"));
+        }
         let ts = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_err(|e| InterpError::new(format!("time error: {}", e)))?
@@ -21,7 +25,9 @@ impl<'a> Interpreter<'a> {
     }
 
     pub(crate) fn builtin_sleep(&self, args: Vec<Value>) -> Result<Value, InterpError> {
-        if args.len() != 1 { return Err(InterpError::new("sleep expects 1 argument (milliseconds)")); }
+        if args.len() != 1 {
+            return Err(InterpError::new("sleep expects 1 argument (milliseconds)"));
+        }
         match &args[0] {
             Value::Int(ms) => {
                 std::thread::sleep(std::time::Duration::from_millis(*ms as u64));

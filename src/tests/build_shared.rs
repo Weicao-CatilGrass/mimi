@@ -1,11 +1,15 @@
+use crate::codegen;
 use crate::lexer;
 use crate::parser;
-use crate::codegen;
 
 /// Parse and type-check a Mimi source string.
 fn parse_and_check(src: &str) -> crate::ast::File {
-    let tokens = lexer::Lexer::new(src).tokenize().expect("src/tests/build_shared.rs:9 unwrap failed");
-    let file = parser::Parser::new(tokens).parse_file().expect("src/tests/build_shared.rs:10 unwrap failed");
+    let tokens = lexer::Lexer::new(src)
+        .tokenize()
+        .expect("src/tests/build_shared.rs:9 unwrap failed");
+    let file = parser::Parser::new(tokens)
+        .parse_file()
+        .expect("src/tests/build_shared.rs:10 unwrap failed");
     let check = crate::core::check(&file);
     assert!(check.is_ok(), "type check failed: {:?}", check.err());
     file
@@ -16,8 +20,10 @@ fn compile_to_object(src: &str, module_name: &str, obj_path: &std::path::Path) {
     let file = parse_and_check(src);
     let context = inkwell::context::Context::create();
     let mut gen = codegen::CodeGenerator::new(&context, module_name);
-    gen.compile_file(&file).expect("src/tests/build_shared.rs:21 unwrap failed");
-    gen.compile_to_object(obj_path).expect("src/tests/build_shared.rs:22 unwrap failed");
+    gen.compile_file(&file)
+        .expect("src/tests/build_shared.rs:21 unwrap failed");
+    gen.compile_to_object(obj_path)
+        .expect("src/tests/build_shared.rs:22 unwrap failed");
 }
 
 /// Link an object file + Rust runtime into a shared library.
@@ -31,11 +37,15 @@ fn link_shared(obj_path: &std::path::Path, output_so: &std::path::Path, no_std: 
     } else {
         cmd.arg("-lpthread").arg("-ldl").arg("-lm");
     }
-    cmd.arg("-Wl,--whole-archive").arg(&runtime_lib).arg("-Wl,--no-whole-archive");
+    cmd.arg("-Wl,--whole-archive")
+        .arg(&runtime_lib)
+        .arg("-Wl,--no-whole-archive");
     let status = cmd
         .arg(obj_path)
-        .arg("-o").arg(output_so)
-        .status().expect("link");
+        .arg("-o")
+        .arg(output_so)
+        .status()
+        .expect("link");
     assert!(status.success(), "linking should succeed");
 }
 
@@ -79,17 +89,28 @@ fn build_shared_library_no_std() {
 
     // Verify ELF shared library
     let file_out = std::process::Command::new("file")
-        .arg(&output_so).output().expect("file");
+        .arg(&output_so)
+        .output()
+        .expect("file");
     let out = String::from_utf8_lossy(&file_out.stdout);
-    assert!(out.contains("shared object") || out.contains("shared library"),
-        "not a shared library: {}", out);
+    assert!(
+        out.contains("shared object") || out.contains("shared library"),
+        "not a shared library: {}",
+        out
+    );
 
     // Verify symbol
     let nm_out = std::process::Command::new("nm")
-        .arg("-D").arg(&output_so).output().expect("nm");
+        .arg("-D")
+        .arg(&output_so)
+        .output()
+        .expect("nm");
     let nm = String::from_utf8_lossy(&nm_out.stdout);
-    assert!(nm.contains("double") || nm.contains("_double"),
-        "missing 'double' symbol: {}", nm);
+    assert!(
+        nm.contains("double") || nm.contains("_double"),
+        "missing 'double' symbol: {}",
+        nm
+    );
 
     let _ = std::fs::remove_dir_all(&tmp);
 }
@@ -97,8 +118,12 @@ fn build_shared_library_no_std() {
 #[test]
 fn emit_py_bindings_with_mimi_lib() {
     let src = "extern \"C\" { func greet(name: string) }\nextern \"C\" func add(a: i64, b: i64) -> i64 { a + b }";
-    let tokens = lexer::Lexer::new(src).tokenize().expect("src/tests/build_shared.rs:114 unwrap failed");
-    let file = parser::Parser::new(tokens).parse_file().expect("src/tests/build_shared.rs:115 unwrap failed");
+    let tokens = lexer::Lexer::new(src)
+        .tokenize()
+        .expect("src/tests/build_shared.rs:114 unwrap failed");
+    let file = parser::Parser::new(tokens)
+        .parse_file()
+        .expect("src/tests/build_shared.rs:115 unwrap failed");
 
     let mut extern_funcs = Vec::new();
     let mut exported_funcs = Vec::new();
@@ -117,12 +142,20 @@ fn emit_py_bindings_with_mimi_lib() {
                 if f.extern_abi.is_some() {
                     let extern_func = crate::ast::ExternFunc {
                         name: f.name.clone(),
-                        params: f.params.iter().map(|p| crate::ast::ExternParam {
-                            name: p.name.clone(), ty: p.ty.clone(), cap_mode: None,
-                        }).collect(),
+                        params: f
+                            .params
+                            .iter()
+                            .map(|p| crate::ast::ExternParam {
+                                name: p.name.clone(),
+                                ty: p.ty.clone(),
+                                cap_mode: None,
+                            })
+                            .collect(),
                         ret: f.ret.clone(),
-                        requires: None, ensures: None, variadic: false,
-                no_panic: false,
+                        requires: None,
+                        ensures: None,
+                        variadic: false,
+                        no_panic: false,
                     };
                     extern_funcs.push(extern_func);
                     exported_funcs.push(f.clone());
@@ -133,13 +166,17 @@ fn emit_py_bindings_with_mimi_lib() {
     }
 
     let bindings = crate::ffi::py_bind::PyBindGenerator::new(type_defs.clone(), "greeter")
-        .generate(&extern_funcs).expect("src/tests/build_shared.rs:149 unwrap failed");
+        .generate(&extern_funcs)
+        .expect("src/tests/build_shared.rs:149 unwrap failed");
     assert!(bindings.contains("PYBIND11_MODULE"));
     assert!(bindings.contains("add"));
     assert!(bindings.contains("greet"));
 
     let cmake = crate::ffi::py_bind::generate_cmake_snippet(
-        "greeter", "./", "/usr/local/lib", "/tmp/libgreeter.so",
+        "greeter",
+        "./",
+        "/usr/local/lib",
+        "/tmp/libgreeter.so",
     );
     assert!(cmake.contains("find_library(MIMI_USER_LIB"));
     assert!(cmake.contains("greeter PRIVATE ${MIMI_USER_LIB}"));
