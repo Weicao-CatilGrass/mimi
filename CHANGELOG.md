@@ -15,6 +15,9 @@
 - **S19**: `mimi_runtime_abort` transmute 类型擦除 → `AtomicPtr<ErrorHandler>` 类型化指针
 - **S21**: `.expect("lock poisoned")` 级联 panic → `unwrap_or_else(|e| e.into_inner())`
 - **S24**: `mimi_try_exit_str` 未使用 `_len` → 使用 len 做 `from_raw_parts` 边界安全读取
+- **S15**: `mimi_args_get` 返回悬垂字符串 → 新增 `mimi_string_free` 统一释放接口
+- **S17**: 正则引擎 ReDoS 指数爆炸 → `match_here_with_depth` 递归深度限制 (REGEX_MAX_DEPTH=100)
+- **S22**: `mem::forget(Vec)` 手动内存管理 → 新增 `mimi_list_free(list, free_elements)` 统一释放
 
 ## [v0.24.2] — 2026-06-25
 

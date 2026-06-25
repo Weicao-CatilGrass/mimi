@@ -131,7 +131,7 @@ pub type MapHandle = usize;
 // ---------------------------------------------------------------------------
 
 /// Allocate a C string (null-terminated) using libc::malloc.
-/// The caller is responsible for freeing with libc::free.
+/// The caller is responsible for freeing with mimi_string_free or libc::free.
 fn alloc_c_string(s: &str) -> *mut std::ffi::c_char {
     let bytes = s.as_bytes();
     let len = bytes.len();
@@ -148,6 +148,37 @@ fn alloc_c_string(s: &str) -> *mut std::ffi::c_char {
         *ptr.add(len) = 0;
     }
     ptr as *mut std::ffi::c_char
+}
+
+/// S15/S22: Free a C string allocated by alloc_c_string.
+/// Safe to call with null pointer (no-op).
+#[no_mangle]
+pub extern "C" fn mimi_string_free(ptr: *mut std::ffi::c_char) {
+    if !ptr.is_null() {
+        unsafe { libc::free(ptr as *mut std::ffi::c_void); }
+    }
+}
+
+/// S22: Free a MimiList and optionally its C string elements.
+/// If `free_elements` is true, each data[i] pointer is freed with libc::free.
+#[no_mangle]
+pub extern "C" fn mimi_list_free(list: *mut MimiList, free_elements: bool) {
+    if list.is_null() {
+        return;
+    }
+    unsafe {
+        let list = &*list;
+        if free_elements && !list.data.is_null() {
+            for i in 0..list.len as usize {
+                let elem = *list.data.add(i);
+                if !elem.is_null() {
+                    libc::free(elem as *mut std::ffi::c_void);
+                }
+            }
+            libc::free(list.data as *mut std::ffi::c_void);
+        }
+        libc::free(list as *const MimiList as *mut std::ffi::c_void);
+    }
 }
 
 /// Allocate a C string from bytes that already include the null terminator.
@@ -1396,6 +1427,10 @@ pub extern "C" fn mimi_set_to_list(handle: SetHandle, out_len: *mut i64) -> *mut
 
 struct RegexEngine;
 
+/// S17: Maximum recursion depth for regex backtracking to prevent ReDoS.
+/// Patterns like `(a+)+b` on `aaaaaaaaaaaaaaaac` cause exponential recursion.
+const REGEX_MAX_DEPTH: usize = 100;
+
 impl RegexEngine {
     fn match_pattern(text: &str, pattern: &str) -> bool {
         let text_bytes = text.as_bytes();
@@ -1403,7 +1438,7 @@ impl RegexEngine {
         let anchored = !pat_bytes.is_empty() && pat_bytes[0] == b'^';
 
         for start in 0..=text_bytes.len() {
-            let result = Self::match_here(pat_bytes, &text_bytes[start..]);
+            let result = Self::match_here_with_depth(pat_bytes, &text_bytes[start..], 0);
             if result >= 0 {
                 return true;
             }
@@ -1420,7 +1455,7 @@ impl RegexEngine {
         let anchored = !pat_bytes.is_empty() && pat_bytes[0] == b'^';
 
         for start in 0..=text_bytes.len() {
-            let consumed = Self::match_here(pat_bytes, &text_bytes[start..]);
+            let consumed = Self::match_here_with_depth(pat_bytes, &text_bytes[start..], 0);
             if consumed >= 0 {
                 return Some((start, start + consumed as usize));
             }
@@ -1443,7 +1478,7 @@ impl RegexEngine {
             let mut best_pos = text_bytes.len() + 1;
             let mut best_len = 0;
             for start in cursor..text_bytes.len() {
-                let consumed = Self::match_here(pat_bytes, &text_bytes[start..]);
+                let consumed = Self::match_here_with_depth(pat_bytes, &text_bytes[start..], 0);
                 if consumed >= 0 {
                     best_pos = start;
                     best_len = consumed as usize;
@@ -1467,7 +1502,11 @@ impl RegexEngine {
 
     /// Match pattern against text starting at current position.
     /// Returns number of text characters consumed on success, -1 on failure.
-    fn match_here(pattern: &[u8], text: &[u8]) -> i32 {
+    /// S17: depth-limited variant to prevent ReDoS exponential backtracking.
+    fn match_here_with_depth(pattern: &[u8], text: &[u8], depth: usize) -> i32 {
+        if depth >= REGEX_MAX_DEPTH {
+            return -1; // S17: abort to prevent stack overflow from ReDoS
+        }
         let mut pi = 0;
         let mut ti = 0;
         let plen = pattern.len();
@@ -1522,7 +1561,9 @@ impl RegexEngine {
                 // Try from max down to min
                 let mut matched = false;
                 for count in (min_count..=max_count).rev() {
-                    let r = Self::match_here_from(pattern, after_quant, text, ti + count);
+                    let sub_pat = &pattern[after_quant..];
+                    let sub_text = &text[ti + count..];
+                    let r = Self::match_here_with_depth(sub_pat, sub_text, depth + 1);
                     if r >= 0 {
                         ti = ti + count + r as usize;
                         matched = true;
@@ -1546,8 +1587,11 @@ impl RegexEngine {
         }
     }
 
+    fn match_here(pattern: &[u8], text: &[u8]) -> i32 {
+        Self::match_here_with_depth(pattern, text, 0)
+    }
+
     fn match_here_from(pattern: &[u8], start: usize, text: &[u8], ti: usize) -> i32 {
-        // Reconstruct a pattern slice from start and check match from position ti
         let sub_pat = &pattern[start..];
         let sub_text = &text[ti..];
         Self::match_here(sub_pat, sub_text)
