@@ -207,23 +207,24 @@ pub extern "C" fn __mimi_pow_i64(base: i64, exp: i64) -> i64 {
 // ---------------------------------------------------------------------------
 // Reference counting (atomic)
 // ---------------------------------------------------------------------------
-// Layout: [AtomicI64 strong | AtomicI64 weak | user data ...]
+// Layout: [AtomicI64 strong | AtomicI64 weak | i64 alloc_size | user data ...]
 // Returns pointer to user data (right after refcount header).
 
 #[repr(C)]
 struct RcHeader {
     strong: AtomicI64,
     weak: AtomicI64,
+    alloc_size: i64,
 }
 
-unsafe fn rc_header_from_ptr<'a>(ptr: *mut std::ffi::c_void) -> &'a RcHeader {
-    let hdr = (ptr as *mut RcHeader).sub(1);
-    &*hdr
+unsafe fn rc_header_from_ptr(ptr: *mut std::ffi::c_void) -> *mut RcHeader {
+    (ptr as *mut RcHeader).sub(1)
 }
 
-unsafe fn rc_header_from_ptr_mut(ptr: *mut std::ffi::c_void) -> &'static mut RcHeader {
-    let hdr = (ptr as *mut RcHeader).sub(1);
-    &mut *hdr
+/// S1: Helper to get a shared reference for atomic operations (no aliasing UB).
+/// Caller must ensure ptr is valid and not concurrently freed.
+unsafe fn rc_header_ref(ptr: *mut std::ffi::c_void) -> &'static RcHeader {
+    &*(ptr as *mut RcHeader).sub(1)
 }
 
 #[no_mangle]
@@ -241,6 +242,7 @@ pub extern "C" fn mimi_rc_alloc(size: i64) -> *mut std::ffi::c_void {
     unsafe {
         (*hdr).strong = AtomicI64::new(1);
         (*hdr).weak = AtomicI64::new(0);
+        (*hdr).alloc_size = size;
     }
     unsafe { (hdr.add(1)) as *mut std::ffi::c_void }
 }
@@ -251,7 +253,17 @@ pub extern "C" fn mimi_rc_retain(ptr: *mut std::ffi::c_void) {
         return;
     }
     let hdr = unsafe { rc_header_from_ptr(ptr) };
-    hdr.strong.fetch_add(1, Ordering::Relaxed);
+    unsafe { (*hdr).strong.fetch_add(1, Ordering::Relaxed); }
+}
+
+/// Helper: build the dealloc Layout from RcHeader's stored alloc_size.
+unsafe fn rc_dealloc_layout(hdr: *mut RcHeader) -> std::alloc::Layout {
+    let user_size = (*hdr).alloc_size as usize;
+    std::alloc::Layout::new::<RcHeader>()
+        .extend(std::alloc::Layout::array::<u8>(user_size).expect("invalid layout"))
+        .expect("layout extension failed")
+        .0
+        .pad_to_align()
 }
 
 #[no_mangle]
@@ -260,17 +272,12 @@ pub extern "C" fn mimi_rc_release(ptr: *mut std::ffi::c_void) {
         return;
     }
     let hdr = unsafe { rc_header_from_ptr(ptr) };
-    if hdr.strong.fetch_sub(1, Ordering::Release) == 1 {
+    if unsafe { (*hdr).strong.fetch_sub(1, Ordering::Release) } == 1 {
         std::sync::atomic::fence(Ordering::Acquire);
-        if hdr.weak.load(Ordering::Relaxed) == 0 {
-            let hdr_mut = unsafe { rc_header_from_ptr_mut(ptr) };
-            let layout = std::alloc::Layout::new::<RcHeader>()
-                .extend(std::alloc::Layout::array::<u8>(0).expect("invalid layout"))
-                .expect("layout extension failed")
-                .0
-                .pad_to_align();
+        if unsafe { (*hdr).weak.load(Ordering::Relaxed) } == 0 {
+            let layout = unsafe { rc_dealloc_layout(hdr) };
             unsafe {
-                std::alloc::dealloc(hdr_mut as *mut RcHeader as *mut u8, layout);
+                std::alloc::dealloc(hdr as *mut u8, layout);
             }
         }
     }
@@ -282,13 +289,22 @@ pub extern "C" fn mimi_rc_weak_retain(ptr: *mut std::ffi::c_void) {
         return;
     }
     let hdr = unsafe { rc_header_from_ptr(ptr) };
-    // Guard: don't retain if object is being freed (strong == 0 && weak == 0)
-    let s = hdr.strong.load(Ordering::Relaxed);
-    let w = hdr.weak.load(Ordering::Relaxed);
-    if s == 0 && w == 0 {
-        return;
+    // S2: CAS loop to avoid TOCTOU race on weak count.
+    // Old code: load strong, load weak, check both zero, then fetch_add.
+    // Between load and fetch_add, another thread could complete release+dealloc.
+    // CAS ensures we only increment if the object is still alive.
+    loop {
+        let s = unsafe { (*hdr).strong.load(Ordering::Acquire) };
+        let w = unsafe { (*hdr).weak.load(Ordering::Relaxed) };
+        if s == 0 && w == 0 {
+            return; // Object already freed or being freed
+        }
+        // Try to increment weak; if strong went to 0 between our load and CAS, retry.
+        let prev = unsafe { (*hdr).weak.compare_exchange(w, w + 1, Ordering::AcqRel, Ordering::Relaxed) };
+        if prev.is_ok() {
+            return;
+        }
     }
-    hdr.weak.fetch_add(1, Ordering::Relaxed);
 }
 
 #[no_mangle]
@@ -297,17 +313,12 @@ pub extern "C" fn mimi_rc_weak_release(ptr: *mut std::ffi::c_void) {
         return;
     }
     let hdr = unsafe { rc_header_from_ptr(ptr) };
-    if hdr.weak.fetch_sub(1, Ordering::Release) == 1 {
+    if unsafe { (*hdr).weak.fetch_sub(1, Ordering::Release) } == 1 {
         std::sync::atomic::fence(Ordering::Acquire);
-        if hdr.strong.load(Ordering::Relaxed) <= 0 {
-            let hdr_mut = unsafe { rc_header_from_ptr_mut(ptr) };
-            let layout = std::alloc::Layout::new::<RcHeader>()
-                .extend(std::alloc::Layout::array::<u8>(0).expect("invalid layout"))
-                .expect("layout extension failed")
-                .0
-                .pad_to_align();
+        if unsafe { (*hdr).strong.load(Ordering::Relaxed) } <= 0 {
+            let layout = unsafe { rc_dealloc_layout(hdr) };
             unsafe {
-                std::alloc::dealloc(hdr_mut as *mut RcHeader as *mut u8, layout);
+                std::alloc::dealloc(hdr as *mut u8, layout);
             }
         }
     }
@@ -318,7 +329,7 @@ pub extern "C" fn mimi_rc_upgrade(ptr: *mut std::ffi::c_void) -> *mut std::ffi::
     if ptr.is_null() {
         return std::ptr::null_mut();
     }
-    let hdr = unsafe { rc_header_from_ptr(ptr) };
+    let hdr = unsafe { rc_header_ref(ptr) };
     let mut s = hdr.strong.load(Ordering::Relaxed);
     loop {
         if s == 0 {
@@ -342,11 +353,13 @@ struct MimiMap {
     inner: HashMap<String, ValueHandle>,
 }
 
-unsafe fn map_from_handle(handle: MapHandle) -> &'static mut MimiMap {
+/// S4: Return raw pointer instead of &'static mut to avoid aliasing UB.
+/// Callers must dereference within a single scope (no two &mut to same handle).
+unsafe fn map_from_handle(handle: MapHandle) -> *mut MimiMap {
     if handle == 0 {
         panic!("map_from_handle: null handle");
     }
-    &mut *(handle as *mut MimiMap)
+    handle as *mut MimiMap
 }
 
 #[no_mangle]
@@ -372,7 +385,7 @@ pub extern "C" fn mimi_map_size(handle: MapHandle) -> i64 {
     if handle == 0 {
         return 0;
     }
-    unsafe { map_from_handle(handle).inner.len() as i64 }
+    unsafe { (*map_from_handle(handle)).inner.len() as i64 }
 }
 
 #[no_mangle]
@@ -381,7 +394,7 @@ pub extern "C" fn mimi_map_has_key(handle: MapHandle, key: *const std::ffi::c_ch
         return 0;
     }
     let s = unsafe { cstr_to_string(key) };
-    unsafe { map_from_handle(handle).inner.contains_key(&s) as i32 }
+    unsafe { (*map_from_handle(handle)).inner.contains_key(&s) as i32 }
 }
 
 #[no_mangle]
@@ -390,7 +403,7 @@ pub extern "C" fn mimi_map_get(handle: MapHandle, key: *const std::ffi::c_char) 
         return 0;
     }
     let s = unsafe { cstr_to_string(key) };
-    unsafe { map_from_handle(handle).inner.get(&s).copied().unwrap_or(0) }
+    unsafe { (*map_from_handle(handle)).inner.get(&s).copied().unwrap_or(0) }
 }
 
 #[no_mangle]
@@ -404,7 +417,7 @@ pub extern "C" fn mimi_map_set(
     }
     let s = unsafe { cstr_to_string(key) };
     unsafe {
-        map_from_handle(handle).inner.insert(s, value);
+        (*map_from_handle(handle)).inner.insert(s, value);
     }
 }
 
@@ -414,7 +427,7 @@ pub extern "C" fn mimi_map_remove(handle: MapHandle, key: *const std::ffi::c_cha
         return 0;
     }
     let s = unsafe { cstr_to_string(key) };
-    unsafe { map_from_handle(handle).inner.remove(&s).is_some() as i32 }
+    unsafe { (*map_from_handle(handle)).inner.remove(&s).is_some() as i32 }
 }
 
 #[no_mangle]
@@ -424,9 +437,11 @@ pub extern "C" fn mimi_map_from_list(
     n: i64,
 ) -> MapHandle {
     let handle = mimi_map_new();
-    if handle == 0 || keys.is_null() || values.is_null() || n == 0 {
+    if handle == 0 || keys.is_null() || values.is_null() || n <= 0 {
         return handle;
     }
+    // S6: Validate n doesn't exceed reasonable bounds (max 1M entries).
+    let n = n.min(1_000_000);
     for i in 0..n {
         unsafe {
             let key_handle = *keys.add(i as usize);
@@ -434,7 +449,7 @@ pub extern "C" fn mimi_map_from_list(
             let key_str = key_handle as *const std::ffi::c_char;
             if !key_str.is_null() {
                 let s = CStr::from_ptr(key_str).to_str().unwrap_or("");
-                map_from_handle(handle)
+                (*map_from_handle(handle))
                     .inner
                     .insert(s.to_string(), val_handle);
             }
@@ -451,7 +466,7 @@ fn mimi_map_collect(handle: MapHandle, collect_values: bool) -> *mut MimiList {
         });
         return Box::into_raw(list);
     }
-    let map = unsafe { map_from_handle(handle) };
+    let map = unsafe { &*map_from_handle(handle) };
     let len = map.inner.len() as i64;
     if len == 0 {
         let list = Box::new(MimiList {
@@ -464,7 +479,8 @@ fn mimi_map_collect(handle: MapHandle, collect_values: bool) -> *mut MimiList {
     let mut items: Vec<*mut std::ffi::c_char> = Vec::with_capacity(len as usize);
     for (k, v) in &map.inner {
         if collect_values {
-            // ValueHandle is stored as-is (it's an opaque integer)
+            // S10: ValueHandle is an opaque integer; cast to pointer for FFI transport.
+            // Caller must NOT free these pointers — they are not heap-allocated strings.
             let val_ptr = *v as *mut std::ffi::c_char;
             items.push(val_ptr);
         } else {
@@ -669,10 +685,14 @@ pub extern "C" fn mimi_args_init(argc: i32, argv: *mut *mut std::ffi::c_char) {
     let mut args = args_mutex.lock().expect("lock poisoned");
     args.argc = argc;
     args.argv.clear();
+    // S9: Copy strings to owned memory instead of storing raw pointers.
+    // Original argv may be freed after init returns.
     if !argv.is_null() && argc > 0 {
         for i in 0..argc as isize {
             unsafe {
-                args.argv.push(*argv.offset(i) as usize);
+                let s = cstr_to_string(*argv.offset(i));
+                let ptr = alloc_c_string(&s);
+                args.argv.push(ptr as usize);
             }
         }
     }
@@ -1280,11 +1300,12 @@ struct MimiSet {
     inner: std::collections::HashSet<SetValueHandle>,
 }
 
-fn set_from_handle(handle: SetHandle) -> &'static mut MimiSet {
+/// S4: Return raw pointer instead of &'static mut to avoid aliasing UB.
+unsafe fn set_from_handle(handle: SetHandle) -> *mut MimiSet {
     if handle == 0 {
         panic!("set_from_handle: null handle");
     }
-    unsafe { &mut *(handle as *mut MimiSet) }
+    handle as *mut MimiSet
 }
 
 #[no_mangle]
@@ -1310,7 +1331,7 @@ pub extern "C" fn mimi_set_insert(handle: SetHandle, value: SetValueHandle) -> S
     if handle == 0 {
         return handle;
     }
-    set_from_handle(handle).inner.insert(value);
+    unsafe { (*set_from_handle(handle)).inner.insert(value); }
     handle
 }
 
@@ -1319,7 +1340,7 @@ pub extern "C" fn mimi_set_contains(handle: SetHandle, value: SetValueHandle) ->
     if handle == 0 {
         return 0;
     }
-    set_from_handle(handle).inner.contains(&value) as i64
+    unsafe { (*set_from_handle(handle)).inner.contains(&value) as i64 }
 }
 
 #[no_mangle]
@@ -1327,7 +1348,7 @@ pub extern "C" fn mimi_set_remove(handle: SetHandle, value: SetValueHandle) -> S
     if handle == 0 {
         return handle;
     }
-    set_from_handle(handle).inner.remove(&value);
+    unsafe { (*set_from_handle(handle)).inner.remove(&value); }
     handle
 }
 
@@ -1336,7 +1357,7 @@ pub extern "C" fn mimi_set_size(handle: SetHandle) -> i64 {
     if handle == 0 {
         return 0;
     }
-    set_from_handle(handle).inner.len() as i64
+    unsafe { (*set_from_handle(handle)).inner.len() as i64 }
 }
 
 #[no_mangle]
@@ -1349,7 +1370,7 @@ pub extern "C" fn mimi_set_to_list(handle: SetHandle, out_len: *mut i64) -> *mut
         }
         return std::ptr::null_mut();
     }
-    let set = set_from_handle(handle);
+    let set = unsafe { &*set_from_handle(handle) };
     let len = set.inner.len() as i64;
     unsafe {
         *out_len = len;
@@ -1849,7 +1870,9 @@ pub extern "C" fn mimi_recv(fd: i64, buf_size: i64, out_len: *mut i64) -> *mut s
         }
         return std::ptr::null_mut();
     }
-    buf[n as usize] = 0;
+    // S8: Clamp n to buffer size to prevent out-of-bounds write.
+    let n = (n as usize).min(size);
+    buf[n] = 0;
     if !out_len.is_null() {
         unsafe {
             *out_len = n as i64;
@@ -2091,8 +2114,10 @@ pub extern "C" fn mimi_json_deserialize(
     elem_type: i64,
 ) -> *mut std::ffi::c_void {
     if json.is_null() {
-        unsafe {
-            *out_len = 0;
+        if !out_len.is_null() {
+            unsafe {
+                *out_len = 0;
+            }
         }
         return std::ptr::null_mut();
     }

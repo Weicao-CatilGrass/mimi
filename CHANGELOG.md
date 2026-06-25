@@ -2,6 +2,17 @@
 
 ## [Unreleased] — 0.24.3-dev
 
+### Fixed
+- **S1**: `rc_header_from_ptr_mut` 返回 `&'static mut RcHeader` — 改为 `*mut RcHeader` 裸指针 + `rc_header_ref` 共享引用辅助
+- **S2**: `mimi_rc_weak_retain` TOCTOU 竞态 — load→check→add 改为 CAS 循环
+- **S3**: `mimi_rc_release` dealloc 使用 `Layout::array::<u8>(0)` — RcHeader 新增 `alloc_size` 字段，dealloc 使用实际分配大小
+- **S4**: `map_from_handle`/`set_from_handle` 返回 `&'static mut` — 改为返回 `*mut T` 裸指针
+- **S6**: `mimi_map_from_list` 无界循环 — 添加 1M 上界 clamp
+- **S7**: `mimi_json_deserialize` out_len null 解引用 — 添加 null 检查
+- **S8**: `mimi_recv` `n as usize` 截断越界 — 添加 `n.min(size)` clamp
+- **S9**: `mimi_args_init` 存储 argv 原始指针 — 改为 `alloc_c_string` 复制字符串
+- **S10**: `mimi_map_collect` 文档化 keys/values 收集策略差异
+
 ## [v0.24.2] — 2026-06-25
 
 ### Fixed
