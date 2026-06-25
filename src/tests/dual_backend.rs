@@ -3515,9 +3515,8 @@ fn dual_higher_order_nested_generic() {
     if !can_link() {
         return;
     }
-    // Generic List<T> function — known limitation: generic return in codegen
-    // This tests the type checker and interpreter.
-    dual_assert_interp_only!(
+    // Generic List<T> function — promoted to dual after generic return codegen fix
+    dual_assert!(
         r#"
         func get_at<T>(xs: List<T>, idx: i32) -> T { xs[idx] }
         func main() -> i32 {
@@ -3525,7 +3524,7 @@ fn dual_higher_order_nested_generic() {
             0
         }
     "#,
-        interp::Value::Int(0)
+        "20"
     );
 }
 
@@ -3623,8 +3622,8 @@ fn dual_recursive_type_interp_build() {
     if !can_link() {
         return;
     }
-    // Recursive type with List<Expr> construction works in interpreter.
-    // Codegen limitation: List only supports scalar elements.
+    // Recursive type with List<Expr> construction — interp-only:
+    // codegen can't index List<Expr> (recursive non-scalar element type)
     dual_assert_interp_only!(
         r#"
         type Expr {
@@ -3634,7 +3633,7 @@ fn dual_recursive_type_interp_build() {
         func eval(e: Expr) -> i32 {
             match e {
                 Lit(v) => v
-                Call(_, args) => args[0]
+                Call(_, args) => eval(args[0])
             }
         }
         func main() -> i32 {
