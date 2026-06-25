@@ -163,9 +163,11 @@ impl<'a> Checker<'a> {
     ///
     /// After solving a let binding, call this to make the type polymorphic.
     /// Free TypeVars (not bound in the environment) become universally quantified.
+    ///
+    /// Bug 6 fix: single-traversal resolve-and-collect (previously resolve + collect
+    /// free vars were two separate O(N·D) tree walks; now done in one pass).
     pub(crate) fn generalize(&mut self, ty: &Type, env: &HashMap<String, Type>) -> Type {
-        let resolved = self.unification.resolve(ty);
-        let free_vars = self.collect_free_type_vars(&resolved);
+        let (resolved, free_vars) = self.resolve_and_collect_free_vars(ty);
         let env_vars = self.collect_env_type_vars(env);
         let generalized: Vec<u32> = free_vars
             .into_iter()
@@ -176,6 +178,109 @@ impl<'a> Checker<'a> {
         } else {
             let param_names: Vec<String> = generalized.iter().map(|v| format!("T{}", v)).collect();
             Type::ForAll(param_names, Box::new(resolved))
+        }
+    }
+
+    /// Resolve a type and collect free TypeVars in a single traversal (Bug 6 fix).
+    fn resolve_and_collect_free_vars(&mut self, ty: &Type) -> (Type, Vec<u32>) {
+        let mut free_vars = Vec::new();
+        let resolved = self.resolve_and_collect_inner(ty, &mut free_vars);
+        free_vars.sort();
+        free_vars.dedup();
+        (resolved, free_vars)
+    }
+
+    /// Combined resolve + collect free TypeVars inner loop.
+    fn resolve_and_collect_inner(&mut self, ty: &Type, free_vars: &mut Vec<u32>) -> Type {
+        match ty {
+            Type::TypeVar(id) => {
+                let root = self.unification.find(*id);
+                if let Some(bound) = self.unification.get_binding(root).cloned() {
+                    let resolved = self.resolve_and_collect_inner(&bound, free_vars);
+                    free_vars.push(root);
+                    resolved
+                } else {
+                    free_vars.push(root);
+                    Type::TypeVar(root)
+                }
+            }
+            Type::Option(inner) => {
+                Type::Option(Box::new(self.resolve_and_collect_inner(inner, free_vars)))
+            }
+            Type::Result(ok, err) => Type::Result(
+                Box::new(self.resolve_and_collect_inner(ok, free_vars)),
+                Box::new(self.resolve_and_collect_inner(err, free_vars)),
+            ),
+            Type::Tuple(elems) => Type::Tuple(
+                elems.iter().map(|e| self.resolve_and_collect_inner(e, free_vars)).collect(),
+            ),
+            Type::Func(args, ret) | Type::ExternFunc(args, ret) => {
+                let resolved_args = args
+                    .iter()
+                    .map(|a| self.resolve_and_collect_inner(a, free_vars))
+                    .collect();
+                Type::Func(resolved_args, Box::new(self.resolve_and_collect_inner(ret, free_vars)))
+            }
+            Type::Ref(lt, inner) => Type::Ref(
+                lt.clone(),
+                Box::new(self.resolve_and_collect_inner(inner, free_vars)),
+            ),
+            Type::RefMut(lt, inner) => Type::RefMut(
+                lt.clone(),
+                Box::new(self.resolve_and_collect_inner(inner, free_vars)),
+            ),
+            Type::Shared(inner) => {
+                Type::Shared(Box::new(self.resolve_and_collect_inner(inner, free_vars)))
+            }
+            Type::LocalShared(inner) => {
+                Type::LocalShared(Box::new(self.resolve_and_collect_inner(inner, free_vars)))
+            }
+            Type::Weak(inner) => {
+                Type::Weak(Box::new(self.resolve_and_collect_inner(inner, free_vars)))
+            }
+            Type::WeakLocal(inner) => {
+                Type::WeakLocal(Box::new(self.resolve_and_collect_inner(inner, free_vars)))
+            }
+            Type::RawPtr(inner) => {
+                Type::RawPtr(Box::new(self.resolve_and_collect_inner(inner, free_vars)))
+            }
+            Type::RawPtrMut(inner) => {
+                Type::RawPtrMut(Box::new(self.resolve_and_collect_inner(inner, free_vars)))
+            }
+            Type::CShared(inner) => {
+                Type::CShared(Box::new(self.resolve_and_collect_inner(inner, free_vars)))
+            }
+            Type::CBorrow(inner) => {
+                Type::CBorrow(Box::new(self.resolve_and_collect_inner(inner, free_vars)))
+            }
+            Type::CBorrowMut(inner) => {
+                Type::CBorrowMut(Box::new(self.resolve_and_collect_inner(inner, free_vars)))
+            }
+            Type::CBuffer(inner) => {
+                Type::CBuffer(Box::new(self.resolve_and_collect_inner(inner, free_vars)))
+            }
+            Type::Array(inner, size) => Type::Array(
+                Box::new(self.resolve_and_collect_inner(inner, free_vars)),
+                *size,
+            ),
+            Type::Slice(inner) => {
+                Type::Slice(Box::new(self.resolve_and_collect_inner(inner, free_vars)))
+            }
+            Type::Newtype(name, inner) => Type::Newtype(
+                name.clone(),
+                Box::new(self.resolve_and_collect_inner(inner, free_vars)),
+            ),
+            Type::Name(name, args) => Type::Name(
+                name.clone(),
+                args.iter()
+                    .map(|a| self.resolve_and_collect_inner(a, free_vars))
+                    .collect(),
+            ),
+            Type::ForAll(params, body) => Type::ForAll(
+                params.clone(),
+                Box::new(self.resolve_and_collect_inner(body, free_vars)),
+            ),
+            _ => ty.clone(),
         }
     }
 
@@ -296,6 +401,39 @@ impl<'a> Checker<'a> {
                 name.clone(),
                 args.iter().map(|a| self.substitute_type_vars(a, subs)).collect(),
             ),
+            // Bug 7 fix: added missing container variants
+            Type::Array(inner, size) => {
+                Type::Array(Box::new(self.substitute_type_vars(inner, subs)), *size)
+            }
+            Type::Slice(inner) => Type::Slice(Box::new(self.substitute_type_vars(inner, subs))),
+            Type::Shared(inner) => Type::Shared(Box::new(self.substitute_type_vars(inner, subs))),
+            Type::LocalShared(inner) => {
+                Type::LocalShared(Box::new(self.substitute_type_vars(inner, subs)))
+            }
+            Type::Weak(inner) => Type::Weak(Box::new(self.substitute_type_vars(inner, subs))),
+            Type::WeakLocal(inner) => {
+                Type::WeakLocal(Box::new(self.substitute_type_vars(inner, subs)))
+            }
+            Type::RawPtr(inner) => Type::RawPtr(Box::new(self.substitute_type_vars(inner, subs))),
+            Type::RawPtrMut(inner) => {
+                Type::RawPtrMut(Box::new(self.substitute_type_vars(inner, subs)))
+            }
+            Type::CShared(inner) => Type::CShared(Box::new(self.substitute_type_vars(inner, subs))),
+            Type::CBorrow(inner) => Type::CBorrow(Box::new(self.substitute_type_vars(inner, subs))),
+            Type::CBorrowMut(inner) => {
+                Type::CBorrowMut(Box::new(self.substitute_type_vars(inner, subs)))
+            }
+            Type::CBuffer(inner) => Type::CBuffer(Box::new(self.substitute_type_vars(inner, subs))),
+            Type::Newtype(name, inner) => {
+                Type::Newtype(name.clone(), Box::new(self.substitute_type_vars(inner, subs)))
+            }
+            Type::ExternFunc(args, ret) => Type::ExternFunc(
+                args.iter().map(|a| self.substitute_type_vars(a, subs)).collect(),
+                Box::new(self.substitute_type_vars(ret, subs)),
+            ),
+            Type::ForAll(params, body) => {
+                Type::ForAll(params.clone(), Box::new(self.substitute_type_vars(body, subs)))
+            }
             _ => ty.clone(),
         }
     }

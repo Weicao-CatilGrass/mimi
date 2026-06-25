@@ -1401,3 +1401,22 @@ func main() -> i32 {
     let result = core::check(&file);
     assert!(result.is_err(), "cross-newtype assignment should be rejected: {:?}", result);
 }
+
+// ─── v0.25.5: Bug 6 + Bug 7 tests ──────────────────────────────────
+
+#[test]
+fn v0255_bug7_substitute_tuple_inner() {
+    // Bug 7: substitute_type_vars must recurse into Tuple elements
+    // Tuple<T, U> was already handled but verify it still works after
+    // the full variant coverage fix (Array/Slice/Shared/Ref/etc.)
+    check_source(
+        r#"
+func swap<T, U>(p: (T, U)) -> (U, T) { (p.1, p.0) }
+func main() -> i32 {
+    let p = swap((1, 2));
+    p.0
+}
+"#,
+    )
+    .expect("Tuple<T, U> elements should be substituted during instantiation");
+}

@@ -1,12 +1,18 @@
 # Changelog
 
+## [v0.25.5] — 2026-06-25
+
+### Fixed
+- **Bug 6**: generalize single-traversal optimization — resolve_and_collect combined (was resolve + collect as separate O(N·D) passes)
+- **Bug 7**: substitute_type_vars missing 12+ Type variants (Array, Slice, Shared, LocalShared, Weak, WeakLocal, RawPtr, RawPtrMut, CShared, CBorrow, CBorrowMut, CBuffer, Newtype, ExternFunc, ForAll)
+
 ## [v0.25.4] — 2026-06-25
 
 ### Fixed
 - **Bug 3**: Expected type propagated through Expr::If branches (C3 bidirectional checking)
 - **Bug 2**: Confirmed resolved by v0.26 unification architecture — reset() called per function
 
-## [Unreleased] — v0.25.5-dev
+## [Unreleased] — v0.25.6-dev
 
 ## [v0.25.3] — 2026-06-25
 
@@ -15,12 +21,6 @@
 - **Bug 4**: Double unify in Stmt::Return
 - **Bug 5**: Newtype implicit unwrapping regression
 - **fmt_type**: Newtype wrapping capability/primitive types now formats transparently (aligns with `same_type`)
-
-## [v0.25.5] — Planned
-
-### Fixed
-- **Bug 6**: generalize double traversal performance
-- **Bug 7**: substitute_type_vars missing Type variants
 
 ## [v0.25.2] — 2026-06-25
 

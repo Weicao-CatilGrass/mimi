@@ -43,6 +43,23 @@ impl UnificationTable {
         self.next_var = 0;
     }
 
+    /// Find the root TypeVar ID for a given variable (with path compression).
+    pub fn find(&mut self, id: u32) -> u32 {
+        let parent = *self.parent.get(&id).unwrap_or(&id);
+        if parent == id {
+            id
+        } else {
+            let root = self.find(parent);
+            self.parent.insert(id, root);
+            root
+        }
+    }
+
+    /// Get the binding for a resolved TypeVar root, if any.
+    pub fn get_binding(&self, root: u32) -> Option<&Type> {
+        self.binding.get(&root)
+    }
+
     pub fn new() -> Self {
         Self {
             parent: HashMap::new(),
@@ -57,18 +74,6 @@ impl UnificationTable {
         self.next_var += 1;
         self.parent.insert(id, id);
         id
-    }
-
-    /// Find the root representative of a type variable (with path compression).
-    fn find(&mut self, id: u32) -> u32 {
-        let parent = *self.parent.get(&id).unwrap_or(&id);
-        if parent == id {
-            id
-        } else {
-            let root = self.find(parent);
-            self.parent.insert(id, root);
-            root
-        }
     }
 
     /// Union two type variables. Returns the root.
