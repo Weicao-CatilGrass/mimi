@@ -133,6 +133,8 @@ pub struct CodeGenerator<'ctx> {
     type_map: HashMap<String, crate::ast::Type>,
     func_defs: HashMap<String, FuncDef>,
     var_type_names: HashMap<String, String>,
+    /// Type objects for variables (avoids string re-parsing for Arch-2).
+    var_types: HashMap<String, Type>,
     spawn_counter: u64,
     pub strict: bool,
     pub no_std: bool,
@@ -232,6 +234,7 @@ impl<'ctx> CodeGenerator<'ctx> {
             type_map: HashMap::new(),
             func_defs: HashMap::new(),
             var_type_names: HashMap::new(),
+            var_types: HashMap::new(),
             spawn_counter: 0,
             strict: false,
             no_std: false,
@@ -521,14 +524,16 @@ impl<'ctx> CodeGenerator<'ctx> {
         if let Some(decl_ty) = ty {
             let tn = crate::core::fmt_type(decl_ty);
             self.var_type_names.insert(name.clone(), tn);
+            self.var_types.insert(name.clone(), decl_ty.clone());
         } else if let Expr::Record { ty: Some(tn), .. } = init {
             self.var_type_names.insert(name.clone(), tn.clone());
         } else if let Expr::Call(callee, _) = init {
             if let Expr::Ident(fname) = callee.as_ref() {
                 if let Some(fdef) = self.func_defs.get(fname) {
                     if let Some(ret_ty) = &fdef.ret {
-                        self.var_type_names
-                            .insert(name.clone(), crate::core::fmt_type(ret_ty));
+                        let tn = crate::core::fmt_type(ret_ty);
+                        self.var_type_names.insert(name.clone(), tn);
+                        self.var_types.insert(name.clone(), ret_ty.clone());
                     }
                 }
             }
@@ -783,6 +788,9 @@ impl<'ctx> CodeGenerator<'ctx> {
         self.shared_var_names.insert(new_name.to_string());
         if let Some(tn) = self.var_type_names.get(src_name) {
             self.var_type_names.insert(new_name.to_string(), tn.clone());
+        }
+        if let Some(ty) = self.var_types.get(src_name) {
+            self.var_types.insert(new_name.to_string(), ty.clone());
         }
         vars.insert(new_name.to_string(), (new_alloca, val_ty));
 

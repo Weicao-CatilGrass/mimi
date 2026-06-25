@@ -34,18 +34,42 @@ impl<'ctx> CodeGenerator<'ctx> {
 
     /// Try to convert a list element from i64 to its proper struct type by
     /// inferring the element type from the expression's type annotation.
+    /// Arch-2: uses type-driven lookup instead of string parsing.
     fn convert_list_elem_by_type(
         &self,
         elem_int: inkwell::values::IntValue<'ctx>,
         obj_expr: &Expr,
         vars: &HashMap<String, VarEntry<'ctx>>,
     ) -> Result<Option<BasicValueEnum<'ctx>>, CompileError> {
+        // Arch-2: Try type-driven lookup first (no string parsing)
+        if let Expr::Ident(name) = obj_expr {
+            if let Some(list_ty) = self.var_types.get(name) {
+                if let Type::Name(n, args) = list_ty {
+                    if n == "List" && args.len() == 1 {
+                        let elem_ty = &args[0];
+                        let llvm_ty = types::mimi_type_to_llvm(self.context, elem_ty);
+                        if let Some(BasicTypeEnum::StructType(sty)) = llvm_ty {
+                            let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
+                            let elem_ptr = self
+                                .builder
+                                .build_int_to_ptr(elem_int, ptr_ty, "elem_ptr")
+                                .map_err(|e| CompileError::LlvmError(format!("inttoptr: {}", e)))?;
+                            let struct_val = self
+                                .builder
+                                .build_load(BasicTypeEnum::StructType(sty), elem_ptr, "elem_struct")
+                                .map_err(|e| CompileError::LlvmError(format!("load struct elem: {}", e)))?;
+                            return Ok(Some(struct_val));
+                        }
+                    }
+                }
+            }
+        }
+        // Fallback: string-based parsing (for complex expressions not in var_types)
         let obj_type = self.infer_object_type(obj_expr, vars);
         if obj_type.is_empty() {
             return Ok(None);
         }
         if let Some(elem_ty) = crate::codegen::extract_list_elem_type(&obj_type) {
-            // Check user-defined type registry first, then built-in type mapping
             let llvm_ty = if let Type::Name(name, _) = &elem_ty {
                 self.type_llvm.get(name).cloned()
                     .or_else(|| types::mimi_type_to_llvm(self.context, &elem_ty))

@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.25.6] — 2026-06-25
+
+### Architecture
+- **Arch-1**: Confirmed `UnificationTable::reset()` called at `check_func` entry — type variable bindings do not leak across function boundaries
+- **Arch-2**: `Codegen.var_types` field added — stores `Type` objects for variables, enabling type-driven element extraction without string parsing; `convert_list_elem_by_type` now uses direct type lookup with fallback to string parsing
+
 ## [v0.25.5] — 2026-06-25
 
 ### Fixed
@@ -12,7 +18,7 @@
 - **Bug 3**: Expected type propagated through Expr::If branches (C3 bidirectional checking)
 - **Bug 2**: Confirmed resolved by v0.26 unification architecture — reset() called per function
 
-## [Unreleased] — v0.25.6-dev
+## [Unreleased] — v0.25.7-dev
 
 ## [v0.25.3] — 2026-06-25
 
