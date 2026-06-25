@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 
 use super::borrow::BorrowState;
+use super::unification::UnificationTable;
 
 pub(crate) struct Checker<'a> {
     pub(crate) file: &'a File,
@@ -62,6 +63,8 @@ pub(crate) struct Checker<'a> {
     /// Current item/function line-col for fallback error positioning
     pub(crate) current_line: usize,
     pub(crate) current_col: usize,
+    /// C2: Unification table for type inference
+    pub(crate) unification: UnificationTable,
 }
 
 impl<'a> Checker<'a> {
@@ -98,6 +101,7 @@ impl<'a> Checker<'a> {
             arena_depth: 0,
             current_line: 0,
             current_col: 0,
+            unification: UnificationTable::new(),
         }
     }
 
@@ -128,6 +132,31 @@ impl<'a> Checker<'a> {
         let span = Span::single(self.current_line, self.current_col);
         self.warnings
             .push(Diagnostic::warning_code(code, msg, span));
+    }
+
+    /// C2: Allocate a fresh type variable for inference.
+    pub(crate) fn fresh_var(&mut self) -> Type {
+        let id = self.unification.fresh_var();
+        Type::TypeVar(id)
+    }
+
+    /// C2: Unify two types, emitting a diagnostic on failure.
+    pub(crate) fn unify_types(&mut self, expected: &Type, actual: &Type) -> bool {
+        match self.unification.unify(expected, actual) {
+            Ok(()) => true,
+            Err(e) => {
+                self.emit_code(
+                    crate::diagnostic::codes::E0209,
+                    format!(
+                        "type mismatch: expected {}, found {} ({})",
+                        crate::core::helpers::fmt_type(expected),
+                        crate::core::helpers::fmt_type(actual),
+                        e
+                    ),
+                );
+                false
+            }
+        }
     }
 }
 
