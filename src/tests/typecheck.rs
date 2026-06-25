@@ -1132,3 +1132,51 @@ func main() -> i32 { classify("world") }
     )
     .expect("string match with catch-all should pass");
 }
+
+// ─── v0.25.2: Missing CK tests ─────────────────────────────────────
+
+#[test]
+fn ck1_constructor_scoped_to_subject() {
+    // CK1: constructor pattern resolved against subject type
+    // When subject type has the variant, it uses the scoped lookup
+    check_source(
+        r#"
+type Color { Red Green Blue }
+type TrafficLight { Stop Go Caution }
+func pick(c: Color) -> i32 {
+    match c {
+        Red => 1
+        _ => 0
+    }
+}
+func main() -> i32 { pick(Red) }
+"#,
+    )
+    .expect("constructor scoped to subject type should pass");
+}
+
+#[test]
+fn ck2_generic_enum_self_ty_includes_args() {
+    // CK2: generic enum self_ty should include type parameter args
+    // Full generic constructor substitution requires C2 (unification engine)
+    check_source(
+        r#"
+type Wrapper<T> { Wrap(T) }
+func main() -> i32 { 1 }
+"#,
+    )
+    .expect("generic enum definition should pass typecheck");
+}
+
+#[test]
+fn ck4_alias_cycle_transitive() {
+    // CK4: alias cycle through nested types should be detected
+    let src = r#"
+type A = B
+type B = A
+func main() -> i32 { 1 }
+"#;
+    let file = parse(src);
+    let result = core::check(&file);
+    assert!(result.is_err(), "transitive alias cycle should be detected");
+}

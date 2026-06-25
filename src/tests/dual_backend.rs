@@ -3743,3 +3743,74 @@ fn dual_map_literal_variable_key() {
         "1"
     );
 }
+
+// ─── v0.25: New tests ──────────────────────────────────────────────
+
+#[test]
+fn dual_newtype_dot0() {
+    if !can_link() {
+        return;
+    }
+    // D4: newtype .0 unwrap in both backends
+    dual_assert!(
+        r#"
+newtype UserId = i32
+func get_id(u: UserId) -> i32 { u.0 }
+func main() -> i32 {
+    println(get_id(UserId(42)));
+    0
+}
+"#,
+        "42"
+    );
+}
+
+#[test]
+fn dual_list_record_field_access() {
+    if !can_link() {
+        return;
+    }
+    // D1: List<Record> construction and field access in both backends
+    dual_assert!(
+        r#"
+type Point {
+    x: i32
+    y: i32
+}
+func main() -> i32 {
+    let p = Point { x: 10, y: 20 };
+    let ps = [p];
+    let q = ps[0];
+    println(q.x + q.y);
+    0
+}
+"#,
+        "30"
+    );
+}
+
+#[test]
+fn dual_int_match_catchall() {
+    if !can_link() {
+        return;
+    }
+    // D3: int match with catch-all in both backends
+    dual_assert!(
+        r#"
+func classify(x: i32) -> i32 {
+    match x {
+        0 => 100
+        1 => 200
+        _ => 999
+    }
+}
+func main() -> i32 {
+    println(classify(0));
+    println(classify(1));
+    println(classify(5));
+    0
+}
+"#,
+        "100\n200\n999"
+    );
+}

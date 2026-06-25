@@ -406,9 +406,14 @@ impl<'ctx> CodeGenerator<'ctx> {
     ) -> Result<BasicValueEnum<'ctx>, CompileError> {
         // D4: newtype .0 — newtypes are transparent in codegen, .0 is identity
         if index == 0 {
-            if let Some(ty) = self.expr_type_of(tuple_expr, vars) {
-                if matches!(ty, crate::ast::Type::Newtype(_, _)) {
-                    return self.compile_expr(tuple_expr, vars);
+            if let Expr::Ident(name) = tuple_expr {
+                // Check if the variable's type name is a registered newtype
+                if let Some(type_name) = self.var_type_names.get(name) {
+                    if let Some(td) = self.type_defs.get(type_name) {
+                        if matches!(td.kind, crate::ast::TypeDefKind::Newtype(_)) {
+                            return self.compile_expr(tuple_expr, vars);
+                        }
+                    }
                 }
             }
         }
