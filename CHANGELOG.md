@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased] — 0.24.3-dev
+## [v0.24.3] — 2026-06-25
 
 ### Fixed
 - **S1**: `rc_header_from_ptr_mut` 返回 `&'static mut RcHeader` — 改为 `*mut RcHeader` 裸指针 + `rc_header_ref` 共享引用辅助
