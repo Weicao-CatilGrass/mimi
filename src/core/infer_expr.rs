@@ -35,9 +35,10 @@ impl<'a> Checker<'a> {
             }
             // C3: if — check both branches against expected type
             Expr::If { then_, else_, .. } => {
-                let then_ty = self.infer_block_expr(then_, scopes);
+                // Use check_block_expr to propagate expected type to branches
+                let then_ty = self.check_block_expr(then_, expected, scopes);
                 if let Some(else_block) = else_ {
-                    let else_ty = self.infer_block_expr(else_block, scopes);
+                    let else_ty = self.check_block_expr(else_block, expected, scopes);
                     // Unify both branches
                     if self.unification.unify(&then_ty, &else_ty).is_err() {
                         self.emit_code(

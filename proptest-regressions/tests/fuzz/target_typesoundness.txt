@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 8217230231f918423f641dce9e708e84bf220c3ffed0e19060d58c56c7f83345 # shrinks to src = "func main() -> i32 {\n    let x: i32 = 0;\n    let y: i64 = 0;\n    println(x + y);\n    0\n}"

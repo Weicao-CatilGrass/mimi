@@ -26,6 +26,30 @@ impl<'a> Checker<'a> {
         result_type
     }
 
+    /// C3: Bidirectional block checking — check the last expression against expected type.
+    pub(in crate::core) fn check_block_expr(
+        &mut self,
+        block: &Block,
+        expected: &Type,
+        scopes: &mut Vec<HashMap<String, Type>>,
+    ) -> Type {
+        scopes.push(HashMap::new());
+        let mut result_type = Type::Name("unit".into(), vec![]);
+        for stmt in block {
+            match stmt {
+                Stmt::Expr(e) => result_type = self.check_expr(expected, e, scopes),
+                Stmt::Return(Some(e)) => {
+                    result_type = self.check_expr(expected, e, scopes);
+                    break;
+                }
+                Stmt::Let { init: Some(e), .. } => result_type = self.infer_expr(e, scopes),
+                _ => {}
+            }
+        }
+        scopes.pop();
+        result_type
+    }
+
     pub(in crate::core) fn infer_if_expr(
         &mut self,
         cond: &Expr,
