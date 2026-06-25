@@ -1,11 +1,12 @@
 # Changelog
 
-## [Unreleased] — v0.25.3-dev
+## [v0.25.3] — 2026-06-25
 
 ### Fixed
 - **Bug 1**: Newtype transparency consistency (same_type vs unify)
 - **Bug 4**: Double unify in Stmt::Return
 - **Bug 5**: Newtype implicit unwrapping regression
+- **fmt_type**: Newtype wrapping capability/primitive types now formats transparently (aligns with `same_type`)
 
 ## [v0.25.4] — Planned
 
