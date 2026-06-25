@@ -92,9 +92,12 @@ proptest! {
         let infer = Type::Infer;
         let also_infer = Type::Infer;
         prop_assert!(core::same_type(&infer, &also_infer), "Infer should be compatible with itself");
-        // Infer should NOT be compatible with non-Infer types (except the "unknown" placeholder)
-        let is_infer_or_unknown = matches!(&t, Type::Infer) || matches!(&t, Type::Name(n, _) if n == "unknown");
-        if !is_infer_or_unknown {
+        // Infer should NOT be compatible with non-Infer types (except the "unknown" placeholder
+        // and Newtype(_, Infer) which is transparently equivalent to Infer).
+        let is_infer_like = matches!(&t, Type::Infer)
+            || matches!(&t, Type::Name(n, _) if n == "unknown")
+            || matches!(&t, Type::Newtype(_, inner) if matches!(inner.as_ref(), Type::Infer));
+        if !is_infer_like {
             prop_assert!(!core::same_type(&infer, &t), "Infer should NOT be universally compatible with {:?}", t);
         }
     }
@@ -103,9 +106,15 @@ proptest! {
     #[test]
     fn unknown_matches_only_unknown(t in arb_type()) {
         let unknown = Type::Name("unknown".into(), vec![]);
-        // 'unknown' only matches another 'unknown' — single-sided match
-        // would mask cascade errors downstream.
-        if format!("{:?}", &t) == format!("{:?}", &unknown) {
+        /// Check if a type is effectively "unknown" (including through Newtype transparency)
+        fn is_unknown_like(ty: &Type) -> bool {
+            match ty {
+                Type::Name(n, _) if n == "unknown" => true,
+                Type::Newtype(_, inner) => is_unknown_like(inner),
+                _ => false,
+            }
+        }
+        if format!("{:?}", &t) == format!("{:?}", &unknown) || is_unknown_like(&t) {
             prop_assert!(core::same_type(&unknown, &t));
         } else {
             prop_assert!(!core::same_type(&unknown, &t),

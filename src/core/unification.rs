@@ -264,6 +264,15 @@ impl UnificationTable {
             (Type::Slice(a), Type::Slice(b)) => self.unify(a, b),
             (Type::Array(a, na), Type::Array(b, nb)) if na == nb => self.unify(a, b),
             (Type::Newtype(na, a), Type::Newtype(nb, b)) if na == nb => self.unify(a, b),
+            // Newtype is transparent — unify with inner type (Bug 5: implicit wrap/unwrap)
+            // Guard prevents cross-newtype unification: Newtype("A",_) vs Newtype("B",_)
+            // only succeeds if inner of A matches B's same-name case in the recursive call.
+            (Type::Newtype(_, inner), other) if !matches!(other, Type::Newtype(..)) => {
+                self.unify(inner, other)
+            }
+            (other, Type::Newtype(_, inner)) if !matches!(other, Type::Newtype(..)) => {
+                self.unify(inner, other)
+            }
             // Newtypes are distinct — different names don't unify (type safety)
             (Type::ImplTrait(a), Type::ImplTrait(b)) | (Type::DynTrait(a), Type::DynTrait(b)) => {
                 if a == b {

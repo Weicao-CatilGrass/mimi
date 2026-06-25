@@ -1254,8 +1254,8 @@ func main() -> i32 {
 }
 
 #[test]
-fn v026_newtype_distinct_from_inner() {
-    // C4: newtype should be distinct from inner type
+fn v026_newtype_transparent() {
+    // Bug 5: newtype should be transparent — implicit wrap/unwrap with inner type
     let src = r#"
 newtype UserId = i32
 func main() -> i32 {
@@ -1266,5 +1266,138 @@ func main() -> i32 {
 "#;
     let file = parse(src);
     let result = core::check(&file);
-    assert!(result.is_err(), "newtype should not unify with inner type");
+    assert!(result.is_ok(), "newtype should transparently unify with inner type: {:?}", result);
+}
+
+#[test]
+fn newtype_transparent_fn_return_wrap() {
+    // Implicit wrap: func returns MyId, body returns bare i32 literal
+    let src = r#"
+newtype MyId = i32
+func make() -> MyId { 42 }
+func main() -> i32 { 0 }
+"#;
+    let file = parse(src);
+    let result = core::check(&file);
+    assert!(result.is_ok(), "newtype implicit wrap on return: {:?}", result);
+}
+
+#[test]
+fn newtype_transparent_fn_return_unwrap() {
+    // Implicit unwrap: func returns i32, body returns MyId value
+    let src = r#"
+newtype MyId = i32
+func make_id() -> MyId { 42 }
+func unwrap() -> i32 { make_id() }
+func main() -> i32 { 0 }
+"#;
+    let file = parse(src);
+    let result = core::check(&file);
+    assert!(result.is_ok(), "newtype implicit unwrap on return: {:?}", result);
+}
+
+#[test]
+fn newtype_transparent_fn_arg_wrap() {
+    // Implicit wrap: func expects MyId, called with i32
+    let src = r#"
+newtype MyId = i32
+func apply(x: MyId) -> i32 { x.0 }
+func main() -> i32 { apply(42) }
+"#;
+    let file = parse(src);
+    let result = core::check(&file);
+    assert!(result.is_ok(), "newtype implicit wrap on fn arg: {:?}", result);
+}
+
+#[test]
+fn newtype_transparent_fn_arg_unwrap() {
+    // Implicit unwrap: func expects i32, called with MyId
+    let src = r#"
+newtype MyId = i32
+func make() -> MyId { 42 }
+func apply(x: i32) -> i32 { x }
+func main() -> i32 { apply(make()) }
+"#;
+    let file = parse(src);
+    let result = core::check(&file);
+    assert!(result.is_ok(), "newtype implicit unwrap on fn arg: {:?}", result);
+}
+
+#[test]
+fn newtype_transparent_assign_wrap() {
+    // Implicit wrap: assign i32 to MyId variable
+    let src = r#"
+newtype MyId = i32
+func main() -> i32 {
+    let mut x: MyId = 0;
+    x = 42;
+    0
+}
+"#;
+    let file = parse(src);
+    let result = core::check(&file);
+    assert!(result.is_ok(), "newtype implicit wrap on assign: {:?}", result);
+}
+
+#[test]
+fn newtype_transparent_assign_unwrap() {
+    // Implicit unwrap: assign MyId to i32 variable
+    let src = r#"
+newtype MyId = i32
+func main() -> i32 {
+    let id: MyId = 42;
+    let mut x: i32 = 0;
+    x = id;
+    0
+}
+"#;
+    let file = parse(src);
+    let result = core::check(&file);
+    assert!(result.is_ok(), "newtype implicit unwrap on assign: {:?}", result);
+}
+
+#[test]
+fn newtype_transparent_if_branches() {
+    // Implicit wrap in if/else branches
+    let src = r#"
+newtype MyId = i32
+func pick(c: bool) -> MyId {
+    if c { 42 } else { 43 }
+}
+func main() -> i32 { 0 }
+"#;
+    let file = parse(src);
+    let result = core::check(&file);
+    assert!(result.is_ok(), "newtype implicit wrap in if/else: {:?}", result);
+}
+
+#[test]
+fn newtype_transparent_cross_rejected() {
+    // Cross-newtype should still be rejected
+    let src = r#"
+newtype UserId = i32
+newtype OrderId = i32
+func apply(u: UserId) -> i32 { u.0 }
+func main() -> i32 { apply(OrderId(1)) }
+"#;
+    let file = parse(src);
+    let result = core::check(&file);
+    assert!(result.is_err(), "cross-newtype should be rejected: {:?}", result);
+}
+
+#[test]
+fn newtype_transparent_assign_cross_rejected() {
+    // Cross-newtype assignment should be rejected
+    let src = r#"
+newtype UserId = i32
+newtype OrderId = i32
+func main() -> i32 {
+    let mut u: UserId = 0;
+    u = OrderId(1);
+    0
+}
+"#;
+    let file = parse(src);
+    let result = core::check(&file);
+    assert!(result.is_err(), "cross-newtype assignment should be rejected: {:?}", result);
 }

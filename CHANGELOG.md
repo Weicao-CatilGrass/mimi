@@ -2,6 +2,23 @@
 
 ## [Unreleased] — v0.25.3-dev
 
+### Fixed
+- **Bug 1**: Newtype transparency consistency (same_type vs unify)
+- **Bug 4**: Double unify in Stmt::Return
+- **Bug 5**: Newtype implicit unwrapping regression
+
+## [v0.25.4] — Planned
+
+### Fixed
+- **Bug 2**: TypeVar pollution from unify side effects
+- **Bug 3**: Expected type not propagated through Expr::If
+
+## [v0.25.5] — Planned
+
+### Fixed
+- **Bug 6**: generalize double traversal performance
+- **Bug 7**: substitute_type_vars missing Type variants
+
 ## [v0.25.2] — 2026-06-25
 
 ### Added

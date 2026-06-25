@@ -281,9 +281,17 @@ pub(crate) fn same_type(a: &Type, b: &Type) -> bool {
         (Type::WeakLocal(a), Type::WeakLocal(b)) => same_type(a, b),
         // Newtypes with same name and same inner type are equal
         (Type::Newtype(n1, a), Type::Newtype(n2, b)) => n1 == n2 && same_type(a, b),
-        // A named type matches a newtype with the same inner type name
-        (Type::Name(n, _), Type::Newtype(n2, _)) | (Type::Newtype(n2, _), Type::Name(n, _)) => {
-            n == n2
+        // Constructor or transparent: Newtype(name,inner) matches Name(n) if name==n or inner≃n
+        (Type::Newtype(n, inner), Type::Name(n2, _))
+        | (Type::Name(n2, _), Type::Newtype(n, inner)) => {
+            if n == n2 { true } else { same_type(inner, &Type::Name(n2.clone(), vec![])) }
+        }
+        // Newtype is transparent — same_type with non-Name, non-Newtype types
+        (Type::Newtype(_, inner), other) if !matches!(other, Type::Newtype(..)) => {
+            same_type(inner, other)
+        }
+        (other, Type::Newtype(_, inner)) if !matches!(other, Type::Newtype(..)) => {
+            same_type(inner, other)
         }
         (Type::Allocator, Type::Allocator) => true,
         (Type::Infer, Type::Infer) => true,

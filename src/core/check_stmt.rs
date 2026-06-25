@@ -632,6 +632,8 @@ impl<'a> Checker<'a> {
             Stmt::Return(Some(e)) => {
                 // C3: use check_expr with return type as expected
                 let t = self.check_expr(ret, e, scopes);
+                // Resolve through unification table to handle any TypeVars from C3
+                let t = self.unification.resolve(&t);
                 // C2: use unification for return type checking
                 if self.unification.unify(ret, &t).is_err() {
                     self.errors.push(

@@ -85,6 +85,8 @@ impl<'a> Checker<'a> {
         if let Some(Stmt::Expr(last_expr)) = func.body.last() {
             // C3: use check_expr with return type as expected for implicit return
             let last_ty = self.check_expr(&ret, last_expr, &mut scopes);
+            // Resolve through unification table before further comparison
+            let last_ty = self.unification.resolve(&last_ty);
             // Unwrap shared/aliasing wrappers for return type compatibility
             let last_ty_clean = match &last_ty {
                 Type::Shared(i) | Type::LocalShared(i) | Type::CShared(i) => (**i).clone(),
