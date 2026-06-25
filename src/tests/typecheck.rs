@@ -1081,3 +1081,54 @@ func main() -> i32 { get_id(UserId(42)) }
     )
     .expect("newtype .0 should typecheck");
 }
+
+// ─── v0.25.1 D3: Exhaustiveness check improvements ──────────────────
+
+#[test]
+fn d3_int_match_with_catchall_ok() {
+    check_source(
+        r#"
+func classify(x: i32) -> i32 {
+    match x {
+        0 => 1
+        1 => 2
+        _ => 3
+    }
+}
+func main() -> i32 { classify(5) }
+"#,
+    )
+    .expect("int match with catch-all should pass");
+}
+
+#[test]
+fn d3_int_match_without_catchall_warns() {
+    let src = r#"
+func classify(x: i32) -> i32 {
+    match x {
+        0 => 1
+        1 => 2
+    }
+}
+func main() -> i32 { classify(5) }
+"#;
+    let file = parse(src);
+    let result = core::check(&file);
+    assert!(result.is_err(), "int match without catch-all should warn");
+}
+
+#[test]
+fn d3_string_match_with_catchall_ok() {
+    check_source(
+        r#"
+func classify(s: string) -> i32 {
+    match s {
+        "hello" => 1
+        _ => 0
+    }
+}
+func main() -> i32 { classify("world") }
+"#,
+    )
+    .expect("string match with catch-all should pass");
+}

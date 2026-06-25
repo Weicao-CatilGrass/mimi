@@ -2,7 +2,7 @@ use crate::ast::*;
 use crate::codegen::{CallSiteValueExt, CodeGenerator, VarEntry};
 use crate::error::CompileError;
 
-use inkwell::types::BasicTypeEnum;
+use inkwell::types::{BasicMetadataTypeEnum, BasicTypeEnum};
 use inkwell::values::{BasicMetadataValueEnum, BasicValueEnum};
 use std::collections::HashMap;
 
@@ -93,9 +93,42 @@ impl<'ctx> CodeGenerator<'ctx> {
                     .builder
                     .build_ptr_to_int(pv, self.context.i64_type(), "ptr_to_i64")
                     .map_err(|e| CompileError::LlvmError(format!("ptr_to_int error: {}", e)))?,
+                BasicValueEnum::StructValue(sv) => {
+                    // D1: heap-allocate struct, store pointer as i64
+                    let struct_ty = sv.get_type();
+                    let size = self.llvm_type_size_bytes(BasicTypeEnum::StructType(struct_ty));
+                    let malloc_fn = self.module.get_function("malloc").unwrap_or_else(|| {
+                        let i8_ptr = self.context.ptr_type(inkwell::AddressSpace::default());
+                        let i64_ty = self.context.i64_type();
+                        self.module.add_function(
+                            "malloc",
+                            i8_ptr.fn_type(&[BasicMetadataTypeEnum::IntType(i64_ty)], false),
+                            Some(inkwell::module::Linkage::External),
+                        )
+                    });
+                    let size_val = self.context.i64_type().const_int(size, false);
+                    let ptr = self
+                        .builder
+                        .build_call(malloc_fn, &[BasicMetadataValueEnum::IntValue(size_val)], "malloc")
+                        .map_err(|e| CompileError::LlvmError(format!("malloc call: {}", e)))?
+                        .try_as_basic_value_opt()
+                        .ok_or("malloc returned void")?
+                        .into_pointer_value();
+                    let i8_ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
+                    let typed_ptr = self.builder.build_bit_cast(
+                        ptr,
+                        BasicTypeEnum::PointerType(i8_ptr_ty),
+                        "struct_ptr",
+                    ).map_err(|e| CompileError::LlvmError(format!("bitcast error: {}", e)))?
+                    .into_pointer_value();
+                    self.builder.build_store(typed_ptr, sv)
+                        .map_err(|e| CompileError::LlvmError(format!("store struct: {}", e)))?;
+                    self.builder.build_ptr_to_int(typed_ptr, self.context.i64_type(), "ptr_to_i64")
+                        .map_err(|e| CompileError::LlvmError(format!("ptr_to_int error: {}", e)))?
+                }
                 _ => {
                     return Err(
-                        "list elements must be scalar types (int, float, pointer) for now".into(),
+                        "list elements must be scalar or struct types for now".into(),
                     )
                 }
             };

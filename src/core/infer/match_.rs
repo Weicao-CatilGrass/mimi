@@ -89,6 +89,25 @@ impl<'a> Checker<'a> {
                     );
                 }
             }
+        } else if all_variants.is_empty() && !has_catchall {
+            // D3: non-enum types (i32, string, etc.) without catch-all — warn
+            let is_non_enum = matches!(
+                &subject_ty,
+                Type::Name(n, _) if matches!(n.as_str(), "i32" | "i64" | "f64" | "string")
+            );
+            if is_non_enum {
+                self.errors.push(
+                    Diagnostic::error_code(
+                        crate::diagnostic::codes::E0215,
+                        format!(
+                            "match on {} type without wildcard '_ => ...' arm may be non-exhaustive",
+                            fmt_type(&subject_ty)
+                        ),
+                        Span::single(self.current_line, self.current_col),
+                    )
+                    .with_help("add a wildcard '_ => ...' arm to handle unmatched values"),
+                );
+            }
         }
 
         result_ty.unwrap_or_else(|| Type::Name("unknown".into(), vec![]))
@@ -121,10 +140,18 @@ impl<'a> Checker<'a> {
                 }
             }
             Pattern::Literal(lit) => {
-                // For bool literals, cover the specific variant (true/false)
+                // Track literal coverage for bool (enum-like) and int/string types
                 let covered = match lit {
                     Lit::Bool(true) => vec!["true".into()],
                     Lit::Bool(false) => vec!["false".into()],
+                    Lit::Int(n) => {
+                        // Track int literals as covered values
+                        vec![format!("int:{}", n)]
+                    }
+                    Lit::String(s) => {
+                        // Track string literals as covered values
+                        vec![format!("str:{}", s)]
+                    }
                     _ => Vec::new(),
                 };
                 (covered, false)

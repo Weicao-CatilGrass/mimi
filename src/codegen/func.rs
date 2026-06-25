@@ -789,6 +789,23 @@ impl<'ctx> CodeGenerator<'ctx> {
                             self.var_type_names.insert(name.clone(), tn.clone());
                         } else if matches!(init, Expr::SetLiteral(_)) {
                             self.var_type_names.insert(name.clone(), "set".to_string());
+                        } else if let Expr::List(list_elems) = init {
+                            // D1: infer List<T> type from first element
+                            if let Some(first) = list_elems.first() {
+                                let elem_type = self.infer_object_type(first, &vars);
+                                if !elem_type.is_empty() {
+                                    self.var_type_names.insert(
+                                        name.clone(),
+                                        format!("List<{}>", elem_type),
+                                    );
+                                }
+                            }
+                        } else if let Expr::Index(_, _) = init {
+                            // D1: infer element type via infer_object_type (handles List<T> stripping)
+                            let elem_type = self.infer_object_type(init, &vars);
+                            if !elem_type.is_empty() {
+                                self.var_type_names.insert(name.clone(), elem_type);
+                            }
                         } else if let Expr::Call(callee, _) = init {
                             if let Expr::Field(obj, method_name) = callee.as_ref() {
                                 if method_name == "spawn" {

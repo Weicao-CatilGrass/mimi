@@ -45,9 +45,14 @@ impl<'ctx> CodeGenerator<'ctx> {
             return Ok(None);
         }
         if let Some(elem_ty) = crate::codegen::extract_list_elem_type(&obj_type) {
-            if let Some(BasicTypeEnum::StructType(sty)) =
+            // Check user-defined type registry first, then built-in type mapping
+            let llvm_ty = if let Type::Name(name, _) = &elem_ty {
+                self.type_llvm.get(name).cloned()
+                    .or_else(|| types::mimi_type_to_llvm(self.context, &elem_ty))
+            } else {
                 types::mimi_type_to_llvm(self.context, &elem_ty)
-            {
+            };
+            if let Some(BasicTypeEnum::StructType(sty)) = llvm_ty {
                 let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
                 let elem_ptr = self
                     .builder
