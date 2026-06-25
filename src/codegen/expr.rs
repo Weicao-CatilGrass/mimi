@@ -206,7 +206,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                             '<' => depth += 1,
                             '>' => {
                                 if depth == 0 {
-                                    return inner[..=i].trim().to_string();
+                                    return inner[..i].trim().to_string();
                                 }
                                 depth -= 1;
                             }
