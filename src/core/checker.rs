@@ -158,6 +158,147 @@ impl<'a> Checker<'a> {
             }
         }
     }
+
+    /// C4: Generalize a type — wrap free TypeVars not in the environment in ForAll.
+    ///
+    /// After solving a let binding, call this to make the type polymorphic.
+    /// Free TypeVars (not bound in the environment) become universally quantified.
+    pub(crate) fn generalize(&mut self, ty: &Type, env: &HashMap<String, Type>) -> Type {
+        let resolved = self.unification.resolve(ty);
+        let free_vars = self.collect_free_type_vars(&resolved);
+        let env_vars = self.collect_env_type_vars(env);
+        let generalized: Vec<u32> = free_vars
+            .into_iter()
+            .filter(|v| !env_vars.contains(v))
+            .collect();
+        if generalized.is_empty() {
+            resolved
+        } else {
+            let param_names: Vec<String> = generalized.iter().map(|v| format!("T{}", v)).collect();
+            Type::ForAll(param_names, Box::new(resolved))
+        }
+    }
+
+    /// C4: Instantiate a ForAll type — replace bound variables with fresh TypeVars.
+    ///
+    /// When using a polymorphic function, call this to get a fresh copy.
+    pub(crate) fn instantiate(&mut self, ty: &Type) -> Type {
+        match ty {
+            Type::ForAll(params, body) => {
+                let mut substitutions = HashMap::new();
+                for (i, _param) in params.iter().enumerate() {
+                    let fresh = self.fresh_var();
+                    // Map the bound variable name to a fresh TypeVar
+                    // The body uses TypeVar(i) for the i-th bound variable
+                    if let Type::TypeVar(id) = fresh {
+                        substitutions.insert(i as u32, id);
+                    }
+                }
+                self.substitute_type_vars(body, &substitutions)
+            }
+            _ => ty.clone(),
+        }
+    }
+
+    /// Collect all free TypeVar IDs in a type.
+    fn collect_free_type_vars(&self, ty: &Type) -> Vec<u32> {
+        let mut vars = Vec::new();
+        self.collect_type_vars_inner(ty, &mut vars);
+        vars.sort();
+        vars.dedup();
+        vars
+    }
+
+    fn collect_type_vars_inner(&self, ty: &Type, vars: &mut Vec<u32>) {
+        match ty {
+            Type::TypeVar(id) => vars.push(*id),
+            Type::ForAll(_, body) => self.collect_type_vars_inner(body, vars),
+            Type::Option(inner) => self.collect_type_vars_inner(inner, vars),
+            Type::Result(ok, err) => {
+                self.collect_type_vars_inner(ok, vars);
+                self.collect_type_vars_inner(err, vars);
+            }
+            Type::Tuple(elems) => {
+                for e in elems {
+                    self.collect_type_vars_inner(e, vars);
+                }
+            }
+            Type::Func(args, ret) | Type::ExternFunc(args, ret) => {
+                for a in args {
+                    self.collect_type_vars_inner(a, vars);
+                }
+                self.collect_type_vars_inner(ret, vars);
+            }
+            Type::Ref(_, inner)
+            | Type::RefMut(_, inner)
+            | Type::Shared(inner)
+            | Type::LocalShared(inner)
+            | Type::Weak(inner)
+            | Type::WeakLocal(inner)
+            | Type::RawPtr(inner)
+            | Type::RawPtrMut(inner)
+            | Type::CShared(inner)
+            | Type::CBorrow(inner)
+            | Type::CBorrowMut(inner)
+            | Type::CBuffer(inner)
+            | Type::Array(inner, _)
+            | Type::Slice(inner)
+            | Type::Newtype(_, inner) => self.collect_type_vars_inner(inner, vars),
+            Type::Name(_, args) => {
+                for a in args {
+                    self.collect_type_vars_inner(a, vars);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Collect TypeVar IDs that appear in the environment.
+    fn collect_env_type_vars(&self, env: &HashMap<String, Type>) -> Vec<u32> {
+        let mut vars = Vec::new();
+        for ty in env.values() {
+            self.collect_type_vars_inner(ty, &mut vars);
+        }
+        vars.sort();
+        vars.dedup();
+        vars
+    }
+
+    /// Substitute TypeVar IDs in a type with new IDs.
+    fn substitute_type_vars(&self, ty: &Type, subs: &HashMap<u32, u32>) -> Type {
+        match ty {
+            Type::TypeVar(id) => {
+                if let Some(new_id) = subs.get(id) {
+                    Type::TypeVar(*new_id)
+                } else {
+                    ty.clone()
+                }
+            }
+            Type::Option(inner) => Type::Option(Box::new(self.substitute_type_vars(inner, subs))),
+            Type::Result(ok, err) => Type::Result(
+                Box::new(self.substitute_type_vars(ok, subs)),
+                Box::new(self.substitute_type_vars(err, subs)),
+            ),
+            Type::Tuple(elems) => {
+                Type::Tuple(elems.iter().map(|e| self.substitute_type_vars(e, subs)).collect())
+            }
+            Type::Func(args, ret) => Type::Func(
+                args.iter().map(|a| self.substitute_type_vars(a, subs)).collect(),
+                Box::new(self.substitute_type_vars(ret, subs)),
+            ),
+            Type::Ref(lt, inner) => {
+                Type::Ref(lt.clone(), Box::new(self.substitute_type_vars(inner, subs)))
+            }
+            Type::RefMut(lt, inner) => {
+                Type::RefMut(lt.clone(), Box::new(self.substitute_type_vars(inner, subs)))
+            }
+            Type::Name(name, args) => Type::Name(
+                name.clone(),
+                args.iter().map(|a| self.substitute_type_vars(a, subs)).collect(),
+            ),
+            _ => ty.clone(),
+        }
+    }
 }
 
 mod borrow;
